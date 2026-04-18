@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0b0d0b"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Fuel Log"/>
+  <title>Fuel Log</title>
+  <link rel="manifest" href="manifest.json"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#0b0d0b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+    input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+    input::placeholder,textarea::placeholder{color:#2a3228;}
+    #root{min-height:100vh;}
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ── Storage wrapper (localStorage) ───────────────────────────
+const storage = {
+  async get(key)        { const v=localStorage.getItem(key); return v!==null?{value:v}:null; },
+  async set(key, value) { localStorage.setItem(key, value); return {value}; },
+};
+
+// ── Constants ─────────────────────────────────────────────────
+const ACCENT="#a3ff4b", BG="#0b0d0b", CARD="#111311", BORDER="#1c201c";
+const REST_TARGETS  = {kcal:1800,protein:160,carbs:170,fat:53};
+const TRAIN_TARGETS = {kcal:2200,protein:175,carbs:215,fat:62};
+
+const DEFAULT_MEALS = [
+  {name:"Chicken breast (150g)",    kcal:248,protein:47,carbs:0, fat:5 },
+  {name:"Brown rice (200g cooked)", kcal:218,protein:5, carbs:46,fat:2 },
+  {name:"Scrambled eggs (3 large)", kcal:234,protein:18,carbs:1, fat:17},
+  {name:"Oats (80g dry)",           kcal:304,protein:11,carbs:54,fat:6 },
+  {name:"Greek yoghurt (200g)",     kcal:130,protein:18,carbs:6, fat:4 },
+  {name:"Whey protein shake",       kcal:130,protein:25,carbs:5, fat:2 },
+  {name:"Banana (medium)",          kcal:89, protein:1, carbs:23,fat:0 },
+  {name:"Tuna can (120g drained)",  kcal:132,protein:29,carbs:0, fat:1 },
+  {name:"Salmon fillet (150g)",     kcal:280,protein:35,carbs:0, fat:15},
+  {name:"Sweet potato (200g)",      kcal:172,protein:3, carbs:40,fat:0 },
+  {name:"Broccoli (200g)",          kcal:68, protein:6, carbs:11,fat:1 },
+  {name:"Mixed nuts (30g)",         kcal:185,protein:5, carbs:6, fat:16},
+  {name:"Whole milk (250ml)",       kcal:153,protein:8, carbs:12,fat:8 },
+  {name:"White rice (200g cooked)", kcal:260,protein:5, carbs:57,fat:0 },
+  {name:"Cottage cheese (200g)",    kcal:160,protein:22,carbs:6, fat:4 },
+  {name:"Avocado (half)",           kcal:120,protein:1, carbs:6, fat:11},
+  {name:"Peanut butter (2 tbsp)",   kcal:188,protein:8, carbs:6, fat:16},
+  {name:"Beef mince 5% fat (150g)", kcal:221,protein:33,carbs:0, fat:9 },
+  {name:"Protein bar (50g)",        kcal:200,protein:20,carbs:18,fat:7 },
+  {name:"Whole eggs x2 boiled",     kcal:156,protein:12,carbs:1, fat:11},
+];
+
+const todayKey = () => new Date().toISOString().split("T")[0];
+
+// ── Shared ─────────────────────────────────────────────────────
+function BackHeader({title,onBack}){
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:22}}>
+      <button onClick={onBack} style={{background:"#161a16",border:`1px solid ${BORDER}`,borderRadius:10,width:36,height:36,color:"#7a9a70",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>←</button>
+      <h2 style={{margin:0,fontSize:18,fontWeight:900,color:ACCENT,letterSpacing:"0.06em"}}>{title}</h2>
+    </div>
+  );
+}
+function MacroBar({label,value,target,color}){
+  const pct=Math.min(100,(value/target)*100), over=value>target;
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
+        <span style={{fontWeight:800,letterSpacing:"0.06em",color:over?"#ff5555":"#8aaa80"}}>{label}</span>
+        <span style={{color:over?"#ff5555":"#6a8a60"}}>{Math.round(value)}g / {target}g</span>
+      </div>
+      <div style={{height:7,background:"#1a1a1a",borderRadius:99,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${pct}%`,background:over?"#ff5555":color,borderRadius:99,transition:"width 0.45s ease",boxShadow:over?"none":`0 0 8px ${color}55`}}/>
+      </div>
+    </div>
+  );
+}
+function MacroChip({label,value,color}){
+  return (
+    <div style={{textAlign:"center",background:"#0b0d0b",borderRadius:12,padding:"10px 6px"}}>
+      <div style={{fontSize:17,fontWeight:900,color}}>{value}</div>
+      <div style={{fontSize:10,color:"#3d4a38",marginTop:2,letterSpacing:"0.05em"}}>{label}</div>
+    </div>
+  );
+}
+
+// ── Meal Form ──────────────────────────────────────────────────
+function MealForm({meal,onSave,onCancel}){
+  const [form,setForm]=useState(meal?{name:meal.name,kcal:String(meal.kcal),protein:String(meal.protein),carbs:String(meal.carbs),fat:String(meal.fat)}:{name:"",kcal:"",protein:"",carbs:"",fat:""});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const valid=form.name.trim()&&Number(form.kcal)>0;
+  const inp={width:"100%",boxSizing:"border-box",background:"#0b0d0b",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 14px",color:"#d8e8d0",fontSize:14,fontFamily:"inherit",outline:"none"};
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:999}} onClick={e=>e.target===e.currentTarget&&onCancel()}>
+      <div style={{background:CARD,borderRadius:"22px 22px 0 0",padding:"28px 20px 50px",width:"100%",maxWidth:500,border:`1px solid ${BORDER}`,borderBottom:"none"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
+          <h3 style={{margin:0,color:ACCENT,fontSize:16,fontWeight:900,letterSpacing:"0.08em"}}>{meal?"EDIT MEAL":"ADD MEAL"}</h3>
+          <button onClick={onCancel} style={{background:"none",border:"none",color:"#556050",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button>
+        </div>
+        <div style={{fontSize:11,color:"#445040",letterSpacing:"0.1em",fontWeight:800,marginBottom:6}}>MEAL NAME</div>
+        <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Chicken breast (150g)" style={{...inp,marginBottom:18}}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:22}}>
+          {[{key:"kcal",label:"CALORIES (kcal)",color:ACCENT},{key:"protein",label:"PROTEIN (g)",color:"#4b9fff"},{key:"carbs",label:"CARBS (g)",color:"#ffb84b"},{key:"fat",label:"FAT (g)",color:"#ff7b4b"}].map(f=>(
+            <div key={f.key}>
+              <div style={{fontSize:10,color:f.color,letterSpacing:"0.1em",fontWeight:800,marginBottom:5}}>{f.label}</div>
+              <input type="number" min="0" value={form[f.key]} onChange={e=>set(f.key,e.target.value)} placeholder="0" style={inp}/>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>valid&&onSave({name:form.name.trim(),kcal:Number(form.kcal)||0,protein:Number(form.protein)||0,carbs:Number(form.carbs)||0,fat:Number(form.fat)||0})} disabled={!valid}
+          style={{width:"100%",padding:"15px",background:valid?ACCENT:"#161a16",color:valid?"#0b0d0b":"#2e3a2c",border:"none",borderRadius:13,fontSize:14,fontWeight:900,letterSpacing:"0.08em",cursor:valid?"pointer":"not-allowed"}}>
+          {meal?"SAVE CHANGES":"ADD MEAL"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard ──────────────────────────────────────────────────
+function Dashboard({logs,totals,targets,remaining,water,setWater,isTraining,setIsTraining,setView,removeLog}){
+  const over=totals.kcal>targets.kcal, pct=Math.min(100,(totals.kcal/targets.kcal)*100);
+  return (
+    <div style={{padding:"20px 16px 40px",maxWidth:500,margin:"0 auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}>
+        <div>
+          <h1 style={{margin:0,fontSize:26,fontWeight:900,color:ACCENT,letterSpacing:"-0.02em",lineHeight:1}}>FUEL LOG</h1>
+          <p style={{margin:"4px 0 0",fontSize:12,color:"#445040",letterSpacing:"0.06em"}}>{new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"short"}).toUpperCase()}</p>
+        </div>
+        <button onClick={()=>setIsTraining(!isTraining)} style={{padding:"9px 14px",background:isTraining?ACCENT:"#161a16",color:isTraining?"#0b0d0b":"#556050",border:`1px solid ${isTraining?ACCENT:"#242824"}`,borderRadius:999,fontSize:11,fontWeight:900,cursor:"pointer",letterSpacing:"0.07em",flexShrink:0}}>
+          {isTraining?"⚡ TRAINING":"💤 REST DAY"}
+        </button>
+      </div>
+      {/* Kcal */}
+      <div style={{background:CARD,borderRadius:22,border:`1px solid ${over?"#ff555328":"#1c241c"}`,padding:"24px 22px",marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:18}}>
+          <div>
+            <div style={{fontSize:11,color:"#445040",letterSpacing:"0.12em",marginBottom:4}}>CONSUMED</div>
+            <div style={{fontSize:44,fontWeight:900,color:over?"#ff5555":"#e8f0e0",lineHeight:1,letterSpacing:"-0.03em"}}>{Math.round(totals.kcal).toLocaleString()}<span style={{fontSize:15,color:"#445040",fontWeight:400,marginLeft:5}}>kcal</span></div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:11,color:"#445040",letterSpacing:"0.12em",marginBottom:4}}>{over?"OVER BY":"REMAINING"}</div>
+            <div style={{fontSize:32,fontWeight:900,color:over?"#ff5555":ACCENT,lineHeight:1}}>{Math.abs(Math.round(remaining)).toLocaleString()}<span style={{fontSize:13,color:over?"#aa3333":"#6a9a30",fontWeight:400,marginLeft:4}}>kcal</span></div>
+          </div>
+        </div>
+        <div style={{height:10,background:"#161a16",borderRadius:99,overflow:"hidden",marginBottom:6}}>
+          <div style={{height:"100%",width:`${pct}%`,background:over?"#ff5555":`linear-gradient(90deg,${ACCENT}88,${ACCENT})`,borderRadius:99,transition:"width 0.5s ease"}}/>
+        </div>
+        <div style={{fontSize:11,color:"#2e3a2c",textAlign:"right"}}>TARGET {targets.kcal.toLocaleString()} kcal</div>
+      </div>
+      {/* Macros */}
+      <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:20,padding:"18px 20px",marginBottom:14}}>
+        <div style={{fontSize:11,color:"#445040",letterSpacing:"0.12em",fontWeight:800,marginBottom:14}}>MACROS</div>
+        <MacroBar label="PROTEIN" value={totals.protein} target={targets.protein} color="#4b9fff"/>
+        <MacroBar label="CARBS"   value={totals.carbs}   target={targets.carbs}   color="#ffb84b"/>
+        <MacroBar label="FAT"     value={totals.fat}     target={targets.fat}     color="#ff7b4b"/>
+      </div>
+      {/* Water */}
+      <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:20,padding:"16px 20px",marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:11,color:"#445040",letterSpacing:"0.12em",fontWeight:800,marginBottom:3}}>WATER</div>
+            <div style={{fontSize:22,fontWeight:900,color:"#4b9fff"}}>{water}<span style={{fontSize:13,color:"#2a4060",fontWeight:400,marginLeft:5}}>/ 8 glasses</span></div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setWater(Math.max(0,water-1))} style={{width:36,height:36,borderRadius:10,background:"#131826",border:"1px solid #1e2a3a",color:"#4b9fff",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+            <button onClick={()=>setWater(water+1)}             style={{width:36,height:36,borderRadius:10,background:"#0f1c2e",border:"1px solid #2a4a7a",color:"#4b9fff",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:5}}>{Array.from({length:8}).map((_,i)=><div key={i} style={{flex:1,height:6,borderRadius:99,background:i<water?"#4b9fff":"#161a26",transition:"background 0.2s"}}/>)}</div>
+      </div>
+      {/* Buttons */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+        {[{emoji:"🤖",label:"AI LOG",sub:"describe it",view:"ai"},{emoji:"⚡",label:"QUICK ADD",sub:"preset meals",view:"quick"},{emoji:"🔍",label:"SEARCH",sub:"food database",view:"search"}].map(b=>(
+          <button key={b.view} onClick={()=>setView(b.view)} style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:16,padding:"16px 8px",cursor:"pointer",textAlign:"center"}}>
+            <div style={{fontSize:22,marginBottom:5}}>{b.emoji}</div>
+            <div style={{fontSize:11,fontWeight:900,color:ACCENT,letterSpacing:"0.07em"}}>{b.label}</div>
+            <div style={{fontSize:10,color:"#334030",marginTop:3}}>{b.sub}</div>
+          </button>
+        ))}
+      </div>
+      {/* Log */}
+      {logs.length>0?(
+        <div style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{padding:"13px 20px 11px",fontSize:11,color:"#445040",letterSpacing:"0.12em",fontWeight:800,borderBottom:`1px solid ${BORDER}`}}>TODAY'S LOG · {logs.length} ITEM{logs.length!==1?"S":""}</div>
+          {[...logs].reverse().map((log,i)=>(
+            <div key={log.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderBottom:i<logs.length-1?`1px solid ${BORDER}`:"none"}}>
+              <div style={{flex:1,minWidth:0,paddingRight:10}}>
+                <div style={{fontSize:14,fontWeight:600,color:"#d8e8d0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.name}</div>
+                <div style={{fontSize:11,color:"#3d4a38",marginTop:3}}>{log.time} · P:{log.protein}g C:{log.carbs}g F:{log.fat}g</div>
+              </div>
+              <span style={{fontSize:16,fontWeight:900,color:ACCENT}}>{Math.round(log.kcal)}</span>
+              <button onClick={()=>removeLog(log.id)} style={{background:"none",border:"none",color:"#2a3028",cursor:"pointer",fontSize:18,padding:"2px 10px",marginLeft:6}}>×</button>
+            </div>
+          ))}
+        </div>
+      ):(
+        <div style={{textAlign:"center",padding:"30px 20px",color:"#2a3228",fontSize:14}}>
+          <div style={{fontSize:36,marginBottom:8}}>🍽️</div>Nothing logged yet today.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AI Log ─────────────────────────────────────────────────────
+function AILog({onAdd,onBack}){
+  const [desc,setDesc]=useState(""), [loading,setLoading]=useState(false), [result,setResult]=useState(null), [error,setError]=useState("");
+  async function estimate(){
+    if(!desc.trim())return;
+    setLoading(true);setError("");setResult(null);
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:400,messages:[{role:"user",content:`Estimate nutritional content for: "${desc}". Return ONLY valid JSON, no markdown: {"name":"short meal name","kcal":number,"protein":number,"carbs":number,"fat":number,"notes":"brief note"}`}]})});
+      const data=await res.json();
+      const text=data.content?.map(b=>b.text||"").join("")||"";
+      setResult(JSON.parse(text.replace(/```json|```/g,"").trim()));
+    }catch(e){setError("Estimation failed — try a more specific description.");}
+    setLoading(false);
+  }
+  return (
+    <div style={{padding:"20px 16px 40px",maxWidth:500,margin:"0 auto"}}>
+      <BackHeader title="AI MEAL LOG" onBack={onBack}/>
+      <p style={{color:"#556050",fontSize:13,lineHeight:1.6,marginBottom:20}}>Describe what you ate and I'll estimate the macros.</p>
+      <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder={"e.g. 'Large bowl of chicken fried rice with 2 eggs'\nor '200g grilled salmon, sweet potato and broccoli'"} rows={4}
+        style={{width:"100%",boxSizing:"border-box",background:CARD,border:`1px solid ${BORDER}`,borderRadius:14,padding:"14px 16px",color:"#d8e8d0",fontSize:14,resize:"none",fontFamily:"inherit",outline:"none",lineHeight:1.6}}/>
+      <button onClick={estimate} disabled={loading||!desc.trim()} style={{width:"100%",marginTop:12,padding:"15px",background:loading||!desc.trim()?"#161a16":ACCENT,color:loading||!desc.trim()?"#2e3a2c":"#0b0d0b",border:"none",borderRadius:14,fontSize:14,fontWeight:900,letterSpacing:"0.08em",cursor:loading||!desc.trim()?"not-allowed":"pointer"}}>
+        {loading?"⚡ ESTIMATING...":"🤖 ESTIMATE MACROS"}
+      </button>
+      {error&&<p style={{color:"#ff5555",fontSize:13,marginTop:14,textAlign:"center"}}>{error}</p>}
+      {result&&(
+        <div style={{marginTop:20,background:CARD,border:`1px solid ${ACCENT}28`,borderRadius:18,padding:"20px"}}>
+          <div style={{fontSize:16,fontWeight:700,color:"#d8e8d0",marginBottom:4}}>{result.name}</div>
+          {result.notes&&<div style={{fontSize:12,color:"#445040",marginBottom:16}}>{result.notes}</div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:18}}>
+            <MacroChip label="KCAL"    value={Math.round(result.kcal)}          color={ACCENT}   />
+            <MacroChip label="PROTEIN" value={`${Math.round(result.protein)}g`} color="#4b9fff"  />
+            <MacroChip label="CARBS"   value={`${Math.round(result.carbs)}g`}   color="#ffb84b"  />
+            <MacroChip label="FAT"     value={`${Math.round(result.fat)}g`}     color="#ff7b4b"  />
+          </div>
+          <button onClick={()=>{onAdd(result);onBack();}} style={{width:"100%",padding:"14px",background:ACCENT,color:"#0b0d0b",border:"none",borderRadius:12,fontSize:14,fontWeight:900,cursor:"pointer"}}>＋ LOG THIS MEAL</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Quick Add ──────────────────────────────────────────────────
+function QuickAdd({onAdd,onBack}){
+  const [meals,setMeals]=useState(null), [search,setSearch]=useState(""), [formCtx,setFormCtx]=useState(null);
+  useEffect(()=>{
+    (async()=>{
+      try{ const r=await storage.get("all_meals"); setMeals(r?JSON.parse(r.value):[...DEFAULT_MEALS]); }
+      catch(e){ setMeals([...DEFAULT_MEALS]); }
+    })();
+  },[]);
+  const saveMeals=async m=>{setMeals(m);try{await storage.set("all_meals",JSON.stringify(m));}catch(e){}};
+  const handleSave=saved=>{
+    if(formCtx.index!=null){const u=[...meals];u[formCtx.index]=saved;saveMeals(u);}
+    else saveMeals([...meals,saved]);
+    setFormCtx(null);
+  };
+  const indexed=(meals||[]).map((m,i)=>({...m,_idx:i}));
+  const filtered=indexed.filter(m=>m.name.toLowerCase().includes(search.toLowerCase()));
+  if(!meals)return<div style={{padding:"20px 16px",maxWidth:500,margin:"0 auto"}}><BackHeader title="QUICK ADD" onBack={onBack}/><div style={{textAlign:"center",color:"#445040",padding:30}}>Loading...</div></div>;
+  return (
+    <div style={{padding:"20px 16px 40px",maxWidth:500,margin:"0 auto"}}>
+      {formCtx!==null&&<MealForm meal={formCtx.meal} onSave={handleSave} onCancel={()=>setFormCtx(null)}/>}
+      <BackHeader title="QUICK ADD" onBack={onBack}/>
+      <div style={{display:"flex",gap:10,marginBottom:16}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search meals..."
+          style={{flex:1,background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:"12px 16px",color:"#d8e8d0",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+        <button onClick={()=>setFormCtx({meal:null,index:null})} style={{padding:"12px 18px",background:"#131a11",border:`1px solid ${ACCENT}44`,borderRadius:12,color:ACCENT,fontWeight:900,fontSize:16,cursor:"pointer",flexShrink:0}}>＋</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.map(meal=>(
+          <div key={meal._idx} style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:14,padding:"13px 14px",display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>{onAdd(meal);onBack();}} style={{flex:1,background:"none",border:"none",cursor:"pointer",textAlign:"left",padding:0,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:"#d8e8d0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meal.name}</div>
+              <div style={{fontSize:11,color:"#3d4a38",marginTop:3}}>P:{meal.protein}g · C:{meal.carbs}g · F:{meal.fat}g</div>
+            </button>
+            <span style={{fontSize:16,fontWeight:900,color:ACCENT,flexShrink:0}}>{meal.kcal}</span>
+            <button onClick={()=>setFormCtx({meal,index:meal._idx})} style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"4px 6px",color:"#334a30",flexShrink:0}}>✏️</button>
+            <button onClick={()=>saveMeals(meals.filter((_,i)=>i!==meal._idx))} style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"4px 6px",color:"#334a30",flexShrink:0}}>🗑️</button>
+          </div>
+        ))}
+        {filtered.length===0&&<div style={{textAlign:"center",color:"#2a3228",padding:"30px 0",fontSize:14}}>{search?`No meals match "${search}"`:"No meals"}</div>}
+      </div>
+      <button onClick={()=>saveMeals([...DEFAULT_MEALS])} style={{marginTop:16,width:"100%",padding:"11px",background:"none",border:`1px dashed #1a2a18`,borderRadius:12,color:"#2a3a28",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>↩ Reset to default meals</button>
+    </div>
+  );
+}
+
+// ── Food Search ────────────────────────────────────────────────
+function FoodSearch({onAdd,onBack}){
+  const [query,setQuery]=useState(""), [results,setResults]=useState([]), [loading,setLoading]=useState(false), [error,setError]=useState(""), [searched,setSearched]=useState(false);
+  const doSearch=async()=>{
+    if(!query.trim())return;
+    setLoading(true);setError("");setResults([]);setSearched(true);
+    try{
+      const res=await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands`);
+      const data=await res.json();
+      const valid=(data.products||[]).filter(p=>p.product_name?.trim()&&p.nutriments?.["energy-kcal_100g"]!=null);
+      if(!valid.length){setError("No results — try a different search.");setLoading(false);return;}
+      setResults(valid.slice(0,12).map(p=>{
+        const n=p.nutriments, sg=parseFloat(p.serving_size)||100, f=sg/100;
+        const brand=p.brands?.split(",")[0]?.trim();
+        return {name:[p.product_name.trim(),brand].filter(Boolean).join(" – "),kcal:Math.round((n["energy-kcal_100g"]||0)*f),protein:Math.round((n["proteins_100g"]||0)*f*10)/10,carbs:Math.round((n["carbohydrates_100g"]||0)*f*10)/10,fat:Math.round((n["fat_100g"]||0)*f*10)/10,notes:`Per serving (~${Math.round(sg)}g)`};
+      }));
+    }catch(e){setError("Search failed. Check your internet connection.");}
+    setLoading(false);
+  };
+  return (
+    <div style={{padding:"20px 16px 40px",maxWidth:500,margin:"0 auto"}}>
+      <BackHeader title="FOOD SEARCH" onBack={onBack}/>
+      <p style={{color:"#556050",fontSize:13,lineHeight:1.6,marginBottom:16}}>Search millions of products via Open Food Facts. Tap to log.</p>
+      <div style={{display:"flex",gap:10,marginBottom:20}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSearch()} placeholder="e.g. 'Weetabix', 'Grenade bar', 'oat milk'..."
+          style={{flex:1,background:CARD,border:`1px solid ${BORDER}`,borderRadius:12,padding:"13px 16px",color:"#d8e8d0",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+        <button onClick={doSearch} disabled={loading||!query.trim()} style={{padding:"13px 16px",background:query.trim()&&!loading?ACCENT:"#161a16",color:query.trim()&&!loading?"#0b0d0b":"#2e3a2c",border:"none",borderRadius:12,fontWeight:900,fontSize:13,cursor:query.trim()&&!loading?"pointer":"not-allowed",flexShrink:0,letterSpacing:"0.06em"}}>
+          {loading?"...":"SEARCH"}
+        </button>
+      </div>
+      {loading&&<div style={{textAlign:"center",color:"#445040",padding:24,fontSize:14}}>🔍 Searching database...</div>}
+      {error&&<p style={{color:"#ff5555",fontSize:13,textAlign:"center",marginBottom:10}}>{error}</p>}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {results.map((r,i)=>(
+          <button key={i} onClick={()=>{onAdd(r);onBack();}} style={{background:CARD,border:`1px solid ${BORDER}`,borderRadius:14,padding:"14px 16px",cursor:"pointer",textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%"}}>
+            <div style={{flex:1,minWidth:0,paddingRight:10}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#d8e8d0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
+              <div style={{fontSize:11,color:"#3d4a38",marginTop:3}}>{r.notes} · P:{r.protein}g · C:{r.carbs}g · F:{r.fat}g</div>
+            </div>
+            <span style={{fontSize:16,fontWeight:900,color:ACCENT,flexShrink:0}}>{r.kcal}</span>
+          </button>
+        ))}
+      </div>
+      {searched&&!results.length&&!loading&&!error&&<div style={{textAlign:"center",color:"#2a3228",padding:"30px 0"}}>No results</div>}
+    </div>
+  );
+}
+
+// ── Root ───────────────────────────────────────────────────────
+function FuelLog(){
+  const [view,setView]=useState("dashboard"), [logs,setLogs]=useState([]), [water,setWater]=useState(0), [isTraining,setIsTraining]=useState(false), [ready,setReady]=useState(false);
+  useEffect(()=>{
+    (async()=>{
+      const k=todayKey();
+      try{const r=await storage.get(`logs:${k}`);    if(r)setLogs(JSON.parse(r.value));}catch(e){}
+      try{const r=await storage.get(`water:${k}`);   if(r)setWater(parseInt(r.value)||0);}catch(e){}
+      try{const r=await storage.get(`training:${k}`);if(r)setIsTraining(r.value==="true");}catch(e){}
+      setReady(true);
+    })();
+  },[]);
+  const saveLogs    =async l=>{setLogs(l);    try{await storage.set(`logs:${todayKey()}`,    JSON.stringify(l));}catch(e){}};
+  const saveWater   =async w=>{setWater(w);   try{await storage.set(`water:${todayKey()}`,   String(w));}catch(e){}};
+  const saveTraining=async t=>{setIsTraining(t);try{await storage.set(`training:${todayKey()}`,String(t));}catch(e){}};
+  const addLog   =entry=>saveLogs([...logs,{...entry,id:Date.now(),time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}]);
+  const removeLog=id=>saveLogs(logs.filter(l=>l.id!==id));
+  const targets =isTraining?TRAIN_TARGETS:REST_TARGETS;
+  const totals  =logs.reduce((a,l)=>({kcal:a.kcal+(l.kcal||0),protein:a.protein+(l.protein||0),carbs:a.carbs+(l.carbs||0),fat:a.fat+(l.fat||0)}),{kcal:0,protein:0,carbs:0,fat:0});
+  const remaining=targets.kcal-totals.kcal;
+  if(!ready)return<div style={{minHeight:"100vh",background:BG,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:ACCENT,fontSize:16,fontWeight:900,letterSpacing:"0.12em"}}>LOADING...</div></div>;
+  return (
+    <div style={{minHeight:"100vh",background:BG,color:"#fff"}}>
+      {view==="dashboard"&&<Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining} water={water} setWater={saveWater} isTraining={isTraining} setIsTraining={saveTraining} setView={setView} removeLog={removeLog}/>}
+      {view==="ai"       &&<AILog      onAdd={addLog} onBack={()=>setView("dashboard")}/>}
+      {view==="quick"    &&<QuickAdd   onAdd={addLog} onBack={()=>setView("dashboard")}/>}
+      {view==="search"   &&<FoodSearch onAdd={addLog} onBack={()=>setView("dashboard")}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<FuelLog/>);
+</script>
+
+<script>
+// Register service worker for offline support
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
