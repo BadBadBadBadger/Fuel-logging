@@ -1,4 +1,4 @@
-const CACHE = "fuel-log-v1";
+const CACHE = "fuel-log-v2";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", e => {
@@ -14,9 +14,10 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  // Let API calls go through normally
+  // Always go to network for API calls
   if (e.request.url.includes("api.anthropic.com") ||
-      e.request.url.includes("openfoodfacts.org")) {
+      e.request.url.includes("openfoodfacts.org") ||
+      e.request.url.includes("unpkg.com")) {
     return;
   }
   e.respondWith(
@@ -24,6 +25,6 @@ self.addEventListener("fetch", e => {
       const clone = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, clone));
       return res;
-    }))
+    }).catch(() => caches.match("./index.html")))
   );
 });
