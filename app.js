@@ -1,5 +1,7 @@
 "use strict";
 
+var exports = {};
+
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 Object.defineProperty(exports, "__esModule", {
   value: true
@@ -4448,3 +4450,5 @@ function App() {
     }
   }));
 }
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
