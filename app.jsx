@@ -207,7 +207,7 @@ function CoachCard({ mode, totals, targets, streak, water }) {
     try {
       const prompt = `You are a supportive fitness coach. Today: ${mode} mode, ${Math.round(totals.kcal)}/${targets.kcal} kcal, protein ${Math.round(totals.protein)}g/${targets.protein}g, ${water}/8 glasses, ${streak} day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) specific food suggestion for tomorrow 3) genuine praise. Brief, personal, max one emoji per sentence.`;
       const res  = await fetch(AI_ENDPOINT, { method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:200,
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:200,
           messages:[{ role:"user", content:prompt }] }) });
       const data = await res.json();
       const t    = (data.content || []).map(b => b.text || "").join("").trim();
@@ -426,7 +426,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       const w = (prof || DEF_PROFILE).weight, bf = (prof || DEF_PROFILE).bodyFat;
       const res = await fetch(AI_ENDPOINT, { method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:200,
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:200,
           messages:[{ role:"user", content:
             `Parse this workout log and estimate calories burned. User: ${w}kg bodyweight, ${bf}% body fat.\n\nWorkout:\n${hevyText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`
           }] }) });
@@ -848,7 +848,7 @@ function AILog({ onAdd, onBack }) {
       // Fire AI and OFT searches in parallel
       const aiPromise = fetch(AI_ENDPOINT, { method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000,
           messages:[{ role:"user", content: AI_PROMPT(desc) }] })
       }).then(r => r.json());
 
@@ -878,7 +878,7 @@ function AILog({ onAdd, onBack }) {
     try {
       const res  = await fetch(AI_ENDPOINT, { method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:300,
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:300,
           messages:[{ role:"user", content: AI_REESTIMATE_PROMPT(newName) }] })
       });
       const data = await res.json();
