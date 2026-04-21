@@ -1,319 +1,264 @@
 # FUEL LOG — Product Documentation
-**Version:** 2.0  
-**Last Updated:** April 2026  
-**Type:** Progressive Web App (PWA) — installable on Android via Chrome  
-**Repo format:** 3-file static site (index.html, manifest.json, sw.js)
-
----
-
-## Table of Contents
-1. [Product Overview](#1-product-overview)
-2. [Technology Stack](#2-technology-stack)
-3. [Feature Reference](#3-feature-reference)
-4. [Complete Features](#4-complete-features)
-5. [Incomplete / Partial Features](#5-incomplete--partial-features)
-6. [Known Limitations](#6-known-limitations)
-7. [Data Architecture](#7-data-architecture)
-8. [Configuration Reference](#8-configuration-reference)
-9. [Deployment](#9-deployment)
-10. [Roadmap Considerations](#10-roadmap-considerations)
+**Version:** 4.0 (Phase 2)
+**Last Updated:** April 2026
 
 ---
 
 ## 1. Product Overview
 
-Fuel Log is a gym-focused calorie and macro tracking Progressive Web App built for daily use during a cutting phase. It is designed to be fast, friction-free, and installable on Android as a home screen app without requiring an app store.
+Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalised from body composition and auto-adjust based on goal (cut/maintain/bulk), training day, and actual session type.
 
-**Primary user:** Male, cutting (calorie deficit), training on a schedule, GMT/BST timezone (UK).
-
-**Core philosophy:**
-- Log food with minimum taps
-- See your remaining calories and macros at a glance
-- Track across days with full history and charts
-- Work offline after first load
+**Target users:** Anyone struggling to stay on top of daily food intake while working toward a body composition goal — cutting fat, building muscle, or maintaining. Built for people who understand macros and want a clean, fast tool without bloat or paywalls.
 
 ---
 
-## 2. Technology Stack
+## 2. Tech Stack
 
-| Layer | Technology | Notes |
-|---|---|---|
-| UI Framework | React 18 (via CDN) | Hooks-based functional components |
-| JSX Transform | Babel Standalone (via CDN) | In-browser transpilation — no build step |
-| Charts | Recharts | LineChart, BarChart, PieChart |
-| Styling | Inline React styles | No CSS framework — full design control |
-| Storage (Claude artifact) | `window.storage` API | Provided by Claude.ai artifact environment |
-| Storage (PWA standalone) | `localStorage` | Swapped in for the standalone HTML version |
-| Food Database | Open Food Facts API | Free, public, no API key required |
-| AI Macro Estimation | Anthropic Claude API (`claude-sonnet-4-20250514`) | Requires API key — only works inside Claude.ai |
-| PWA Shell | Custom service worker (`sw.js`) | Caches app shell for offline use |
-| PWA Manifest | `manifest.json` | Enables "Add to Home Screen" on Android Chrome |
-| Hosting | GitHub Pages | Free static hosting from public repository |
-| APK Generation | PWABuilder.com (external tool) | Wraps PWA into a signed Android APK |
-
----
-
-## 3. Feature Reference
-
-### Dashboard
-The main screen. Visible every time the app opens.
-
-| Element | Description |
+| Layer | Detail |
 |---|---|
-| Date display | Shows current day in `en-GB` format using device local timezone (GMT/BST auto) |
-| Training day toggle | Switches between REST (1,800 kcal) and TRAINING (2,200 kcal) targets. Persisted per day. |
-| History button (📊) | Top-right shortcut to the History screen |
-| Calorie card | Shows kcal consumed, kcal remaining or over, animated progress bar. Goes red if over target. |
-| Macro bars | Protein, Carbs, Fat — each shows consumed vs target with a coloured progress bar |
-| Water tracker | Glass counter (0–8+). Increment/decrement buttons. Visual pip display. |
-| Add food buttons | Three entry points: AI Log, Quick Add, Food Search |
-| Today's log | Scrollable list of all foods logged today. Each entry shows name, time, macros, kcal. Tap × to delete. |
+| UI | React 18 UMD via unpkg CDN |
+| JSX | Babel Standalone (in-browser, no build) |
+| Charts | Recharts 2.12.7 |
+| Styling | Inline React styles only |
+| Storage | `window.storage` (artifact) / `localStorage` wrapper (PWA) |
+| Food API | Open Food Facts (free, no key) — UI built, not yet surfaced in production PWA |
+| AI API | Anthropic `claude-sonnet-4-20250514` via Cloudflare Worker |
+| Hosting | GitHub Pages |
+| Android | PWABuilder.com → APK |
+
+**Critical constraints:**
+- Babel Standalone crashes above ~900 lines (black screen). Keep files under 900 lines.
+- No colons in storage keys — use `__` double-underscores only.
+- No `<form>` tags — use `<div>` + onClick.
+- `BackHdr` must be `position:sticky` so back button stays visible on scroll.
 
 ---
 
-### Food Logging — AI Log
-Describe a meal in plain English. Claude estimates kcal and macros via the Anthropic API.
+## 3. Calorie Calculation (Katch-McArdle)
 
-**Status:** ✅ Complete — works inside Claude.ai only. Will fail on standalone PWA (no API key available in that context). A clear error message is shown when it fails.
-
----
-
-### Food Logging — Quick Add
-Pre-loaded library of 20 common gym meals. Fully user-editable.
-
-**Status:** ✅ Complete
-
-| Feature | Status |
-|---|---|
-| Search/filter meals | ✅ |
-| One-tap log to today | ✅ |
-| Add new custom meal (with all macros) | ✅ |
-| Edit any existing meal | ✅ |
-| Delete meal | ✅ |
-| Reset to default meals | ✅ |
-| Custom meals persist across sessions | ✅ |
-
----
-
-### Food Logging — Food Search
-Live search against the Open Food Facts database (~3 million products).
-
-**Status:** ✅ Complete — requires internet connection. Results show per-serving macros. Tap to log.
-
----
-
-### History & Reporting
-
-**Status:** ✅ Complete
-
-| Feature | Status |
-|---|---|
-| Auto-save today on every change | ✅ No manual "close day" needed |
-| Day view — scroll through individual days | ✅ |
-| Day view — macro pie chart | ✅ |
-| Day view — full food item list | ✅ |
-| Day view — edit past day (add/remove foods) | ✅ |
-| Day view — toggle training/rest on past day | ✅ |
-| Day view — adjust water on past day | ✅ |
-| Range views: 7 Days, 30 Days, 3 Months, 1 Year, All Time | ✅ |
-| Line chart with metric toggles (Kcal / Protein / Carbs / Fat) | ✅ |
-| Bar chart with metric toggles | ✅ |
-| Per-range average summary (Kcal, Protein, Carbs, Fat) | ✅ |
-| Day list — tap any row to jump to that day's detail | ✅ |
-| CSV export (full history) | ✅ Downloads as `.csv` |
-
----
-
-### PWA / Installability
-
-**Status:** ✅ Complete
-
-| Feature | Status |
-|---|---|
-| Manifest with app name, theme colour, icons | ✅ |
-| Service worker — offline caching of app shell | ✅ |
-| "Add to Home Screen" via Android Chrome | ✅ |
-| Runs as standalone app (no browser chrome) | ✅ |
-| APK generation via PWABuilder | ✅ (external tool, documented below) |
-
----
-
-## 4. Complete Features
-
-The following features are fully implemented and tested:
-
-- Dashboard with live calorie/macro tracking
-- Rest vs Training day toggle with different calorie targets
-- Quick Add with full CRUD (Create, Read, Update, Delete) on meal library
-- Food Search via Open Food Facts
-- Water tracking with visual display
-- Auto-timezone date handling (GMT/BST)
-- Full history with Day, Weekly, Monthly, 3-Month, Annual, and All Time views
-- Line and bar charts with per-metric toggles
-- Past day editing (foods, water, training toggle)
-- CSV export of all historical data
-- Data persistence across sessions
-- PWA manifest + service worker for Android install
-- Offline support for app shell
-
----
-
-## 5. Incomplete / Partial Features
-
-### ❌ AI Log — Not available on standalone PWA
-**What it does:** Describes a meal in plain text → Claude estimates macros.  
-**Why it's incomplete:** The Anthropic API requires authentication. The API key is injected automatically inside Claude.ai but is not available in the standalone GitHub Pages version.  
-**Workaround:** Use Food Search instead on the standalone PWA.  
-**Fix path:** Would require a backend proxy (e.g. a small Cloudflare Worker or Node.js server) that holds the API key server-side and forwards requests. Not a trivial addition for a static-site deployment.
-
----
-
-### ❌ Barcode Scanner — Removed
-**Original plan:** Use device camera + BarcodeDetector API to scan food packaging.  
-**Why removed:** Camera permissions are blocked in both the Claude.ai artifact environment and on GitHub Pages without HTTPS + explicit permission grants. The BarcodeDetector API also has limited browser support (Chrome Android only, not available in all WebViews).  
-**Replaced by:** Food Search (text-based, covers the same use case with less friction and no permissions required).
-
----
-
-### ⚠️ Macro Targets — Hardcoded
-**Current state:** REST day (1,800 kcal / 160g protein / 170g carbs / 53g fat) and TRAINING day (2,200 kcal / 175g protein / 215g carbs / 62g fat) targets are hardcoded in the source.  
-**What's missing:** A Settings screen where the user can input their own targets.  
-**Impact:** Medium — for anyone other than the original user, these numbers will be wrong.
-
----
-
-### ⚠️ No User Onboarding / Settings Screen
-**Missing:** No way to set body weight, TDEE, custom calorie targets, name, or goal from inside the app.  
-**Impact:** Low for single user, high for any multi-user or commercial scenario.
-
----
-
-### ⚠️ PWA Icons — SVG Placeholders
-**Current state:** The manifest uses inline base64-encoded SVG emoji icons.  
-**What's missing:** Proper high-resolution PNG icons (192×192 and 512×512).  
-**Impact:** The app installs fine but the home screen icon may look low-quality on some Android launchers. PWABuilder may flag this during APK generation.
-
----
-
-### ⚠️ No Serving Size Multiplier on Food Search
-**Current state:** Food Search results show macros per the product's default serving size.  
-**What's missing:** A quantity/portion input (e.g. "I had 1.5 servings" or "300g not 100g").  
-**Impact:** Users with non-standard portions must mentally adjust or log multiple entries.
-
----
-
-### ⚠️ History Data Stored Only Locally
-**Current state:** All data is in `localStorage` (PWA) or `window.storage` (Claude artifact). It is device-specific and not backed up.  
-**What's missing:** Cloud sync / account system.  
-**Impact:** Data is lost if the user clears browser storage, changes device, or reinstalls the app.
-
----
-
-## 6. Known Limitations
-
-| Limitation | Detail |
-|---|---|
-| Single device only | No cloud sync. Data lives in browser storage on the device it was created on. |
-| AI Log requires Claude.ai | Won't work on standalone PWA — by design due to API key constraints. |
-| Food Search requires internet | Open Food Facts is an external API. No offline food search. |
-| Charts need history data | Until a few days are logged, range charts will be sparse or empty. |
-| No push notifications | PWA does not send reminders to log meals or drink water. |
-| GitHub Pages URL required for PWA | App must be served from HTTPS for service worker to register. |
-
----
-
-## 7. Data Architecture
-
-All data is stored as key/value pairs in `localStorage` (standalone PWA) or `window.storage` (Claude.ai artifact).
-
-| Key | Value | Description |
-|---|---|---|
-| `logs:YYYY-MM-DD` | JSON array of log entries | Today's food log. One key per day. |
-| `water:YYYY-MM-DD` | Integer string | Water glass count for the day |
-| `train:YYYY-MM-DD` | `"true"` or `"false"` | Training day flag for the day |
-| `history` | JSON array of day snapshots | Full historical record. Auto-updated on every change. |
-| `all_meals` | JSON array of meal objects | User's custom meal library (Quick Add) |
-
-### Day snapshot object structure
-```json
-{
-  "date": "2026-04-19",
-  "kcal": 1742,
-  "protein": 158.4,
-  "carbs": 163.2,
-  "fat": 51.8,
-  "water": 6,
-  "training": true,
-  "logs": [
-    {
-      "id": 1713528000000,
-      "name": "Chicken breast (150g)",
-      "kcal": 248,
-      "protein": 47,
-      "carbs": 0,
-      "fat": 5,
-      "time": "08:30"
-    }
-  ]
-}
+```
+LBM    = weight × (1 − bodyFat / 100)
+BMR    = 370 + (21.6 × LBM)
+TDEE   = BMR × activity multiplier
+Target = TDEE + mode adjustment + training bonus
 ```
 
-### Meal library object structure
-```json
-{
-  "name": "Chicken breast (150g)",
-  "kcal": 248,
-  "protein": 47,
-  "carbs": 0,
-  "fat": 5
-}
+### Activity multipliers
+| Key | Multiplier |
+|---|---|
+| sedentary | 1.2 |
+| light (default) | 1.375 |
+| moderate | 1.55 |
+| active | 1.725 |
+| very | 1.9 |
+
+### Mode adjustments
+| Mode | Adjustment |
+|---|---|
+| CUT | −500 kcal |
+| MAINTAIN | 0 kcal |
+| BULK | +500 kcal |
+
+### Training bonus (Phase 2 — profile-aware)
+```javascript
+// Default (no session logged):
+bonus = Math.round(weight × 2.8)   // 80kg → 224, 100kg → 280, 150kg → 420
+
+// When session logged (MET-based):
+const MET = {
+  legs:     { light:4.0, moderate:6.0, heavy:8.0 },
+  push:     { light:3.5, moderate:5.5, heavy:7.0 },
+  pull:     { light:3.5, moderate:5.5, heavy:7.0 },
+  fullbody: { light:4.5, moderate:6.5, heavy:9.0 },
+  cardio:   { light:5.0, moderate:7.0, heavy:10.0 },
+};
+bonus = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
+```
+
+calcTargets signature: `calcTargets(profile, mode, isTraining, sessKcal=null)`
+Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus}`.
+
+---
+
+## 4. Storage Keys (v4.0 — flat, single user)
+
+| Key | Value |
+|---|---|
+| `profile` | JSON: `{weight, height, bodyFat, activity}` |
+| `meals` | JSON: meal library array |
+| `history` | JSON: snapshot array (sorted date asc) |
+| `badges` | JSON: array of earned badge keys e.g. `["streak_0","logger_0"]` |
+| `logs__YYYY-MM-DD` | JSON: food log entries |
+| `water__YYYY-MM-DD` | Integer string |
+| `train__YYYY-MM-DD` | `"true"` / `"false"` |
+| `mode__YYYY-MM-DD` | `"cut"` / `"maintain"` / `"bulk"` |
+| `session__YYYY-MM-DD` | JSON: `{type, duration, intensity}` |
+| `coach__YYYY-MM-DD` | JSON: `{tip, r}` (tip text + refresh count) |
+
+---
+
+## 5. State Architecture
+
+All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd` share the same array.
+
+| State | Type | Notes |
+|---|---|---|
+| `view` | string | Current screen |
+| `logs` | array | Today's food entries |
+| `water` | number | Glasses today |
+| `train` | boolean | Training day toggle |
+| `mode` | string | cut/maintain/bulk |
+| `prof` | object/null | Body profile |
+| `hist` | array | All historical snapshots |
+| `meals` | array | Meal library — shared with QuickAdd |
+| `session` | object | `{type, duration, intensity}` |
+| `earnedBdgs` | array | Earned badge keys |
+| `newBadge` | object/null | Currently celebrating badge tier |
+| `ready` | boolean | Data loaded |
+
+---
+
+## 6. Components
+
+| Component | Key props | Notes |
+|---|---|---|
+| `Dashboard` | `streak, session, onSession, sessionKcal` | Shows streak, session selector, coach card |
+| `CoachCard` | `mode, totals, targets, streak, water` | Auto-generates when 200+ kcal logged |
+| `ProfileScreen` | `onSave` | Auto-saves, 600ms debounce, ✓ SAVED flash |
+| `AILog` | `onAdd` | Branded product-aware prompt |
+| `QuickAdd` | `meals, setMeals` | Shared state from Root |
+| `FoodSearch` | `onAdd` | Open Food Facts — built in artifact preview only, not in current PWA build |
+| `History` | `history, onUpdateDay` | Charts, day edit, CSV |
+| `TestRunner` | `onBack` | 37 tests, auto-runs on mount |
+
+---
+
+## 7. Phase 2 Features
+
+### 7.1 Profile-Aware Training Bonus
+Training bonus now scales with bodyweight. Default: `weight × 2.8` kcal. When session is logged (type + duration + intensity), uses MET formula accounting for lean mass. A 150kg lean person doing a heavy 45-min legs session gets ~680 kcal vs flat +200 previously.
+
+### 7.2 Streak Counter
+Calculated dynamically from history (`calcStreak`). Walks back from today counting consecutive days with at least one log entry. Displayed as 🔥N in dashboard header. Feeds into badge system and coach tip prompt.
+
+### 7.3 Daily Coach Tip
+`CoachCard` component sits between macros and water on dashboard. Auto-generates when 200+ kcal are logged for the day. Three sentences: honest observation, specific food suggestion for tomorrow, genuine praise. Max 3 refreshes/day (↺ button shows remaining). Stored in `coach__YYYY-MM-DD`. Works via Anthropic API — requires Claude.ai or Cloudflare Worker proxy.
+
+### 7.4 Badge System (×2 Tier Progression)
+```javascript
+const TIERS      = [3, 6, 12, 24, 48, 96];
+const TIER_NAMES = ["Bronze","Silver","Gold","Platinum","Diamond","Elite"];
+const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
+```
+
+Current badges:
+| Badge | Emoji | Metric |
+|---|---|---|
+| On Fire | 🔥 | Logging streak days |
+| Top Recorder | 🪈 | Total days with logs |
+| Hydrated | 💧 | Days hitting 8 glasses |
+
+Badge check runs in a `useEffect` watching history. When a new tier is earned, a full-screen celebration modal appears. Earned badges stored as `["streak_0", "logger_0", ...]` — badge ID + tier index. Never shown twice for the same tier.
+
+### 7.5 Training Session Logging
+When training toggle ⚡ is ON, a compact session selector appears below the mode row:
+- Session type (Legs/Push/Pull/Full Body/Cardio)
+- Duration (minutes, input)
+- Intensity (Light/Moderate/Heavy)
+- Live kcal estimate shown in real time
+
+Session saved to `session__YYYY-MM-DD`. The estimated kcal is passed to `calcTargets` as `sessKcal`, overriding the default weight-based bonus.
+
+---
+
+## 8. AI Prompt (Branded Products)
+
+The AI Log and Coach Tip prompts explicitly handle branded products:
+
+```
+IMPORTANT: If this includes any branded or named product (e.g. Magic Spoon,
+Quest, Grenade, Halo Top, Weetabix, Oatly, Alpro), use your knowledge of
+that product's ACTUAL nutritional profile — do NOT estimate based on generic
+category averages.
 ```
 
 ---
 
-## 8. Configuration Reference
+## 9. Automated Tests (37 tests)
 
-To change calorie/macro targets, edit these constants at the top of `index.html`:
+Access via 🧪 in dashboard header. Auto-runs on mount.
+
+| Group | Count |
+|---|---|
+| Katch-McArdle | 9 (includes profile-aware bonus + session override) |
+| Session Estimation | 3 (weight, duration, intensity scaling) |
+| Streak | 2 |
+| Food Logging | 5 |
+| Mode Switching | 3 |
+| Water | 3 |
+| History | 4 |
+| Badges | 4 (tier values, doubling, earn logic) |
+| Quick Add | 4 |
+| **Total** | **37** |
+
+---
+
+## 10. Cloudflare Worker Proxy
+
+Required for AI features (Coach Tip + AI Log) on standalone PWA.
 
 ```javascript
-const REST  = { kcal:1800, protein:160, carbs:170, fat:53 };
-const TRAIN = { kcal:2200, protein:175, carbs:215, fat:62 };
+export default {
+  async fetch(request, env) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
+    }
+    const body = await request.json();
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+  }
+};
 ```
 
-To change the default meal library, edit the `DM` array.
+Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy → Settings → Secrets → add `ANTHROPIC_KEY`.
 
 ---
 
-## 9. Deployment
+## 11. Deployment
 
-### GitHub Pages (current)
-1. Files: `index.html`, `manifest.json`, `sw.js` in repo root
-2. Settings → Pages → Branch: `main` → Folder: `/ (root)` → Save
-3. Live URL: `https://<username>.github.io/<repo-name>`
+### GitHub Pages
+1. Unzip `fuel-log-pwa-v4.zip`
+2. Upload `index.html`, `manifest.json`, `sw.js`, `DOCS.md` to repo root
+3. Settings → Pages → Branch: main → / (root) → Save
+4. Bump `CACHE = "fuel-log-vN"` in sw.js on every deploy
 
-### Android APK via PWABuilder
-1. Go to [pwabuilder.com](https://pwabuilder.com)
-2. Paste your GitHub Pages URL
-3. Click **Package for Stores** → **Android**
-4. Download the generated APK
-5. On your Android phone: Settings → Apps → Install unknown apps → allow your browser
-6. Open the downloaded APK file to install
+### Android APK
+1. pwabuilder.com → paste GitHub Pages URL → Package for Android → Download
+2. Install APK directly (enable unknown sources)
 
 ---
 
-## 10. Roadmap Considerations
+## 12. Roadmap
 
-Listed in rough priority order based on user impact:
+### Immediate next steps
+1. Complete Cloudflare Worker (paste code + `ANTHROPIC_KEY` secret) → test Coach Tip on phone
+2. Generate Android APK via PWABuilder → sideload test
+3. Beta with friends and gym buddies
 
-| Priority | Feature | Complexity |
-|---|---|---|
-| High | Settings screen (custom calorie/macro targets) | Low |
-| High | Serving size multiplier on Food Search results | Low |
-| Medium | Proper PNG app icons (192×192, 512×512) | Low |
-| Medium | AI Log on standalone PWA via backend proxy | Medium |
-| Medium | Meal log editing (edit an existing entry, not just delete) | Medium |
-| Medium | Streak / consistency tracking | Medium |
-| Low | Push notification reminders | Medium |
-| Low | Cloud sync / account system | High |
-| Low | Workout logging (sets, reps, weight) | High |
-| Low | Meal-to-performance correlation (idea #4) | Very High |
+### Phase 3 features
+| Feature | Notes |
+|---|---|
+| Multi-user login | Per-device named users with PIN, namespaced storage |
+| More badge categories | Protein King, Cut Champion, Bulk Mode, Balanced |
+| Serving size multiplier on Food Search | |
+| Edit log entry in place | Currently: delete and re-add |
+| Weekly weigh-in tracker | Body weight trend over time |
+| Food quality indicator | 🟢/🟡/🔴 based on macro ratios |
+| Push notifications | Meal + water reminders |
+| Cloud sync | Cross-device data |
+| Play Store submission | PWABuilder AAB + $25 Google developer account |
