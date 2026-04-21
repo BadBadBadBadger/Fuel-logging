@@ -128,10 +128,7 @@ var DEF_PROFILE = {
   bodyFat: 18,
   activity: "light"
 };
-
-// NOTE: Update this URL to your Cloudflare Worker URL once deployed
-// e.g. "https://fuellog.YOUR-SUBDOMAIN.workers.dev"
-var AI_ENDPOINT = "https://api.anthropic.com/v1/messages";
+var AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 var DEF_MEALS = [{
   name: "Chicken breast (150g)",
   kcal: 248,
@@ -4448,3 +4445,4 @@ function App() {
     }
   }));
 }
+ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));

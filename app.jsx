@@ -42,9 +42,7 @@ const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
 const DEF_PROFILE = { weight:80, height:178, bodyFat:18, activity:"light" };
 
-// NOTE: Update this URL to your Cloudflare Worker URL once deployed
-// e.g. "https://fuellog.YOUR-SUBDOMAIN.workers.dev"
-const AI_ENDPOINT = "https://api.anthropic.com/v1/messages";
+const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
 const DEF_MEALS = [
   { name:"Chicken breast (150g)",    kcal:248, protein:47, carbs:0,  fat:5  },
@@ -1701,3 +1699,5 @@ export default function App() {
     </div>
   );
 }
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
