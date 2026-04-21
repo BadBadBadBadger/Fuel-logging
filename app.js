@@ -1,10 +1,4 @@
-"use strict";
-
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports["default"] = App;
 function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
@@ -29,6 +23,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
 // Build: npx babel src/app.jsx --presets @babel/preset-react -o app.js
 // ─────────────────────────────────────────────────────────────
 
+var exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
 var A = "#a3ff4b",
@@ -2293,7 +2288,7 @@ function AILog(_ref20) {
           case 5:
             _context6.p = 5;
             _t5 = _context6.v;
-            setError("Estimation failed. Requires Cloudflare Worker to be configured. See SETUP.md.");
+            setError("Estimation failed: " + _t5.message);
           case 6:
             setLoading(false);
           case 7:
@@ -3947,7 +3942,7 @@ function Achievements(_ref34) {
 
 // ── Root ──────────────────────────────────────────────────────
 
-function App() {
+export default function App() {
   var _useState61 = useState("dashboard"),
     _useState62 = _slicedToArray(_useState61, 2),
     view = _useState62[0],

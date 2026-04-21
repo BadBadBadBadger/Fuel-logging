@@ -3,6 +3,7 @@
 // Build: npx babel src/app.jsx --presets @babel/preset-react -o app.js
 // ─────────────────────────────────────────────────────────────
 
+var exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
 const A = "#a3ff4b", BG = "#0b0d0b", CARD = "#111311", BD = "#1c201c";
@@ -868,7 +869,7 @@ function AILog({ onAdd, onBack }) {
 
       setItems(merged);
     } catch(e) {
-      setError("Estimation failed. Requires Cloudflare Worker to be configured. See SETUP.md.");
+      setError("Estimation failed: " + e.message);
     }
     setLoading(false);
   };
