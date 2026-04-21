@@ -1536,7 +1536,7 @@ function Achievements({ earnedBdgs, onBack }) {
 
 // ── Root ──────────────────────────────────────────────────────
 
-export default function App() {
+function App() {
   const [view,       setView]       = useState("dashboard");
   const [logs,       setLogs]       = useState([]);
   const [water,      setWater]      = useState(0);

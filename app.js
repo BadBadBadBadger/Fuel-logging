@@ -3942,7 +3942,7 @@ function Achievements(_ref34) {
 
 // ── Root ──────────────────────────────────────────────────────
 
-export default function App() {
+function App() {
   var _useState61 = useState("dashboard"),
     _useState62 = _slicedToArray(_useState61, 2),
     view = _useState62[0],
