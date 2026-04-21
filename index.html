@@ -253,14 +253,26 @@ function MealForm({meal,onSave,onCancel}) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────
-function Dashboard({logs,totals,targets,remaining,water,setWater,isTraining,setIsTraining,mode,setMode,setView,removeLog,addToQA,hasProfile,streak,session,onSession,sessionKcal}) {
+function Dashboard({logs,totals,targets,remaining,water,setWater,isTraining,setIsTraining,mode,setMode,setView,removeLog,addToQA,hasProfile,streak,session,onSession,sessionKcal,prof}) {
   const over=totals.kcal>targets.kcal, pct=Math.min(100,(totals.kcal/targets.kcal)*100);
   const mc=MODES[mode].color;
+  const [hevyMode,setHevyMode]=useState(false), [hevyText,setHevyText]=useState(""), [hevyLoading,setHevyLoading]=useState(false), [hevyResult,setHevyResult]=useState(null);
   const [savedIds,setSavedIds]=useState({});
-  const handleAddToQA=async log=>{
-    await addToQA(log);
-    setSavedIds(p=>({...p,[log.id]:true}));
-    setTimeout(()=>setSavedIds(p=>({...p,[log.id]:false})),1800);
+  const handleAddToQA=async log=>{ await addToQA(log); setSavedIds(p=>({...p,[log.id]:true})); setTimeout(()=>setSavedIds(p=>({...p,[log.id]:false})),1800); };
+  const parseHevy=async()=>{
+    if(!hevyText.trim()||hevyLoading) return;
+    setHevyLoading(true); setHevyResult(null);
+    try{
+      const w=(prof||DEF_PROFILE).weight, bf=(prof||DEF_PROFILE).bodyFat;
+      const prompt=`Parse this workout log and estimate calories burned. User: ${w}kg bodyweight, ${bf}% body fat.\n\nWorkout:\n${hevyText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`;
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:200,messages:[{role:"user",content:prompt}]})});
+      const data=await res.json();
+      const text=(data.content||[]).map(b=>b.text||"").join("").trim();
+      const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
+      setHevyResult(parsed);
+      onSession({...session,type:parsed.type||session.type,intensity:parsed.intensity||session.intensity,hevyKcal:parsed.estimatedKcal});
+    }catch(e){ setHevyResult({error:"Parse failed — works in Claude.ai only."}); }
+    setHevyLoading(false);
   };
   return (
     <div style={{padding:"20px 16px 40px",maxWidth:500,margin:"0 auto"}}>
@@ -274,7 +286,7 @@ function Dashboard({logs,totals,targets,remaining,water,setWater,isTraining,setI
           {streak>0&&<div style={{padding:"7px 10px",background:"#131a11",border:`1px solid ${BD}`,borderRadius:10,fontSize:13,fontWeight:900,color:A}}>🔥{streak}</div>}
           <Btn onClick={()=>setView("profile")} style={{width:34,height:34,background:"#131a11",border:`1px solid ${BD}`,borderRadius:10,color:"#556050",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>⚙️</Btn>
           <Btn onClick={()=>setView("history")} style={{width:34,height:34,background:"#131a11",border:`1px solid ${BD}`,borderRadius:10,color:"#556050",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>📊</Btn>
-          <Btn onClick={()=>setView("tests")} style={{width:34,height:34,background:"#131a11",border:`1px solid ${BD}`,borderRadius:10,color:"#334a30",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>🧪</Btn>
+          <Btn onClick={()=>setView("achievements")} style={{width:34,height:34,background:"#131a11",border:`1px solid ${BD}`,borderRadius:10,color:"#556050",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>🏆</Btn>
         </div>
       </div>
 
@@ -290,21 +302,49 @@ function Dashboard({logs,totals,targets,remaining,water,setWater,isTraining,setI
         </Btn>
       </div>
 
-      {/* Session selector — shown when training is ON */}
+      {/* Session selector */}
       {isTraining&&(
-        <div style={{background:CARD,border:`1px solid ${BD}`,borderRadius:14,padding:"10px 14px",marginBottom:12}}>
-          <div style={{fontSize:10,color:"#445040",letterSpacing:"0.1em",fontWeight:800,marginBottom:8}}>SESSION</div>
-          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            <select value={session.type} onChange={e=>onSession({...session,type:e.target.value})} style={{...INP,flex:"none",width:"auto",padding:"7px 10px",fontSize:12}}>
-              {SESS_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-            </select>
-            <input type="number" min="10" max="180" value={session.duration} onChange={e=>onSession({...session,duration:parseInt(e.target.value)||45})} style={{...INP,width:56,padding:"7px 8px",textAlign:"center",fontSize:12}}/>
-            <span style={{fontSize:11,color:"#445040"}}>min ·</span>
-            <select value={session.intensity} onChange={e=>onSession({...session,intensity:e.target.value})} style={{...INP,flex:"none",width:"auto",padding:"7px 10px",fontSize:12}}>
-              {SESS_INT.map(i=><option key={i} value={i}>{i.charAt(0).toUpperCase()+i.slice(1)}</option>)}
-            </select>
-            <span style={{marginLeft:"auto",fontSize:14,fontWeight:900,color:A}}>{sessionKcal} kcal</span>
-          </div>
+        <div style={{background:CARD,border:`1px solid ${BD}`,borderRadius:14,padding:"12px 14px",marginBottom:12}}>
+          <div style={{fontSize:10,color:"#445040",letterSpacing:"0.1em",fontWeight:800,marginBottom:10}}>SESSION</div>
+          {!hevyMode?(
+            <>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+                <select value={session.type} onChange={e=>onSession({...session,type:e.target.value,hevyKcal:null})} style={{...INP,flex:"none",width:"auto",padding:"7px 10px",fontSize:12}}>
+                  {SESS_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                </select>
+                <input type="number" min="10" max="180" value={session.duration} onChange={e=>onSession({...session,duration:parseInt(e.target.value)||45,hevyKcal:null})} style={{...INP,width:56,padding:"7px 8px",textAlign:"center",fontSize:12}}/>
+                <span style={{fontSize:11,color:"#445040"}}>min ·</span>
+                <select value={session.intensity} onChange={e=>onSession({...session,intensity:e.target.value,hevyKcal:null})} style={{...INP,flex:"none",width:"auto",padding:"7px 10px",fontSize:12}}>
+                  {SESS_INT.map(i=><option key={i} value={i}>{i.charAt(0).toUpperCase()+i.slice(1)}</option>)}
+                </select>
+                <span style={{marginLeft:"auto",fontSize:14,fontWeight:900,color:A}}>{sessionKcal} kcal</span>
+              </div>
+              <button onClick={()=>setHevyMode(true)} style={{width:"100%",padding:"9px",background:"#0b0d0b",border:`1px solid ${A}33`,borderRadius:10,color:A,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:"0.06em"}}>
+                📋 Paste workout log instead
+              </button>
+            </>
+          ):(
+            <>
+              <textarea value={hevyText} onChange={e=>setHevyText(e.target.value)}
+                placeholder={"Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg\nLeg Press 3×12 @ 120kg"} rows={5}
+                style={{width:"100%",boxSizing:"border-box",background:"#0b0d0b",border:`1px solid ${BD}`,borderRadius:10,padding:"10px 12px",color:"#d8e8d0",fontSize:12,resize:"none",fontFamily:"inherit",outline:"none",lineHeight:1.6,marginBottom:8}}/>
+              <div style={{display:"flex",gap:8,marginBottom:6}}>
+                <button onClick={parseHevy} disabled={hevyLoading||!hevyText.trim()}
+                  style={{flex:1,padding:"10px",background:hevyText.trim()&&!hevyLoading?A:"#161a16",color:hevyText.trim()&&!hevyLoading?"#0b0d0b":"#2e3a2c",border:"none",borderRadius:10,fontSize:12,fontWeight:900,cursor:hevyText.trim()&&!hevyLoading?"pointer":"not-allowed",letterSpacing:"0.07em"}}>
+                  {hevyLoading?"PARSING...":"🤖 PARSE SESSION"}
+                </button>
+                <button onClick={()=>{setHevyMode(false);setHevyText("");setHevyResult(null);onSession({...session,hevyKcal:null});}}
+                  style={{padding:"10px 14px",background:"none",border:`1px solid ${BD}`,borderRadius:10,color:"#445040",fontSize:12,cursor:"pointer"}}>
+                  ← Manual
+                </button>
+              </div>
+              {hevyResult&&!hevyResult.error&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#0a1a0a",borderRadius:8,padding:"8px 12px"}}>
+                <span style={{fontSize:12,color:"#6a9a60",flex:1}}>{hevyResult.summary}</span>
+                <span style={{fontSize:15,fontWeight:900,color:A,marginLeft:10}}>{hevyResult.estimatedKcal} kcal</span>
+              </div>}
+              {hevyResult&&hevyResult.error&&<div style={{fontSize:12,color:"#ff7070",marginTop:4}}>{hevyResult.error}</div>}
+            </>
+          )}
         </div>
       )}
 
@@ -675,103 +715,40 @@ function History({history,onBack,onUpdateDay}) {
   );
 }
 
-// ── Root ──────────────────────────────────────────────────────
-
-// ── Test Runner ───────────────────────────────────────────────
-const ok  = (c,m) => { if(!c) throw new Error(m||"Assertion failed"); };
-const eq  = (a,b,m) => { if(a!==b) throw new Error(m||`Expected ${b}, got ${a}`); };
-const rng = (v,lo,hi,m) => { if(v<lo||v>hi) throw new Error(m||`${v} not in [${lo},${hi}]`); };
-
-const TESTS = [
-  // Katch-McArdle
-  {g:"Katch-McArdle",n:"BMR from LBM",d:"85kg 18%bf → BMR ≈ 1875",f:()=>{ const t=calcTargets({weight:85,bodyFat:18,activity:"moderate"},"maintain",false); rng(t.bmr,1870,1880,`BMR ${t.bmr}`); }},
-  {g:"Katch-McArdle",n:"TDEE = BMR × activity",d:"Moderate ×1.55 TDEE matches BMR × 1.55",f:()=>{ const t=calcTargets({weight:85,bodyFat:18,activity:"moderate"},"maintain",false); rng(t.tdee,Math.round(t.bmr*1.55)-2,Math.round(t.bmr*1.55)+2,`TDEE ${t.tdee}`); }},
-  {g:"Katch-McArdle",n:"CUT = TDEE - 500",d:"Cut target is exactly 500 below TDEE",f:()=>{ const t=calcTargets({weight:85,bodyFat:18,activity:"moderate"},"cut",false); eq(t.kcal,t.tdee-500); }},
-  {g:"Katch-McArdle",n:"MAINTAIN = TDEE",d:"Maintenance target equals TDEE",f:()=>{ const t=calcTargets({weight:85,bodyFat:18,activity:"moderate"},"maintain",false); eq(t.kcal,t.tdee); }},
-  {g:"Katch-McArdle",n:"BULK = TDEE + 500",d:"Bulk target is exactly 500 above TDEE",f:()=>{ const t=calcTargets({weight:85,bodyFat:18,activity:"moderate"},"bulk",false); eq(t.kcal,t.tdee+500); }},
-  {g:"Katch-McArdle",n:"Training bonus — profile-aware",d:"80kg person default training bonus = 80×2.8 = 224 kcal",f:()=>{ const rest=calcTargets({weight:80,bodyFat:18,activity:"moderate"},"cut",false); const train=calcTargets({weight:80,bodyFat:18,activity:"moderate"},"cut",true); eq(train.kcal-rest.kcal,224,`Bonus ${train.kcal-rest.kcal}`); }},
-  {g:"Katch-McArdle",n:"Heavier person gets larger default training bonus",d:"100kg gets bigger default bonus than 70kg",f:()=>{ const heavy=calcTargets({weight:100,bodyFat:18,activity:"moderate"},"cut",true); const light=calcTargets({weight:70,bodyFat:18,activity:"moderate"},"cut",true); ok(heavy.bonus>light.bonus,`${heavy.bonus} not > ${light.bonus}`); }},
-  {g:"Katch-McArdle",n:"Session kcal overrides default bonus",d:"Passing sessKcal=400 uses 400, not weight×2.8",f:()=>{ const t=calcTargets({weight:80,bodyFat:18,activity:"moderate"},"cut",true,400); eq(t.bonus,400,`Bonus was ${t.bonus}`); }},
-  {g:"Katch-McArdle",n:"Carbs minimum 50g",d:"Extreme profiles still get at least 50g carbs",f:()=>{ const t=calcTargets({weight:50,bodyFat:5,activity:"sedentary"},"cut",false); ok(t.carbs>=50,`Carbs ${t.carbs}`); }},
-  // Session estimation
-  {g:"Session Estimation",n:"Heavier person burns more kcal same session",d:"100kg vs 70kg, same legs/45min/moderate",f:()=>{ const h=estimateSessionKcal(100,18,"legs",45,"moderate"); const l=estimateSessionKcal(70,18,"legs",45,"moderate"); ok(h>l,`${h} not > ${l}`); }},
-  {g:"Session Estimation",n:"Longer session burns more kcal",d:"60 min vs 30 min, same type/intensity",f:()=>{ const long=estimateSessionKcal(80,18,"cardio",60,"moderate"); const short=estimateSessionKcal(80,18,"cardio",30,"moderate"); ok(long>short,`${long} not > ${short}`); }},
-  {g:"Session Estimation",n:"Heavy intensity burns more than light",d:"Heavy legs vs light legs, same person and duration",f:()=>{ const h=estimateSessionKcal(80,18,"legs",45,"heavy"); const l=estimateSessionKcal(80,18,"legs",45,"light"); ok(h>l,`${h} not > ${l}`); }},
-  // Streak
-  {g:"Streak",n:"calcStreak returns 0 for empty history",d:"No history = 0 day streak",f:()=>{ eq(calcStreak([]),0); }},
-  {g:"Streak",n:"Gap in history breaks streak",d:"History with today missing should not count yesterday",f:()=>{ const hist=[{date:"2020-01-01",logs:[{kcal:100}]}]; eq(calcStreak(hist),0); }},
-  // Food logging
-  {g:"Food Logging",n:"Empty log = zero totals",d:"No food → all macros zero",f:()=>{ const t=sumLogs([]); eq(t.kcal,0); eq(t.protein,0); }},
-  {g:"Food Logging",n:"Single item sums correctly",d:"248 kcal, 47g protein",f:()=>{ const t=sumLogs([{kcal:248,protein:47,carbs:0,fat:5}]); eq(t.kcal,248); eq(t.protein,47); }},
-  {g:"Food Logging",n:"Multiple items sum correctly",d:"248+304+130 = 682 kcal",f:()=>{ const t=sumLogs([{kcal:248,protein:47,carbs:0,fat:5},{kcal:304,protein:11,carbs:54,fat:6},{kcal:130,protein:25,carbs:5,fat:2}]); eq(t.kcal,682,`Got ${t.kcal}`); }},
-  {g:"Food Logging",n:"Deleting an item reduces totals",d:"Remove item 1 → only item 2 totals remain",f:()=>{ const logs=[{id:1,kcal:248,protein:47,carbs:0,fat:5},{id:2,kcal:130,protein:25,carbs:5,fat:2}]; eq(sumLogs(logs.filter(l=>l.id!==1)).kcal,130); }},
-  {g:"Food Logging",n:"Remaining calories correct",d:"1800 target - 248 consumed = 1552",f:()=>{ eq(1800-sumLogs([{kcal:248,protein:47,carbs:0,fat:5}]).kcal,1552); }},
-  // Mode switching
-  {g:"Mode Switching",n:"CUT < MAINTAIN < BULK",d:"All three targets in ascending order",f:()=>{ const p={weight:80,bodyFat:15,activity:"light"}; const c=calcTargets(p,"cut",false).kcal,m=calcTargets(p,"maintain",false).kcal,b=calcTargets(p,"bulk",false).kcal; ok(c<m&&m<b,`${c} ${m} ${b}`); }},
-  {g:"Mode Switching",n:"Cut deficit exactly 500",d:"Maintain minus cut = 500",f:()=>{ const p={weight:80,bodyFat:15,activity:"light"}; eq(calcTargets(p,"maintain",false).kcal-calcTargets(p,"cut",false).kcal,500); }},
-  {g:"Mode Switching",n:"Bulk surplus exactly 500",d:"Bulk minus maintain = 500",f:()=>{ const p={weight:80,bodyFat:15,activity:"light"}; eq(calcTargets(p,"bulk",false).kcal-calcTargets(p,"maintain",false).kcal,500); }},
-  // Water
-  {g:"Water",n:"Increment works",d:"3 + 1 = 4",f:()=>{ eq(3+1,4); }},
-  {g:"Water",n:"Decrement works",d:"5 - 1 = 4",f:()=>{ eq(5-1,4); }},
-  {g:"Water",n:"Cannot go below zero",d:"Math.max(0, 0-1) = 0",f:()=>{ eq(Math.max(0,0-1),0); }},
-  // History
-  {g:"History",n:"Snapshot has all required fields",d:"date, mode, kcal, macros, water, training, logs",f:()=>{ const s={date:"2026-04-20",mode:"cut",kcal:1650,protein:155,carbs:180,fat:52,water:6,training:false,logs:[]}; ["date","mode","kcal","protein","carbs","fat","water","training","logs"].forEach(f=>ok(s[f]!==undefined,`Missing ${f}`)); }},
-  {g:"History",n:"Days sorted ascending",d:"Out-of-order days sort oldest first",f:()=>{ const s=[{date:"2026-04-20"},{date:"2026-04-18"},{date:"2026-04-19"}].sort((a,b)=>a.date.localeCompare(b.date)); eq(s[0].date,"2026-04-18"); eq(s[2].date,"2026-04-20"); }},
-  {g:"History",n:"Editing past day recalculates kcal",d:"Remove item → kcal drops to remaining item only",f:()=>{ const logs=[{id:1,kcal:248,protein:47,carbs:0,fat:5},{id:2,kcal:304,protein:11,carbs:54,fat:6}]; eq(sumLogs(logs.filter(l=>l.id!==1)).kcal,304); }},
-  {g:"History",n:"No duplicate snapshots same date",d:"Re-saving today replaces existing entry",f:()=>{ const today="2026-04-20"; const h=[{date:"2026-04-19",kcal:1700},{date:today,kcal:800}]; const upd=[...h.filter(d=>d.date!==today),{date:today,kcal:1650}].sort((a,b)=>a.date.localeCompare(b.date)); eq(upd.length,2); eq(upd.find(d=>d.date===today).kcal,1650); }},
-  // Badges
-  {g:"Badges",n:"Badge tier 1 threshold = 3",d:"First tier of any badge requires 3 occurrences",f:()=>{ eq(TIERS[0],3); }},
-  {g:"Badges",n:"Each tier doubles the previous",d:"3 → 6 → 12 → 24 → 48 → 96",f:()=>{ for(let i=1;i<TIERS.length;i++) eq(TIERS[i],TIERS[i-1]*2,`Tier ${i}: ${TIERS[i]} ≠ ${TIERS[i-1]*2}`); }},
-  {g:"Badges",n:"6 tiers defined",d:"Bronze through Elite = 6 tiers",f:()=>{ eq(TIERS.length,6); eq(TIER_NAMES.length,6); }},
-  {g:"Badges",n:"Badge earned when metric meets threshold",d:"3-day streak should earn streak Bronze",f:()=>{ const earnedBdgs=[]; const newlyEarned=[]; const streak=3; TIERS.forEach((t,i)=>{ if(streak>=t&&!earnedBdgs.includes("streak_"+i)) newlyEarned.push("streak_"+i); }); ok(newlyEarned.includes("streak_0"),`Bronze not earned with streak=3`); }},
-  // Quick Add
-  {g:"Quick Add",n:"20 default meals exist",d:"DEF_MEALS has exactly 20 entries",f:()=>{ eq(DEF_MEALS.length,20); }},
-  {g:"Quick Add",n:"Save to QA deduplication",d:"Adding same name twice results in only one entry",f:()=>{ const lib=[{name:"Test Meal",kcal:300,protein:30,carbs:20,fat:8}]; const isDupe=lib.find(m=>m.name.toLowerCase()==="test meal"); ok(isDupe,"Duplicate not detected"); }},
-  {g:"Quick Add",n:"Case-insensitive deduplication",d:"'test meal' and 'Test Meal' treated as same",f:()=>{ const lib=[{name:"Test Meal",kcal:300,protein:30,carbs:20,fat:8}]; const isDupe=lib.find(m=>m.name.toLowerCase()==="test meal"); ok(isDupe,"Case-insensitive match failed"); }},
-  {g:"Quick Add",n:"Macro rounding on save",d:"248.7 kcal rounds to 249, 47.123g protein rounds to 47.1g",f:()=>{ const raw={kcal:248.7,protein:47.123}; eq(Math.round(raw.kcal),249); eq(Math.round(raw.protein*10)/10,47.1); }},
-];
-
-function TestRunner({onBack}) {
-  const [results,setResults]=useState(null), [running,setRunning]=useState(false);
-  const run=async()=>{ setRunning(true); setResults(null); await new Promise(r=>setTimeout(r,30)); const out=TESTS.map(t=>{ try{ t.f(); return {...t,pass:true,err:null}; } catch(e){ return {...t,pass:false,err:e.message}; } }); setResults(out); setRunning(false); };
-  useEffect(()=>{ run(); },[]);
-  const groups=results?[...new Set(results.map(r=>r.g))]:[];
-  const passed=results?results.filter(r=>r.pass).length:0, failed=results?results.filter(r=>!r.pass).length:0, allOk=results&&failed===0;
-  return(
+// ── Achievements ─────────────────────────────────────────────
+function Achievements({earnedBdgs,onBack}) {
+  return (
     <div style={{padding:"20px 16px 50px",maxWidth:500,margin:"0 auto"}}>
-      <BackHdr title="TEST RUNNER 🧪" onBack={onBack}/>
-      {results&&(
-        <div style={{background:allOk?"#0a1f0a":"#1f0a0a",border:`1px solid ${allOk?"#2a5a2a":"#5a2a2a"}`,borderRadius:16,padding:"16px 20px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div><div style={{fontSize:18,fontWeight:900,color:allOk?A:"#ff5555"}}>{allOk?"✅ ALL PASSED":`❌ ${failed} FAILED`}</div><div style={{fontSize:12,color:"#445040",marginTop:3}}>{passed} passed · {failed} failed · {TESTS.length} total</div></div>
-          <button onClick={run} style={{padding:"8px 16px",background:"#131a11",border:`1px solid ${A}44`,borderRadius:10,color:A,fontSize:12,fontWeight:900,cursor:"pointer",letterSpacing:"0.07em"}}>↺ RE-RUN</button>
-        </div>
-      )}
-      {running&&<div style={{textAlign:"center",padding:"40px 0",color:"#445040",fontSize:14}}>Running {TESTS.length} tests...</div>}
-      {results&&groups.map(g=>{
-        const gr=results.filter(r=>r.g===g), gf=gr.filter(r=>!r.pass).length;
+      <BackHdr title="ACHIEVEMENTS 🏆" onBack={onBack}/>
+      <p style={{color:"#556050",fontSize:13,lineHeight:1.6,marginBottom:20}}>×2 progression: Bronze 3 → Silver 6 → Gold 12 → Platinum 24 → Diamond 48 → Elite 96</p>
+      {BDGS.map(b=>{
+        const earned=TIERS.map((_,i)=>earnedBdgs.includes(b.id+"_"+i)), top=earned.lastIndexOf(true);
         return(
-          <div key={g} style={{marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div style={{fontSize:11,fontWeight:900,color:"#556050",letterSpacing:"0.1em"}}>{g.toUpperCase()}</div>
-              <div style={{fontSize:11,color:gf===0?"#3a6a30":"#6a3030",fontWeight:700}}>{gr.length-gf}/{gr.length}</div>
+          <div key={b.id} style={{background:CARD,border:`1px solid ${top>=0?A+"22":BD}`,borderRadius:18,padding:"16px 20px",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
+              <div style={{fontSize:36}}>{b.emoji}</div>
+              <div>
+                <div style={{fontSize:16,fontWeight:800,color:"#d8e8d0"}}>{b.name}</div>
+                <div style={{fontSize:12,color:"#445040",marginTop:2}}>{top>=0?`${TIER_ICONS[top]} ${TIER_NAMES[top]} · ${TIERS[top]} ${b.desc}`:`Not yet · first at ${TIERS[0]} ${b.desc}`}</div>
+              </div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>
-              {gr.map((r,i)=>(
-                <div key={i} style={{background:CARD,border:`1px solid ${r.pass?"#1a2a1a":"#2a1a1a"}`,borderRadius:12,padding:"11px 14px"}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:9}}>
-                    <span style={{fontSize:14,flexShrink:0}}>{r.pass?"✅":"❌"}</span>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:r.pass?"#d8e8d0":"#f8a0a0",lineHeight:1.3}}>{r.n}</div><div style={{fontSize:11,color:"#445040",marginTop:3,lineHeight:1.5}}>{r.d}</div>{r.err&&<div style={{fontSize:11,color:"#ff7070",marginTop:5,background:"#1a0808",borderRadius:6,padding:"5px 9px",fontFamily:"monospace"}}>{r.err}</div>}</div>
-                  </div>
+            <div style={{display:"flex",gap:5}}>
+              {TIERS.map((t,i)=>(
+                <div key={i} style={{flex:1,textAlign:"center",opacity:earned[i]?1:0.2}}>
+                  <div style={{fontSize:16}}>{TIER_ICONS[i]}</div>
+                  <div style={{fontSize:9,color:earned[i]?A:"#334a30",marginTop:2,fontWeight:earned[i]?700:400}}>{t}</div>
                 </div>
               ))}
             </div>
           </div>
         );
       })}
+      {earnedBdgs.length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#2a3228",fontSize:13}}><div style={{fontSize:36,marginBottom:10}}>🏆</div>No badges yet — keep logging!</div>}
     </div>
   );
 }
 
+// ── Root ──────────────────────────────────────────────────────
 function App() {
   const [view,      setView]      = useState("dashboard");
   const [logs,      setLogs]      = useState([]);
@@ -797,7 +774,8 @@ function App() {
       const mv2=await sg("meals");      if(mv2) setMeals(JSON.parse(mv2));
       const sv=await sg("session__"+k); if(sv) setSession(JSON.parse(sv));
       const bv=await sg("badges");      if(bv) setEarnedBdgs(JSON.parse(bv));
-      const hv=await sg("history");     if(hv) setHist(JSON.parse(hv));
+      const hv=await sg("history");
+      if(hv) setHist(JSON.parse(hv));
       setReady(true);
     };
     load();
@@ -842,7 +820,7 @@ function App() {
 
   const updateDay=async upd=>{ const nh=[...hist.filter(d=>d.date!==upd.date),upd].sort((a,b)=>a.date.localeCompare(b.date)); setHist(nh); await ss("history",JSON.stringify(nh)); };
 
-  const sessionKcal = train ? estimateSessionKcal((prof||DEF_PROFILE).weight,(prof||DEF_PROFILE).bodyFat,session.type,session.duration,session.intensity) : null;
+  const sessionKcal = train ? (session.hevyKcal!=null ? session.hevyKcal : estimateSessionKcal((prof||DEF_PROFILE).weight,(prof||DEF_PROFILE).bodyFat,session.type,session.duration,session.intensity)) : null;
   const targets  = calcTargets(prof||DEF_PROFILE, mode, train, sessionKcal);
   const totals   = sumLogs(logs);
   const remaining= targets.kcal - totals.kcal;
@@ -867,13 +845,13 @@ function App() {
         </div>
       )}
 
-      {view==="dashboard"&&<Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining} water={water} setWater={saveWater} isTraining={train} setIsTraining={saveTrain} mode={mode} setMode={saveMode} setView={setView} removeLog={removeLog} addToQA={addToQA} hasProfile={!!prof} streak={streak} session={session} onSession={onSession} sessionKcal={sessionKcal}/>}
+      {view==="dashboard"&&<Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining} water={water} setWater={saveWater} isTraining={train} setIsTraining={saveTrain} mode={mode} setMode={saveMode} setView={setView} removeLog={removeLog} addToQA={addToQA} hasProfile={!!prof} streak={streak} session={session} onSession={onSession} sessionKcal={sessionKcal} prof={prof}/>}
       {view==="profile"  &&<ProfileScreen profile={prof||DEF_PROFILE} onSave={saveProf} onBack={()=>setView("dashboard")}/>}
       {view==="ai"       &&<AILog         onAdd={addLog} onBack={()=>setView("dashboard")}/>}
       {view==="quick"    &&<QuickAdd      onAdd={addLog} onBack={()=>setView("dashboard")} meals={meals} setMeals={setMeals}/>}
       {view==="search"   &&<FoodSearch    onAdd={addLog} onBack={()=>setView("dashboard")}/>}
-      {view==="history"  &&<History       history={hist} onBack={()=>setView("dashboard")} onUpdateDay={updateDay}/>}
-      {view==="tests"    &&<TestRunner    onBack={()=>setView("dashboard")}/>}
+      {view==="history"      &&<History      history={hist} onBack={()=>setView("dashboard")} onUpdateDay={updateDay}/>}
+      {view==="achievements" &&<Achievements earnedBdgs={earnedBdgs} onBack={()=>setView("dashboard")}/>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-const CACHE = "fuel-log-v10";
+const CACHE = "fuel-log-v11";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", e => {
