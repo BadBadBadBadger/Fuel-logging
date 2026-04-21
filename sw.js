@@ -1,4 +1,4 @@
-const CACHE = "fuel-log-v12";
+const CACHE = "fuel-log-v13";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", e => {
@@ -13,6 +13,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   if (e.request.url.includes("api.anthropic.com") ||
+      e.request.url.includes("workers.dev") ||
       e.request.url.includes("openfoodfacts.org") ||
       e.request.url.includes("unpkg.com")) return;
   e.respondWith(
