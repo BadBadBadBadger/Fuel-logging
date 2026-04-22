@@ -17,20 +17,26 @@ Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalis
 | Layer | Detail |
 |---|---|
 | UI | React 18 UMD via unpkg CDN |
-| JSX | Babel Standalone (in-browser, no build) |
+| JSX | Babel CLI (`@babel/preset-react` + `@babel/preset-env modules:false`) |
 | Charts | Recharts 2.12.7 |
 | Styling | Inline React styles only |
-| Storage | `window.storage` (artifact) / `localStorage` wrapper (PWA) |
-| Food API | Open Food Facts (free, no key) — UI built, not yet surfaced in production PWA |
-| AI API | Anthropic `claude-sonnet-4-20250514` via Cloudflare Worker |
+| Storage | `localStorage` via `window.storage` bridge in `index.html` |
+| Food API | Open Food Facts (free, no key) |
+| AI API | Anthropic `claude-sonnet-4-6` via Cloudflare Worker proxy |
 | Hosting | GitHub Pages |
 | Android | PWABuilder.com → APK |
 
+**Build:**
+```bash
+npx babel app.jsx --out-file app.js   # babel.config.json handles presets
+```
+
 **Critical constraints:**
-- Babel Standalone crashes above ~900 lines (black screen). Keep files under 900 lines.
+- `app.jsx` must not use `export default` — loaded as a plain `<script>` tag, not an ES module.
 - No colons in storage keys — use `__` double-underscores only.
 - No `<form>` tags — use `<div>` + onClick.
 - `BackHdr` must be `position:sticky` so back button stays visible on scroll.
+- Service worker bypasses `workers.dev`, `unpkg.com`, and `openfoodfacts.org` — any new external API must be added to the bypass list in `sw.js`.
 
 ---
 
@@ -184,22 +190,21 @@ category averages.
 
 ---
 
-## 9. Automated Tests (37 tests)
+## 9. Automated Tests
 
-Access via 🧪 in dashboard header. Auto-runs on mount.
+Run with:
+```bash
+npm test
+```
 
-| Group | Count |
+Tests live in `__tests__/logic.test.js` and cover all pure logic functions. No browser required — Jest runs them in Node.
+
+| Group | What's tested |
 |---|---|
-| Katch-McArdle | 9 (includes profile-aware bonus + session override) |
-| Session Estimation | 3 (weight, duration, intensity scaling) |
-| Streak | 2 |
-| Food Logging | 5 |
-| Mode Switching | 3 |
-| Water | 3 |
-| History | 4 |
-| Badges | 4 (tier values, doubling, earn logic) |
-| Quick Add | 4 |
-| **Total** | **37** |
+| `calcTargets` | BMR, TDEE, mode adjustments, training bonus, session override, macros |
+| `estimateSessionKcal` | MET scaling by type/intensity/weight/duration, unknown type fallback |
+| `calcStreak` | Consecutive days, gap breaks streak, empty history |
+| `sumLogs` | Macro accumulation, empty array, partial fields |
 
 ---
 
@@ -246,9 +251,8 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 ## 12. Roadmap
 
 ### Immediate next steps
-1. Complete Cloudflare Worker (paste code + `ANTHROPIC_KEY` secret) → test Coach Tip on phone
-2. Generate Android APK via PWABuilder → sideload test
-3. Beta with friends and gym buddies
+1. Generate Android APK via PWABuilder → sideload test
+2. Beta with friends and gym buddies
 
 ### Phase 3 features
 | Feature | Notes |

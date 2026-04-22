@@ -68,15 +68,15 @@ The AI Log and Daily Coach Tip need the Anthropic API. On the live PWA, requests
 ### Connect to app
 
 1. Open `app.jsx`
-2. Find this line near the top:
+2. Find this line near the top and replace with your worker URL:
    ```javascript
-   const AI_ENDPOINT = "https://api.anthropic.com/v1/messages";
+   const AI_ENDPOINT = "https://YOUR-WORKER.workers.dev";
    ```
-3. Replace with your worker URL:
+3. Also add your worker domain to the bypass list in `sw.js`:
    ```javascript
-   const AI_ENDPOINT = "https://fuellog.YOUR-SUBDOMAIN.workers.dev";
+   if (e.request.url.includes("workers.dev") || ...)
    ```
-4. Run `./build.sh`
+4. Run `npx babel app.jsx --out-file app.js`
 5. Push to GitHub
 
 ---
