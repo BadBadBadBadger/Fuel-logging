@@ -274,13 +274,16 @@ function CoachCard({ mode, totals, targets, streak, water }) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen({ profile, onSave, onBack }) {
+function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) {
   const [f, setF]       = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]:v }));
   const valid = Number(f.weight) > 0 && Number(f.height) > 0 &&
                 Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
-  const prev = calcTargets(f, "cut", false);
+  const prev     = calcTargets(f, "cut", false);
+  const formulaTDEE = prev.tdee;
+  const adjTDEE     = formulaTDEE + tdeeAdj;
+  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
 
   useEffect(() => {
     if (!valid) return;
@@ -346,9 +349,30 @@ function ProfileScreen({ profile, onSave, onBack }) {
           <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
             CALCULATED STATS
           </div>
-          {row("Lean Body Mass",            prev.lbm,  "kg",       "#4b9fff")}
-          {row("BMR",                       prev.bmr,  "kcal/day", "#ffb84b")}
-          {row("TDEE (maintenance)",        prev.tdee, "kcal/day", A)}
+          {row("Lean Body Mass", prev.lbm, "kg", "#4b9fff")}
+          {row("BMR",           prev.bmr, "kcal/day", "#ffb84b")}
+          {row("Formula TDEE",  formulaTDEE, "kcal/day", "#8aaa80")}
+          {tdeeAdj !== 0 && (
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
+              <span style={{ fontSize:12, color:"#556050" }}>Adaptive adjustment</span>
+              <span style={{ fontSize:13, fontWeight:700, color: tdeeAdj > 0 ? A : "#ff7b4b" }}>
+                {tdeeAdj > 0 ? "+" : ""}{tdeeAdj} <span style={{ fontSize:11, color:"#445040" }}>kcal/day</span>
+              </span>
+            </div>
+          )}
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
+            <span style={{ fontSize:12, color:"#556050" }}>
+              Effective TDEE {confidence && <span style={{ fontSize:10, color: tdeeAdj !== 0 ? A : "#445040" }}>· {confidence}</span>}
+            </span>
+            <span style={{ fontSize:13, fontWeight:700, color:A }}>
+              {adjTDEE} <span style={{ fontSize:11, color:"#445040" }}>kcal/day</span>
+            </span>
+          </div>
+          {!confidence && (
+            <div style={{ fontSize:11, color:"#334a30", marginTop:6, lineHeight:1.5 }}>
+              Log your weight daily from the dashboard to enable adaptive calibration.
+            </div>
+          )}
           <div style={{ marginTop:14, fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:10 }}>
             TARGETS BY MODE
           </div>
@@ -357,7 +381,7 @@ function ProfileScreen({ profile, onSave, onBack }) {
             { mode:"maintain", label:"MAINTAIN", color:A         },
             { mode:"bulk",     label:"BULK",     color:"#ff7b4b" },
           ].map(({ mode, label, color }) => {
-            const t = calcTargets(f, mode, false);
+            const t = calcTargets(f, mode, false, null, tdeeAdj);
             return (
               <div key={mode} style={{ background:"#0b0d0b", borderRadius:10, padding:"10px 14px", marginBottom:6 }}>
                 <div style={{ fontSize:11, fontWeight:900, color, letterSpacing:"0.08em", marginBottom:6 }}>{label}</div>
@@ -1271,7 +1295,7 @@ function FoodSearch({ onAdd, onBack }) {
 
 // ── History ───────────────────────────────────────────────────
 
-function History({ history, onBack, onUpdateDay }) {
+function History({ history, onBack, onUpdateDay, weighIns = [] }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -1281,11 +1305,12 @@ function History({ history, onBack, onUpdateDay }) {
     FAT:     { key:"fat",     label:"Fat",     color:"#ff7b4b", unit:"g" },
   };
 
-  const [range,     setRange]     = useState("30D");
-  const [metrics,   setMetrics]   = useState(["KCAL"]);
-  const [chartType, setChartType] = useState("line");
-  const [dayIdx,    setDayIdx]    = useState(Math.max(0, history.length - 1));
-  const [addCtx,    setAddCtx]    = useState(null);
+  const [range,      setRange]      = useState("30D");
+  const [metrics,    setMetrics]    = useState(["KCAL"]);
+  const [showWeight, setShowWeight] = useState(false);
+  const [chartType,  setChartType]  = useState("line");
+  const [dayIdx,     setDayIdx]     = useState(Math.max(0, history.length - 1));
+  const [addCtx,     setAddCtx]     = useState(null);
 
   const toggleM = m => setMetrics(p =>
     p.includes(m) ? (p.length > 1 ? p.filter(x => x !== m) : p) : [...p, m]);
@@ -1297,9 +1322,24 @@ function History({ history, onBack, onUpdateDay }) {
     return history.filter(d => d.date >= cutoff);
   })();
 
+  const filteredWeighIns = (() => {
+    if (range === "DAY" || !weighIns.length) return [];
+    const days = { W:7, "30D":30, "3M":90, "1Y":365, ALL:99999 }[range];
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+    return weighIns.filter(w => w.date >= cutoff);
+  })();
+
+  // Merge weight into chart data by date
+  const weightByDate = Object.fromEntries(filteredWeighIns.map(w => [w.date, w.weight]));
   const chartData = filtered.map(d => ({
     date: fmtShort(d.date), KCAL: d.kcal,
     PROTEIN: Math.round(d.protein), CARBS: Math.round(d.carbs), FAT: Math.round(d.fat),
+    WEIGHT: weightByDate[d.date] ?? null,
+  }));
+
+  // Weight-only chart data (includes days without food logs)
+  const weightChartData = filteredWeighIns.map(w => ({
+    date: fmtShort(w.date), WEIGHT: w.weight,
   }));
 
   const day     = history[dayIdx] || null;
@@ -1514,15 +1554,25 @@ function History({ history, onBack, onUpdateDay }) {
             <>
               <div style={{ display:"flex", gap:7, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
                 {Object.entries(MM).map(([k, m]) => (
-                  <Btn key={k} onClick={() => toggleM(k)}
+                  <Btn key={k} onClick={() => { setShowWeight(false); toggleM(k); }}
                     style={{ padding:"6px 13px",
-                      background: metrics.includes(k) ? m.color + "22" : "#131a11",
-                      color:      metrics.includes(k) ? m.color       : "#445040",
-                      border: `1px solid ${metrics.includes(k) ? m.color + "55" : BD}`,
+                      background: !showWeight && metrics.includes(k) ? m.color + "22" : "#131a11",
+                      color:      !showWeight && metrics.includes(k) ? m.color       : "#445040",
+                      border: `1px solid ${!showWeight && metrics.includes(k) ? m.color + "55" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     {m.label}
                   </Btn>
                 ))}
+                {filteredWeighIns.length > 0 && (
+                  <Btn onClick={() => setShowWeight(w => !w)}
+                    style={{ padding:"6px 13px",
+                      background: showWeight ? "#4b9fff22" : "#131a11",
+                      color:      showWeight ? "#4b9fff"   : "#445040",
+                      border: `1px solid ${showWeight ? "#4b9fff55" : BD}`,
+                      borderRadius:99, fontSize:11, fontWeight:900 }}>
+                    ⚖️ Weight
+                  </Btn>
+                )}
                 <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
                   {[["line","📈"],["bar","📊"]].map(([t, e]) => (
                     <Btn key={t} onClick={() => setChartType(t)}
@@ -1538,7 +1588,14 @@ function History({ history, onBack, onUpdateDay }) {
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 8px 8px", marginBottom:16 }}>
                 <ResponsiveContainer width="100%" height={200}>
-                  {chartType === "line" ? (
+                  {showWeight ? (
+                    <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                      <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
+                      <Tooltip formatter={v => [v + " kg", "Weight"]}/>
+                      <Line type="monotone" dataKey="WEIGHT" stroke="#4b9fff" strokeWidth={2.5} dot={{ r:3, fill:"#4b9fff" }} name="Weight (kg)" connectNulls={false}/>
+                    </LineChart>
+                  ) : chartType === "line" ? (
                     <LineChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
                       <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
                       <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
@@ -1567,6 +1624,25 @@ function History({ history, onBack, onUpdateDay }) {
                     return <Chip key={k} label={m.label.toUpperCase()} value={Math.round(avg) + m.unit} color={m.color}/>;
                   })}
                 </div>
+                {filteredWeighIns.length >= 2 && (() => {
+                  const first = filteredWeighIns[0].weight;
+                  const last  = filteredWeighIns[filteredWeighIns.length - 1].weight;
+                  const diff  = Math.round((last - first) * 10) / 10;
+                  return (
+                    <div style={{ marginTop:10, display:"flex", justifyContent:"space-between",
+                      background:"#0b0d0b", borderRadius:10, padding:"10px 14px", alignItems:"center" }}>
+                      <div>
+                        <div style={{ fontSize:10, color:"#445040", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
+                        <div style={{ fontSize:12, color:"#3d4a38", marginTop:2 }}>
+                          {filteredWeighIns[0].weight}kg → {last}kg
+                        </div>
+                      </div>
+                      <div style={{ fontSize:15, fontWeight:900, color: diff <= 0 ? A : "#ff7b4b" }}>
+                        {diff > 0 ? "+" : ""}{diff} kg
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden" }}>
@@ -1841,11 +1917,11 @@ function App() {
           hasProfile={!!prof} streak={streak} session={session} onSession={onSession}
           sessionKcal={sessionKcal} prof={prof}
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}/>}
-      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")}/>}
+      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <History         history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay}/>}
+      {view === "history"      && <History         history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns}/>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
     </div>
   );

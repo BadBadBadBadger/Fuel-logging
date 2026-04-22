@@ -719,7 +719,11 @@ function CoachCard(_ref7) {
 function ProfileScreen(_ref9) {
   var profile = _ref9.profile,
     onSave = _ref9.onSave,
-    onBack = _ref9.onBack;
+    onBack = _ref9.onBack,
+    _ref9$tdeeAdj = _ref9.tdeeAdj,
+    tdeeAdj = _ref9$tdeeAdj === void 0 ? 0 : _ref9$tdeeAdj,
+    _ref9$weighIns = _ref9.weighIns,
+    weighIns = _ref9$weighIns === void 0 ? [] : _ref9$weighIns;
   var _useState7 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState8 = _slicedToArray(_useState7, 2),
     f = _useState8[0],
@@ -735,6 +739,9 @@ function ProfileScreen(_ref9) {
   };
   var valid = Number(f.weight) > 0 && Number(f.height) > 0 && Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
   var prev = calcTargets(f, "cut", false);
+  var formulaTDEE = prev.tdee;
+  var adjTDEE = formulaTDEE + tdeeAdj;
+  var confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
   useEffect(function () {
     if (!valid) return;
     var t = setTimeout(function () {
@@ -937,7 +944,65 @@ function ProfileScreen(_ref9) {
       fontWeight: 800,
       marginBottom: 12
     }
-  }, "CALCULATED STATS"), row("Lean Body Mass", prev.lbm, "kg", "#4b9fff"), row("BMR", prev.bmr, "kcal/day", "#ffb84b"), row("TDEE (maintenance)", prev.tdee, "kcal/day", A), /*#__PURE__*/React.createElement("div", {
+  }, "CALCULATED STATS"), row("Lean Body Mass", prev.lbm, "kg", "#4b9fff"), row("BMR", prev.bmr, "kcal/day", "#ffb84b"), row("Formula TDEE", formulaTDEE, "kcal/day", "#8aaa80"), tdeeAdj !== 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "8px 0",
+      borderBottom: "1px solid ".concat(BD)
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#556050"
+    }
+  }, "Adaptive adjustment"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      color: tdeeAdj > 0 ? A : "#ff7b4b"
+    }
+  }, tdeeAdj > 0 ? "+" : "", tdeeAdj, " ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: "#445040"
+    }
+  }, "kcal/day"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "8px 0",
+      borderBottom: "1px solid ".concat(BD)
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#556050"
+    }
+  }, "Effective TDEE ", confidence && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: tdeeAdj !== 0 ? A : "#445040"
+    }
+  }, "\xB7 ", confidence)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      color: A
+    }
+  }, adjTDEE, " ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: "#445040"
+    }
+  }, "kcal/day"))), !confidence && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#334a30",
+      marginTop: 6,
+      lineHeight: 1.5
+    }
+  }, "Log your weight daily from the dashboard to enable adaptive calibration."), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 14,
       fontSize: 11,
@@ -962,7 +1027,7 @@ function ProfileScreen(_ref9) {
     var mode = _ref10.mode,
       label = _ref10.label,
       color = _ref10.color;
-    var t = calcTargets(f, mode, false);
+    var t = calcTargets(f, mode, false, null, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
       style: {
@@ -3237,7 +3302,9 @@ function History(_ref28) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
   var history = _ref28.history,
     onBack = _ref28.onBack,
-    onUpdateDay = _ref28.onUpdateDay;
+    onUpdateDay = _ref28.onUpdateDay,
+    _ref28$weighIns = _ref28.weighIns,
+    weighIns = _ref28$weighIns === void 0 ? [] : _ref28$weighIns;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -3281,18 +3348,22 @@ function History(_ref28) {
     _useState56 = _slicedToArray(_useState55, 2),
     metrics = _useState56[0],
     setMetrics = _useState56[1];
-  var _useState57 = useState("line"),
+  var _useState57 = useState(false),
     _useState58 = _slicedToArray(_useState57, 2),
-    chartType = _useState58[0],
-    setChartType = _useState58[1];
-  var _useState59 = useState(Math.max(0, history.length - 1)),
+    showWeight = _useState58[0],
+    setShowWeight = _useState58[1];
+  var _useState59 = useState("line"),
     _useState60 = _slicedToArray(_useState59, 2),
-    dayIdx = _useState60[0],
-    setDayIdx = _useState60[1];
-  var _useState61 = useState(null),
+    chartType = _useState60[0],
+    setChartType = _useState60[1];
+  var _useState61 = useState(Math.max(0, history.length - 1)),
     _useState62 = _slicedToArray(_useState61, 2),
-    addCtx = _useState62[0],
-    setAddCtx = _useState62[1];
+    dayIdx = _useState62[0],
+    setDayIdx = _useState62[1];
+  var _useState63 = useState(null),
+    _useState64 = _slicedToArray(_useState63, 2),
+    addCtx = _useState64[0],
+    setAddCtx = _useState64[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -3314,13 +3385,42 @@ function History(_ref28) {
       return d.date >= cutoff;
     });
   }();
+  var filteredWeighIns = function () {
+    if (range === "DAY" || !weighIns.length) return [];
+    var days = {
+      W: 7,
+      "30D": 30,
+      "3M": 90,
+      "1Y": 365,
+      ALL: 99999
+    }[range];
+    var cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+    return weighIns.filter(function (w) {
+      return w.date >= cutoff;
+    });
+  }();
+
+  // Merge weight into chart data by date
+  var weightByDate = Object.fromEntries(filteredWeighIns.map(function (w) {
+    return [w.date, w.weight];
+  }));
   var chartData = filtered.map(function (d) {
+    var _weightByDate$d$date;
     return {
       date: fmtShort(d.date),
       KCAL: d.kcal,
       PROTEIN: Math.round(d.protein),
       CARBS: Math.round(d.carbs),
-      FAT: Math.round(d.fat)
+      FAT: Math.round(d.fat),
+      WEIGHT: (_weightByDate$d$date = weightByDate[d.date]) !== null && _weightByDate$d$date !== void 0 ? _weightByDate$d$date : null
+    };
+  });
+
+  // Weight-only chart data (includes days without food logs)
+  var weightChartData = filteredWeighIns.map(function (w) {
+    return {
+      date: fmtShort(w.date),
+      WEIGHT: w.weight
     };
   });
   var day = history[dayIdx] || null;
@@ -3833,19 +3933,35 @@ function History(_ref28) {
     return /*#__PURE__*/React.createElement(Btn, {
       key: k,
       onClick: function onClick() {
-        return toggleM(k);
+        setShowWeight(false);
+        toggleM(k);
       },
       style: {
         padding: "6px 13px",
-        background: metrics.includes(k) ? m.color + "22" : "#131a11",
-        color: metrics.includes(k) ? m.color : "#445040",
-        border: "1px solid ".concat(metrics.includes(k) ? m.color + "55" : BD),
+        background: !showWeight && metrics.includes(k) ? m.color + "22" : "#131a11",
+        color: !showWeight && metrics.includes(k) ? m.color : "#445040",
+        border: "1px solid ".concat(!showWeight && metrics.includes(k) ? m.color + "55" : BD),
         borderRadius: 99,
         fontSize: 11,
         fontWeight: 900
       }
     }, m.label);
-  }), /*#__PURE__*/React.createElement("div", {
+  }), filteredWeighIns.length > 0 && /*#__PURE__*/React.createElement(Btn, {
+    onClick: function onClick() {
+      return setShowWeight(function (w) {
+        return !w;
+      });
+    },
+    style: {
+      padding: "6px 13px",
+      background: showWeight ? "#4b9fff22" : "#131a11",
+      color: showWeight ? "#4b9fff" : "#445040",
+      border: "1px solid ".concat(showWeight ? "#4b9fff55" : BD),
+      borderRadius: 99,
+      fontSize: 11,
+      fontWeight: 900
+    }
+  }, "\u2696\uFE0F Weight"), /*#__PURE__*/React.createElement("div", {
     style: {
       marginLeft: "auto",
       display: "flex",
@@ -3880,7 +3996,46 @@ function History(_ref28) {
   }, /*#__PURE__*/React.createElement(ResponsiveContainer, {
     width: "100%",
     height: 200
-  }, chartType === "line" ? /*#__PURE__*/React.createElement(LineChart, {
+  }, showWeight ? /*#__PURE__*/React.createElement(LineChart, {
+    data: weightChartData,
+    margin: {
+      top: 5,
+      right: 10,
+      left: -20,
+      bottom: 0
+    }
+  }, /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "date",
+    tick: {
+      fill: "#3d4a38",
+      fontSize: 10
+    },
+    axisLine: false,
+    tickLine: false
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tick: {
+      fill: "#3d4a38",
+      fontSize: 10
+    },
+    axisLine: false,
+    tickLine: false,
+    domain: ["auto", "auto"]
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    formatter: function formatter(v) {
+      return [v + " kg", "Weight"];
+    }
+  }), /*#__PURE__*/React.createElement(Line, {
+    type: "monotone",
+    dataKey: "WEIGHT",
+    stroke: "#4b9fff",
+    strokeWidth: 2.5,
+    dot: {
+      r: 3,
+      fill: "#4b9fff"
+    },
+    name: "Weight (kg)",
+    connectNulls: false
+  })) : chartType === "line" ? /*#__PURE__*/React.createElement(LineChart, {
     data: chartData,
     margin: {
       top: 5,
@@ -3980,7 +4135,41 @@ function History(_ref28) {
       value: Math.round(avg) + m.unit,
       color: m.color
     });
-  }))), /*#__PURE__*/React.createElement("div", {
+  })), filteredWeighIns.length >= 2 && function () {
+    var first = filteredWeighIns[0].weight;
+    var last = filteredWeighIns[filteredWeighIns.length - 1].weight;
+    var diff = Math.round((last - first) * 10) / 10;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        display: "flex",
+        justifyContent: "space-between",
+        background: "#0b0d0b",
+        borderRadius: 10,
+        padding: "10px 14px",
+        alignItems: "center"
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        color: "#445040",
+        letterSpacing: "0.08em",
+        fontWeight: 800
+      }
+    }, "\u2696\uFE0F WEIGHT TREND"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: "#3d4a38",
+        marginTop: 2
+      }
+    }, filteredWeighIns[0].weight, "kg \u2192 ", last, "kg")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 15,
+        fontWeight: 900,
+        color: diff <= 0 ? A : "#ff7b4b"
+      }
+    }, diff > 0 ? "+" : "", diff, " kg"));
+  }()), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -4170,66 +4359,66 @@ function Achievements(_ref35) {
 
 function App() {
   var _ACTIVITY$p$activity2;
-  var _useState63 = useState("dashboard"),
-    _useState64 = _slicedToArray(_useState63, 2),
-    view = _useState64[0],
-    setView = _useState64[1];
-  var _useState65 = useState([]),
+  var _useState65 = useState("dashboard"),
     _useState66 = _slicedToArray(_useState65, 2),
-    logs = _useState66[0],
-    setLogs = _useState66[1];
-  var _useState67 = useState(0),
+    view = _useState66[0],
+    setView = _useState66[1];
+  var _useState67 = useState([]),
     _useState68 = _slicedToArray(_useState67, 2),
-    water = _useState68[0],
-    setWater = _useState68[1];
-  var _useState69 = useState(false),
+    logs = _useState68[0],
+    setLogs = _useState68[1];
+  var _useState69 = useState(0),
     _useState70 = _slicedToArray(_useState69, 2),
-    train = _useState70[0],
-    setTrain = _useState70[1];
-  var _useState71 = useState("cut"),
+    water = _useState70[0],
+    setWater = _useState70[1];
+  var _useState71 = useState(false),
     _useState72 = _slicedToArray(_useState71, 2),
-    mode = _useState72[0],
-    setMode = _useState72[1];
-  var _useState73 = useState(null),
+    train = _useState72[0],
+    setTrain = _useState72[1];
+  var _useState73 = useState("cut"),
     _useState74 = _slicedToArray(_useState73, 2),
-    prof = _useState74[0],
-    setProf = _useState74[1];
-  var _useState75 = useState([]),
+    mode = _useState74[0],
+    setMode = _useState74[1];
+  var _useState75 = useState(null),
     _useState76 = _slicedToArray(_useState75, 2),
-    hist = _useState76[0],
-    setHist = _useState76[1];
-  var _useState77 = useState([].concat(DEF_MEALS)),
+    prof = _useState76[0],
+    setProf = _useState76[1];
+  var _useState77 = useState([]),
     _useState78 = _slicedToArray(_useState77, 2),
-    meals = _useState78[0],
-    setMeals = _useState78[1];
-  var _useState79 = useState({
+    hist = _useState78[0],
+    setHist = _useState78[1];
+  var _useState79 = useState([].concat(DEF_MEALS)),
+    _useState80 = _slicedToArray(_useState79, 2),
+    meals = _useState80[0],
+    setMeals = _useState80[1];
+  var _useState81 = useState({
       type: "legs",
       duration: 45,
       intensity: "moderate"
     }),
-    _useState80 = _slicedToArray(_useState79, 2),
-    session = _useState80[0],
-    setSession = _useState80[1];
-  var _useState81 = useState([]),
     _useState82 = _slicedToArray(_useState81, 2),
-    earnedBdgs = _useState82[0],
-    setEarnedBdgs = _useState82[1];
-  var _useState83 = useState(null),
+    session = _useState82[0],
+    setSession = _useState82[1];
+  var _useState83 = useState([]),
     _useState84 = _slicedToArray(_useState83, 2),
-    newBadge = _useState84[0],
-    setNewBadge = _useState84[1];
-  var _useState85 = useState(false),
+    earnedBdgs = _useState84[0],
+    setEarnedBdgs = _useState84[1];
+  var _useState85 = useState(null),
     _useState86 = _slicedToArray(_useState85, 2),
-    ready = _useState86[0],
-    setReady = _useState86[1];
-  var _useState87 = useState([]),
+    newBadge = _useState86[0],
+    setNewBadge = _useState86[1];
+  var _useState87 = useState(false),
     _useState88 = _slicedToArray(_useState87, 2),
-    weighIns = _useState88[0],
-    setWeighIns = _useState88[1];
-  var _useState89 = useState(0),
+    ready = _useState88[0],
+    setReady = _useState88[1];
+  var _useState89 = useState([]),
     _useState90 = _slicedToArray(_useState89, 2),
-    tdeeAdj = _useState90[0],
-    setTdeeAdj = _useState90[1];
+    weighIns = _useState90[0],
+    setWeighIns = _useState90[1];
+  var _useState91 = useState(0),
+    _useState92 = _slicedToArray(_useState91, 2),
+    tdeeAdj = _useState92[0],
+    setTdeeAdj = _useState92[1];
   useEffect(function () {
     var load = /*#__PURE__*/function () {
       var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
@@ -4701,7 +4890,9 @@ function App() {
     onSave: saveProf,
     onBack: function onBack() {
       return setView("dashboard");
-    }
+    },
+    tdeeAdj: tdeeAdj,
+    weighIns: weighIns
   }), view === "ai" && /*#__PURE__*/React.createElement(AILog, {
     onAdd: addLog,
     onBack: function onBack() {
@@ -4724,7 +4915,8 @@ function App() {
     onBack: function onBack() {
       return setView("dashboard");
     },
-    onUpdateDay: updateDay
+    onUpdateDay: updateDay,
+    weighIns: weighIns
   }), view === "achievements" && /*#__PURE__*/React.createElement(Achievements, {
     earnedBdgs: earnedBdgs,
     onBack: function onBack() {

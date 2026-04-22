@@ -1,12 +1,12 @@
 # FUEL LOG — Product Documentation
-**Version:** 4.0 (Phase 2)
+**Version:** 5.0 (Adaptive TDEE)
 **Last Updated:** April 2026
 
 ---
 
 ## 1. Product Overview
 
-Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalised from body composition and auto-adjust based on goal (cut/maintain/bulk), training day, and actual session type.
+Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalised from body composition and auto-adjust based on goal (cut/maintain/bulk), training day, and actual session type. From week 2 onwards, targets self-calibrate to the user's real metabolism using a weekly feedback loop comparing expected vs actual weight change.
 
 **Target users:** Anyone struggling to stay on top of daily food intake while working toward a body composition goal — cutting fat, building muscle, or maintaining. Built for people who understand macros and want a clean, fast tool without bloat or paywalls.
 
@@ -21,22 +21,22 @@ Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalis
 | Charts | Recharts 2.12.7 |
 | Styling | Inline React styles only |
 | Storage | `localStorage` via `window.storage` bridge in `index.html` |
-| Food API | Open Food Facts (free, no key) |
+| Food API | Open Food Facts (free, no key required) |
 | AI API | Anthropic `claude-sonnet-4-6` via Cloudflare Worker proxy |
 | Hosting | GitHub Pages |
 | Android | PWABuilder.com → APK |
 
-**Build:**
+**Build command:**
 ```bash
 npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 ```
 
 **Critical constraints:**
-- `app.jsx` must not use `export default` — loaded as a plain `<script>` tag, not an ES module.
+- `app.jsx` must **not** use `export default` — loaded as a plain `<script>` tag, not an ES module.
 - No colons in storage keys — use `__` double-underscores only.
 - No `<form>` tags — use `<div>` + onClick.
 - `BackHdr` must be `position:sticky` so back button stays visible on scroll.
-- Service worker bypasses `workers.dev`, `unpkg.com`, and `openfoodfacts.org` — any new external API must be added to the bypass list in `sw.js`.
+- Service worker bypasses `workers.dev`, `unpkg.com`, and `openfoodfacts.org`. Any new external API must be added to the bypass list in `sw.js`, otherwise POST responses get cached incorrectly and the feature silently returns HTML instead of JSON.
 
 ---
 
@@ -45,18 +45,18 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 ```
 LBM    = weight × (1 − bodyFat / 100)
 BMR    = 370 + (21.6 × LBM)
-TDEE   = BMR × activity multiplier
+TDEE   = (BMR × activity multiplier) + tdeeAdj
 Target = TDEE + mode adjustment + training bonus
 ```
 
 ### Activity multipliers
-| Key | Multiplier |
-|---|---|
-| sedentary | 1.2 |
-| light (default) | 1.375 |
-| moderate | 1.55 |
-| active | 1.725 |
-| very | 1.9 |
+| Key | Label | Multiplier |
+|---|---|---|
+| sedentary | Sedentary | 1.2 |
+| light (default) | Lightly Active | 1.375 |
+| moderate | Moderately Active | 1.55 |
+| active | Very Active | 1.725 |
+| very | Extra Active | 1.9 |
 
 ### Mode adjustments
 | Mode | Adjustment |
@@ -65,28 +65,82 @@ Target = TDEE + mode adjustment + training bonus
 | MAINTAIN | 0 kcal |
 | BULK | +500 kcal |
 
-### Training bonus (Phase 2 — profile-aware)
+### Training bonus
 ```javascript
 // Default (no session logged):
-bonus = Math.round(weight × 2.8)   // 80kg → 224, 100kg → 280, 150kg → 420
+bonus = Math.round(weight × 2.8)   // 80kg → 224 kcal
 
 // When session logged (MET-based):
-const MET = {
-  legs:     { light:4.0, moderate:6.0, heavy:8.0 },
-  push:     { light:3.5, moderate:5.5, heavy:7.0 },
-  pull:     { light:3.5, moderate:5.5, heavy:7.0 },
-  fullbody: { light:4.5, moderate:6.5, heavy:9.0 },
-  cardio:   { light:5.0, moderate:7.0, heavy:10.0 },
-};
 bonus = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
 ```
 
-calcTargets signature: `calcTargets(profile, mode, isTraining, sessKcal=null)`
+### MET values
+| Type | Light | Moderate | Heavy |
+|---|---|---|---|
+| Legs | 4.0 | 6.0 | 8.0 |
+| Push | 3.5 | 5.5 | 7.0 |
+| Pull | 3.5 | 5.5 | 7.0 |
+| Full Body | 4.5 | 6.5 | 9.0 |
+| Cardio | 5.0 | 7.0 | 10.0 |
+
+`calcTargets` signature: `calcTargets(profile, mode, isTraining, sessKcal=null, tdeeAdj=0)`
 Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus}`.
 
 ---
 
-## 4. Storage Keys (v4.0 — flat, single user)
+## 4. Adaptive TDEE Engine
+
+Fuel Log treats TDEE as a variable to be learned, not a fixed formula output. After the first week of weigh-ins, a calibration loop adjusts the TDEE estimate based on real results.
+
+### How it works
+
+**Week 1 — Baseline (Estimating)**
+Targets come purely from the Katch-McArdle formula. The app collects daily weigh-ins to build a baseline.
+
+**Week 2 — Learning**
+On each new weigh-in, `runCalibration` compares:
+- **Expected weight change** = (TDEE_estimate − avg_daily_kcal_last_7_days) × 7 / 7700
+- **Actual weight change** = 7-day rolling average now − 7-day rolling average one week ago
+
+If you lost more than expected, your real TDEE is higher than the formula → adjustment increases.
+If you lost less than expected, your real TDEE is lower → adjustment decreases.
+
+**Week 4+ — Calibrated**
+With 28+ weigh-ins the confidence level reaches "Calibrated" and the adjustment is reliable.
+
+### Calibration algorithm
+```javascript
+discrepancy    = actualChange - expectedChange        // kg
+rawAdj         = -discrepancy × 7700 / 7             // kcal
+adj            = clamp(round(rawAdj / 50) × 50, -150, +150)   // rounded to 50, capped per run
+cumulativeAdj  = clamp(cumulativeAdj + adj, -600, +600)        // lifetime cap
+```
+
+### Noise safeguards
+- Requires ≥ 8 weigh-ins before calibration runs (ensures rolling averages are meaningful)
+- Requires ≥ 4 food-log days in the last 7 days (sparse logging → skip calibration)
+- 7-day rolling average on both ends of the comparison (filters water weight)
+- Per-run cap of ±150 kcal (prevents overreaction to one odd week)
+- Lifetime cap of ±600 kcal (prevents runaway drift)
+- Adjustments rounded to nearest 50 kcal (avoids false precision)
+
+### Confidence levels
+| Weigh-ins | Label | Meaning |
+|---|---|---|
+| 0–6 | — | No calibration yet |
+| 7–13 | Estimating | Collecting baseline, no adjustment yet |
+| 14–27 | Learning | Calibration active, low-confidence adjustments |
+| 28+ | Calibrated | Reliable — adjustment reflects real metabolism |
+
+### Storage
+| Key | Value |
+|---|---|
+| `weighins` | JSON array: `[{date, weight}, ...]` sorted by date ascending |
+| `tdee_adj` | String integer: cumulative TDEE adjustment in kcal (can be negative) |
+
+---
+
+## 5. Storage Keys (v5.0 — flat, single user)
 
 | Key | Value |
 |---|---|
@@ -94,16 +148,18 @@ Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus}`.
 | `meals` | JSON: meal library array |
 | `history` | JSON: snapshot array (sorted date asc) |
 | `badges` | JSON: array of earned badge keys e.g. `["streak_0","logger_0"]` |
+| `weighins` | JSON: `[{date, weight}, ...]` — daily body weight log |
+| `tdee_adj` | Integer string: cumulative TDEE calibration offset (kcal) |
 | `logs__YYYY-MM-DD` | JSON: food log entries |
 | `water__YYYY-MM-DD` | Integer string |
 | `train__YYYY-MM-DD` | `"true"` / `"false"` |
 | `mode__YYYY-MM-DD` | `"cut"` / `"maintain"` / `"bulk"` |
-| `session__YYYY-MM-DD` | JSON: `{type, duration, intensity}` |
-| `coach__YYYY-MM-DD` | JSON: `{tip, r}` (tip text + refresh count) |
+| `session__YYYY-MM-DD` | JSON: `{type, duration, intensity, hevyKcal?}` |
+| `coach__YYYY-MM-DD` | JSON: `{tip, r}` (AI tip text + refresh count) |
 
 ---
 
-## 5. State Architecture
+## 6. State Architecture
 
 All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd` share the same array.
 
@@ -117,106 +173,133 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `prof` | object/null | Body profile |
 | `hist` | array | All historical snapshots |
 | `meals` | array | Meal library — shared with QuickAdd |
-| `session` | object | `{type, duration, intensity}` |
+| `session` | object | `{type, duration, intensity, hevyKcal?}` |
 | `earnedBdgs` | array | Earned badge keys |
 | `newBadge` | object/null | Currently celebrating badge tier |
 | `ready` | boolean | Data loaded |
+| `weighIns` | array | `[{date, weight}]` — all weigh-ins sorted by date |
+| `tdeeAdj` | number | Cumulative TDEE calibration offset in kcal |
 
 ---
 
-## 6. Components
+## 7. Components
 
 | Component | Key props | Notes |
 |---|---|---|
-| `Dashboard` | `streak, session, onSession, sessionKcal` | Shows streak, session selector, coach card |
+| `Dashboard` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Shows all today's data + weigh-in widget |
+| `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
 | `CoachCard` | `mode, totals, targets, streak, water` | Auto-generates when 200+ kcal logged |
-| `ProfileScreen` | `onSave` | Auto-saves, 600ms debounce, ✓ SAVED flash |
-| `AILog` | `onAdd` | Branded product-aware prompt |
+| `ProfileScreen` | `tdeeAdj, weighIns` | Shows formula TDEE, adjustment, effective TDEE, confidence |
+| `AILog` | `onAdd` | AI-powered meal breakdown with confidence scores |
 | `QuickAdd` | `meals, setMeals` | Shared state from Root |
-| `FoodSearch` | `onAdd` | Open Food Facts — built in artifact preview only, not in current PWA build |
-| `History` | `history, onUpdateDay` | Charts, day edit, CSV |
-| `TestRunner` | `onBack` | 37 tests, auto-runs on mount |
+| `FoodSearch` | `onAdd` | Open Food Facts search with robust kcal/serving parsing |
+| `History` | `history, onUpdateDay, weighIns` | Charts including weight trend, day edit, CSV |
+| `Achievements` | `earnedBdgs` | Badge display with tier progression |
 
 ---
 
-## 7. Phase 2 Features
+## 8. AI Features
 
-### 7.1 Profile-Aware Training Bonus
-Training bonus now scales with bodyweight. Default: `weight × 2.8` kcal. When session is logged (type + duration + intensity), uses MET formula accounting for lean mass. A 150kg lean person doing a heavy 45-min legs session gets ~680 kcal vs flat +200 previously.
+### AI Meal Log (`AILog`)
+Describes a meal in plain English. AI breaks it into individual components with:
+- Exact kcal/protein/carbs/fat per item
+- Confidence score (0–100): 90+ = exact label data, 60–89 = good knowledge, <60 = estimate
+- Reasoning explaining the source of data
+- Open Food Facts cross-reference (uses label data if higher confidence than AI estimate)
+- Individual item or all-at-once logging
+- Re-estimate any item by tapping ✏️ and correcting the name
 
-### 7.2 Streak Counter
-Calculated dynamically from history (`calcStreak`). Walks back from today counting consecutive days with at least one log entry. Displayed as 🔥N in dashboard header. Feeds into badge system and coach tip prompt.
+### AI Workout Parser
+Paste a workout log (exercises, sets, reps, weights) and Claude estimates:
+- Calories burned (MET-based, adjusted for lean mass)
+- Session type, intensity, summary
+- Overrides the manual session selector
 
-### 7.3 Daily Coach Tip
-`CoachCard` component sits between macros and water on dashboard. Auto-generates when 200+ kcal are logged for the day. Three sentences: honest observation, specific food suggestion for tomorrow, genuine praise. Max 3 refreshes/day (↺ button shows remaining). Stored in `coach__YYYY-MM-DD`. Works via Anthropic API — requires Claude.ai or Cloudflare Worker proxy.
+### Daily Coach Tip (`CoachCard`)
+Auto-generates when 200+ kcal logged. Three sentences:
+1. Honest observation about today
+2. Specific food suggestion for tomorrow
+3. Genuine praise
 
-### 7.4 Badge System (×2 Tier Progression)
+Max 3 refreshes/day. Stored in `coach__YYYY-MM-DD`.
+
+### API endpoint
+All AI calls route through `AI_ENDPOINT` (Cloudflare Worker proxy at `fuellog.adriandavidrichards.workers.dev`). The worker adds the `ANTHROPIC_KEY` secret and forwards to `api.anthropic.com`. Model: `claude-sonnet-4-6`.
+
+---
+
+## 9. Food Search
+
+Searches Open Food Facts (millions of products, no API key). Parsing:
+- Tries `energy-kcal_100g` first, falls back to `energy_100g` ÷ 4.184 (kJ → kcal)
+- `serving_size` parsed with `parseFloat` — falls back to 100g if non-numeric or out of range (5–2000g)
+- Returns up to 12 results filtered to products with valid kcal data
+
+---
+
+## 10. History & Weight Chart
+
+The History screen supports:
+- **Range filters**: Day / 7 Days / 30 Days / 3 Months / 1 Year / All Time
+- **Macro charts**: Kcal, Protein, Carbs, Fat (line or bar)
+- **Weight chart**: Toggle ⚖️ Weight to see body weight trend over the selected range (shown when weigh-ins exist)
+- **Weight trend summary**: First → last weight and total change shown in averages card
+- **Day view**: Full food log, macro pie chart, water, training toggle, add/remove entries, CSV export
+
+---
+
+## 11. Badge System (×2 Tier Progression)
+
 ```javascript
 const TIERS      = [3, 6, 12, 24, 48, 96];
 const TIER_NAMES = ["Bronze","Silver","Gold","Platinum","Diamond","Elite"];
-const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 ```
 
-Current badges:
 | Badge | Emoji | Metric |
 |---|---|---|
 | On Fire | 🔥 | Logging streak days |
 | Top Recorder | 🪈 | Total days with logs |
 | Hydrated | 💧 | Days hitting 8 glasses |
 
-Badge check runs in a `useEffect` watching history. When a new tier is earned, a full-screen celebration modal appears. Earned badges stored as `["streak_0", "logger_0", ...]` — badge ID + tier index. Never shown twice for the same tier.
-
-### 7.5 Training Session Logging
-When training toggle ⚡ is ON, a compact session selector appears below the mode row:
-- Session type (Legs/Push/Pull/Full Body/Cardio)
-- Duration (minutes, input)
-- Intensity (Light/Moderate/Heavy)
-- Live kcal estimate shown in real time
-
-Session saved to `session__YYYY-MM-DD`. The estimated kcal is passed to `calcTargets` as `sessKcal`, overriding the default weight-based bonus.
+Badge check runs in a `useEffect` watching history. When a new tier is earned, a full-screen celebration modal appears. Never shown twice for the same tier.
 
 ---
 
-## 8. AI Prompt (Branded Products)
-
-The AI Log and Coach Tip prompts explicitly handle branded products:
-
-```
-IMPORTANT: If this includes any branded or named product (e.g. Magic Spoon,
-Quest, Grenade, Halo Top, Weetabix, Oatly, Alpro), use your knowledge of
-that product's ACTUAL nutritional profile — do NOT estimate based on generic
-category averages.
-```
-
----
-
-## 9. Automated Tests
+## 12. Automated Tests
 
 Run with:
 ```bash
 npm test
 ```
 
-Tests live in `__tests__/logic.test.js` and cover all pure logic functions. No browser required — Jest runs them in Node.
+Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them in Node.
 
-| Group | What's tested |
-|---|---|
-| `calcTargets` | BMR, TDEE, mode adjustments, training bonus, session override, macros |
-| `estimateSessionKcal` | MET scaling by type/intensity/weight/duration, unknown type fallback |
-| `calcStreak` | Consecutive days, gap breaks streak, empty history |
-| `sumLogs` | Macro accumulation, empty array, partial fields |
+| Group | Tests | What's covered |
+|---|---|---|
+| `calcTargets — Katch-McArdle` | 15 | BMR, TDEE, all modes, training bonus, session override, macros, carb floor, activity multipliers |
+| `calcTargets — tdeeAdj` | 3 | Positive/negative adjustments propagate to kcal and tdee fields |
+| `estimateSessionKcal` | 6 | MET scaling by type/intensity/weight/duration/body fat, unknown type fallback |
+| `calcStreak` | 5 | Consecutive days, gap breaks streak, empty logs, empty history |
+| `sumLogs` | 4 | Multi-entry accumulation, empty array, partial fields |
+| `weighRollingAvg` | 4 | Average accuracy, cutoff exclusion, insufficient data, empty array |
+| `runCalibration` | 3 | Insufficient data guards, positive adjustment when burning more than expected |
+| **Total** | **40** | |
 
 ---
 
-## 10. Cloudflare Worker Proxy
+## 13. Cloudflare Worker Proxy
 
-Required for AI features (Coach Tip + AI Log) on standalone PWA.
+Required for all AI features (Coach Tip, AI Meal Log, Workout Parser).
 
 ```javascript
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
+      return new Response(null, { headers: {
+        "Access-Control-Allow-Origin":  "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }});
     }
     const body = await request.json();
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -225,7 +308,10 @@ export default {
       body: JSON.stringify(body),
     });
     const data = await resp.json();
-    return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+    return new Response(JSON.stringify(data), { headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }});
   }
 };
 ```
@@ -234,13 +320,12 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 ---
 
-## 11. Deployment
+## 14. Deployment
 
 ### GitHub Pages
-1. Unzip `fuel-log-pwa-v4.zip`
-2. Upload `index.html`, `manifest.json`, `sw.js`, `DOCS.md` to repo root
-3. Settings → Pages → Branch: main → / (root) → Save
-4. Bump `CACHE = "fuel-log-vN"` in sw.js on every deploy
+1. Push `index.html`, `app.js`, `manifest.json`, `sw.js`, icons to repo root
+2. Settings → Pages → Branch: main → / (root) → Save
+3. **Always bump `CACHE = "fuel-log-vN"` in `sw.js` on every deploy** to force service worker refresh
 
 ### Android APK
 1. pwabuilder.com → paste GitHub Pages URL → Package for Android → Download
@@ -248,21 +333,16 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 ---
 
-## 12. Roadmap
-
-### Immediate next steps
-1. Generate Android APK via PWABuilder → sideload test
-2. Beta with friends and gym buddies
+## 15. Roadmap
 
 ### Phase 3 features
 | Feature | Notes |
 |---|---|
 | Multi-user login | Per-device named users with PIN, namespaced storage |
 | More badge categories | Protein King, Cut Champion, Bulk Mode, Balanced |
-| Serving size multiplier on Food Search | |
+| Serving size multiplier on Food Search | Currently uses product's default serving size |
 | Edit log entry in place | Currently: delete and re-add |
-| Weekly weigh-in tracker | Body weight trend over time |
-| Food quality indicator | 🟢/🟡/🔴 based on macro ratios |
+| Weekly weigh-in summary notification | Recap of the week's calibration |
 | Push notifications | Meal + water reminders |
 | Cloud sync | Cross-device data |
 | Play Store submission | PWABuilder AAB + $25 Google developer account |
