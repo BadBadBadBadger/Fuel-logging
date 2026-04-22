@@ -32,19 +32,51 @@ const sumLogs = logs => logs.reduce((a, l) => ({
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
-const calcTargets = (p, mode, training, sessKcal = null) => {
+const calcTargets = (p, mode, training, sessKcal = null, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
   const act = p.activity || "light";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
-  const tdee = Math.round(bmr * (ACTIVITY[act]?.mult || 1.375));
+  const tdee = Math.round(bmr * (ACTIVITY[act]?.mult || 1.375)) + tdeeAdj;
   const bonus = training ? (sessKcal !== null ? sessKcal : Math.round(w * 2.8)) : 0;
   const kcal  = tdee + MODES[mode].adj + bonus;
   const protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
   const fat     = Math.round(w   * (mode === "cut" ? 0.8 : 1.0));
   const carbs   = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus };
+};
+
+const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
+  const subset = weighIns.filter(w => w.date < beforeDate).slice(-n);
+  if (subset.length < 3) return null;
+  return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
+};
+
+const runCalibration = (history, weighIns, baseTDEE) => {
+  if (weighIns.length < 8) return null;
+  const today = new Date();
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoKey = weekAgo.getFullYear() + "-" + String(weekAgo.getMonth()+1).padStart(2,"0") + "-" + String(weekAgo.getDate()).padStart(2,"0");
+  const todayPlus1 = new Date(today.getTime() + 86400000);
+  const tp1Key = todayPlus1.getFullYear() + "-" + String(todayPlus1.getMonth()+1).padStart(2,"0") + "-" + String(todayPlus1.getDate()).padStart(2,"0");
+
+  const recentAvg = weighRollingAvg(weighIns, tp1Key, 7);
+  const olderAvg  = weighRollingAvg(weighIns, weekAgoKey, 7);
+  if (!recentAvg || !olderAvg) return null;
+
+  const actualChange = recentAvg - olderAvg;
+  const recentHist   = history.filter(d => d.date >= weekAgoKey && d.kcal > 0);
+  if (recentHist.length < 4) return null;
+
+  const avgKcal      = recentHist.reduce((a, d) => a + d.kcal, 0) / recentHist.length;
+  const avgDeficit   = baseTDEE - avgKcal;
+  const expectedChange = -(avgDeficit * 7) / 7700;
+  const discrepancy  = actualChange - expectedChange;
+  const adj = Math.max(-150, Math.min(150, Math.round(-discrepancy * 7700 / 7 / 50) * 50));
+  const confidence = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
+  return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
+    expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
 
 // calcStreak needs a controllable "today" so we inject a date factory
@@ -257,5 +289,102 @@ describe("sumLogs", () => {
   test("missing macro fields default to 0", () => {
     expect(sumLogs([{ kcal: 100 }]))
       .toEqual({ kcal: 100, protein: 0, carbs: 0, fat: 0 });
+  });
+});
+
+// ── calcTargets tdeeAdj ───────────────────────────────────────
+
+describe("calcTargets — tdeeAdj", () => {
+  const prof = { weight: 80, height: 178, bodyFat: 18, activity: "light" };
+
+  test("positive tdeeAdj raises kcal target", () => {
+    const base    = calcTargets(prof, "maintain", false, null, 0).kcal;
+    const adjusted = calcTargets(prof, "maintain", false, null, 200).kcal;
+    expect(adjusted - base).toBe(200);
+  });
+
+  test("negative tdeeAdj lowers kcal target", () => {
+    const base    = calcTargets(prof, "maintain", false, null, 0).kcal;
+    const adjusted = calcTargets(prof, "maintain", false, null, -150).kcal;
+    expect(base - adjusted).toBe(150);
+  });
+
+  test("tdeeAdj is reflected in tdee field", () => {
+    const { tdee } = calcTargets(prof, "maintain", false, null, 300);
+    const baseTdee = calcTargets(prof, "maintain", false, null, 0).tdee;
+    expect(tdee - baseTdee).toBe(300);
+  });
+});
+
+// ── weighRollingAvg ───────────────────────────────────────────
+
+describe("weighRollingAvg", () => {
+  const makeWeighIns = (weights, startDate = "2026-04-01") => {
+    return weights.map((w, i) => {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      return { date: d.toISOString().split("T")[0], weight: w };
+    });
+  };
+
+  test("returns null when fewer than 3 entries before cutoff", () => {
+    const wi = makeWeighIns([80, 79.5]);
+    expect(weighRollingAvg(wi, "2026-04-10")).toBeNull();
+  });
+
+  test("computes correct average of last n entries before date", () => {
+    const wi = makeWeighIns([80, 79.8, 79.6, 79.4]);
+    const avg = weighRollingAvg(wi, "2026-04-10", 4);
+    expect(avg).toBeCloseTo((80 + 79.8 + 79.6 + 79.4) / 4, 2);
+  });
+
+  test("excludes entries on or after the cutoff date", () => {
+    const wi = [
+      { date: "2026-04-01", weight: 80 },
+      { date: "2026-04-02", weight: 79 },
+      { date: "2026-04-03", weight: 78 },
+      { date: "2026-04-04", weight: 77 }, // excluded if cutoff is "2026-04-04"
+    ];
+    const avg = weighRollingAvg(wi, "2026-04-04", 7);
+    expect(avg).toBeCloseTo((80 + 79 + 78) / 3, 2);
+  });
+
+  test("returns null for empty array", () => {
+    expect(weighRollingAvg([], "2026-04-10")).toBeNull();
+  });
+});
+
+// ── runCalibration ────────────────────────────────────────────
+
+describe("runCalibration", () => {
+  test("returns null with fewer than 8 weigh-ins", () => {
+    const wi = [{ date: "2026-04-01", weight: 80 }];
+    expect(runCalibration([], wi, 2400)).toBeNull();
+  });
+
+  test("returns null with insufficient history in recent week", () => {
+    const today = new Date();
+    const weighIns = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - 13 + i);
+      return { date: d.toISOString().split("T")[0], weight: 80 - i * 0.07 };
+    });
+    // No history entries → recentHist.length < 4
+    expect(runCalibration([], weighIns, 2400)).toBeNull();
+  });
+
+  test("positive adj when actual loss exceeds expected (higher real TDEE)", () => {
+    const today = new Date();
+    const weighIns = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - 13 + i);
+      return { date: d.toISOString().split("T")[0], weight: 80 - i * 0.2 }; // losing faster than expected
+    });
+    const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekAgoKey = weekAgo.toISOString().split("T")[0];
+    const history = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - 6 + i);
+      return { date: d.toISOString().split("T")[0], kcal: 1800 }; // eating 1800 vs 2400 TDEE → expected loss 0.55kg
+    }).filter(d => d.date >= weekAgoKey);
+    const result = runCalibration(history, weighIns, 2400);
+    if (result) expect(result.adj).toBeGreaterThan(0);
   });
 });

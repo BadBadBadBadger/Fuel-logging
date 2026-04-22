@@ -104,19 +104,54 @@ const calcStreak = hist => {
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
-const calcTargets = (p, mode, training, sessKcal = null) => {
+const calcTargets = (p, mode, training, sessKcal = null, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
   const act = p.activity || "light";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
-  const tdee = Math.round(bmr * (ACTIVITY[act]?.mult || 1.375));
+  const tdee = Math.round(bmr * (ACTIVITY[act]?.mult || 1.375)) + tdeeAdj;
   const bonus = training ? (sessKcal !== null ? sessKcal : Math.round(w * 2.8)) : 0;
   const kcal  = tdee + MODES[mode].adj + bonus;
   const protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
   const fat     = Math.round(w   * (mode === "cut" ? 0.8 : 1.0));
   const carbs   = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus };
+};
+
+// ── Adaptive TDEE ─────────────────────────────────────────────
+
+const dateKey = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+
+const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
+  const subset = weighIns.filter(w => w.date < beforeDate).slice(-n);
+  if (subset.length < 3) return null;
+  return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
+};
+
+const runCalibration = (history, weighIns, baseTDEE) => {
+  if (weighIns.length < 8) return null;
+  const today = new Date();
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoKey = dateKey(weekAgo);
+
+  const recentAvg = weighRollingAvg(weighIns, dateKey(new Date(today.getTime() + 86400000)), 7);
+  const olderAvg  = weighRollingAvg(weighIns, weekAgoKey, 7);
+  if (!recentAvg || !olderAvg) return null;
+
+  const actualChange = recentAvg - olderAvg;
+  const recentHist   = history.filter(d => d.date >= weekAgoKey && d.kcal > 0);
+  if (recentHist.length < 4) return null;
+
+  const avgKcal      = recentHist.reduce((a, d) => a + d.kcal, 0) / recentHist.length;
+  const avgDeficit   = baseTDEE - avgKcal;
+  const expectedChange = -(avgDeficit * 7) / 7700;
+  const discrepancy  = actualChange - expectedChange;
+  const adj = Math.max(-150, Math.min(150, Math.round(-discrepancy * 7700 / 7 / 50) * 50));
+
+  const confidence = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
+  return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
+    expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
 
 const sg = async k => {
@@ -398,11 +433,83 @@ function MealForm({ meal, onSave, onCancel }) {
   );
 }
 
+// ── Weigh-In Widget ───────────────────────────────────────────
+
+function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
+  const [val, setVal] = useState("");
+  const today       = todayKey();
+  const todayEntry  = weighIns.find(w => w.date === today);
+  const weeks       = Math.floor(weighIns.length / 7);
+
+  const trend7 = (() => {
+    if (weighIns.length < 4) return null;
+    const recent = weighIns.slice(-7);
+    const old    = recent[0].weight;
+    const now    = recent[recent.length - 1].weight;
+    return Math.round((now - old) * 10) / 10;
+  })();
+
+  const confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
+  const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "#ffb84b" : "#556050";
+
+  return (
+    <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+        <div>
+          <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:4 }}>BODY WEIGHT</div>
+          {todayEntry
+            ? <div style={{ fontSize:22, fontWeight:900, color:"#d8e8d0" }}>{todayEntry.weight}<span style={{ fontSize:12, color:"#445040", marginLeft:4 }}>kg</span>
+                {trend7 !== null && <span style={{ fontSize:12, color: trend7 <= 0 ? "#a3ff4b" : "#ff7b4b", marginLeft:10 }}>
+                  {trend7 > 0 ? "+" : ""}{trend7}kg/wk
+                </span>}
+              </div>
+            : <div style={{ fontSize:13, color:"#334a30", marginTop:2 }}>Not logged today</div>
+          }
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ fontSize:10, color:confColor2, letterSpacing:"0.08em", fontWeight:800 }}>{confidence.toUpperCase()}</div>
+          {weeks >= 1
+            ? <>
+                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{(baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
+                <div style={{ fontSize:10, color:"#445040", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "#ff7b4b" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
+              </>
+            : <div style={{ fontSize:11, color:"#334a30", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
+          }
+        </div>
+      </div>
+
+      {!todayEntry && (
+        <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+          <input type="number" step="0.1" min="30" max="300" value={val}
+            onChange={e => setVal(e.target.value)} placeholder="kg today..."
+            style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13 }}
+            onKeyDown={e => e.key === "Enter" && Number(val) > 0 && (onWeighIn(Number(val)), setVal(""))}/>
+          <Btn onClick={() => { if (Number(val) > 0) { onWeighIn(Number(val)); setVal(""); }}}
+            disabled={!Number(val)}
+            style={{ padding:"10px 18px", background: Number(val) > 0 ? A : "#161a16",
+              color: Number(val) > 0 ? "#0b0d0b" : "#2e3a2c",
+              border:"none", borderRadius:10, fontWeight:900, fontSize:13 }}>
+            LOG
+          </Btn>
+        </div>
+      )}
+
+      <div style={{ fontSize:11, color:"#334a30", lineHeight:1.5 }}>
+        {weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism."}
+        {weeks >= 1 && weeks < 2 && `🔄 ${confidence} — ${weighIns.length} weigh-ins so far. 2+ weeks unlocks calibration.`}
+        {weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet."}
+        {weeks >= 2 && tdeeAdj !== 0 && `Your real TDEE is ${tdeeAdj > 0 ? "higher" : "lower"} than the formula predicts. Targets adjusted accordingly.`}
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
 
 function Dashboard({ logs, totals, targets, remaining, water, setWater,
   isTraining, setIsTraining, mode, setMode, setView, removeLog, addToQA,
-  hasProfile, streak, session, onSession, sessionKcal, prof }) {
+  hasProfile, streak, session, onSession, sessionKcal, prof,
+  weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
 
   const over = totals.kcal > targets.kcal;
   const pct  = Math.min(100, (totals.kcal / targets.kcal) * 100);
@@ -644,6 +751,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           ))}
         </div>
       </div>
+
+      {/* Weigh-in */}
+      <WeighInWidget weighIns={weighIns} onWeighIn={onWeighIn}
+        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}/>
 
       {/* Add food */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
@@ -1083,15 +1194,26 @@ function FoodSearch({ onAdd, onBack }) {
       const res  = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands`);
       if (!res.ok) throw new Error("Network error");
       const data  = await res.json();
+      const parseServing = raw => {
+        if (!raw) return 100;
+        const n = parseFloat(raw);
+        return (isFinite(n) && n > 5 && n < 2000) ? n : 100;
+      };
+      const parseKcal = n => {
+        if (n["energy-kcal_100g"] != null) return n["energy-kcal_100g"];
+        if (n["energy_100g"] != null) return n["energy_100g"] / 4.184;
+        return null;
+      };
       const valid = (data.products || []).filter(p =>
-        p.product_name?.trim() && p.nutriments?.["energy-kcal_100g"] != null);
-      if (!valid.length) { setError("No results — try a brand name or generic food."); setLoading(false); return; }
+        p.product_name?.trim() && parseKcal(p.nutriments || {}) != null);
+      if (!valid.length) { setError("No results — try a brand name or simpler search term."); setLoading(false); return; }
       setResults(valid.slice(0, 12).map(p => {
-        const n = p.nutriments, sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100;
+        const n = p.nutriments, sg2 = parseServing(p.serving_size), f = sg2 / 100;
+        const kcal100 = parseKcal(n);
         const brand = p.brands?.split(",")[0]?.trim();
         return {
           name:    [p.product_name.trim(), brand].filter(Boolean).join(" – "),
-          kcal:    Math.round((n["energy-kcal_100g"]    || 0) * f),
+          kcal:    Math.round(kcal100 * f),
           protein: Math.round((n["proteins_100g"]        || 0) * f * 10) / 10,
           carbs:   Math.round((n["carbohydrates_100g"]   || 0) * f * 10) / 10,
           fat:     Math.round((n["fat_100g"]             || 0) * f * 10) / 10,
@@ -1549,6 +1671,8 @@ function App() {
   const [earnedBdgs, setEarnedBdgs] = useState([]);
   const [newBadge,   setNewBadge]   = useState(null);
   const [ready,      setReady]      = useState(false);
+  const [weighIns,   setWeighIns]   = useState([]);
+  const [tdeeAdj,    setTdeeAdj]    = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -1562,6 +1686,8 @@ function App() {
       const sv = await sg("session__" + k); if (sv) setSession(JSON.parse(sv));
       const bv = await sg("badges");     if (bv)  setEarnedBdgs(JSON.parse(bv));
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
+      const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
+      const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
       setReady(true);
     };
     load();
@@ -1637,6 +1763,29 @@ function App() {
     await ss("history", JSON.stringify(nh));
   };
 
+  const onWeighIn = async weight => {
+    const entry = { date: todayKey(), weight };
+    const updated = [...weighIns.filter(w => w.date !== entry.date), entry]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    setWeighIns(updated);
+    await ss("weighins", JSON.stringify(updated));
+
+    // Run calibration whenever a new weigh-in arrives
+    const p = prof || DEF_PROFILE;
+    const base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) *
+      (ACTIVITY[p.activity]?.mult || 1.375));
+    const result = runCalibration(hist, updated, base + tdeeAdj);
+    if (result && Math.abs(result.adj) >= 50) {
+      const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
+      setTdeeAdj(newAdj);
+      await ss("tdee_adj", String(newAdj));
+    }
+  };
+
+  const p        = prof || DEF_PROFILE;
+  const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) *
+    (ACTIVITY[p.activity]?.mult || 1.375));
+
   const sessionKcal = train
     ? (session.hevyKcal != null
         ? session.hevyKcal
@@ -1644,7 +1793,7 @@ function App() {
             session.type, session.duration, session.intensity))
     : null;
 
-  const targets   = calcTargets(prof || DEF_PROFILE, mode, train, sessionKcal);
+  const targets   = calcTargets(prof || DEF_PROFILE, mode, train, sessionKcal, tdeeAdj);
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
   const streak    = calcStreak(hist);
@@ -1690,7 +1839,8 @@ function App() {
           water={water} setWater={saveWater} isTraining={train} setIsTraining={saveTrain}
           mode={mode} setMode={saveMode} setView={setView} removeLog={removeLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} session={session} onSession={onSession}
-          sessionKcal={sessionKcal} prof={prof}/>}
+          sessionKcal={sessionKcal} prof={prof}
+          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
