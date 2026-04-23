@@ -41,7 +41,7 @@ const TIERS      = [3, 6, 12, 24, 48, 96];
 const TIER_NAMES = ["Bronze","Silver","Gold","Platinum","Diamond","Elite"];
 const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
-const DEF_PROFILE = { weight:80, height:178, bodyFat:18, activity:"light" };
+const DEF_PROFILE = { weight:80, height:178, bodyFat:18 };
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
@@ -68,10 +68,23 @@ const DEF_MEALS = [
   { name:"Whole eggs x2 boiled",     kcal:156, protein:12, carbs:1,  fat:11 },
 ];
 
+// ── Dev overrides (harness only) ──────────────────────────────
+
+const getDevDateOffset = () => {
+  try { return parseInt(localStorage.getItem("dev_date_offset") || "0") || 0; } catch(e) { return 0; }
+};
+const getCurrentHour = () => {
+  try {
+    const v = localStorage.getItem("dev_time_hour");
+    return v !== null ? parseInt(v) : new Date().getHours();
+  } catch(e) { return new Date().getHours(); }
+};
+
 // ── Helpers ───────────────────────────────────────────────────
 
 const todayKey = () => {
-  const d = new Date();
+  const off = getDevDateOffset();
+  const d = new Date(Date.now() + off * 86400000);
   return d.getFullYear() + "-" +
     String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0");
@@ -104,19 +117,17 @@ const calcStreak = hist => {
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
-const calcTargets = (p, mode, training, sessKcal = null, tdeeAdj = 0) => {
+const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
-  const act = p.activity || "light";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
-  const tdee = Math.round(bmr * (ACTIVITY[act]?.mult || 1.375)) + tdeeAdj;
-  const bonus = training ? (sessKcal !== null ? sessKcal : Math.round(w * 2.8)) : 0;
-  const kcal  = tdee + MODES[mode].adj + bonus;
+  const tdee = Math.round(bmr * 1.2) + tdeeAdj;
+  const kcal  = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   const protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
   const fat     = Math.round(w   * (mode === "cut" ? 0.8 : 1.0));
   const carbs   = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus };
+  return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus: totalWorkoutKcal || 0 };
 };
 
 // ── Adaptive TDEE ─────────────────────────────────────────────
@@ -161,6 +172,24 @@ const sg = async k => {
 const ss = async (k, v) => {
   try { await window.storage.set(k, v); } catch(e) {}
 };
+
+// ── Error Boundary ────────────────────────────────────────────
+
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(e) { return { err: e }; }
+  render() {
+    if (this.state.err) return (
+      <div style={{ padding:24, color:"#ff5555", fontSize:13, lineHeight:1.6 }}>
+        <div style={{ fontSize:16, fontWeight:900, marginBottom:8 }}>⚠️ Render error</div>
+        <div style={{ fontFamily:"monospace", background:"#1a0d0d", padding:12, borderRadius:8, wordBreak:"break-all" }}>
+          {this.state.err.message}
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 // ── Shared UI ─────────────────────────────────────────────────
 
@@ -241,7 +270,9 @@ function CoachCard({ mode, totals, targets, streak, water }) {
     if (loading || refreshes >= 3) return;
     setLoading(true);
     try {
-      const prompt = `You are a supportive fitness coach. Today: ${mode} mode, ${Math.round(totals.kcal)}/${targets.kcal} kcal, protein ${Math.round(totals.protein)}g/${targets.protein}g, ${water}/8 glasses, ${streak} day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) specific food suggestion for tomorrow 3) genuine praise. Brief, personal, max one emoji per sentence.`;
+      const h = getCurrentHour();
+      const timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
+      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today: ${mode} mode, ${Math.round(totals.kcal)}/${targets.kcal} kcal, protein ${Math.round(totals.protein)}g/${targets.protein}g, ${water}/8 glasses, ${streak} day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} 3) genuine praise. Brief, personal, max one emoji per sentence.`;
       const res  = await fetch(AI_ENDPOINT, { method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:200,
           messages:[{ role:"user", content:prompt }] }) });
@@ -267,7 +298,7 @@ function CoachCard({ mode, totals, targets, streak, water }) {
         )}
       </div>
       {loading && !tip && <div style={{ fontSize:12, color:"#445040", marginTop:4 }}>Generating your tip...</div>}
-      {tip && <div style={{ fontSize:13, color:"#8aaa80", lineHeight:1.7 }}>{tip}</div>}
+      {tip && <div style={{ fontSize:14.5, color:"#b8d4a8", lineHeight:1.7 }}>{tip}</div>}
     </div>
   );
 }
@@ -280,7 +311,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
   const set = (k, v) => setF(p => ({ ...p, [k]:v }));
   const valid = Number(f.weight) > 0 && Number(f.height) > 0 &&
                 Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
-  const prev     = calcTargets(f, "cut", false);
+  const prev     = calcTargets(f, "cut", 0, 0);
   const formulaTDEE = prev.tdee;
   const adjTDEE     = formulaTDEE + tdeeAdj;
   const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
@@ -293,7 +324,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
       setTimeout(() => setSaved(false), 1800);
     }, 600);
     return () => clearTimeout(t);
-  }, [f.weight, f.height, f.bodyFat, f.activity]); // eslint-disable-line
+  }, [f.weight, f.height, f.bodyFat]); // eslint-disable-line
 
   const row = (label, val, unit, color = "#d8e8d0") => (
     <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
@@ -328,20 +359,9 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
           BODY FAT <span style={{ color:"#445040" }}>(%)</span>
         </div>
         <input type="number" min="0" max="99" value={f.bodyFat}
-          onChange={e => set("bodyFat", e.target.value)} style={{ ...INP, marginBottom:14 }}/>
-        <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>ACTIVITY LEVEL</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-          {Object.entries(ACTIVITY).map(([k, v]) => (
-            <Btn key={k} onClick={() => set("activity", k)}
-              style={{ padding:"11px 14px",
-                background: f.activity === k ? "#1a2a1a" : "#0b0d0b",
-                border: `1px solid ${f.activity === k ? A + "44" : BD}`,
-                borderRadius:10, textAlign:"left",
-                color: f.activity === k ? A : "#556050",
-                fontSize:13, fontWeight: f.activity === k ? 800 : 400 }}>
-              {v.label} <span style={{ fontSize:11, color:"#334a30", marginLeft:6 }}>×{v.mult}</span>
-            </Btn>
-          ))}
+          onChange={e => set("bodyFat", e.target.value)} style={{ ...INP, marginBottom:4 }}/>
+        <div style={{ fontSize:11, color:"#334a30", marginBottom:14, lineHeight:1.5 }}>
+          Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
         </div>
       </div>
       {valid && (
@@ -381,7 +401,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
             { mode:"maintain", label:"MAINTAIN", color:A         },
             { mode:"bulk",     label:"BULK",     color:"#ff7b4b" },
           ].map(({ mode, label, color }) => {
-            const t = calcTargets(f, mode, false, null, tdeeAdj);
+            const t = calcTargets(f, mode, 0, tdeeAdj);
             return (
               <div key={mode} style={{ background:"#0b0d0b", borderRadius:10, padding:"10px 14px", marginBottom:6 }}>
                 <div style={{ fontSize:11, fontWeight:900, color, letterSpacing:"0.08em", marginBottom:6 }}>{label}</div>
@@ -397,7 +417,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
             );
           })}
           <div style={{ fontSize:11, color:"#334a30", marginTop:8 }}>
-            Training days add kcal based on your weight + session type.
+            Workout kcal are added when you log sessions on the dashboard.
           </div>
         </div>
       )}
@@ -528,50 +548,178 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
   );
 }
 
-// ── Dashboard ─────────────────────────────────────────────────
+// ── Workout Logger ────────────────────────────────────────────
 
-function Dashboard({ logs, totals, targets, remaining, water, setWater,
-  isTraining, setIsTraining, mode, setMode, setView, removeLog, addToQA,
-  hasProfile, streak, session, onSession, sessionKcal, prof,
-  weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
-
-  const over = totals.kcal > targets.kcal;
-  const pct  = Math.min(100, (totals.kcal / targets.kcal) * 100);
-  const mc   = MODES[mode].color;
-
-  const [savedIds, setSavedIds]     = useState({});
-  const [hevyMode, setHevyMode]     = useState(false);
-  const [hevyText, setHevyText]     = useState("");
+function WorkoutLogger({ workouts, onAdd, onRemove, prof }) {
+  const [type,      setType]      = useState("legs");
+  const [dur,       setDur]       = useState(45);
+  const [intensity, setIntensity] = useState("moderate");
+  const [hevyMode,  setHevyMode]  = useState(false);
+  const [hevyText,  setHevyText]  = useState("");
   const [hevyLoading, setHevyLoading] = useState(false);
-  const [hevyResult, setHevyResult] = useState(null);
+  const [hevyResult,  setHevyResult]  = useState(null);
 
-  const handleAddToQA = async log => {
-    await addToQA(log);
-    setSavedIds(p => ({ ...p, [log.id]:true }));
-    setTimeout(() => setSavedIds(p => ({ ...p, [log.id]:false })), 1800);
+  const p       = prof || DEF_PROFILE;
+  const estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
+  const totalKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
+
+  const logWorkout = () => {
+    onAdd({ id:Date.now(), type, duration:dur, intensity, kcal:estKcal,
+      time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) });
   };
 
   const parseWorkout = async () => {
     if (!hevyText.trim() || hevyLoading) return;
     setHevyLoading(true); setHevyResult(null);
     try {
-      const w = (prof || DEF_PROFILE).weight, bf = (prof || DEF_PROFILE).bodyFat;
-      const res = await fetch(AI_ENDPOINT, { method:"POST",
-        headers:{ "Content-Type":"application/json" },
+      const res = await fetch(AI_ENDPOINT, { method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:200,
           messages:[{ role:"user", content:
-            `Parse this workout log and estimate calories burned. User: ${w}kg bodyweight, ${bf}% body fat.\n\nWorkout:\n${hevyText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`
+            `Parse this workout log and estimate calories burned. User: ${p.weight}kg bodyweight, ${p.bodyFat}% body fat.\n\nWorkout:\n${hevyText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`
           }] }) });
-      const data   = await res.json();
-      const text   = (data.content || []).map(b => b.text || "").join("").trim();
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-      setHevyResult(parsed);
-      onSession({ ...session, type: parsed.type || session.type,
-        intensity: parsed.intensity || session.intensity, hevyKcal: parsed.estimatedKcal });
+      const data = await res.json();
+      const text = (data.content || []).map(b => b.text || "").join("").trim();
+      setHevyResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
     } catch(e) {
-      setHevyResult({ error:"Parse failed — requires Cloudflare Worker to be set up." });
+      setHevyResult({ error:"Parse failed — Cloudflare Worker required." });
     }
     setHevyLoading(false);
+  };
+
+  const logParsed = () => {
+    if (!hevyResult || hevyResult.error) return;
+    onAdd({ id:Date.now(), type: hevyResult.type || "fullbody", duration:60,
+      intensity: hevyResult.intensity || "moderate", kcal: hevyResult.estimatedKcal,
+      notes: hevyResult.summary,
+      time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) });
+    setHevyMode(false); setHevyText(""); setHevyResult(null);
+  };
+
+  return (
+    <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"12px 14px", marginBottom:12 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div style={{ fontSize:10, color:"#445040", letterSpacing:"0.1em", fontWeight:800 }}>
+          WORKOUTS {workouts.length > 0 && <span style={{ color:A }}>· ⚡{workouts.length}</span>}
+        </div>
+        {workouts.length > 0 && (
+          <span style={{ fontSize:12, fontWeight:900, color:A }}>{totalKcal} kcal added</span>
+        )}
+      </div>
+
+      {workouts.length > 0 && (
+        <div style={{ marginBottom:10 }}>
+          {workouts.map(w => (
+            <div key={w.id} style={{ display:"flex", alignItems:"center", gap:8,
+              background:"#0b0d0b", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
+              <span style={{ fontSize:12, color:A, fontWeight:900, flexShrink:0 }}>{w.kcal} kcal</span>
+              <span style={{ fontSize:11, color:"#6a9a60", flex:1, overflow:"hidden",
+                textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {w.notes || `${w.type} · ${w.duration}min · ${w.intensity}`}
+              </span>
+              <span style={{ fontSize:10, color:"#334a30", flexShrink:0 }}>{w.time}</span>
+              <button onClick={() => onRemove(w.id)}
+                style={{ background:"none", border:"none", color:"#443030", fontSize:16,
+                  cursor:"pointer", padding:"0 4px", flexShrink:0 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hevyMode ? (
+        <>
+          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:10 }}>
+            <select value={type} onChange={e => setType(e.target.value)}
+              style={{ ...INP, flex:"none", width:"auto", padding:"7px 10px", fontSize:12 }}>
+              {SESS_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+            </select>
+            <input type="number" min="10" max="180" value={dur}
+              onChange={e => setDur(parseInt(e.target.value)||45)}
+              style={{ ...INP, width:56, padding:"7px 8px", textAlign:"center", fontSize:12 }}/>
+            <span style={{ fontSize:11, color:"#445040" }}>min ·</span>
+            <select value={intensity} onChange={e => setIntensity(e.target.value)}
+              style={{ ...INP, flex:"none", width:"auto", padding:"7px 10px", fontSize:12 }}>
+              {SESS_INT.map(i => <option key={i} value={i}>{i.charAt(0).toUpperCase()+i.slice(1)}</option>)}
+            </select>
+            <span style={{ marginLeft:"auto", fontSize:13, fontWeight:900, color:A }}>{estKcal} kcal</span>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={logWorkout}
+              style={{ flex:1, padding:"10px", background:A, color:"#0b0d0b",
+                border:"none", borderRadius:10, fontSize:12, fontWeight:900, cursor:"pointer", letterSpacing:"0.06em" }}>
+              + LOG WORKOUT
+            </button>
+            <button onClick={() => setHevyMode(true)}
+              style={{ padding:"10px 14px", background:"#0b0d0b", border:`1px solid ${A}33`,
+                borderRadius:10, color:A, fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              📋 Paste log
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <textarea value={hevyText} onChange={e => setHevyText(e.target.value)} rows={5}
+            placeholder={"Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg"}
+            style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
+              border:`1px solid ${BD}`, borderRadius:10, padding:"10px 12px",
+              color:"#d8e8d0", fontSize:12, resize:"none", fontFamily:"inherit",
+              outline:"none", lineHeight:1.6, marginBottom:8 }}/>
+          <div style={{ display:"flex", gap:8, marginBottom:6 }}>
+            <button onClick={parseWorkout} disabled={hevyLoading || !hevyText.trim()}
+              style={{ flex:1, padding:"10px",
+                background: hevyText.trim() && !hevyLoading ? A : "#161a16",
+                color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2e3a2c",
+                border:"none", borderRadius:10, fontSize:12, fontWeight:900,
+                cursor: hevyText.trim() && !hevyLoading ? "pointer" : "not-allowed", letterSpacing:"0.07em" }}>
+              {hevyLoading ? "PARSING..." : "🤖 PARSE WORKOUT"}
+            </button>
+            <button onClick={() => { setHevyMode(false); setHevyText(""); setHevyResult(null); }}
+              style={{ padding:"10px 14px", background:"none", border:`1px solid ${BD}`,
+                borderRadius:10, color:"#445040", fontSize:12, cursor:"pointer" }}>
+              ← Back
+            </button>
+          </div>
+          {hevyResult && !hevyResult.error && (
+            <>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                background:"#0a1a0a", borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
+                <span style={{ fontSize:12, color:"#6a9a60", flex:1 }}>{hevyResult.summary}</span>
+                <span style={{ fontSize:15, fontWeight:900, color:A, marginLeft:10 }}>{hevyResult.estimatedKcal} kcal</span>
+              </div>
+              <button onClick={logParsed}
+                style={{ width:"100%", padding:"10px", background:A, color:"#0b0d0b",
+                  border:"none", borderRadius:10, fontSize:12, fontWeight:900, cursor:"pointer", letterSpacing:"0.06em" }}>
+                ✓ LOG THIS WORKOUT
+              </button>
+            </>
+          )}
+          {hevyResult && hevyResult.error && (
+            <div style={{ fontSize:12, color:"#ff7070", marginTop:4 }}>{hevyResult.error}</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
+
+function Dashboard({ logs, totals, targets, remaining, water, setWater,
+  mode, setMode, setView, removeLog, addToQA,
+  hasProfile, streak, prof,
+  weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
+  workouts, onAddWorkout, onRemoveWorkout }) {
+
+  const over      = totals.kcal > targets.kcal;
+  const pct       = Math.min(100, (totals.kcal / targets.kcal) * 100);
+  const mc        = MODES[mode].color;
+  const isTraining = workouts.length > 0;
+
+  const [savedIds, setSavedIds] = useState({});
+
+  const handleAddToQA = async log => {
+    await addToQA(log);
+    setSavedIds(p => ({ ...p, [log.id]:true }));
+    setTimeout(() => setSavedIds(p => ({ ...p, [log.id]:false })), 1800);
   };
 
   return (
@@ -602,7 +750,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       </div>
 
-      {/* Mode + training */}
+      {/* Mode selector */}
       <div style={{ display:"flex", gap:6, marginBottom:12 }}>
         {Object.entries(MODES).map(([k, v]) => (
           <Btn key={k} onClick={() => setMode(k)}
@@ -614,84 +762,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             {v.label}
           </Btn>
         ))}
-        <Btn onClick={() => setIsTraining(!isTraining)}
-          style={{ padding:"9px 12px",
-            background: isTraining ? A + "22" : "#131a11",
-            color: isTraining ? A : "#445040",
-            border: `1px solid ${isTraining ? A + "44" : BD}`,
-            borderRadius:10, fontSize:11, fontWeight:900, flexShrink:0 }}>
-          {isTraining ? "⚡" : "💤"}
-        </Btn>
       </div>
 
-      {/* Session selector */}
-      {isTraining && (
-        <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"12px 14px", marginBottom:12 }}>
-          <div style={{ fontSize:10, color:"#445040", letterSpacing:"0.1em", fontWeight:800, marginBottom:10 }}>SESSION</div>
-          {!hevyMode ? (
-            <>
-              <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:10 }}>
-                <select value={session.type}
-                  onChange={e => onSession({ ...session, type:e.target.value, hevyKcal:null })}
-                  style={{ ...INP, flex:"none", width:"auto", padding:"7px 10px", fontSize:12 }}>
-                  {SESS_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                </select>
-                <input type="number" min="10" max="180" value={session.duration}
-                  onChange={e => onSession({ ...session, duration: parseInt(e.target.value) || 45, hevyKcal:null })}
-                  style={{ ...INP, width:56, padding:"7px 8px", textAlign:"center", fontSize:12 }}/>
-                <span style={{ fontSize:11, color:"#445040" }}>min ·</span>
-                <select value={session.intensity}
-                  onChange={e => onSession({ ...session, intensity:e.target.value, hevyKcal:null })}
-                  style={{ ...INP, flex:"none", width:"auto", padding:"7px 10px", fontSize:12 }}>
-                  {SESS_INT.map(i => <option key={i} value={i}>{i.charAt(0).toUpperCase() + i.slice(1)}</option>)}
-                </select>
-                <span style={{ marginLeft:"auto", fontSize:14, fontWeight:900, color:A }}>{sessionKcal} kcal</span>
-              </div>
-              <button onClick={() => setHevyMode(true)}
-                style={{ width:"100%", padding:"9px", background:"#0b0d0b",
-                  border:`1px solid ${A}33`, borderRadius:10, color:A,
-                  fontSize:12, fontWeight:700, cursor:"pointer", letterSpacing:"0.06em" }}>
-                📋 Paste workout log instead
-              </button>
-            </>
-          ) : (
-            <>
-              <textarea value={hevyText} onChange={e => setHevyText(e.target.value)} rows={5}
-                placeholder={"Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg\nLeg Press 3×12 @ 120kg"}
-                style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
-                  border:`1px solid ${BD}`, borderRadius:10, padding:"10px 12px",
-                  color:"#d8e8d0", fontSize:12, resize:"none", fontFamily:"inherit",
-                  outline:"none", lineHeight:1.6, marginBottom:8 }}/>
-              <div style={{ display:"flex", gap:8, marginBottom:6 }}>
-                <button onClick={parseWorkout} disabled={hevyLoading || !hevyText.trim()}
-                  style={{ flex:1, padding:"10px",
-                    background: hevyText.trim() && !hevyLoading ? A : "#161a16",
-                    color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2e3a2c",
-                    border:"none", borderRadius:10, fontSize:12, fontWeight:900,
-                    cursor: hevyText.trim() && !hevyLoading ? "pointer" : "not-allowed",
-                    letterSpacing:"0.07em" }}>
-                  {hevyLoading ? "PARSING..." : "🤖 PARSE SESSION"}
-                </button>
-                <button onClick={() => { setHevyMode(false); setHevyText(""); setHevyResult(null); onSession({ ...session, hevyKcal:null }); }}
-                  style={{ padding:"10px 14px", background:"none", border:`1px solid ${BD}`,
-                    borderRadius:10, color:"#445040", fontSize:12, cursor:"pointer" }}>
-                  ← Manual
-                </button>
-              </div>
-              {hevyResult && !hevyResult.error && (
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                  background:"#0a1a0a", borderRadius:8, padding:"8px 12px" }}>
-                  <span style={{ fontSize:12, color:"#6a9a60", flex:1 }}>{hevyResult.summary}</span>
-                  <span style={{ fontSize:15, fontWeight:900, color:A, marginLeft:10 }}>{hevyResult.estimatedKcal} kcal</span>
-                </div>
-              )}
-              {hevyResult && hevyResult.error && (
-                <div style={{ fontSize:12, color:"#ff7070", marginTop:4 }}>{hevyResult.error}</div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      {/* Workout logger */}
+      <WorkoutLogger workouts={workouts} onAdd={onAddWorkout} onRemove={onRemoveWorkout} prof={prof}/>
 
       {!hasProfile && (
         <Btn onClick={() => setView("profile")}
@@ -746,7 +820,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       </div>
 
       {/* Coach tip */}
-      <CoachCard mode={mode} totals={totals} targets={targets} streak={streak} water={water}/>
+      <CoachCard key={coachKey} mode={mode} totals={totals} targets={targets} streak={streak} water={water}/>
 
       {/* Water */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
@@ -1295,6 +1369,8 @@ function FoodSearch({ onAdd, onBack }) {
 
 // ── History ───────────────────────────────────────────────────
 
+const chartsAvailable = typeof ResponsiveContainer !== "undefined";
+
 function History({ history, onBack, onUpdateDay, weighIns = [] }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
@@ -1337,10 +1413,15 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
     WEIGHT: weightByDate[d.date] ?? null,
   }));
 
-  // Weight-only chart data (includes days without food logs)
-  const weightChartData = filteredWeighIns.map(w => ({
-    date: fmtShort(w.date), WEIGHT: w.weight,
-  }));
+  // Weight-only chart data with 7-day rolling average
+  const weightChartData = filteredWeighIns.map((w, i, arr) => {
+    const win = arr.slice(Math.max(0, i - 6), i + 1);
+    const avg = win.reduce((s, x) => s + x.weight, 0) / win.length;
+    return {
+      date: fmtShort(w.date), WEIGHT: w.weight,
+      ROLLING: win.length >= 3 ? Math.round(avg * 10) / 10 : null,
+    };
+  });
 
   const day     = history[dayIdx] || null;
   const dayTots = day ? sumLogs(day.logs || []) : null;
@@ -1466,15 +1547,19 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
                     <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>
                       MACRO BREAKDOWN
                     </div>
-                    <ResponsiveContainer width="100%" height={160}>
-                      <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70}
-                          dataKey="value" paddingAngle={3}>
-                          {pieData.map((e, i) => <Cell key={i} fill={e.color}/>)}
-                        </Pie>
-                        <Tooltip formatter={(v, n) => [v + "g", n]}/>
-                      </PieChart>
-                    </ResponsiveContainer>
+                    {chartsAvailable ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <PieChart>
+                          <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70}
+                            dataKey="value" paddingAngle={3}>
+                            {pieData.map((e, i) => <Cell key={i} fill={e.color}/>)}
+                          </Pie>
+                          <Tooltip formatter={(v, n) => [v + "g", n]}/>
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ fontSize:11, color:"#445040", padding:"8px 0" }}>Charts unavailable — Recharts CDN failed to load.</div>
+                    )}
                     <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:8 }}>
                       {pieData.map(p => (
                         <div key={p.name} style={{ display:"flex", alignItems:"center", gap:5 }}>
@@ -1587,30 +1672,35 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 8px 8px", marginBottom:16 }}>
-                <ResponsiveContainer width="100%" height={200}>
-                  {showWeight ? (
-                    <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                      <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                      <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
-                      <Tooltip formatter={v => [v + " kg", "Weight"]}/>
-                      <Line type="monotone" dataKey="WEIGHT" stroke="#4b9fff" strokeWidth={2.5} dot={{ r:3, fill:"#4b9fff" }} name="Weight (kg)" connectNulls={false}/>
-                    </LineChart>
-                  ) : chartType === "line" ? (
-                    <LineChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                      <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                      <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                      <Tooltip/>
-                      {metrics.map(m => <Line key={m} type="monotone" dataKey={m} stroke={MM[m].color} strokeWidth={2.5} dot={false} name={m}/>)}
-                    </LineChart>
-                  ) : (
-                    <BarChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                      <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                      <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                      <Tooltip/>
-                      {metrics.map(m => <Bar key={m} dataKey={m} fill={MM[m].color} radius={[4,4,0,0]} name={m} maxBarSize={28}/>)}
-                    </BarChart>
-                  )}
-                </ResponsiveContainer>
+                {chartsAvailable ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    {showWeight ? (
+                      <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                        <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
+                        <Tooltip formatter={(v, n) => [v + " kg", n === "ROLLING" ? "7-day avg" : "Weight"]}/>
+                        <Line type="monotone" dataKey="WEIGHT" stroke="#4b9fff" strokeWidth={1.5} dot={{ r:2.5, fill:"#4b9fff" }} name="Weight" connectNulls={false}/>
+                        <Line type="monotone" dataKey="ROLLING" stroke={A} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
+                      </LineChart>
+                    ) : chartType === "line" ? (
+                      <LineChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                        <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <Tooltip/>
+                        {metrics.map(m => <Line key={m} type="monotone" dataKey={m} stroke={MM[m].color} strokeWidth={2.5} dot={false} name={m}/>)}
+                      </LineChart>
+                    ) : (
+                      <BarChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                        <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <Tooltip/>
+                        {metrics.map(m => <Bar key={m} dataKey={m} fill={MM[m].color} radius={[4,4,0,0]} name={m} maxBarSize={28}/>)}
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ fontSize:11, color:"#445040", padding:"12px 8px" }}>Charts unavailable — Recharts CDN failed to load.</div>
+                )}
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
@@ -1738,28 +1828,36 @@ function App() {
   const [view,       setView]       = useState("dashboard");
   const [logs,       setLogs]       = useState([]);
   const [water,      setWater]      = useState(0);
-  const [train,      setTrain]      = useState(false);
   const [mode,       setMode]       = useState("cut");
   const [prof,       setProf]       = useState(null);
   const [hist,       setHist]       = useState([]);
   const [meals,      setMeals]      = useState([...DEF_MEALS]);
-  const [session,    setSession]    = useState({ type:"legs", duration:45, intensity:"moderate" });
+  const [workouts,   setWorkouts]   = useState([]);
   const [earnedBdgs, setEarnedBdgs] = useState([]);
   const [newBadge,   setNewBadge]   = useState(null);
   const [ready,      setReady]      = useState(false);
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
+  const [coachKey,   setCoachKey]   = useState(0);
+
+  // Expose dev refresh hook for test harness
+  useEffect(() => {
+    window.__devRefreshCoach = () => {
+      ss("coach__" + todayKey(), JSON.stringify({ tip:"", r:0 }));
+      setCoachKey(k => k + 1);
+    };
+    return () => { delete window.__devRefreshCoach; };
+  }, []); // eslint-disable-line
 
   useEffect(() => {
     const load = async () => {
       const k = todayKey();
       const lv = await sg("logs__"  + k); if (lv)  setLogs(JSON.parse(lv));
       const wv = await sg("water__" + k); if (wv)  setWater(parseInt(wv) || 0);
-      const tv = await sg("train__" + k); if (tv)  setTrain(tv === "true");
       const mv = await sg("mode__"  + k); if (mv)  setMode(mv);
       const pv = await sg("profile");     if (pv)  setProf(JSON.parse(pv));
       const mv2 = await sg("meals");      if (mv2) setMeals(JSON.parse(mv2));
-      const sv = await sg("session__" + k); if (sv) setSession(JSON.parse(sv));
+      const wkv = await sg("workouts__" + k); if (wkv) setWorkouts(JSON.parse(wkv));
       const bv = await sg("badges");     if (bv)  setEarnedBdgs(JSON.parse(bv));
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
       const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
@@ -1794,16 +1892,17 @@ function App() {
     }
   }, [hist]); // eslint-disable-line
 
-  const saveLogs  = async l => { setLogs(l);    await ss("logs__"  + todayKey(), JSON.stringify(l)); };
-  const saveWater = async w => { setWater(w);   await ss("water__" + todayKey(), String(w));         };
-  const saveTrain = async t => { setTrain(t);   await ss("train__" + todayKey(), String(t));         };
-  const saveMode  = async m => { setMode(m);    await ss("mode__"  + todayKey(), m);                 };
-  const saveProf  = async p => { setProf(p);    await ss("profile",              JSON.stringify(p)); };
-  const onSession = async s => { setSession(s); await ss("session__" + todayKey(), JSON.stringify(s)); };
+  const saveLogs     = async l => { setLogs(l);     await ss("logs__"     + todayKey(), JSON.stringify(l)); };
+  const saveWater    = async w => { setWater(w);    await ss("water__"    + todayKey(), String(w));         };
+  const saveMode     = async m => { setMode(m);     await ss("mode__"     + todayKey(), m);                 };
+  const saveProf     = async p => { setProf(p);     await ss("profile",                JSON.stringify(p)); };
+  const saveWorkouts = async w => { setWorkouts(w); await ss("workouts__" + todayKey(), JSON.stringify(w)); };
 
-  const addLog    = e  => saveLogs([...logs, { ...e, id:Date.now(),
+  const addLog       = e  => saveLogs([...logs, { ...e, id:Date.now(),
     time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }]);
-  const removeLog = id => saveLogs(logs.filter(l => l.id !== id));
+  const removeLog    = id => saveLogs(logs.filter(l => l.id !== id));
+  const addWorkout   = w  => saveWorkouts([...workouts, w]);
+  const removeWorkout = id => saveWorkouts(workouts.filter(w => w.id !== id));
 
   const addToQA = async entry => {
     const name = entry.name;
@@ -1825,12 +1924,12 @@ function App() {
       protein: Math.round(tots.protein * 10) / 10,
       carbs:   Math.round(tots.carbs   * 10) / 10,
       fat:     Math.round(tots.fat     * 10) / 10,
-      water, training:train, logs:[...logs] };
+      water, training: workouts.length > 0, logs:[...logs] };
     const upd = [...hist.filter(d => d.date !== k), snap]
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(upd);
     ss("history", JSON.stringify(upd));
-  }, [logs, water, train, mode, ready]); // eslint-disable-line
+  }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   const updateDay = async upd => {
     const nh = [...hist.filter(d => d.date !== upd.date), upd]
@@ -1848,8 +1947,7 @@ function App() {
 
     // Run calibration whenever a new weigh-in arrives
     const p = prof || DEF_PROFILE;
-    const base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) *
-      (ACTIVITY[p.activity]?.mult || 1.375));
+    const base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
     const result = runCalibration(hist, updated, base + tdeeAdj);
     if (result && Math.abs(result.adj) >= 50) {
       const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
@@ -1859,17 +1957,9 @@ function App() {
   };
 
   const p        = prof || DEF_PROFILE;
-  const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) *
-    (ACTIVITY[p.activity]?.mult || 1.375));
+  const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
 
-  const sessionKcal = train
-    ? (session.hevyKcal != null
-        ? session.hevyKcal
-        : estimateSessionKcal((prof||DEF_PROFILE).weight, (prof||DEF_PROFILE).bodyFat,
-            session.type, session.duration, session.intensity))
-    : null;
-
-  const targets   = calcTargets(prof || DEF_PROFILE, mode, train, sessionKcal, tdeeAdj);
+  const targets   = calcTargets(prof || DEF_PROFILE, mode, workouts.reduce((s, w) => s + (w.kcal || 0), 0), tdeeAdj);
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
   const streak    = calcStreak(hist);
@@ -1912,16 +2002,17 @@ function App() {
       )}
 
       {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining}
-          water={water} setWater={saveWater} isTraining={train} setIsTraining={saveTrain}
+          water={water} setWater={saveWater}
           mode={mode} setMode={saveMode} setView={setView} removeLog={removeLog} addToQA={addToQA}
-          hasProfile={!!prof} streak={streak} session={session} onSession={onSession}
-          sessionKcal={sessionKcal} prof={prof}
-          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}/>}
+          hasProfile={!!prof} streak={streak} prof={prof}
+          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}
+          coachKey={coachKey}
+          workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <History         history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns}/>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
     </div>
   );
