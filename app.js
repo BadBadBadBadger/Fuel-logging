@@ -12,8 +12,18 @@ function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
 function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
+function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = r[t]; o.enumerable = o.enumerable || !1, o.configurable = !0, "value" in o && (o.writable = !0), Object.defineProperty(e, _toPropertyKey(o.key), o); } }
+function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
+function _callSuper(t, o, e) { return o = _getPrototypeOf(o), _possibleConstructorReturn(t, _isNativeReflectConstruct() ? Reflect.construct(o, e || [], _getPrototypeOf(t).constructor) : o.apply(t, e)); }
+function _possibleConstructorReturn(t, e) { if (e && ("object" == _typeof(e) || "function" == typeof e)) return e; if (void 0 !== e) throw new TypeError("Derived constructors may only return object or undefined"); return _assertThisInitialized(t); }
+function _assertThisInitialized(e) { if (void 0 === e) throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); return e; }
+function _isNativeReflectConstruct() { try { var t = !Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); } catch (t) {} return (_isNativeReflectConstruct = function _isNativeReflectConstruct() { return !!t; })(); }
+function _getPrototypeOf(t) { return _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf.bind() : function (t) { return t.__proto__ || Object.getPrototypeOf(t); }, _getPrototypeOf(t); }
+function _inherits(t, e) { if ("function" != typeof e && null !== e) throw new TypeError("Super expression must either be null or a function"); t.prototype = Object.create(e && e.prototype, { constructor: { value: t, writable: !0, configurable: !0 } }), Object.defineProperty(t, "prototype", { writable: !1 }), e && _setPrototypeOf(t, e); }
+function _setPrototypeOf(t, e) { return _setPrototypeOf = Object.setPrototypeOf ? Object.setPrototypeOf.bind() : function (t, e) { return t.__proto__ = e, t; }, _setPrototypeOf(t, e); }
 function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
@@ -120,8 +130,7 @@ var TIER_ICONS = ["🟤", "⚪", "🟡", "🔵", "💎", "👑"];
 var DEF_PROFILE = {
   weight: 80,
   height: 178,
-  bodyFat: 18,
-  activity: "light"
+  bodyFat: 18
 };
 var AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 var DEF_MEALS = [{
@@ -246,10 +255,29 @@ var DEF_MEALS = [{
   fat: 11
 }];
 
+// ── Dev overrides (harness only) ──────────────────────────────
+
+var getDevDateOffset = function getDevDateOffset() {
+  try {
+    return parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
+  } catch (e) {
+    return 0;
+  }
+};
+var getCurrentHour = function getCurrentHour() {
+  try {
+    var v = localStorage.getItem("dev_time_hour");
+    return v !== null ? parseInt(v) : new Date().getHours();
+  } catch (e) {
+    return new Date().getHours();
+  }
+};
+
 // ── Helpers ───────────────────────────────────────────────────
 
 var todayKey = function todayKey() {
-  var d = new Date();
+  var off = getDevDateOffset();
+  var d = new Date(Date.now() + off * 86400000);
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 };
 var fmtShort = function fmtShort(d) {
@@ -300,18 +328,15 @@ var estimateSessionKcal = function estimateSessionKcal(w, bf, type, dur, _int) {
   var _MET$type;
   return Math.round((((_MET$type = MET[type]) === null || _MET$type === void 0 ? void 0 : _MET$type[_int]) || 5) * w * (w * (1 - bf / 100) / 70) * (dur / 60));
 };
-var calcTargets = function calcTargets(p, mode, training) {
-  var _ACTIVITY$act;
-  var sessKcal = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : null;
-  var tdeeAdj = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 0;
+var calcTargets = function calcTargets(p, mode) {
+  var totalWorkoutKcal = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
+  var tdeeAdj = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
   var w = Number(p.weight) || 80;
   var bf = Number(p.bodyFat) || 18;
-  var act = p.activity || "light";
   var lbm = w * (1 - bf / 100);
   var bmr = Math.round(370 + 21.6 * lbm);
-  var tdee = Math.round(bmr * (((_ACTIVITY$act = ACTIVITY[act]) === null || _ACTIVITY$act === void 0 ? void 0 : _ACTIVITY$act.mult) || 1.375)) + tdeeAdj;
-  var bonus = training ? sessKcal !== null ? sessKcal : Math.round(w * 2.8) : 0;
-  var kcal = tdee + MODES[mode].adj + bonus;
+  var tdee = Math.round(bmr * 1.2) + tdeeAdj;
+  var kcal = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   var protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
   var fat = Math.round(w * (mode === "cut" ? 0.8 : 1.0));
   var carbs = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
@@ -323,7 +348,7 @@ var calcTargets = function calcTargets(p, mode, training) {
     tdee: tdee,
     bmr: bmr,
     lbm: Math.round(lbm),
-    bonus: bonus
+    bonus: totalWorkoutKcal || 0
   };
 };
 
@@ -420,8 +445,54 @@ var ss = /*#__PURE__*/function () {
   };
 }();
 
-// ── Shared UI ─────────────────────────────────────────────────
-
+// ── Error Boundary ────────────────────────────────────────────
+var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
+  function ErrorBoundary(props) {
+    var _this;
+    _classCallCheck(this, ErrorBoundary);
+    _this = _callSuper(this, ErrorBoundary, [props]);
+    _this.state = {
+      err: null
+    };
+    return _this;
+  }
+  _inherits(ErrorBoundary, _React$Component);
+  return _createClass(ErrorBoundary, [{
+    key: "render",
+    value: function render() {
+      if (this.state.err) return /*#__PURE__*/React.createElement("div", {
+        style: {
+          padding: 24,
+          color: "#ff5555",
+          fontSize: 13,
+          lineHeight: 1.6
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 16,
+          fontWeight: 900,
+          marginBottom: 8
+        }
+      }, "\u26A0\uFE0F Render error"), /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontFamily: "monospace",
+          background: "#1a0d0d",
+          padding: 12,
+          borderRadius: 8,
+          wordBreak: "break-all"
+        }
+      }, this.state.err.message));
+      return this.props.children;
+    }
+  }], [{
+    key: "getDerivedStateFromError",
+    value: function getDerivedStateFromError(e) {
+      return {
+        err: e
+      };
+    }
+  }]);
+}(React.Component); // ── Shared UI ─────────────────────────────────────────────────
 var INP = {
   width: "100%",
   boxSizing: "border-box",
@@ -598,7 +669,7 @@ function CoachCard(_ref7) {
 
   var gen = /*#__PURE__*/function () {
     var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
-      var prompt, res, data, t, r, _t3;
+      var h, timeLabel, prompt, res, data, t, r, _t3;
       return _regenerator().w(function (_context3) {
         while (1) switch (_context3.p = _context3.n) {
           case 0:
@@ -610,7 +681,9 @@ function CoachCard(_ref7) {
           case 1:
             setLoading(true);
             _context3.p = 2;
-            prompt = "You are a supportive fitness coach. Today: ".concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) specific food suggestion for tomorrow 3) genuine praise. Brief, personal, max one emoji per sentence.");
+            h = getCurrentHour();
+            timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
+            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today: ").concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
             _context3.n = 3;
             return fetch(AI_ENDPOINT, {
               method: "POST",
@@ -707,8 +780,8 @@ function CoachCard(_ref7) {
     }
   }, "Generating your tip..."), tip && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 13,
-      color: "#8aaa80",
+      fontSize: 14.5,
+      color: "#b8d4a8",
       lineHeight: 1.7
     }
   }, tip));
@@ -738,7 +811,7 @@ function ProfileScreen(_ref9) {
     });
   };
   var valid = Number(f.weight) > 0 && Number(f.height) > 0 && Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
-  var prev = calcTargets(f, "cut", false);
+  var prev = calcTargets(f, "cut", 0, 0);
   var formulaTDEE = prev.tdee;
   var adjTDEE = formulaTDEE + tdeeAdj;
   var confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
@@ -754,7 +827,7 @@ function ProfileScreen(_ref9) {
     return function () {
       return clearTimeout(t);
     };
-  }, [f.weight, f.height, f.bodyFat, f.activity]); // eslint-disable-line
+  }, [f.weight, f.height, f.bodyFat]); // eslint-disable-line
 
   var row = function row(label, val, unit) {
     var color = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : "#d8e8d0";
@@ -887,49 +960,16 @@ function ProfileScreen(_ref9) {
       return set("bodyFat", e.target.value);
     },
     style: _objectSpread(_objectSpread({}, INP), {}, {
-      marginBottom: 14
+      marginBottom: 4
     })
   }), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
-      color: A,
-      letterSpacing: "0.1em",
-      fontWeight: 800,
-      marginBottom: 8
+      fontSize: 11,
+      color: "#334a30",
+      marginBottom: 14,
+      lineHeight: 1.5
     }
-  }, "ACTIVITY LEVEL"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 6
-    }
-  }, Object.entries(ACTIVITY).map(function (_ref0) {
-    var _ref1 = _slicedToArray(_ref0, 2),
-      k = _ref1[0],
-      v = _ref1[1];
-    return /*#__PURE__*/React.createElement(Btn, {
-      key: k,
-      onClick: function onClick() {
-        return set("activity", k);
-      },
-      style: {
-        padding: "11px 14px",
-        background: f.activity === k ? "#1a2a1a" : "#0b0d0b",
-        border: "1px solid ".concat(f.activity === k ? A + "44" : BD),
-        borderRadius: 10,
-        textAlign: "left",
-        color: f.activity === k ? A : "#556050",
-        fontSize: 13,
-        fontWeight: f.activity === k ? 800 : 400
-      }
-    }, v.label, " ", /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 11,
-        color: "#334a30",
-        marginLeft: 6
-      }
-    }, "\xD7", v.mult));
-  }))), valid && /*#__PURE__*/React.createElement("div", {
+  }, "Base TDEE uses BMR \xD7 1.2 (sedentary baseline). Workout calories are added when you log sessions.")), valid && /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -1023,11 +1063,11 @@ function ProfileScreen(_ref9) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref10) {
-    var mode = _ref10.mode,
-      label = _ref10.label,
-      color = _ref10.color;
-    var t = calcTargets(f, mode, false, null, tdeeAdj);
+  }].map(function (_ref0) {
+    var mode = _ref0.mode,
+      label = _ref0.label,
+      color = _ref0.color;
+    var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
       style: {
@@ -1049,11 +1089,11 @@ function ProfileScreen(_ref9) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref11) {
-      var _ref12 = _slicedToArray(_ref11, 3),
-        k = _ref12[0],
-        key = _ref12[1],
-        u = _ref12[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref1) {
+      var _ref10 = _slicedToArray(_ref1, 3),
+        k = _ref10[0],
+        key = _ref10[1],
+        u = _ref10[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -1080,15 +1120,15 @@ function ProfileScreen(_ref9) {
       color: "#334a30",
       marginTop: 8
     }
-  }, "Training days add kcal based on your weight + session type.")));
+  }, "Workout kcal are added when you log sessions on the dashboard.")));
 }
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref13) {
-  var meal = _ref13.meal,
-    onSave = _ref13.onSave,
-    onCancel = _ref13.onCancel;
+function MealForm(_ref11) {
+  var meal = _ref11.meal,
+    onSave = _ref11.onSave,
+    onCancel = _ref11.onCancel;
   var blank = {
     name: "",
     kcal: "",
@@ -1245,11 +1285,11 @@ function MealForm(_ref13) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref14) {
-  var weighIns = _ref14.weighIns,
-    onWeighIn = _ref14.onWeighIn,
-    tdeeAdj = _ref14.tdeeAdj,
-    baseTDEE = _ref14.baseTDEE;
+function WeighInWidget(_ref12) {
+  var weighIns = _ref12.weighIns,
+    onWeighIn = _ref12.onWeighIn,
+    tdeeAdj = _ref12.tdeeAdj,
+    baseTDEE = _ref12.baseTDEE;
   var _useState11 = useState(""),
     _useState12 = _slicedToArray(_useState11, 2),
     val = _useState12[0],
@@ -1402,6 +1442,423 @@ function WeighInWidget(_ref14) {
   }, weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism.", weeks >= 1 && weeks < 2 && "\uD83D\uDD04 ".concat(confidence, " \u2014 ").concat(weighIns.length, " weigh-ins so far. 2+ weeks unlocks calibration."), weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet.", weeks >= 2 && tdeeAdj !== 0 && "Your real TDEE is ".concat(tdeeAdj > 0 ? "higher" : "lower", " than the formula predicts. Targets adjusted accordingly.")));
 }
 
+// ── Workout Logger ────────────────────────────────────────────
+
+function WorkoutLogger(_ref13) {
+  var workouts = _ref13.workouts,
+    onAdd = _ref13.onAdd,
+    onRemove = _ref13.onRemove,
+    prof = _ref13.prof;
+  var _useState13 = useState("legs"),
+    _useState14 = _slicedToArray(_useState13, 2),
+    type = _useState14[0],
+    setType = _useState14[1];
+  var _useState15 = useState(45),
+    _useState16 = _slicedToArray(_useState15, 2),
+    dur = _useState16[0],
+    setDur = _useState16[1];
+  var _useState17 = useState("moderate"),
+    _useState18 = _slicedToArray(_useState17, 2),
+    intensity = _useState18[0],
+    setIntensity = _useState18[1];
+  var _useState19 = useState(false),
+    _useState20 = _slicedToArray(_useState19, 2),
+    hevyMode = _useState20[0],
+    setHevyMode = _useState20[1];
+  var _useState21 = useState(""),
+    _useState22 = _slicedToArray(_useState21, 2),
+    hevyText = _useState22[0],
+    setHevyText = _useState22[1];
+  var _useState23 = useState(false),
+    _useState24 = _slicedToArray(_useState23, 2),
+    hevyLoading = _useState24[0],
+    setHevyLoading = _useState24[1];
+  var _useState25 = useState(null),
+    _useState26 = _slicedToArray(_useState25, 2),
+    hevyResult = _useState26[0],
+    setHevyResult = _useState26[1];
+  var p = prof || DEF_PROFILE;
+  var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
+  var totalKcal = workouts.reduce(function (s, w) {
+    return s + (w.kcal || 0);
+  }, 0);
+  var logWorkout = function logWorkout() {
+    onAdd({
+      id: Date.now(),
+      type: type,
+      duration: dur,
+      intensity: intensity,
+      kcal: estKcal,
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    });
+  };
+  var parseWorkout = /*#__PURE__*/function () {
+    var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4() {
+      var res, data, text, _t4;
+      return _regenerator().w(function (_context4) {
+        while (1) switch (_context4.p = _context4.n) {
+          case 0:
+            if (!(!hevyText.trim() || hevyLoading)) {
+              _context4.n = 1;
+              break;
+            }
+            return _context4.a(2);
+          case 1:
+            setHevyLoading(true);
+            setHevyResult(null);
+            _context4.p = 2;
+            _context4.n = 3;
+            return fetch(AI_ENDPOINT, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                model: "claude-sonnet-4-6",
+                max_tokens: 200,
+                messages: [{
+                  role: "user",
+                  content: "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}")
+                }]
+              })
+            });
+          case 3:
+            res = _context4.v;
+            _context4.n = 4;
+            return res.json();
+          case 4:
+            data = _context4.v;
+            text = (data.content || []).map(function (b) {
+              return b.text || "";
+            }).join("").trim();
+            setHevyResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
+            _context4.n = 6;
+            break;
+          case 5:
+            _context4.p = 5;
+            _t4 = _context4.v;
+            setHevyResult({
+              error: "Parse failed — Cloudflare Worker required."
+            });
+          case 6:
+            setHevyLoading(false);
+          case 7:
+            return _context4.a(2);
+        }
+      }, _callee4, null, [[2, 5]]);
+    }));
+    return function parseWorkout() {
+      return _ref14.apply(this, arguments);
+    };
+  }();
+  var logParsed = function logParsed() {
+    if (!hevyResult || hevyResult.error) return;
+    onAdd({
+      id: Date.now(),
+      type: hevyResult.type || "fullbody",
+      duration: 60,
+      intensity: hevyResult.intensity || "moderate",
+      kcal: hevyResult.estimatedKcal,
+      notes: hevyResult.summary,
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    });
+    setHevyMode(false);
+    setHevyText("");
+    setHevyResult(null);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      border: "1px solid ".concat(BD),
+      borderRadius: 14,
+      padding: "12px 14px",
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "#445040",
+      letterSpacing: "0.1em",
+      fontWeight: 800
+    }
+  }, "WORKOUTS ", workouts.length > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: A
+    }
+  }, "\xB7 \u26A1", workouts.length)), workouts.length > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 900,
+      color: A
+    }
+  }, totalKcal, " kcal added")), workouts.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 10
+    }
+  }, workouts.map(function (w) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: w.id,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        background: "#0b0d0b",
+        borderRadius: 8,
+        padding: "8px 10px",
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: A,
+        fontWeight: 900,
+        flexShrink: 0
+      }
+    }, w.kcal, " kcal"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: "#6a9a60",
+        flex: 1,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap"
+      }
+    }, w.notes || "".concat(w.type, " \xB7 ").concat(w.duration, "min \xB7 ").concat(w.intensity)), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: "#334a30",
+        flexShrink: 0
+      }
+    }, w.time), /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() {
+        return onRemove(w.id);
+      },
+      style: {
+        background: "none",
+        border: "none",
+        color: "#443030",
+        fontSize: 16,
+        cursor: "pointer",
+        padding: "0 4px",
+        flexShrink: 0
+      }
+    }, "\xD7"));
+  })), !hevyMode ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("select", {
+    value: type,
+    onChange: function onChange(e) {
+      return setType(e.target.value);
+    },
+    style: _objectSpread(_objectSpread({}, INP), {}, {
+      flex: "none",
+      width: "auto",
+      padding: "7px 10px",
+      fontSize: 12
+    })
+  }, SESS_TYPES.map(function (t) {
+    return /*#__PURE__*/React.createElement("option", {
+      key: t,
+      value: t
+    }, t.charAt(0).toUpperCase() + t.slice(1));
+  })), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "10",
+    max: "180",
+    value: dur,
+    onChange: function onChange(e) {
+      return setDur(parseInt(e.target.value) || 45);
+    },
+    style: _objectSpread(_objectSpread({}, INP), {}, {
+      width: 56,
+      padding: "7px 8px",
+      textAlign: "center",
+      fontSize: 12
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: "#445040"
+    }
+  }, "min \xB7"), /*#__PURE__*/React.createElement("select", {
+    value: intensity,
+    onChange: function onChange(e) {
+      return setIntensity(e.target.value);
+    },
+    style: _objectSpread(_objectSpread({}, INP), {}, {
+      flex: "none",
+      width: "auto",
+      padding: "7px 10px",
+      fontSize: 12
+    })
+  }, SESS_INT.map(function (i) {
+    return /*#__PURE__*/React.createElement("option", {
+      key: i,
+      value: i
+    }, i.charAt(0).toUpperCase() + i.slice(1));
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      marginLeft: "auto",
+      fontSize: 13,
+      fontWeight: 900,
+      color: A
+    }
+  }, estKcal, " kcal")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: logWorkout,
+    style: {
+      flex: 1,
+      padding: "10px",
+      background: A,
+      color: "#0b0d0b",
+      border: "none",
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 900,
+      cursor: "pointer",
+      letterSpacing: "0.06em"
+    }
+  }, "+ LOG WORKOUT"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return setHevyMode(true);
+    },
+    style: {
+      padding: "10px 14px",
+      background: "#0b0d0b",
+      border: "1px solid ".concat(A, "33"),
+      borderRadius: 10,
+      color: A,
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "\uD83D\uDCCB Paste log"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("textarea", {
+    value: hevyText,
+    onChange: function onChange(e) {
+      return setHevyText(e.target.value);
+    },
+    rows: 5,
+    placeholder: "Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg",
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      background: "#0b0d0b",
+      border: "1px solid ".concat(BD),
+      borderRadius: 10,
+      padding: "10px 12px",
+      color: "#d8e8d0",
+      fontSize: 12,
+      resize: "none",
+      fontFamily: "inherit",
+      outline: "none",
+      lineHeight: 1.6,
+      marginBottom: 8
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: parseWorkout,
+    disabled: hevyLoading || !hevyText.trim(),
+    style: {
+      flex: 1,
+      padding: "10px",
+      background: hevyText.trim() && !hevyLoading ? A : "#161a16",
+      color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2e3a2c",
+      border: "none",
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 900,
+      cursor: hevyText.trim() && !hevyLoading ? "pointer" : "not-allowed",
+      letterSpacing: "0.07em"
+    }
+  }, hevyLoading ? "PARSING..." : "🤖 PARSE WORKOUT"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      setHevyMode(false);
+      setHevyText("");
+      setHevyResult(null);
+    },
+    style: {
+      padding: "10px 14px",
+      background: "none",
+      border: "1px solid ".concat(BD),
+      borderRadius: 10,
+      color: "#445040",
+      fontSize: 12,
+      cursor: "pointer"
+    }
+  }, "\u2190 Back")), hevyResult && !hevyResult.error && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      background: "#0a1a0a",
+      borderRadius: 8,
+      padding: "8px 12px",
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#6a9a60",
+      flex: 1
+    }
+  }, hevyResult.summary), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 15,
+      fontWeight: 900,
+      color: A,
+      marginLeft: 10
+    }
+  }, hevyResult.estimatedKcal, " kcal")), /*#__PURE__*/React.createElement("button", {
+    onClick: logParsed,
+    style: {
+      width: "100%",
+      padding: "10px",
+      background: A,
+      color: "#0b0d0b",
+      border: "none",
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: 900,
+      cursor: "pointer",
+      letterSpacing: "0.06em"
+    }
+  }, "\u2713 LOG THIS WORKOUT")), hevyResult && hevyResult.error && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#ff7070",
+      marginTop: 4
+    }
+  }, hevyResult.error)));
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
 
 function Dashboard(_ref15) {
@@ -1411,8 +1868,6 @@ function Dashboard(_ref15) {
     remaining = _ref15.remaining,
     water = _ref15.water,
     setWater = _ref15.setWater,
-    isTraining = _ref15.isTraining,
-    setIsTraining = _ref15.setIsTraining,
     mode = _ref15.mode,
     setMode = _ref15.setMode,
     setView = _ref15.setView,
@@ -1420,43 +1875,29 @@ function Dashboard(_ref15) {
     addToQA = _ref15.addToQA,
     hasProfile = _ref15.hasProfile,
     streak = _ref15.streak,
-    session = _ref15.session,
-    onSession = _ref15.onSession,
-    sessionKcal = _ref15.sessionKcal,
     prof = _ref15.prof,
     weighIns = _ref15.weighIns,
     onWeighIn = _ref15.onWeighIn,
     tdeeAdj = _ref15.tdeeAdj,
-    baseTDEE = _ref15.baseTDEE;
+    baseTDEE = _ref15.baseTDEE,
+    coachKey = _ref15.coachKey,
+    workouts = _ref15.workouts,
+    onAddWorkout = _ref15.onAddWorkout,
+    onRemoveWorkout = _ref15.onRemoveWorkout;
   var over = totals.kcal > targets.kcal;
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
-  var _useState13 = useState({}),
-    _useState14 = _slicedToArray(_useState13, 2),
-    savedIds = _useState14[0],
-    setSavedIds = _useState14[1];
-  var _useState15 = useState(false),
-    _useState16 = _slicedToArray(_useState15, 2),
-    hevyMode = _useState16[0],
-    setHevyMode = _useState16[1];
-  var _useState17 = useState(""),
-    _useState18 = _slicedToArray(_useState17, 2),
-    hevyText = _useState18[0],
-    setHevyText = _useState18[1];
-  var _useState19 = useState(false),
-    _useState20 = _slicedToArray(_useState19, 2),
-    hevyLoading = _useState20[0],
-    setHevyLoading = _useState20[1];
-  var _useState21 = useState(null),
-    _useState22 = _slicedToArray(_useState21, 2),
-    hevyResult = _useState22[0],
-    setHevyResult = _useState22[1];
+  var isTraining = workouts.length > 0;
+  var _useState27 = useState({}),
+    _useState28 = _slicedToArray(_useState27, 2),
+    savedIds = _useState28[0],
+    setSavedIds = _useState28[1];
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(log) {
-      return _regenerator().w(function (_context4) {
-        while (1) switch (_context4.n) {
+    var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(log) {
+      return _regenerator().w(function (_context5) {
+        while (1) switch (_context5.n) {
           case 0:
-            _context4.n = 1;
+            _context5.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -1468,78 +1909,12 @@ function Dashboard(_ref15) {
               });
             }, 1800);
           case 2:
-            return _context4.a(2);
+            return _context5.a(2);
         }
-      }, _callee4);
+      }, _callee5);
     }));
     return function handleAddToQA(_x4) {
       return _ref16.apply(this, arguments);
-    };
-  }();
-  var parseWorkout = /*#__PURE__*/function () {
-    var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5() {
-      var w, bf, res, data, text, parsed, _t4;
-      return _regenerator().w(function (_context5) {
-        while (1) switch (_context5.p = _context5.n) {
-          case 0:
-            if (!(!hevyText.trim() || hevyLoading)) {
-              _context5.n = 1;
-              break;
-            }
-            return _context5.a(2);
-          case 1:
-            setHevyLoading(true);
-            setHevyResult(null);
-            _context5.p = 2;
-            w = (prof || DEF_PROFILE).weight, bf = (prof || DEF_PROFILE).bodyFat;
-            _context5.n = 3;
-            return fetch(AI_ENDPOINT, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 200,
-                messages: [{
-                  role: "user",
-                  content: "Parse this workout log and estimate calories burned. User: ".concat(w, "kg bodyweight, ").concat(bf, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}")
-                }]
-              })
-            });
-          case 3:
-            res = _context5.v;
-            _context5.n = 4;
-            return res.json();
-          case 4:
-            data = _context5.v;
-            text = (data.content || []).map(function (b) {
-              return b.text || "";
-            }).join("").trim();
-            parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-            setHevyResult(parsed);
-            onSession(_objectSpread(_objectSpread({}, session), {}, {
-              type: parsed.type || session.type,
-              intensity: parsed.intensity || session.intensity,
-              hevyKcal: parsed.estimatedKcal
-            }));
-            _context5.n = 6;
-            break;
-          case 5:
-            _context5.p = 5;
-            _t4 = _context5.v;
-            setHevyResult({
-              error: "Parse failed — requires Cloudflare Worker to be set up."
-            });
-          case 6:
-            setHevyLoading(false);
-          case 7:
-            return _context5.a(2);
-        }
-      }, _callee5, null, [[2, 5]]);
-    }));
-    return function parseWorkout() {
-      return _ref17.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1645,10 +2020,10 @@ function Dashboard(_ref15) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref18) {
-    var _ref19 = _slicedToArray(_ref18, 2),
-      k = _ref19[0],
-      v = _ref19[1];
+  }, Object.entries(MODES).map(function (_ref17) {
+    var _ref18 = _slicedToArray(_ref17, 2),
+      k = _ref18[0],
+      v = _ref18[1];
     return /*#__PURE__*/React.createElement(Btn, {
       key: k,
       onClick: function onClick() {
@@ -1666,217 +2041,12 @@ function Dashboard(_ref15) {
         letterSpacing: "0.06em"
       }
     }, v.label);
-  }), /*#__PURE__*/React.createElement(Btn, {
-    onClick: function onClick() {
-      return setIsTraining(!isTraining);
-    },
-    style: {
-      padding: "9px 12px",
-      background: isTraining ? A + "22" : "#131a11",
-      color: isTraining ? A : "#445040",
-      border: "1px solid ".concat(isTraining ? A + "44" : BD),
-      borderRadius: 10,
-      fontSize: 11,
-      fontWeight: 900,
-      flexShrink: 0
-    }
-  }, isTraining ? "⚡" : "💤")), isTraining && /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: CARD,
-      border: "1px solid ".concat(BD),
-      borderRadius: 14,
-      padding: "12px 14px",
-      marginBottom: 12
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 10,
-      color: "#445040",
-      letterSpacing: "0.1em",
-      fontWeight: 800,
-      marginBottom: 10
-    }
-  }, "SESSION"), !hevyMode ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center",
-      flexWrap: "wrap",
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("select", {
-    value: session.type,
-    onChange: function onChange(e) {
-      return onSession(_objectSpread(_objectSpread({}, session), {}, {
-        type: e.target.value,
-        hevyKcal: null
-      }));
-    },
-    style: _objectSpread(_objectSpread({}, INP), {}, {
-      flex: "none",
-      width: "auto",
-      padding: "7px 10px",
-      fontSize: 12
-    })
-  }, SESS_TYPES.map(function (t) {
-    return /*#__PURE__*/React.createElement("option", {
-      key: t,
-      value: t
-    }, t.charAt(0).toUpperCase() + t.slice(1));
-  })), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    min: "10",
-    max: "180",
-    value: session.duration,
-    onChange: function onChange(e) {
-      return onSession(_objectSpread(_objectSpread({}, session), {}, {
-        duration: parseInt(e.target.value) || 45,
-        hevyKcal: null
-      }));
-    },
-    style: _objectSpread(_objectSpread({}, INP), {}, {
-      width: 56,
-      padding: "7px 8px",
-      textAlign: "center",
-      fontSize: 12
-    })
-  }), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 11,
-      color: "#445040"
-    }
-  }, "min \xB7"), /*#__PURE__*/React.createElement("select", {
-    value: session.intensity,
-    onChange: function onChange(e) {
-      return onSession(_objectSpread(_objectSpread({}, session), {}, {
-        intensity: e.target.value,
-        hevyKcal: null
-      }));
-    },
-    style: _objectSpread(_objectSpread({}, INP), {}, {
-      flex: "none",
-      width: "auto",
-      padding: "7px 10px",
-      fontSize: 12
-    })
-  }, SESS_INT.map(function (i) {
-    return /*#__PURE__*/React.createElement("option", {
-      key: i,
-      value: i
-    }, i.charAt(0).toUpperCase() + i.slice(1));
-  })), /*#__PURE__*/React.createElement("span", {
-    style: {
-      marginLeft: "auto",
-      fontSize: 14,
-      fontWeight: 900,
-      color: A
-    }
-  }, sessionKcal, " kcal")), /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
-      return setHevyMode(true);
-    },
-    style: {
-      width: "100%",
-      padding: "9px",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(A, "33"),
-      borderRadius: 10,
-      color: A,
-      fontSize: 12,
-      fontWeight: 700,
-      cursor: "pointer",
-      letterSpacing: "0.06em"
-    }
-  }, "\uD83D\uDCCB Paste workout log instead")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("textarea", {
-    value: hevyText,
-    onChange: function onChange(e) {
-      return setHevyText(e.target.value);
-    },
-    rows: 5,
-    placeholder: "Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg\nLeg Press 3×12 @ 120kg",
-    style: {
-      width: "100%",
-      boxSizing: "border-box",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(BD),
-      borderRadius: 10,
-      padding: "10px 12px",
-      color: "#d8e8d0",
-      fontSize: 12,
-      resize: "none",
-      fontFamily: "inherit",
-      outline: "none",
-      lineHeight: 1.6,
-      marginBottom: 8
-    }
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      marginBottom: 6
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: parseWorkout,
-    disabled: hevyLoading || !hevyText.trim(),
-    style: {
-      flex: 1,
-      padding: "10px",
-      background: hevyText.trim() && !hevyLoading ? A : "#161a16",
-      color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2e3a2c",
-      border: "none",
-      borderRadius: 10,
-      fontSize: 12,
-      fontWeight: 900,
-      cursor: hevyText.trim() && !hevyLoading ? "pointer" : "not-allowed",
-      letterSpacing: "0.07em"
-    }
-  }, hevyLoading ? "PARSING..." : "🤖 PARSE SESSION"), /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
-      setHevyMode(false);
-      setHevyText("");
-      setHevyResult(null);
-      onSession(_objectSpread(_objectSpread({}, session), {}, {
-        hevyKcal: null
-      }));
-    },
-    style: {
-      padding: "10px 14px",
-      background: "none",
-      border: "1px solid ".concat(BD),
-      borderRadius: 10,
-      color: "#445040",
-      fontSize: 12,
-      cursor: "pointer"
-    }
-  }, "\u2190 Manual")), hevyResult && !hevyResult.error && /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      background: "#0a1a0a",
-      borderRadius: 8,
-      padding: "8px 12px"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 12,
-      color: "#6a9a60",
-      flex: 1
-    }
-  }, hevyResult.summary), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 15,
-      fontWeight: 900,
-      color: A,
-      marginLeft: 10
-    }
-  }, hevyResult.estimatedKcal, " kcal")), hevyResult && hevyResult.error && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: "#ff7070",
-      marginTop: 4
-    }
-  }, hevyResult.error))), !hasProfile && /*#__PURE__*/React.createElement(Btn, {
+  })), /*#__PURE__*/React.createElement(WorkoutLogger, {
+    workouts: workouts,
+    onAdd: onAddWorkout,
+    onRemove: onRemoveWorkout,
+    prof: prof
+  }), !hasProfile && /*#__PURE__*/React.createElement(Btn, {
     onClick: function onClick() {
       return setView("profile");
     },
@@ -2020,6 +2190,7 @@ function Dashboard(_ref15) {
     target: targets.fat,
     color: "#ff7b4b"
   })), /*#__PURE__*/React.createElement(CoachCard, {
+    key: coachKey,
     mode: mode,
     totals: totals,
     targets: targets,
@@ -2295,32 +2466,32 @@ function searchOFT(_x5) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(query) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(query) {
     var _p$product_name2, res, data, p, sg2, f, n, _t8;
-    return _regenerator().w(function (_context18) {
-      while (1) switch (_context18.p = _context18.n) {
+    return _regenerator().w(function (_context17) {
+      while (1) switch (_context17.p = _context17.n) {
         case 0:
-          _context18.p = 0;
-          _context18.n = 1;
+          _context17.p = 0;
+          _context17.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context18.v;
-          _context18.n = 2;
+          res = _context17.v;
+          _context17.n = 2;
           return res.json();
         case 2:
-          data = _context18.v;
+          data = _context17.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context18.n = 3;
+            _context17.n = 3;
             break;
           }
-          return _context18.a(2, null);
+          return _context17.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context18.a(2, {
+          return _context17.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -2331,26 +2502,26 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context18.p = 4;
-          _t8 = _context18.v;
-          return _context18.a(2, null);
+          _context17.p = 4;
+          _t8 = _context17.v;
+          return _context17.a(2, null);
       }
-    }, _callee18, null, [[0, 4]]);
+    }, _callee17, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref20) {
-  var item = _ref20.item,
-    onReestimate = _ref20.onReestimate,
-    reestimating = _ref20.reestimating;
-  var _useState23 = useState(false),
-    _useState24 = _slicedToArray(_useState23, 2),
-    editing = _useState24[0],
-    setEditing = _useState24[1];
-  var _useState25 = useState(item.name),
-    _useState26 = _slicedToArray(_useState25, 2),
-    draft = _useState26[0],
-    setDraft = _useState26[1];
+function ItemRow(_ref19) {
+  var item = _ref19.item,
+    onReestimate = _ref19.onReestimate,
+    reestimating = _ref19.reestimating;
+  var _useState29 = useState(false),
+    _useState30 = _slicedToArray(_useState29, 2),
+    editing = _useState30[0],
+    setEditing = _useState30[1];
+  var _useState31 = useState(item.name),
+    _useState32 = _slicedToArray(_useState31, 2),
+    draft = _useState32[0],
+    setDraft = _useState32[1];
   var cc = confColor(item.confidence);
   var submit = function submit() {
     setEditing(false);
@@ -2462,33 +2633,33 @@ function ItemRow(_ref20) {
     }
   }, item.reasoning));
 }
-function AILog(_ref21) {
-  var onAdd = _ref21.onAdd,
-    onBack = _ref21.onBack;
-  var _useState27 = useState(""),
-    _useState28 = _slicedToArray(_useState27, 2),
-    desc = _useState28[0],
-    setDesc = _useState28[1];
-  var _useState29 = useState(false),
-    _useState30 = _slicedToArray(_useState29, 2),
-    loading = _useState30[0],
-    setLoading = _useState30[1];
-  var _useState31 = useState(null),
-    _useState32 = _slicedToArray(_useState31, 2),
-    items = _useState32[0],
-    setItems = _useState32[1];
-  var _useState33 = useState(null),
+function AILog(_ref20) {
+  var onAdd = _ref20.onAdd,
+    onBack = _ref20.onBack;
+  var _useState33 = useState(""),
     _useState34 = _slicedToArray(_useState33, 2),
-    reestIdx = _useState34[0],
-    setReestIdx = _useState34[1];
-  var _useState35 = useState(""),
+    desc = _useState34[0],
+    setDesc = _useState34[1];
+  var _useState35 = useState(false),
     _useState36 = _slicedToArray(_useState35, 2),
-    error = _useState36[0],
-    setError = _useState36[1];
-  var _useState37 = useState(false),
+    loading = _useState36[0],
+    setLoading = _useState36[1];
+  var _useState37 = useState(null),
     _useState38 = _slicedToArray(_useState37, 2),
-    loggedAll = _useState38[0],
-    setLoggedAll = _useState38[1];
+    items = _useState38[0],
+    setItems = _useState38[1];
+  var _useState39 = useState(null),
+    _useState40 = _slicedToArray(_useState39, 2),
+    reestIdx = _useState40[0],
+    setReestIdx = _useState40[1];
+  var _useState41 = useState(""),
+    _useState42 = _slicedToArray(_useState41, 2),
+    error = _useState42[0],
+    setError = _useState42[1];
+  var _useState43 = useState(false),
+    _useState44 = _slicedToArray(_useState43, 2),
+    loggedAll = _useState44[0],
+    setLoggedAll = _useState44[1];
   var totals = items ? items.reduce(function (a, it) {
     return {
       kcal: a.kcal + it.kcal,
@@ -2506,7 +2677,7 @@ function AILog(_ref21) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+    var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
       var aiPromise, aiData, text, parsed, aiItems, oftResults, merged, _t5;
       return _regenerator().w(function (_context6) {
         while (1) switch (_context6.p = _context6.n) {
@@ -2577,11 +2748,11 @@ function AILog(_ref21) {
       }, _callee6, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref22.apply(this, arguments);
+      return _ref21.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(idx, newName) {
+    var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(idx, newName) {
       var res, data, text, updated, oft, _final, _t6;
       return _regenerator().w(function (_context7) {
         while (1) switch (_context7.p = _context7.n) {
@@ -2640,7 +2811,7 @@ function AILog(_ref21) {
       }, _callee7, null, [[1, 5]]);
     }));
     return function reestimate(_x6, _x7) {
-      return _ref23.apply(this, arguments);
+      return _ref22.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -2860,21 +3031,21 @@ function AILog(_ref21) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref24) {
-  var onAdd = _ref24.onAdd,
-    onBack = _ref24.onBack,
-    meals = _ref24.meals,
-    setMeals = _ref24.setMeals;
-  var _useState39 = useState(""),
-    _useState40 = _slicedToArray(_useState39, 2),
-    search = _useState40[0],
-    setSearch = _useState40[1];
-  var _useState41 = useState(null),
-    _useState42 = _slicedToArray(_useState41, 2),
-    modal = _useState42[0],
-    setModal = _useState42[1];
+function QuickAdd(_ref23) {
+  var onAdd = _ref23.onAdd,
+    onBack = _ref23.onBack,
+    meals = _ref23.meals,
+    setMeals = _ref23.setMeals;
+  var _useState45 = useState(""),
+    _useState46 = _slicedToArray(_useState45, 2),
+    search = _useState46[0],
+    setSearch = _useState46[1];
+  var _useState47 = useState(null),
+    _useState48 = _slicedToArray(_useState47, 2),
+    modal = _useState48[0],
+    setModal = _useState48[1];
   var save = /*#__PURE__*/function () {
-    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(m) {
+    var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(m) {
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.n) {
           case 0:
@@ -2887,7 +3058,7 @@ function QuickAdd(_ref24) {
       }, _callee8);
     }));
     return function save(_x8) {
-      return _ref25.apply(this, arguments);
+      return _ref24.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -3062,31 +3233,31 @@ function QuickAdd(_ref24) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref26) {
-  var onAdd = _ref26.onAdd,
-    onBack = _ref26.onBack;
-  var _useState43 = useState(""),
-    _useState44 = _slicedToArray(_useState43, 2),
-    q = _useState44[0],
-    setQ = _useState44[1];
-  var _useState45 = useState([]),
-    _useState46 = _slicedToArray(_useState45, 2),
-    results = _useState46[0],
-    setResults = _useState46[1];
-  var _useState47 = useState(false),
-    _useState48 = _slicedToArray(_useState47, 2),
-    loading = _useState48[0],
-    setLoading = _useState48[1];
+function FoodSearch(_ref25) {
+  var onAdd = _ref25.onAdd,
+    onBack = _ref25.onBack;
   var _useState49 = useState(""),
     _useState50 = _slicedToArray(_useState49, 2),
-    error = _useState50[0],
-    setError = _useState50[1];
-  var _useState51 = useState(false),
+    q = _useState50[0],
+    setQ = _useState50[1];
+  var _useState51 = useState([]),
     _useState52 = _slicedToArray(_useState51, 2),
-    done = _useState52[0],
-    setDone = _useState52[1];
+    results = _useState52[0],
+    setResults = _useState52[1];
+  var _useState53 = useState(false),
+    _useState54 = _slicedToArray(_useState53, 2),
+    loading = _useState54[0],
+    setLoading = _useState54[1];
+  var _useState55 = useState(""),
+    _useState56 = _slicedToArray(_useState55, 2),
+    error = _useState56[0],
+    setError = _useState56[1];
+  var _useState57 = useState(false),
+    _useState58 = _slicedToArray(_useState57, 2),
+    done = _useState58[0],
+    setDone = _useState58[1];
   var search = /*#__PURE__*/function () {
-    var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
+    var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
       var res, data, parseServing, parseKcal, valid, _t7;
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
@@ -3168,7 +3339,7 @@ function FoodSearch(_ref26) {
       }, _callee9, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref27.apply(this, arguments);
+      return _ref26.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3298,13 +3469,14 @@ function FoodSearch(_ref26) {
 
 // ── History ───────────────────────────────────────────────────
 
-function History(_ref28) {
+var chartsAvailable = typeof ResponsiveContainer !== "undefined";
+function History(_ref27) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref28.history,
-    onBack = _ref28.onBack,
-    onUpdateDay = _ref28.onUpdateDay,
-    _ref28$weighIns = _ref28.weighIns,
-    weighIns = _ref28$weighIns === void 0 ? [] : _ref28$weighIns;
+  var history = _ref27.history,
+    onBack = _ref27.onBack,
+    onUpdateDay = _ref27.onUpdateDay,
+    _ref27$weighIns = _ref27.weighIns,
+    weighIns = _ref27$weighIns === void 0 ? [] : _ref27$weighIns;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -3340,30 +3512,30 @@ function History(_ref28) {
       unit: "g"
     }
   };
-  var _useState53 = useState("30D"),
-    _useState54 = _slicedToArray(_useState53, 2),
-    range = _useState54[0],
-    setRange = _useState54[1];
-  var _useState55 = useState(["KCAL"]),
-    _useState56 = _slicedToArray(_useState55, 2),
-    metrics = _useState56[0],
-    setMetrics = _useState56[1];
-  var _useState57 = useState(false),
-    _useState58 = _slicedToArray(_useState57, 2),
-    showWeight = _useState58[0],
-    setShowWeight = _useState58[1];
-  var _useState59 = useState("line"),
+  var _useState59 = useState("30D"),
     _useState60 = _slicedToArray(_useState59, 2),
-    chartType = _useState60[0],
-    setChartType = _useState60[1];
-  var _useState61 = useState(Math.max(0, history.length - 1)),
+    range = _useState60[0],
+    setRange = _useState60[1];
+  var _useState61 = useState(["KCAL"]),
     _useState62 = _slicedToArray(_useState61, 2),
-    dayIdx = _useState62[0],
-    setDayIdx = _useState62[1];
-  var _useState63 = useState(null),
+    metrics = _useState62[0],
+    setMetrics = _useState62[1];
+  var _useState63 = useState(false),
     _useState64 = _slicedToArray(_useState63, 2),
-    addCtx = _useState64[0],
-    setAddCtx = _useState64[1];
+    showWeight = _useState64[0],
+    setShowWeight = _useState64[1];
+  var _useState65 = useState("line"),
+    _useState66 = _slicedToArray(_useState65, 2),
+    chartType = _useState66[0],
+    setChartType = _useState66[1];
+  var _useState67 = useState(Math.max(0, history.length - 1)),
+    _useState68 = _slicedToArray(_useState67, 2),
+    dayIdx = _useState68[0],
+    setDayIdx = _useState68[1];
+  var _useState69 = useState(null),
+    _useState70 = _slicedToArray(_useState69, 2),
+    addCtx = _useState70[0],
+    setAddCtx = _useState70[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -3416,11 +3588,16 @@ function History(_ref28) {
     };
   });
 
-  // Weight-only chart data (includes days without food logs)
-  var weightChartData = filteredWeighIns.map(function (w) {
+  // Weight-only chart data with 7-day rolling average
+  var weightChartData = filteredWeighIns.map(function (w, i, arr) {
+    var win = arr.slice(Math.max(0, i - 6), i + 1);
+    var avg = win.reduce(function (s, x) {
+      return s + x.weight;
+    }, 0) / win.length;
     return {
       date: fmtShort(w.date),
-      WEIGHT: w.weight
+      WEIGHT: w.weight,
+      ROLLING: win.length >= 3 ? Math.round(avg * 10) / 10 : null
     };
   });
   var day = history[dayIdx] || null;
@@ -3682,7 +3859,7 @@ function History(_ref28) {
       fontWeight: 800,
       marginBottom: 14
     }
-  }, "MACRO BREAKDOWN"), /*#__PURE__*/React.createElement(ResponsiveContainer, {
+  }, "MACRO BREAKDOWN"), chartsAvailable ? /*#__PURE__*/React.createElement(ResponsiveContainer, {
     width: "100%",
     height: 160
   }, /*#__PURE__*/React.createElement(PieChart, null, /*#__PURE__*/React.createElement(Pie, {
@@ -3702,7 +3879,13 @@ function History(_ref28) {
     formatter: function formatter(v, n) {
       return [v + "g", n];
     }
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#445040",
+      padding: "8px 0"
+    }
+  }, "Charts unavailable \u2014 Recharts CDN failed to load."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "center",
@@ -3926,10 +4109,10 @@ function History(_ref28) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref29) {
-    var _ref30 = _slicedToArray(_ref29, 2),
-      k = _ref30[0],
-      m = _ref30[1];
+  }, Object.entries(MM).map(function (_ref28) {
+    var _ref29 = _slicedToArray(_ref28, 2),
+      k = _ref29[0],
+      m = _ref29[1];
     return /*#__PURE__*/React.createElement(Btn, {
       key: k,
       onClick: function onClick() {
@@ -3967,10 +4150,10 @@ function History(_ref28) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref31) {
-    var _ref32 = _slicedToArray(_ref31, 2),
-      t = _ref32[0],
-      e = _ref32[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref30) {
+    var _ref31 = _slicedToArray(_ref30, 2),
+      t = _ref31[0],
+      e = _ref31[1];
     return /*#__PURE__*/React.createElement(Btn, {
       key: t,
       onClick: function onClick() {
@@ -3993,7 +4176,7 @@ function History(_ref28) {
       padding: "16px 8px 8px",
       marginBottom: 16
     }
-  }, /*#__PURE__*/React.createElement(ResponsiveContainer, {
+  }, chartsAvailable ? /*#__PURE__*/React.createElement(ResponsiveContainer, {
     width: "100%",
     height: 200
   }, showWeight ? /*#__PURE__*/React.createElement(LineChart, {
@@ -4021,20 +4204,28 @@ function History(_ref28) {
     tickLine: false,
     domain: ["auto", "auto"]
   }), /*#__PURE__*/React.createElement(Tooltip, {
-    formatter: function formatter(v) {
-      return [v + " kg", "Weight"];
+    formatter: function formatter(v, n) {
+      return [v + " kg", n === "ROLLING" ? "7-day avg" : "Weight"];
     }
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
     dataKey: "WEIGHT",
     stroke: "#4b9fff",
-    strokeWidth: 2.5,
+    strokeWidth: 1.5,
     dot: {
-      r: 3,
+      r: 2.5,
       fill: "#4b9fff"
     },
-    name: "Weight (kg)",
+    name: "Weight",
     connectNulls: false
+  }), /*#__PURE__*/React.createElement(Line, {
+    type: "monotone",
+    dataKey: "ROLLING",
+    stroke: A,
+    strokeWidth: 2.5,
+    dot: false,
+    name: "ROLLING",
+    connectNulls: true
   })) : chartType === "line" ? /*#__PURE__*/React.createElement(LineChart, {
     data: chartData,
     margin: {
@@ -4100,7 +4291,13 @@ function History(_ref28) {
       name: m,
       maxBarSize: 28
     });
-  })))), /*#__PURE__*/React.createElement("div", {
+  }))) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#445040",
+      padding: "12px 8px"
+    }
+  }, "Charts unavailable \u2014 Recharts CDN failed to load.")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -4122,10 +4319,10 @@ function History(_ref28) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref33) {
-    var _ref34 = _slicedToArray(_ref33, 2),
-      k = _ref34[0],
-      m = _ref34[1];
+  }, Object.entries(MM).map(function (_ref32) {
+    var _ref33 = _slicedToArray(_ref32, 2),
+      k = _ref33[0],
+      m = _ref33[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -4258,9 +4455,9 @@ function History(_ref28) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref35) {
-  var earnedBdgs = _ref35.earnedBdgs,
-    onBack = _ref35.onBack;
+function Achievements(_ref34) {
+  var earnedBdgs = _ref34.earnedBdgs,
+    onBack = _ref34.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -4358,71 +4555,83 @@ function Achievements(_ref35) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _ACTIVITY$p$activity2;
-  var _useState65 = useState("dashboard"),
-    _useState66 = _slicedToArray(_useState65, 2),
-    view = _useState66[0],
-    setView = _useState66[1];
-  var _useState67 = useState([]),
-    _useState68 = _slicedToArray(_useState67, 2),
-    logs = _useState68[0],
-    setLogs = _useState68[1];
-  var _useState69 = useState(0),
-    _useState70 = _slicedToArray(_useState69, 2),
-    water = _useState70[0],
-    setWater = _useState70[1];
-  var _useState71 = useState(false),
+  var _useState71 = useState("dashboard"),
     _useState72 = _slicedToArray(_useState71, 2),
-    train = _useState72[0],
-    setTrain = _useState72[1];
-  var _useState73 = useState("cut"),
+    view = _useState72[0],
+    setView = _useState72[1];
+  var _useState73 = useState([]),
     _useState74 = _slicedToArray(_useState73, 2),
-    mode = _useState74[0],
-    setMode = _useState74[1];
-  var _useState75 = useState(null),
+    logs = _useState74[0],
+    setLogs = _useState74[1];
+  var _useState75 = useState(0),
     _useState76 = _slicedToArray(_useState75, 2),
-    prof = _useState76[0],
-    setProf = _useState76[1];
-  var _useState77 = useState([]),
+    water = _useState76[0],
+    setWater = _useState76[1];
+  var _useState77 = useState("cut"),
     _useState78 = _slicedToArray(_useState77, 2),
-    hist = _useState78[0],
-    setHist = _useState78[1];
-  var _useState79 = useState([].concat(DEF_MEALS)),
+    mode = _useState78[0],
+    setMode = _useState78[1];
+  var _useState79 = useState(null),
     _useState80 = _slicedToArray(_useState79, 2),
-    meals = _useState80[0],
-    setMeals = _useState80[1];
-  var _useState81 = useState({
-      type: "legs",
-      duration: 45,
-      intensity: "moderate"
-    }),
+    prof = _useState80[0],
+    setProf = _useState80[1];
+  var _useState81 = useState([]),
     _useState82 = _slicedToArray(_useState81, 2),
-    session = _useState82[0],
-    setSession = _useState82[1];
-  var _useState83 = useState([]),
+    hist = _useState82[0],
+    setHist = _useState82[1];
+  var _useState83 = useState([].concat(DEF_MEALS)),
     _useState84 = _slicedToArray(_useState83, 2),
-    earnedBdgs = _useState84[0],
-    setEarnedBdgs = _useState84[1];
-  var _useState85 = useState(null),
+    meals = _useState84[0],
+    setMeals = _useState84[1];
+  var _useState85 = useState([]),
     _useState86 = _slicedToArray(_useState85, 2),
-    newBadge = _useState86[0],
-    setNewBadge = _useState86[1];
-  var _useState87 = useState(false),
+    workouts = _useState86[0],
+    setWorkouts = _useState86[1];
+  var _useState87 = useState([]),
     _useState88 = _slicedToArray(_useState87, 2),
-    ready = _useState88[0],
-    setReady = _useState88[1];
-  var _useState89 = useState([]),
+    earnedBdgs = _useState88[0],
+    setEarnedBdgs = _useState88[1];
+  var _useState89 = useState(null),
     _useState90 = _slicedToArray(_useState89, 2),
-    weighIns = _useState90[0],
-    setWeighIns = _useState90[1];
-  var _useState91 = useState(0),
+    newBadge = _useState90[0],
+    setNewBadge = _useState90[1];
+  var _useState91 = useState(false),
     _useState92 = _slicedToArray(_useState91, 2),
-    tdeeAdj = _useState92[0],
-    setTdeeAdj = _useState92[1];
+    ready = _useState92[0],
+    setReady = _useState92[1];
+  var _useState93 = useState([]),
+    _useState94 = _slicedToArray(_useState93, 2),
+    weighIns = _useState94[0],
+    setWeighIns = _useState94[1];
+  var _useState95 = useState(0),
+    _useState96 = _slicedToArray(_useState95, 2),
+    tdeeAdj = _useState96[0],
+    setTdeeAdj = _useState96[1];
+  var _useState97 = useState(0),
+    _useState98 = _slicedToArray(_useState97, 2),
+    coachKey = _useState98[0],
+    setCoachKey = _useState98[1];
+
+  // Expose dev refresh hook for test harness
+  useEffect(function () {
+    window.__devRefreshCoach = function () {
+      ss("coach__" + todayKey(), JSON.stringify({
+        tip: "",
+        r: 0
+      }));
+      setCoachKey(function (k) {
+        return k + 1;
+      });
+    };
+    return function () {
+      delete window.__devRefreshCoach;
+    };
+  }, []); // eslint-disable-line
+
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
-        var k, lv, wv, tv, mv, pv, mv2, sv, bv, hv, wiv, tav;
+      var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
+        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav;
         return _regenerator().w(function (_context0) {
           while (1) switch (_context0.n) {
             case 0:
@@ -4438,58 +4647,53 @@ function App() {
               wv = _context0.v;
               if (wv) setWater(parseInt(wv) || 0);
               _context0.n = 3;
-              return sg("train__" + k);
-            case 3:
-              tv = _context0.v;
-              if (tv) setTrain(tv === "true");
-              _context0.n = 4;
               return sg("mode__" + k);
-            case 4:
+            case 3:
               mv = _context0.v;
               if (mv) setMode(mv);
-              _context0.n = 5;
+              _context0.n = 4;
               return sg("profile");
-            case 5:
+            case 4:
               pv = _context0.v;
               if (pv) setProf(JSON.parse(pv));
-              _context0.n = 6;
+              _context0.n = 5;
               return sg("meals");
-            case 6:
+            case 5:
               mv2 = _context0.v;
               if (mv2) setMeals(JSON.parse(mv2));
+              _context0.n = 6;
+              return sg("workouts__" + k);
+            case 6:
+              wkv = _context0.v;
+              if (wkv) setWorkouts(JSON.parse(wkv));
               _context0.n = 7;
-              return sg("session__" + k);
-            case 7:
-              sv = _context0.v;
-              if (sv) setSession(JSON.parse(sv));
-              _context0.n = 8;
               return sg("badges");
-            case 8:
+            case 7:
               bv = _context0.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context0.n = 9;
+              _context0.n = 8;
               return sg("history");
-            case 9:
+            case 8:
               hv = _context0.v;
               if (hv) setHist(JSON.parse(hv));
-              _context0.n = 10;
+              _context0.n = 9;
               return sg("weighins");
-            case 10:
+            case 9:
               wiv = _context0.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context0.n = 11;
+              _context0.n = 10;
               return sg("tdee_adj");
-            case 11:
+            case 10:
               tav = _context0.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
               setReady(true);
-            case 12:
+            case 11:
               return _context0.a(2);
           }
         }, _callee0);
       }));
       return function load() {
-        return _ref36.apply(this, arguments);
+        return _ref35.apply(this, arguments);
       };
     }();
     load();
@@ -4531,7 +4735,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(l) {
+    var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(l) {
       return _regenerator().w(function (_context1) {
         while (1) switch (_context1.n) {
           case 0:
@@ -4544,11 +4748,11 @@ function App() {
       }, _callee1);
     }));
     return function saveLogs(_x9) {
-      return _ref37.apply(this, arguments);
+      return _ref36.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(w) {
+    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(w) {
       return _regenerator().w(function (_context10) {
         while (1) switch (_context10.n) {
           case 0:
@@ -4561,75 +4765,58 @@ function App() {
       }, _callee10);
     }));
     return function saveWater(_x0) {
-      return _ref38.apply(this, arguments);
+      return _ref37.apply(this, arguments);
     };
   }();
-  var saveTrain = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(t) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(m) {
       return _regenerator().w(function (_context11) {
         while (1) switch (_context11.n) {
           case 0:
-            setTrain(t);
+            setMode(m);
             _context11.n = 1;
-            return ss("train__" + todayKey(), String(t));
+            return ss("mode__" + todayKey(), m);
           case 1:
             return _context11.a(2);
         }
       }, _callee11);
     }));
-    return function saveTrain(_x1) {
-      return _ref39.apply(this, arguments);
+    return function saveMode(_x1) {
+      return _ref38.apply(this, arguments);
     };
   }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(m) {
+  var saveProf = /*#__PURE__*/function () {
+    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(p) {
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.n) {
           case 0:
-            setMode(m);
+            setProf(p);
             _context12.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("profile", JSON.stringify(p));
           case 1:
             return _context12.a(2);
         }
       }, _callee12);
     }));
-    return function saveMode(_x10) {
-      return _ref40.apply(this, arguments);
+    return function saveProf(_x10) {
+      return _ref39.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(p) {
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(w) {
       return _regenerator().w(function (_context13) {
         while (1) switch (_context13.n) {
           case 0:
-            setProf(p);
+            setWorkouts(w);
             _context13.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
           case 1:
             return _context13.a(2);
         }
       }, _callee13);
     }));
-    return function saveProf(_x11) {
-      return _ref41.apply(this, arguments);
-    };
-  }();
-  var onSession = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(s) {
-      return _regenerator().w(function (_context14) {
-        while (1) switch (_context14.n) {
-          case 0:
-            setSession(s);
-            _context14.n = 1;
-            return ss("session__" + todayKey(), JSON.stringify(s));
-          case 1:
-            return _context14.a(2);
-        }
-      }, _callee14);
-    }));
-    return function onSession(_x12) {
-      return _ref42.apply(this, arguments);
+    return function saveWorkouts(_x11) {
+      return _ref40.apply(this, arguments);
     };
   }();
   var addLog = function addLog(e) {
@@ -4646,20 +4833,28 @@ function App() {
       return l.id !== id;
     }));
   };
+  var addWorkout = function addWorkout(w) {
+    return saveWorkouts([].concat(_toConsumableArray(workouts), [w]));
+  };
+  var removeWorkout = function removeWorkout(id) {
+    return saveWorkouts(workouts.filter(function (w) {
+      return w.id !== id;
+    }));
+  };
   var addToQA = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(entry) {
+    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(entry) {
       var name, clean, updated;
-      return _regenerator().w(function (_context15) {
-        while (1) switch (_context15.n) {
+      return _regenerator().w(function (_context14) {
+        while (1) switch (_context14.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context15.n = 1;
+              _context14.n = 1;
               break;
             }
-            return _context15.a(2);
+            return _context14.a(2);
           case 1:
             clean = {
               name: name,
@@ -4670,15 +4865,15 @@ function App() {
             };
             updated = [].concat(_toConsumableArray(meals), [clean]);
             setMeals(updated);
-            _context15.n = 2;
+            _context14.n = 2;
             return ss("meals", JSON.stringify(updated));
           case 2:
-            return _context15.a(2);
+            return _context14.a(2);
         }
-      }, _callee15);
+      }, _callee14);
     }));
-    return function addToQA(_x13) {
-      return _ref43.apply(this, arguments);
+    return function addToQA(_x12) {
+      return _ref41.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -4693,7 +4888,7 @@ function App() {
       carbs: Math.round(tots.carbs * 10) / 10,
       fat: Math.round(tots.fat * 10) / 10,
       water: water,
-      training: train,
+      training: workouts.length > 0,
       logs: _toConsumableArray(logs)
     };
     var upd = [].concat(_toConsumableArray(hist.filter(function (d) {
@@ -4703,13 +4898,13 @@ function App() {
     });
     setHist(upd);
     ss("history", JSON.stringify(upd));
-  }, [logs, water, train, mode, ready]); // eslint-disable-line
+  }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(upd) {
+    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(upd) {
       var nh;
-      return _regenerator().w(function (_context16) {
-        while (1) switch (_context16.n) {
+      return _regenerator().w(function (_context15) {
+        while (1) switch (_context15.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -4717,23 +4912,22 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context16.n = 1;
+            _context15.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
-            return _context16.a(2);
+            return _context15.a(2);
         }
-      }, _callee16);
+      }, _callee15);
     }));
-    return function updateDay(_x14) {
-      return _ref44.apply(this, arguments);
+    return function updateDay(_x13) {
+      return _ref42.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(weight) {
-      var _ACTIVITY$p$activity;
+    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(weight) {
       var entry, updated, p, base, result, newAdj;
-      return _regenerator().w(function (_context17) {
-        while (1) switch (_context17.n) {
+      return _regenerator().w(function (_context16) {
+        while (1) switch (_context16.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -4745,34 +4939,35 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context17.n = 1;
+            _context16.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             // Run calibration whenever a new weigh-in arrives
             p = prof || DEF_PROFILE;
-            base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * (((_ACTIVITY$p$activity = ACTIVITY[p.activity]) === null || _ACTIVITY$p$activity === void 0 ? void 0 : _ACTIVITY$p$activity.mult) || 1.375));
+            base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context17.n = 2;
+              _context16.n = 2;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context17.n = 2;
+            _context16.n = 2;
             return ss("tdee_adj", String(newAdj));
           case 2:
-            return _context17.a(2);
+            return _context16.a(2);
         }
-      }, _callee17);
+      }, _callee16);
     }));
-    return function onWeighIn(_x15) {
-      return _ref45.apply(this, arguments);
+    return function onWeighIn(_x14) {
+      return _ref43.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
-  var baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * (((_ACTIVITY$p$activity2 = ACTIVITY[p.activity]) === null || _ACTIVITY$p$activity2 === void 0 ? void 0 : _ACTIVITY$p$activity2.mult) || 1.375));
-  var sessionKcal = train ? session.hevyKcal != null ? session.hevyKcal : estimateSessionKcal((prof || DEF_PROFILE).weight, (prof || DEF_PROFILE).bodyFat, session.type, session.duration, session.intensity) : null;
-  var targets = calcTargets(prof || DEF_PROFILE, mode, train, sessionKcal, tdeeAdj);
+  var baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
+  var targets = calcTargets(prof || DEF_PROFILE, mode, workouts.reduce(function (s, w) {
+    return s + (w.kcal || 0);
+  }, 0), tdeeAdj);
   var totals = sumLogs(logs);
   var remaining = targets.kcal - totals.kcal;
   var streak = calcStreak(hist);
@@ -4868,8 +5063,6 @@ function App() {
     remaining: remaining,
     water: water,
     setWater: saveWater,
-    isTraining: train,
-    setIsTraining: saveTrain,
     mode: mode,
     setMode: saveMode,
     setView: setView,
@@ -4877,14 +5070,15 @@ function App() {
     addToQA: addToQA,
     hasProfile: !!prof,
     streak: streak,
-    session: session,
-    onSession: onSession,
-    sessionKcal: sessionKcal,
     prof: prof,
     weighIns: weighIns,
     onWeighIn: onWeighIn,
     tdeeAdj: tdeeAdj,
-    baseTDEE: baseTDEE
+    baseTDEE: baseTDEE,
+    coachKey: coachKey,
+    workouts: workouts,
+    onAddWorkout: addWorkout,
+    onRemoveWorkout: removeWorkout
   }), view === "profile" && /*#__PURE__*/React.createElement(ProfileScreen, {
     profile: prof || DEF_PROFILE,
     onSave: saveProf,
@@ -4910,14 +5104,14 @@ function App() {
     onBack: function onBack() {
       return setView("dashboard");
     }
-  }), view === "history" && /*#__PURE__*/React.createElement(History, {
+  }), view === "history" && /*#__PURE__*/React.createElement(ErrorBoundary, null, /*#__PURE__*/React.createElement(History, {
     history: hist,
     onBack: function onBack() {
       return setView("dashboard");
     },
     onUpdateDay: updateDay,
     weighIns: weighIns
-  }), view === "achievements" && /*#__PURE__*/React.createElement(Achievements, {
+  })), view === "achievements" && /*#__PURE__*/React.createElement(Achievements, {
     earnedBdgs: earnedBdgs,
     onBack: function onBack() {
       return setView("dashboard");

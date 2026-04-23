@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0b0d0b"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Fuel Log"/>
+  <title>Fuel Log</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="icon" type="image/svg+xml" href="icon.svg"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0b0d0b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input::placeholder, textarea::placeholder { color: #2a3228; }
+    select { background: #0b0d0b; color: #d8e8d0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- CDN dependencies — loaded before app.js -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+
+  <script>
+    // localStorage bridge — matches window.storage API used in app
+    window.storage = {
+      get:    async k => { const v = localStorage.getItem(k); return v !== null ? { value: v } : null; },
+      set:    async (k, v) => { localStorage.setItem(k, String(v)); return { value: v }; },
+      delete: async k => { localStorage.removeItem(k); return { deleted: true }; },
+    };
+
+    // Make React hooks and Recharts available as globals for the compiled app
+    const { useState, useEffect } = React;
+    const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+            XAxis, YAxis, Tooltip, ResponsiveContainer } = (typeof Recharts !== "undefined" ? Recharts : {});
+  </script>
+
+  <!-- Pre-compiled app — loaded from repo root -->
+  <script src="../app.js"></script>
+</body>
+</html>
