@@ -1,5 +1,5 @@
 # FUEL LOG — Product Documentation
-**Version:** 5.0 (Adaptive TDEE)
+**Version:** 5.1 (Codebase cleanup)
 **Last Updated:** April 2026
 
 ---
@@ -36,6 +36,7 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 - No colons in storage keys — use `__` double-underscores only.
 - No `<form>` tags — use `<div>` + onClick.
 - `BackHdr` must be `position:sticky` so back button stays visible on scroll.
+- All AI calls must go through `callAI` / `callAIJson` helpers — never call `fetch(AI_ENDPOINT)` directly.
 - Service worker bypasses `workers.dev`, `unpkg.com`, and `openfoodfacts.org`. Any new external API must be added to the bypass list in `sw.js`, otherwise POST responses get cached incorrectly and the feature silently returns HTML instead of JSON.
 
 ---
@@ -45,18 +46,11 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 ```
 LBM    = weight × (1 − bodyFat / 100)
 BMR    = 370 + (21.6 × LBM)
-TDEE   = (BMR × activity multiplier) + tdeeAdj
-Target = TDEE + mode adjustment + training bonus
+TDEE   = (BMR × 1.2) + tdeeAdj        ← fixed baseline; adaptive engine adjusts tdeeAdj over time
+Target = TDEE + mode adjustment + workout kcal
 ```
 
-### Activity multipliers
-| Key | Label | Multiplier |
-|---|---|---|
-| sedentary | Sedentary | 1.2 |
-| light (default) | Lightly Active | 1.375 |
-| moderate | Moderately Active | 1.55 |
-| active | Very Active | 1.725 |
-| very | Extra Active | 1.9 |
+Activity multipliers were removed in v5.1. The fixed ×1.2 (sedentary baseline) is intentionally conservative — any real activity above sedentary shows up as logged workout kcal, and the adaptive TDEE engine corrects the remainder within 2 weeks of weigh-ins.
 
 ### Mode adjustments
 | Mode | Adjustment |
@@ -65,13 +59,14 @@ Target = TDEE + mode adjustment + training bonus
 | MAINTAIN | 0 kcal |
 | BULK | +500 kcal |
 
-### Training bonus
-```javascript
-// Default (no session logged):
-bonus = Math.round(weight × 2.8)   // 80kg → 224 kcal
+### Workout kcal
+Logged workouts add to the calorie target for the day. Each workout entry is stored and persists; multiple per day supported.
 
-// When session logged (MET-based):
-bonus = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
+```javascript
+// MET-based estimate per workout:
+kcal = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
+
+// Target = TDEE + mode adj + sum of all workout kcal today
 ```
 
 ### MET values
@@ -83,7 +78,7 @@ bonus = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
 | Full Body | 4.5 | 6.5 | 9.0 |
 | Cardio | 5.0 | 7.0 | 10.0 |
 
-`calcTargets` signature: `calcTargets(profile, mode, isTraining, sessKcal=null, tdeeAdj=0)`
+`calcTargets` signature: `calcTargets(profile, mode, totalWorkoutKcal=0, tdeeAdj=0)`
 Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus}`.
 
 ---
@@ -144,7 +139,7 @@ cumulativeAdj  = clamp(cumulativeAdj + adj, -600, +600)        // lifetime cap
 
 | Key | Value |
 |---|---|
-| `profile` | JSON: `{weight, height, bodyFat, activity}` |
+| `profile` | JSON: `{weight, height, bodyFat}` |
 | `meals` | JSON: meal library array |
 | `history` | JSON: snapshot array (sorted date asc) |
 | `badges` | JSON: array of earned badge keys e.g. `["streak_0","logger_0"]` |
@@ -152,9 +147,8 @@ cumulativeAdj  = clamp(cumulativeAdj + adj, -600, +600)        // lifetime cap
 | `tdee_adj` | Integer string: cumulative TDEE calibration offset (kcal) |
 | `logs__YYYY-MM-DD` | JSON: food log entries |
 | `water__YYYY-MM-DD` | Integer string |
-| `train__YYYY-MM-DD` | `"true"` / `"false"` |
+| `workouts__YYYY-MM-DD` | JSON: `[{id, type, duration, intensity, kcal, time, notes?}]` |
 | `mode__YYYY-MM-DD` | `"cut"` / `"maintain"` / `"bulk"` |
-| `session__YYYY-MM-DD` | JSON: `{type, duration, intensity, hevyKcal?}` |
 | `coach__YYYY-MM-DD` | JSON: `{tip, r}` (AI tip text + refresh count) |
 
 ---
@@ -168,17 +162,17 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `view` | string | Current screen |
 | `logs` | array | Today's food entries |
 | `water` | number | Glasses today |
-| `train` | boolean | Training day toggle |
+| `workouts` | array | Today's logged workouts `[{id, type, duration, intensity, kcal, time, notes?}]` |
 | `mode` | string | cut/maintain/bulk |
 | `prof` | object/null | Body profile |
 | `hist` | array | All historical snapshots |
 | `meals` | array | Meal library — shared with QuickAdd |
-| `session` | object | `{type, duration, intensity, hevyKcal?}` |
 | `earnedBdgs` | array | Earned badge keys |
 | `newBadge` | object/null | Currently celebrating badge tier |
 | `ready` | boolean | Data loaded |
 | `weighIns` | array | `[{date, weight}]` — all weigh-ins sorted by date |
 | `tdeeAdj` | number | Cumulative TDEE calibration offset in kcal |
+| `coachKey` | number | Incremented to force CoachCard remount on dev time reset |
 
 ---
 
@@ -186,14 +180,15 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 
 | Component | Key props | Notes |
 |---|---|---|
-| `Dashboard` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Shows all today's data + weigh-in widget |
+| `Dashboard` | `weighIns, onWeighIn, tdeeAdj, baseTDEE, workouts, onAddWorkout, onRemoveWorkout` | Shows all today's data + weigh-in widget + workout logger |
 | `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
-| `CoachCard` | `mode, totals, targets, streak, water` | Auto-generates when 200+ kcal logged |
+| `WorkoutLogger` | `workouts, onAdd, onRemove, prof` | Log/delete multiple workouts; paste Hevy log for AI parse |
+| `CoachCard` | `mode, totals, targets, streak, water` | Auto-generates when 200+ kcal logged; uses `callAI` |
 | `ProfileScreen` | `tdeeAdj, weighIns` | Shows formula TDEE, adjustment, effective TDEE, confidence |
-| `AILog` | `onAdd` | AI-powered meal breakdown with confidence scores |
+| `AILog` | `onAdd` | AI-powered meal breakdown with confidence scores; uses `callAI`/`callAIJson` |
 | `QuickAdd` | `meals, setMeals` | Shared state from Root |
 | `FoodSearch` | `onAdd` | Open Food Facts search with robust kcal/serving parsing |
-| `History` | `history, onUpdateDay, weighIns` | Charts including weight trend, day edit, CSV |
+| `History` | `history, onUpdateDay, weighIns` | Charts including weight + 7-day rolling avg, day edit, CSV |
 | `Achievements` | `earnedBdgs` | Badge display with tier progression |
 
 ---
@@ -226,6 +221,12 @@ Max 3 refreshes/day. Stored in `coach__YYYY-MM-DD`.
 ### API endpoint
 All AI calls route through `AI_ENDPOINT` (Cloudflare Worker proxy at `fuellog.adriandavidrichards.workers.dev`). The worker adds the `ANTHROPIC_KEY` secret and forwards to `api.anthropic.com`. Model: `claude-sonnet-4-6`.
 
+Two shared helpers handle all AI calls — **do not call `fetch(AI_ENDPOINT)` directly**:
+```javascript
+callAI(prompt, maxTokens)     // → string (raw text response)
+callAIJson(prompt, maxTokens) // → parsed object (strips ```json fences automatically)
+```
+
 ---
 
 ## 9. Food Search
@@ -242,7 +243,7 @@ Searches Open Food Facts (millions of products, no API key). Parsing:
 The History screen supports:
 - **Range filters**: Day / 7 Days / 30 Days / 3 Months / 1 Year / All Time
 - **Macro charts**: Kcal, Protein, Carbs, Fat (line or bar)
-- **Weight chart**: Toggle ⚖️ Weight to see body weight trend over the selected range (shown when weigh-ins exist)
+- **Weight chart**: Toggle ⚖️ Weight to see body weight trend. Shows daily readings (blue dots) + 7-day rolling average line (green) to cut through noise. Rolling avg requires ≥3 readings in the window.
 - **Weight trend summary**: First → last weight and total change shown in averages card
 - **Day view**: Full food log, macro pie chart, water, training toggle, add/remove entries, CSV export
 

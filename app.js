@@ -3,15 +3,15 @@ function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArra
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
 function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
-function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
-function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
-function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
 function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
 function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = r[t]; o.enumerable = o.enumerable || !1, o.configurable = !0, "value" in o && (o.writable = !0), Object.defineProperty(e, _toPropertyKey(o.key), o); } }
 function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
@@ -55,28 +55,6 @@ var MODES = {
     label: "BULK",
     color: "#ff7b4b",
     adj: 500
-  }
-};
-var ACTIVITY = {
-  sedentary: {
-    label: "Sedentary",
-    mult: 1.2
-  },
-  light: {
-    label: "Lightly Active",
-    mult: 1.375
-  },
-  moderate: {
-    label: "Moderately Active",
-    mult: 1.55
-  },
-  active: {
-    label: "Very Active",
-    mult: 1.725
-  },
-  very: {
-    label: "Extra Active",
-    mult: 1.9
   }
 };
 var SESS_TYPES = ["legs", "push", "pull", "fullbody", "cardio"];
@@ -445,6 +423,70 @@ var ss = /*#__PURE__*/function () {
   };
 }();
 
+// Shared AI fetch — returns the text content string, throws on failure
+var callAI = /*#__PURE__*/function () {
+  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(prompt) {
+    var maxTokens,
+      res,
+      data,
+      _args3 = arguments;
+    return _regenerator().w(function (_context3) {
+      while (1) switch (_context3.n) {
+        case 0:
+          maxTokens = _args3.length > 1 && _args3[1] !== undefined ? _args3[1] : 500;
+          _context3.n = 1;
+          return fetch(AI_ENDPOINT, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6",
+              max_tokens: maxTokens,
+              messages: [{
+                role: "user",
+                content: prompt
+              }]
+            })
+          });
+        case 1:
+          res = _context3.v;
+          _context3.n = 2;
+          return res.json();
+        case 2:
+          data = _context3.v;
+          return _context3.a(2, (data.content || []).map(function (b) {
+            return b.text || "";
+          }).join("").trim());
+      }
+    }, _callee3);
+  }));
+  return function callAI(_x4) {
+    return _ref3.apply(this, arguments);
+  };
+}();
+var callAIJson = /*#__PURE__*/function () {
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(prompt) {
+    var maxTokens,
+      text,
+      _args4 = arguments;
+    return _regenerator().w(function (_context4) {
+      while (1) switch (_context4.n) {
+        case 0:
+          maxTokens = _args4.length > 1 && _args4[1] !== undefined ? _args4[1] : 500;
+          _context4.n = 1;
+          return callAI(prompt, maxTokens);
+        case 1:
+          text = _context4.v;
+          return _context4.a(2, JSON.parse(text.replace(/```json|```/g, "").trim()));
+      }
+    }, _callee4);
+  }));
+  return function callAIJson(_x5) {
+    return _ref4.apply(this, arguments);
+  };
+}();
+
 // ── Error Boundary ────────────────────────────────────────────
 var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
   function ErrorBoundary(props) {
@@ -505,23 +547,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function Btn(_ref3) {
-  var onClick = _ref3.onClick,
-    disabled = _ref3.disabled,
-    style = _ref3.style,
-    children = _ref3.children;
-  return /*#__PURE__*/React.createElement("button", {
-    onClick: onClick,
-    disabled: disabled,
-    style: _objectSpread({
-      cursor: disabled ? "not-allowed" : "pointer"
-    }, style)
-  }, children);
-}
-function BackHdr(_ref4) {
-  var title = _ref4.title,
-    onBack = _ref4.onBack,
-    right = _ref4.right;
+function BackHdr(_ref5) {
+  var title = _ref5.title,
+    onBack = _ref5.onBack,
+    right = _ref5.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -536,7 +565,7 @@ function BackHdr(_ref4) {
       paddingBottom: 12,
       marginTop: -12
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: onBack,
     style: {
       background: "#161a16",
@@ -562,10 +591,10 @@ function BackHdr(_ref4) {
     }
   }, title), right);
 }
-function Chip(_ref5) {
-  var label = _ref5.label,
-    value = _ref5.value,
-    color = _ref5.color;
+function Chip(_ref6) {
+  var label = _ref6.label,
+    value = _ref6.value,
+    color = _ref6.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -588,11 +617,11 @@ function Chip(_ref5) {
     }
   }, label));
 }
-function MBar(_ref6) {
-  var label = _ref6.label,
-    value = _ref6.value,
-    target = _ref6.target,
-    color = _ref6.color;
+function MBar(_ref7) {
+  var label = _ref7.label,
+    value = _ref7.value,
+    target = _ref7.target,
+    color = _ref7.color;
   var pct = Math.min(100, value / target * 100);
   var over = value > target;
   return /*#__PURE__*/React.createElement("div", {
@@ -636,12 +665,12 @@ function MBar(_ref6) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref7) {
-  var mode = _ref7.mode,
-    totals = _ref7.totals,
-    targets = _ref7.targets,
-    streak = _ref7.streak,
-    water = _ref7.water;
+function CoachCard(_ref8) {
+  var mode = _ref8.mode,
+    totals = _ref8.totals,
+    targets = _ref8.targets,
+    streak = _ref8.streak,
+    water = _ref8.water;
   var _useState = useState(""),
     _useState2 = _slicedToArray(_useState, 2),
     tip = _useState2[0],
@@ -668,69 +697,49 @@ function CoachCard(_ref7) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
-      var h, timeLabel, prompt, res, data, t, r, _t3;
-      return _regenerator().w(function (_context3) {
-        while (1) switch (_context3.p = _context3.n) {
+    var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5() {
+      var h, timeLabel, prompt, t, r, _t3;
+      return _regenerator().w(function (_context5) {
+        while (1) switch (_context5.p = _context5.n) {
           case 0:
             if (!(loading || refreshes >= 3)) {
-              _context3.n = 1;
+              _context5.n = 1;
               break;
             }
-            return _context3.a(2);
+            return _context5.a(2);
           case 1:
             setLoading(true);
-            _context3.p = 2;
+            _context5.p = 2;
             h = getCurrentHour();
             timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
             prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today: ").concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
-            _context3.n = 3;
-            return fetch(AI_ENDPOINT, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 200,
-                messages: [{
-                  role: "user",
-                  content: prompt
-                }]
-              })
-            });
+            _context5.n = 3;
+            return callAI(prompt, 200);
           case 3:
-            res = _context3.v;
-            _context3.n = 4;
-            return res.json();
-          case 4:
-            data = _context3.v;
-            t = (data.content || []).map(function (b) {
-              return b.text || "";
-            }).join("").trim();
+            t = _context5.v;
             r = refreshes + 1;
             setTip(t);
             setRefreshes(r);
-            _context3.n = 5;
+            _context5.n = 4;
             return ss("coach__" + todayKey(), JSON.stringify({
               tip: t,
               r: r
             }));
-          case 5:
-            _context3.n = 7;
+          case 4:
+            _context5.n = 6;
             break;
+          case 5:
+            _context5.p = 5;
+            _t3 = _context5.v;
           case 6:
-            _context3.p = 6;
-            _t3 = _context3.v;
-          case 7:
             setLoading(false);
-          case 8:
-            return _context3.a(2);
+          case 7:
+            return _context5.a(2);
         }
-      }, _callee3, null, [[2, 6]]);
+      }, _callee5, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref8.apply(this, arguments);
+      return _ref9.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -789,14 +798,14 @@ function CoachCard(_ref7) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen(_ref9) {
-  var profile = _ref9.profile,
-    onSave = _ref9.onSave,
-    onBack = _ref9.onBack,
-    _ref9$tdeeAdj = _ref9.tdeeAdj,
-    tdeeAdj = _ref9$tdeeAdj === void 0 ? 0 : _ref9$tdeeAdj,
-    _ref9$weighIns = _ref9.weighIns,
-    weighIns = _ref9$weighIns === void 0 ? [] : _ref9$weighIns;
+function ProfileScreen(_ref0) {
+  var profile = _ref0.profile,
+    onSave = _ref0.onSave,
+    onBack = _ref0.onBack,
+    _ref0$tdeeAdj = _ref0.tdeeAdj,
+    tdeeAdj = _ref0$tdeeAdj === void 0 ? 0 : _ref0$tdeeAdj,
+    _ref0$weighIns = _ref0.weighIns,
+    weighIns = _ref0$weighIns === void 0 ? [] : _ref0$weighIns;
   var _useState7 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState8 = _slicedToArray(_useState7, 2),
     f = _useState8[0],
@@ -1063,10 +1072,10 @@ function ProfileScreen(_ref9) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref0) {
-    var mode = _ref0.mode,
-      label = _ref0.label,
-      color = _ref0.color;
+  }].map(function (_ref1) {
+    var mode = _ref1.mode,
+      label = _ref1.label,
+      color = _ref1.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -1089,11 +1098,11 @@ function ProfileScreen(_ref9) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref1) {
-      var _ref10 = _slicedToArray(_ref1, 3),
-        k = _ref10[0],
-        key = _ref10[1],
-        u = _ref10[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref10) {
+      var _ref11 = _slicedToArray(_ref10, 3),
+        k = _ref11[0],
+        key = _ref11[1],
+        u = _ref11[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -1125,10 +1134,10 @@ function ProfileScreen(_ref9) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref11) {
-  var meal = _ref11.meal,
-    onSave = _ref11.onSave,
-    onCancel = _ref11.onCancel;
+function MealForm(_ref12) {
+  var meal = _ref12.meal,
+    onSave = _ref12.onSave,
+    onCancel = _ref12.onCancel;
   var blank = {
     name: "",
     kcal: "",
@@ -1189,7 +1198,7 @@ function MealForm(_ref11) {
       fontSize: 16,
       fontWeight: 900
     }
-  }, meal ? "EDIT MEAL" : "ADD MEAL"), /*#__PURE__*/React.createElement(Btn, {
+  }, meal ? "EDIT MEAL" : "ADD MEAL"), /*#__PURE__*/React.createElement("button", {
     onClick: onCancel,
     style: {
       background: "none",
@@ -1258,7 +1267,7 @@ function MealForm(_ref11) {
       placeholder: "0",
       style: INP
     }));
-  })), /*#__PURE__*/React.createElement(Btn, {
+  })), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return ok && onSave({
         name: f.name.trim(),
@@ -1285,11 +1294,11 @@ function MealForm(_ref11) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref12) {
-  var weighIns = _ref12.weighIns,
-    onWeighIn = _ref12.onWeighIn,
-    tdeeAdj = _ref12.tdeeAdj,
-    baseTDEE = _ref12.baseTDEE;
+function WeighInWidget(_ref13) {
+  var weighIns = _ref13.weighIns,
+    onWeighIn = _ref13.onWeighIn,
+    tdeeAdj = _ref13.tdeeAdj,
+    baseTDEE = _ref13.baseTDEE;
   var _useState11 = useState(""),
     _useState12 = _slicedToArray(_useState11, 2),
     val = _useState12[0],
@@ -1416,7 +1425,7 @@ function WeighInWidget(_ref12) {
     onKeyDown: function onKeyDown(e) {
       return e.key === "Enter" && Number(val) > 0 && (onWeighIn(Number(val)), setVal(""));
     }
-  }), /*#__PURE__*/React.createElement(Btn, {
+  }), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       if (Number(val) > 0) {
         onWeighIn(Number(val));
@@ -1444,11 +1453,11 @@ function WeighInWidget(_ref12) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref13) {
-  var workouts = _ref13.workouts,
-    onAdd = _ref13.onAdd,
-    onRemove = _ref13.onRemove,
-    prof = _ref13.prof;
+function WorkoutLogger(_ref14) {
+  var workouts = _ref14.workouts,
+    onAdd = _ref14.onAdd,
+    onRemove = _ref14.onRemove,
+    prof = _ref14.prof;
   var _useState13 = useState("legs"),
     _useState14 = _slicedToArray(_useState13, 2),
     type = _useState14[0],
@@ -1496,62 +1505,43 @@ function WorkoutLogger(_ref13) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4() {
-      var res, data, text, _t4;
-      return _regenerator().w(function (_context4) {
-        while (1) switch (_context4.p = _context4.n) {
+    var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+      var prompt, _t4, _t5;
+      return _regenerator().w(function (_context6) {
+        while (1) switch (_context6.p = _context6.n) {
           case 0:
             if (!(!hevyText.trim() || hevyLoading)) {
-              _context4.n = 1;
+              _context6.n = 1;
               break;
             }
-            return _context4.a(2);
+            return _context6.a(2);
           case 1:
             setHevyLoading(true);
             setHevyResult(null);
-            _context4.p = 2;
-            _context4.n = 3;
-            return fetch(AI_ENDPOINT, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 200,
-                messages: [{
-                  role: "user",
-                  content: "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}")
-                }]
-              })
-            });
+            _context6.p = 2;
+            prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
+            _t4 = setHevyResult;
+            _context6.n = 3;
+            return callAIJson(prompt, 200);
           case 3:
-            res = _context4.v;
-            _context4.n = 4;
-            return res.json();
-          case 4:
-            data = _context4.v;
-            text = (data.content || []).map(function (b) {
-              return b.text || "";
-            }).join("").trim();
-            setHevyResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
-            _context4.n = 6;
+            _t4(_context6.v);
+            _context6.n = 5;
             break;
-          case 5:
-            _context4.p = 5;
-            _t4 = _context4.v;
+          case 4:
+            _context6.p = 4;
+            _t5 = _context6.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
-          case 6:
+          case 5:
             setHevyLoading(false);
-          case 7:
-            return _context4.a(2);
+          case 6:
+            return _context6.a(2);
         }
-      }, _callee4, null, [[2, 5]]);
+      }, _callee6, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref14.apply(this, arguments);
+      return _ref15.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -1861,29 +1851,29 @@ function WorkoutLogger(_ref13) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-function Dashboard(_ref15) {
-  var logs = _ref15.logs,
-    totals = _ref15.totals,
-    targets = _ref15.targets,
-    remaining = _ref15.remaining,
-    water = _ref15.water,
-    setWater = _ref15.setWater,
-    mode = _ref15.mode,
-    setMode = _ref15.setMode,
-    setView = _ref15.setView,
-    removeLog = _ref15.removeLog,
-    addToQA = _ref15.addToQA,
-    hasProfile = _ref15.hasProfile,
-    streak = _ref15.streak,
-    prof = _ref15.prof,
-    weighIns = _ref15.weighIns,
-    onWeighIn = _ref15.onWeighIn,
-    tdeeAdj = _ref15.tdeeAdj,
-    baseTDEE = _ref15.baseTDEE,
-    coachKey = _ref15.coachKey,
-    workouts = _ref15.workouts,
-    onAddWorkout = _ref15.onAddWorkout,
-    onRemoveWorkout = _ref15.onRemoveWorkout;
+function Dashboard(_ref16) {
+  var logs = _ref16.logs,
+    totals = _ref16.totals,
+    targets = _ref16.targets,
+    remaining = _ref16.remaining,
+    water = _ref16.water,
+    setWater = _ref16.setWater,
+    mode = _ref16.mode,
+    setMode = _ref16.setMode,
+    setView = _ref16.setView,
+    removeLog = _ref16.removeLog,
+    addToQA = _ref16.addToQA,
+    hasProfile = _ref16.hasProfile,
+    streak = _ref16.streak,
+    prof = _ref16.prof,
+    weighIns = _ref16.weighIns,
+    onWeighIn = _ref16.onWeighIn,
+    tdeeAdj = _ref16.tdeeAdj,
+    baseTDEE = _ref16.baseTDEE,
+    coachKey = _ref16.coachKey,
+    workouts = _ref16.workouts,
+    onAddWorkout = _ref16.onAddWorkout,
+    onRemoveWorkout = _ref16.onRemoveWorkout;
   var over = totals.kcal > targets.kcal;
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -1893,11 +1883,11 @@ function Dashboard(_ref15) {
     savedIds = _useState28[0],
     setSavedIds = _useState28[1];
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(log) {
-      return _regenerator().w(function (_context5) {
-        while (1) switch (_context5.n) {
+    var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(log) {
+      return _regenerator().w(function (_context7) {
+        while (1) switch (_context7.n) {
           case 0:
-            _context5.n = 1;
+            _context7.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -1909,12 +1899,12 @@ function Dashboard(_ref15) {
               });
             }, 1800);
           case 2:
-            return _context5.a(2);
+            return _context7.a(2);
         }
-      }, _callee5);
+      }, _callee7);
     }));
-    return function handleAddToQA(_x4) {
-      return _ref16.apply(this, arguments);
+    return function handleAddToQA(_x6) {
+      return _ref17.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1966,7 +1956,7 @@ function Dashboard(_ref15) {
       fontWeight: 900,
       color: A
     }
-  }, "\uD83D\uDD25", streak), /*#__PURE__*/React.createElement(Btn, {
+  }, "\uD83D\uDD25", streak), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setView("profile");
     },
@@ -1982,7 +1972,7 @@ function Dashboard(_ref15) {
       alignItems: "center",
       justifyContent: "center"
     }
-  }, "\u2699\uFE0F"), /*#__PURE__*/React.createElement(Btn, {
+  }, "\u2699\uFE0F"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setView("history");
     },
@@ -1998,7 +1988,7 @@ function Dashboard(_ref15) {
       alignItems: "center",
       justifyContent: "center"
     }
-  }, "\uD83D\uDCCA"), /*#__PURE__*/React.createElement(Btn, {
+  }, "\uD83D\uDCCA"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setView("achievements");
     },
@@ -2020,11 +2010,11 @@ function Dashboard(_ref15) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref17) {
-    var _ref18 = _slicedToArray(_ref17, 2),
-      k = _ref18[0],
-      v = _ref18[1];
-    return /*#__PURE__*/React.createElement(Btn, {
+  }, Object.entries(MODES).map(function (_ref18) {
+    var _ref19 = _slicedToArray(_ref18, 2),
+      k = _ref19[0],
+      v = _ref19[1];
+    return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
         return setMode(k);
@@ -2046,7 +2036,7 @@ function Dashboard(_ref15) {
     onAdd: onAddWorkout,
     onRemove: onRemoveWorkout,
     prof: prof
-  }), !hasProfile && /*#__PURE__*/React.createElement(Btn, {
+  }), !hasProfile && /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setView("profile");
     },
@@ -2237,7 +2227,7 @@ function Dashboard(_ref15) {
       display: "flex",
       gap: 8
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setWater(Math.max(0, water - 1));
     },
@@ -2253,7 +2243,7 @@ function Dashboard(_ref15) {
       alignItems: "center",
       justifyContent: "center"
     }
-  }, "\u2212"), /*#__PURE__*/React.createElement(Btn, {
+  }, "\u2212"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setWater(water + 1);
     },
@@ -2315,7 +2305,7 @@ function Dashboard(_ref15) {
     s: "food database",
     v: "search"
   }].map(function (b) {
-    return /*#__PURE__*/React.createElement(Btn, {
+    return /*#__PURE__*/React.createElement("button", {
       key: b.v,
       onClick: function onClick() {
         return setView(b.v);
@@ -2462,36 +2452,36 @@ var confColor = function confColor(c) {
 var confLabel = function confLabel(c) {
   return c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 };
-function searchOFT(_x5) {
+function searchOFT(_x7) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(query) {
-    var _p$product_name2, res, data, p, sg2, f, n, _t8;
-    return _regenerator().w(function (_context17) {
-      while (1) switch (_context17.p = _context17.n) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(query) {
+    var _p$product_name2, res, data, p, sg2, f, n, _t9;
+    return _regenerator().w(function (_context19) {
+      while (1) switch (_context19.p = _context19.n) {
         case 0:
-          _context17.p = 0;
-          _context17.n = 1;
+          _context19.p = 0;
+          _context19.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context17.v;
-          _context17.n = 2;
+          res = _context19.v;
+          _context19.n = 2;
           return res.json();
         case 2:
-          data = _context17.v;
+          data = _context19.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context17.n = 3;
+            _context19.n = 3;
             break;
           }
-          return _context17.a(2, null);
+          return _context19.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context17.a(2, {
+          return _context19.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -2502,18 +2492,18 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context17.p = 4;
-          _t8 = _context17.v;
-          return _context17.a(2, null);
+          _context19.p = 4;
+          _t9 = _context19.v;
+          return _context19.a(2, null);
       }
-    }, _callee17, null, [[0, 4]]);
+    }, _callee19, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref19) {
-  var item = _ref19.item,
-    onReestimate = _ref19.onReestimate,
-    reestimating = _ref19.reestimating;
+function ItemRow(_ref20) {
+  var item = _ref20.item,
+    onReestimate = _ref20.onReestimate,
+    reestimating = _ref20.reestimating;
   var _useState29 = useState(false),
     _useState30 = _slicedToArray(_useState29, 2),
     editing = _useState30[0],
@@ -2633,9 +2623,9 @@ function ItemRow(_ref19) {
     }
   }, item.reasoning));
 }
-function AILog(_ref20) {
-  var onAdd = _ref20.onAdd,
-    onBack = _ref20.onBack;
+function AILog(_ref21) {
+  var onAdd = _ref21.onAdd,
+    onBack = _ref21.onBack;
   var _useState33 = useState(""),
     _useState34 = _slicedToArray(_useState33, 2),
     desc = _useState34[0],
@@ -2677,54 +2667,33 @@ function AILog(_ref20) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
-      var aiPromise, aiData, text, parsed, aiItems, oftResults, merged, _t5;
-      return _regenerator().w(function (_context6) {
-        while (1) switch (_context6.p = _context6.n) {
+    var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
+      var parsed, aiItems, oftResults, merged, _t6;
+      return _regenerator().w(function (_context8) {
+        while (1) switch (_context8.p = _context8.n) {
           case 0:
             if (desc.trim()) {
-              _context6.n = 1;
+              _context8.n = 1;
               break;
             }
-            return _context6.a(2);
+            return _context8.a(2);
           case 1:
             setLoading(true);
             setError("");
             setItems(null);
             setLoggedAll(false);
-            _context6.p = 2;
-            // Fire AI and OFT searches in parallel
-            aiPromise = fetch(AI_ENDPOINT, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 1000,
-                messages: [{
-                  role: "user",
-                  content: AI_PROMPT(desc)
-                }]
-              })
-            }).then(function (r) {
-              return r.json();
-            });
-            _context6.n = 3;
-            return aiPromise;
+            _context8.p = 2;
+            _context8.n = 3;
+            return callAIJson(AI_PROMPT(desc), 1000);
           case 3:
-            aiData = _context6.v;
-            text = (aiData.content || []).map(function (b) {
-              return b.text || "";
-            }).join("");
-            parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+            parsed = _context8.v;
             aiItems = parsed.items || []; // OFT parallel lookup for each item
-            _context6.n = 4;
+            _context8.n = 4;
             return Promise.all(aiItems.map(function (it) {
               return searchOFT(it.name);
             }));
           case 4:
-            oftResults = _context6.v;
+            oftResults = _context8.v;
             merged = aiItems.map(function (it, i) {
               var oft = oftResults[i];
               // Use OFT data if found AND it has higher confidence than AI estimate
@@ -2734,60 +2703,39 @@ function AILog(_ref20) {
               return it;
             });
             setItems(merged);
-            _context6.n = 6;
+            _context8.n = 6;
             break;
           case 5:
-            _context6.p = 5;
-            _t5 = _context6.v;
-            setError("Estimation failed: " + _t5.message);
+            _context8.p = 5;
+            _t6 = _context8.v;
+            setError("Estimation failed: " + _t6.message);
           case 6:
             setLoading(false);
           case 7:
-            return _context6.a(2);
+            return _context8.a(2);
         }
-      }, _callee6, null, [[2, 5]]);
+      }, _callee8, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref21.apply(this, arguments);
+      return _ref22.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(idx, newName) {
-      var res, data, text, updated, oft, _final, _t6;
-      return _regenerator().w(function (_context7) {
-        while (1) switch (_context7.p = _context7.n) {
+    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(idx, newName) {
+      var updated, oft, _final, _t7;
+      return _regenerator().w(function (_context9) {
+        while (1) switch (_context9.p = _context9.n) {
           case 0:
             setReestIdx(idx);
-            _context7.p = 1;
-            _context7.n = 2;
-            return fetch(AI_ENDPOINT, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 300,
-                messages: [{
-                  role: "user",
-                  content: AI_REESTIMATE_PROMPT(newName)
-                }]
-              })
-            });
+            _context9.p = 1;
+            _context9.n = 2;
+            return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            res = _context7.v;
-            _context7.n = 3;
-            return res.json();
-          case 3:
-            data = _context7.v;
-            text = (data.content || []).map(function (b) {
-              return b.text || "";
-            }).join("");
-            updated = JSON.parse(text.replace(/```json|```/g, "").trim()); // Try OFT for the new name too
-            _context7.n = 4;
+            updated = _context9.v;
+            _context9.n = 3;
             return searchOFT(newName);
-          case 4:
-            oft = _context7.v;
+          case 3:
+            oft = _context9.v;
             _final = oft && oft.confidence > updated.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
               name: newName
             }) : _objectSpread(_objectSpread({}, updated), {}, {
@@ -2798,20 +2746,20 @@ function AILog(_ref20) {
                 return i === idx ? _final : it;
               });
             });
-            _context7.n = 6;
+            _context9.n = 5;
             break;
+          case 4:
+            _context9.p = 4;
+            _t7 = _context9.v;
           case 5:
-            _context7.p = 5;
-            _t6 = _context7.v;
-          case 6:
             setReestIdx(null);
-          case 7:
-            return _context7.a(2);
+          case 6:
+            return _context9.a(2);
         }
-      }, _callee7, null, [[1, 5]]);
+      }, _callee9, null, [[1, 4]]);
     }));
-    return function reestimate(_x6, _x7) {
-      return _ref22.apply(this, arguments);
+    return function reestimate(_x8, _x9) {
+      return _ref23.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -3031,11 +2979,11 @@ function AILog(_ref20) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref23) {
-  var onAdd = _ref23.onAdd,
-    onBack = _ref23.onBack,
-    meals = _ref23.meals,
-    setMeals = _ref23.setMeals;
+function QuickAdd(_ref24) {
+  var onAdd = _ref24.onAdd,
+    onBack = _ref24.onBack,
+    meals = _ref24.meals,
+    setMeals = _ref24.setMeals;
   var _useState45 = useState(""),
     _useState46 = _slicedToArray(_useState45, 2),
     search = _useState46[0],
@@ -3045,20 +2993,20 @@ function QuickAdd(_ref23) {
     modal = _useState48[0],
     setModal = _useState48[1];
   var save = /*#__PURE__*/function () {
-    var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(m) {
-      return _regenerator().w(function (_context8) {
-        while (1) switch (_context8.n) {
+    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(m) {
+      return _regenerator().w(function (_context0) {
+        while (1) switch (_context0.n) {
           case 0:
             setMeals(m);
-            _context8.n = 1;
+            _context0.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context8.a(2);
+            return _context0.a(2);
         }
-      }, _callee8);
+      }, _callee0);
     }));
-    return function save(_x8) {
-      return _ref24.apply(this, arguments);
+    return function save(_x0) {
+      return _ref25.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -3108,7 +3056,7 @@ function QuickAdd(_ref23) {
       flex: 1,
       padding: "12px 16px"
     })
-  }), /*#__PURE__*/React.createElement(Btn, {
+  }), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setModal({
         meal: null,
@@ -3143,7 +3091,7 @@ function QuickAdd(_ref23) {
         alignItems: "center",
         gap: 8
       }
-    }, /*#__PURE__*/React.createElement(Btn, {
+    }, /*#__PURE__*/React.createElement("button", {
       onClick: function onClick() {
         onAdd(m);
         onBack();
@@ -3178,7 +3126,7 @@ function QuickAdd(_ref23) {
         color: A,
         flexShrink: 0
       }
-    }, m.kcal), /*#__PURE__*/React.createElement(Btn, {
+    }, m.kcal), /*#__PURE__*/React.createElement("button", {
       onClick: function onClick() {
         return setModal({
           meal: m,
@@ -3192,7 +3140,7 @@ function QuickAdd(_ref23) {
         padding: "4px 6px",
         flexShrink: 0
       }
-    }, "\u270F\uFE0F"), /*#__PURE__*/React.createElement(Btn, {
+    }, "\u270F\uFE0F"), /*#__PURE__*/React.createElement("button", {
       onClick: function onClick() {
         return save(meals.filter(function (_, i) {
           return i !== m._i;
@@ -3213,7 +3161,7 @@ function QuickAdd(_ref23) {
       padding: "30px 0",
       fontSize: 14
     }
-  }, "No meals found")), /*#__PURE__*/React.createElement(Btn, {
+  }, "No meals found")), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return save([].concat(DEF_MEALS));
     },
@@ -3233,9 +3181,9 @@ function QuickAdd(_ref23) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref25) {
-  var onAdd = _ref25.onAdd,
-    onBack = _ref25.onBack;
+function FoodSearch(_ref26) {
+  var onAdd = _ref26.onAdd,
+    onBack = _ref26.onBack;
   var _useState49 = useState(""),
     _useState50 = _slicedToArray(_useState49, 2),
     q = _useState50[0],
@@ -3257,36 +3205,36 @@ function FoodSearch(_ref25) {
     done = _useState58[0],
     setDone = _useState58[1];
   var search = /*#__PURE__*/function () {
-    var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
-      var res, data, parseServing, parseKcal, valid, _t7;
-      return _regenerator().w(function (_context9) {
-        while (1) switch (_context9.p = _context9.n) {
+    var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1() {
+      var res, data, parseServing, parseKcal, valid, _t8;
+      return _regenerator().w(function (_context1) {
+        while (1) switch (_context1.p = _context1.n) {
           case 0:
             if (q.trim()) {
-              _context9.n = 1;
+              _context1.n = 1;
               break;
             }
-            return _context9.a(2);
+            return _context1.a(2);
           case 1:
             setLoading(true);
             setError("");
             setResults([]);
             setDone(true);
-            _context9.p = 2;
-            _context9.n = 3;
+            _context1.p = 2;
+            _context1.n = 3;
             return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
           case 3:
-            res = _context9.v;
+            res = _context1.v;
             if (res.ok) {
-              _context9.n = 4;
+              _context1.n = 4;
               break;
             }
             throw new Error("Network error");
           case 4:
-            _context9.n = 5;
+            _context1.n = 5;
             return res.json();
           case 5:
-            data = _context9.v;
+            data = _context1.v;
             parseServing = function parseServing(raw) {
               if (!raw) return 100;
               var n = parseFloat(raw);
@@ -3302,12 +3250,12 @@ function FoodSearch(_ref25) {
               return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
             });
             if (valid.length) {
-              _context9.n = 6;
+              _context1.n = 6;
               break;
             }
             setError("No results — try a brand name or simpler search term.");
             setLoading(false);
-            return _context9.a(2);
+            return _context1.a(2);
           case 6:
             setResults(valid.slice(0, 12).map(function (p) {
               var _p$brands;
@@ -3325,21 +3273,21 @@ function FoodSearch(_ref25) {
                 notes: "Per serving (~".concat(Math.round(sg2), "g)")
               };
             }));
-            _context9.n = 8;
+            _context1.n = 8;
             break;
           case 7:
-            _context9.p = 7;
-            _t7 = _context9.v;
+            _context1.p = 7;
+            _t8 = _context1.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
           case 9:
-            return _context9.a(2);
+            return _context1.a(2);
         }
-      }, _callee9, null, [[2, 7]]);
+      }, _callee1, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref26.apply(this, arguments);
+      return _ref27.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3377,7 +3325,7 @@ function FoodSearch(_ref25) {
       flex: 1,
       padding: "13px 16px"
     })
-  }), /*#__PURE__*/React.createElement(Btn, {
+  }), /*#__PURE__*/React.createElement("button", {
     onClick: search,
     disabled: loading || !q.trim(),
     style: {
@@ -3412,7 +3360,7 @@ function FoodSearch(_ref25) {
       gap: 8
     }
   }, results.map(function (r, i) {
-    return /*#__PURE__*/React.createElement(Btn, {
+    return /*#__PURE__*/React.createElement("button", {
       key: i,
       onClick: function onClick() {
         onAdd(r);
@@ -3470,13 +3418,13 @@ function FoodSearch(_ref25) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref27) {
+function History(_ref28) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref27.history,
-    onBack = _ref27.onBack,
-    onUpdateDay = _ref27.onUpdateDay,
-    _ref27$weighIns = _ref27.weighIns,
-    weighIns = _ref27$weighIns === void 0 ? [] : _ref27$weighIns;
+  var history = _ref28.history,
+    onBack = _ref28.onBack,
+    onUpdateDay = _ref28.onUpdateDay,
+    _ref28$weighIns = _ref28.weighIns,
+    weighIns = _ref28$weighIns === void 0 ? [] : _ref28$weighIns;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -3681,7 +3629,7 @@ function History(_ref27) {
   }), /*#__PURE__*/React.createElement(BackHdr, {
     title: "HISTORY",
     onBack: onBack,
-    right: history.length > 0 && /*#__PURE__*/React.createElement(Btn, {
+    right: history.length > 0 && /*#__PURE__*/React.createElement("button", {
       onClick: exportCSV,
       style: {
         padding: "8px 14px",
@@ -3719,7 +3667,7 @@ function History(_ref27) {
       paddingBottom: 4
     }
   }, RANGES.map(function (r) {
-    return /*#__PURE__*/React.createElement(Btn, {
+    return /*#__PURE__*/React.createElement("button", {
       key: r,
       onClick: function onClick() {
         return setRange(r);
@@ -3746,7 +3694,7 @@ function History(_ref27) {
       borderRadius: 16,
       padding: "12px 16px"
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setDayIdx(function (i) {
         return Math.max(0, i - 1);
@@ -3787,7 +3735,7 @@ function History(_ref27) {
       padding: "2px 8px",
       borderRadius: 99
     }
-  }, (_MODES$day$mode3 = MODES[day.mode]) === null || _MODES$day$mode3 === void 0 ? void 0 : _MODES$day$mode3.label), /*#__PURE__*/React.createElement(Btn, {
+  }, (_MODES$day$mode3 = MODES[day.mode]) === null || _MODES$day$mode3 === void 0 ? void 0 : _MODES$day$mode3.label), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return patch({
         training: !day.training
@@ -3802,7 +3750,7 @@ function History(_ref27) {
       border: "1px solid ".concat(day.training ? A + "44" : BD),
       borderRadius: 99
     }
-  }, day.training ? "⚡ TRAINING" : "💤 REST"))), /*#__PURE__*/React.createElement(Btn, {
+  }, day.training ? "⚡ TRAINING" : "💤 REST"))), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setDayIdx(function (i) {
         return Math.min(history.length - 1, i + 1);
@@ -3946,7 +3894,7 @@ function History(_ref27) {
       display: "flex",
       gap: 8
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return patch({
         water: Math.max(0, (day.water || 0) - 1)
@@ -3964,7 +3912,7 @@ function History(_ref27) {
       alignItems: "center",
       justifyContent: "center"
     }
-  }, "\u2212"), /*#__PURE__*/React.createElement(Btn, {
+  }, "\u2212"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return patch({
         water: (day.water || 0) + 1
@@ -4050,7 +3998,7 @@ function History(_ref27) {
         color: A,
         flexShrink: 0
       }
-    }, Math.round(log.kcal)), /*#__PURE__*/React.createElement(Btn, {
+    }, Math.round(log.kcal)), /*#__PURE__*/React.createElement("button", {
       onClick: function onClick() {
         return patch({
           logs: (day.logs || []).filter(function (l) {
@@ -4071,7 +4019,7 @@ function History(_ref27) {
       display: "flex",
       gap: 8
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setAddCtx("quick");
     },
@@ -4086,7 +4034,7 @@ function History(_ref27) {
       fontWeight: 900,
       letterSpacing: "0.07em"
     }
-  }, "\u26A1 QUICK ADD"), /*#__PURE__*/React.createElement(Btn, {
+  }, "\u26A1 QUICK ADD"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setAddCtx("manual");
     },
@@ -4109,11 +4057,11 @@ function History(_ref27) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref28) {
-    var _ref29 = _slicedToArray(_ref28, 2),
-      k = _ref29[0],
-      m = _ref29[1];
-    return /*#__PURE__*/React.createElement(Btn, {
+  }, Object.entries(MM).map(function (_ref29) {
+    var _ref30 = _slicedToArray(_ref29, 2),
+      k = _ref30[0],
+      m = _ref30[1];
+    return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
         setShowWeight(false);
@@ -4129,7 +4077,7 @@ function History(_ref27) {
         fontWeight: 900
       }
     }, m.label);
-  }), filteredWeighIns.length > 0 && /*#__PURE__*/React.createElement(Btn, {
+  }), filteredWeighIns.length > 0 && /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setShowWeight(function (w) {
         return !w;
@@ -4150,11 +4098,11 @@ function History(_ref27) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref30) {
-    var _ref31 = _slicedToArray(_ref30, 2),
-      t = _ref31[0],
-      e = _ref31[1];
-    return /*#__PURE__*/React.createElement(Btn, {
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref31) {
+    var _ref32 = _slicedToArray(_ref31, 2),
+      t = _ref32[0],
+      e = _ref32[1];
+    return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
         return setChartType(t);
@@ -4319,10 +4267,10 @@ function History(_ref27) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref32) {
-    var _ref33 = _slicedToArray(_ref32, 2),
-      k = _ref33[0],
-      m = _ref33[1];
+  }, Object.entries(MM).map(function (_ref33) {
+    var _ref34 = _slicedToArray(_ref33, 2),
+      k = _ref34[0],
+      m = _ref34[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -4455,9 +4403,9 @@ function History(_ref27) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref34) {
-  var earnedBdgs = _ref34.earnedBdgs,
-    onBack = _ref34.onBack;
+function Achievements(_ref35) {
+  var earnedBdgs = _ref35.earnedBdgs,
+    onBack = _ref35.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -4630,70 +4578,70 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
+      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
         var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav;
-        return _regenerator().w(function (_context0) {
-          while (1) switch (_context0.n) {
+        return _regenerator().w(function (_context10) {
+          while (1) switch (_context10.n) {
             case 0:
               k = todayKey();
-              _context0.n = 1;
+              _context10.n = 1;
               return sg("logs__" + k);
             case 1:
-              lv = _context0.v;
+              lv = _context10.v;
               if (lv) setLogs(JSON.parse(lv));
-              _context0.n = 2;
+              _context10.n = 2;
               return sg("water__" + k);
             case 2:
-              wv = _context0.v;
+              wv = _context10.v;
               if (wv) setWater(parseInt(wv) || 0);
-              _context0.n = 3;
+              _context10.n = 3;
               return sg("mode__" + k);
             case 3:
-              mv = _context0.v;
+              mv = _context10.v;
               if (mv) setMode(mv);
-              _context0.n = 4;
+              _context10.n = 4;
               return sg("profile");
             case 4:
-              pv = _context0.v;
+              pv = _context10.v;
               if (pv) setProf(JSON.parse(pv));
-              _context0.n = 5;
+              _context10.n = 5;
               return sg("meals");
             case 5:
-              mv2 = _context0.v;
+              mv2 = _context10.v;
               if (mv2) setMeals(JSON.parse(mv2));
-              _context0.n = 6;
+              _context10.n = 6;
               return sg("workouts__" + k);
             case 6:
-              wkv = _context0.v;
+              wkv = _context10.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
-              _context0.n = 7;
+              _context10.n = 7;
               return sg("badges");
             case 7:
-              bv = _context0.v;
+              bv = _context10.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context0.n = 8;
+              _context10.n = 8;
               return sg("history");
             case 8:
-              hv = _context0.v;
+              hv = _context10.v;
               if (hv) setHist(JSON.parse(hv));
-              _context0.n = 9;
+              _context10.n = 9;
               return sg("weighins");
             case 9:
-              wiv = _context0.v;
+              wiv = _context10.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context0.n = 10;
+              _context10.n = 10;
               return sg("tdee_adj");
             case 10:
-              tav = _context0.v;
+              tav = _context10.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
               setReady(true);
             case 11:
-              return _context0.a(2);
+              return _context10.a(2);
           }
-        }, _callee0);
+        }, _callee10);
       }));
       return function load() {
-        return _ref35.apply(this, arguments);
+        return _ref36.apply(this, arguments);
       };
     }();
     load();
@@ -4735,88 +4683,88 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(l) {
-      return _regenerator().w(function (_context1) {
-        while (1) switch (_context1.n) {
-          case 0:
-            setLogs(l);
-            _context1.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            return _context1.a(2);
-        }
-      }, _callee1);
-    }));
-    return function saveLogs(_x9) {
-      return _ref36.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(w) {
-      return _regenerator().w(function (_context10) {
-        while (1) switch (_context10.n) {
-          case 0:
-            setWater(w);
-            _context10.n = 1;
-            return ss("water__" + todayKey(), String(w));
-          case 1:
-            return _context10.a(2);
-        }
-      }, _callee10);
-    }));
-    return function saveWater(_x0) {
-      return _ref37.apply(this, arguments);
-    };
-  }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(m) {
+    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(l) {
       return _regenerator().w(function (_context11) {
         while (1) switch (_context11.n) {
           case 0:
-            setMode(m);
+            setLogs(l);
             _context11.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
             return _context11.a(2);
         }
       }, _callee11);
     }));
-    return function saveMode(_x1) {
-      return _ref38.apply(this, arguments);
+    return function saveLogs(_x1) {
+      return _ref37.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(p) {
+  var saveWater = /*#__PURE__*/function () {
+    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(w) {
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.n) {
           case 0:
-            setProf(p);
+            setWater(w);
             _context12.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("water__" + todayKey(), String(w));
           case 1:
             return _context12.a(2);
         }
       }, _callee12);
     }));
-    return function saveProf(_x10) {
-      return _ref39.apply(this, arguments);
+    return function saveWater(_x10) {
+      return _ref38.apply(this, arguments);
     };
   }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(w) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(m) {
       return _regenerator().w(function (_context13) {
         while (1) switch (_context13.n) {
           case 0:
-            setWorkouts(w);
+            setMode(m);
             _context13.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("mode__" + todayKey(), m);
           case 1:
             return _context13.a(2);
         }
       }, _callee13);
     }));
-    return function saveWorkouts(_x11) {
+    return function saveMode(_x11) {
+      return _ref39.apply(this, arguments);
+    };
+  }();
+  var saveProf = /*#__PURE__*/function () {
+    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(p) {
+      return _regenerator().w(function (_context14) {
+        while (1) switch (_context14.n) {
+          case 0:
+            setProf(p);
+            _context14.n = 1;
+            return ss("profile", JSON.stringify(p));
+          case 1:
+            return _context14.a(2);
+        }
+      }, _callee14);
+    }));
+    return function saveProf(_x12) {
       return _ref40.apply(this, arguments);
+    };
+  }();
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(w) {
+      return _regenerator().w(function (_context15) {
+        while (1) switch (_context15.n) {
+          case 0:
+            setWorkouts(w);
+            _context15.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            return _context15.a(2);
+        }
+      }, _callee15);
+    }));
+    return function saveWorkouts(_x13) {
+      return _ref41.apply(this, arguments);
     };
   }();
   var addLog = function addLog(e) {
@@ -4842,19 +4790,19 @@ function App() {
     }));
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(entry) {
+    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(entry) {
       var name, clean, updated;
-      return _regenerator().w(function (_context14) {
-        while (1) switch (_context14.n) {
+      return _regenerator().w(function (_context16) {
+        while (1) switch (_context16.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context14.n = 1;
+              _context16.n = 1;
               break;
             }
-            return _context14.a(2);
+            return _context16.a(2);
           case 1:
             clean = {
               name: name,
@@ -4865,15 +4813,15 @@ function App() {
             };
             updated = [].concat(_toConsumableArray(meals), [clean]);
             setMeals(updated);
-            _context14.n = 2;
+            _context16.n = 2;
             return ss("meals", JSON.stringify(updated));
           case 2:
-            return _context14.a(2);
+            return _context16.a(2);
         }
-      }, _callee14);
+      }, _callee16);
     }));
-    return function addToQA(_x12) {
-      return _ref41.apply(this, arguments);
+    return function addToQA(_x14) {
+      return _ref42.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -4901,10 +4849,10 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(upd) {
+    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(upd) {
       var nh;
-      return _regenerator().w(function (_context15) {
-        while (1) switch (_context15.n) {
+      return _regenerator().w(function (_context17) {
+        while (1) switch (_context17.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -4912,22 +4860,22 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context15.n = 1;
+            _context17.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
-            return _context15.a(2);
+            return _context17.a(2);
         }
-      }, _callee15);
+      }, _callee17);
     }));
-    return function updateDay(_x13) {
-      return _ref42.apply(this, arguments);
+    return function updateDay(_x15) {
+      return _ref43.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(weight) {
+    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(weight) {
       var entry, updated, p, base, result, newAdj;
-      return _regenerator().w(function (_context16) {
-        while (1) switch (_context16.n) {
+      return _regenerator().w(function (_context18) {
+        while (1) switch (_context18.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -4939,7 +4887,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context16.n = 1;
+            _context18.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             // Run calibration whenever a new weigh-in arrives
@@ -4947,20 +4895,20 @@ function App() {
             base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context16.n = 2;
+              _context18.n = 2;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context16.n = 2;
+            _context18.n = 2;
             return ss("tdee_adj", String(newAdj));
           case 2:
-            return _context16.a(2);
+            return _context18.a(2);
         }
-      }, _callee16);
+      }, _callee18);
     }));
-    return function onWeighIn(_x14) {
-      return _ref43.apply(this, arguments);
+    return function onWeighIn(_x16) {
+      return _ref44.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -4994,7 +4942,7 @@ function App() {
       color: "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     }
-  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: #2a3228; }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: #0b0d0b; color: #d8e8d0; }\n      "), newBadge && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: #2a3228; }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: #0b0d0b; color: #d8e8d0; }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n      "), newBadge && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       inset: 0,

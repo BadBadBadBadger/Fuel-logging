@@ -14,13 +14,6 @@ const MODES = {
   bulk:     { label:"BULK",     color:"#ff7b4b", adj:500  },
 };
 
-const ACTIVITY = {
-  sedentary: { label:"Sedentary",         mult:1.2   },
-  light:     { label:"Lightly Active",    mult:1.375 },
-  moderate:  { label:"Moderately Active", mult:1.55  },
-  active:    { label:"Very Active",       mult:1.725 },
-  very:      { label:"Extra Active",      mult:1.9   },
-};
 
 const SESS_TYPES = ["legs","push","pull","fullbody","cardio"];
 const SESS_INT   = ["light","moderate","heavy"];
@@ -173,6 +166,20 @@ const ss = async (k, v) => {
   try { await window.storage.set(k, v); } catch(e) {}
 };
 
+// Shared AI fetch — returns the text content string, throws on failure
+const callAI = async (prompt, maxTokens = 500) => {
+  const res  = await fetch(AI_ENDPOINT, { method:"POST",
+    headers: { "Content-Type":"application/json" },
+    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens,
+      messages:[{ role:"user", content:prompt }] }) });
+  const data = await res.json();
+  return (data.content || []).map(b => b.text || "").join("").trim();
+};
+const callAIJson = async (prompt, maxTokens = 500) => {
+  const text = await callAI(prompt, maxTokens);
+  return JSON.parse(text.replace(/```json|```/g, "").trim());
+};
+
 // ── Error Boundary ────────────────────────────────────────────
 
 class ErrorBoundary extends React.Component {
@@ -201,22 +208,14 @@ const INP = {
   fontFamily:"inherit", outline:"none",
 };
 
-function Btn({ onClick, disabled, style, children }) {
-  return (
-    <button onClick={onClick} disabled={disabled}
-      style={{ cursor: disabled ? "not-allowed" : "pointer", ...style }}>
-      {children}
-    </button>
-  );
-}
 
 function BackHdr({ title, onBack, right }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:22,
       position:"sticky", top:0, background:BG, zIndex:10, paddingTop:12, paddingBottom:12, marginTop:-12 }}>
-      <Btn onClick={onBack} style={{ background:"#161a16", border:`1px solid ${BD}`,
+      <button onClick={onBack} style={{ background:"#161a16", border:`1px solid ${BD}`,
         borderRadius:10, width:36, height:36, color:"#7a9a70", fontSize:18,
-        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>←</Btn>
+        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>←</button>
       <h2 style={{ margin:0, fontSize:18, fontWeight:900, color:A, letterSpacing:"0.06em", flex:1 }}>{title}</h2>
       {right}
     </div>
@@ -273,11 +272,7 @@ function CoachCard({ mode, totals, targets, streak, water }) {
       const h = getCurrentHour();
       const timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
       const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today: ${mode} mode, ${Math.round(totals.kcal)}/${targets.kcal} kcal, protein ${Math.round(totals.protein)}g/${targets.protein}g, ${water}/8 glasses, ${streak} day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} 3) genuine praise. Brief, personal, max one emoji per sentence.`;
-      const res  = await fetch(AI_ENDPOINT, { method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:200,
-          messages:[{ role:"user", content:prompt }] }) });
-      const data = await res.json();
-      const t    = (data.content || []).map(b => b.text || "").join("").trim();
+      const t    = await callAI(prompt, 200);
       const r    = refreshes + 1;
       setTip(t); setRefreshes(r);
       await ss("coach__" + todayKey(), JSON.stringify({ tip:t, r }));
@@ -444,7 +439,7 @@ function MealForm({ meal, onSave, onCancel }) {
         width:"100%", maxWidth:500, border:`1px solid ${BD}`, borderBottom:"none" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
           <h3 style={{ margin:0, color:A, fontSize:16, fontWeight:900 }}>{meal ? "EDIT MEAL" : "ADD MEAL"}</h3>
-          <Btn onClick={onCancel} style={{ background:"none", border:"none", color:"#556050", fontSize:24 }}>×</Btn>
+          <button onClick={onCancel} style={{ background:"none", border:"none", color:"#556050", fontSize:24 }}>×</button>
         </div>
         <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.1em", fontWeight:800, marginBottom:6 }}>MEAL NAME</div>
         <input value={f.name} onChange={e => set("name", e.target.value)}
@@ -463,7 +458,7 @@ function MealForm({ meal, onSave, onCancel }) {
             </div>
           ))}
         </div>
-        <Btn onClick={() => ok && onSave({
+        <button onClick={() => ok && onSave({
           name: f.name.trim(), kcal: Number(f.kcal) || 0,
           protein: Number(f.protein) || 0, carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
         })} disabled={!ok}
@@ -471,7 +466,7 @@ function MealForm({ meal, onSave, onCancel }) {
             background: ok ? A : "#161a16", color: ok ? "#0b0d0b" : "#2e3a2c",
             border:"none", borderRadius:13, fontSize:14, fontWeight:900, letterSpacing:"0.08em" }}>
           {meal ? "SAVE CHANGES" : "ADD MEAL"}
-        </Btn>
+        </button>
       </div>
     </div>
   );
@@ -528,13 +523,13 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
             onChange={e => setVal(e.target.value)} placeholder="kg today..."
             style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13 }}
             onKeyDown={e => e.key === "Enter" && Number(val) > 0 && (onWeighIn(Number(val)), setVal(""))}/>
-          <Btn onClick={() => { if (Number(val) > 0) { onWeighIn(Number(val)); setVal(""); }}}
+          <button onClick={() => { if (Number(val) > 0) { onWeighIn(Number(val)); setVal(""); }}}
             disabled={!Number(val)}
             style={{ padding:"10px 18px", background: Number(val) > 0 ? A : "#161a16",
               color: Number(val) > 0 ? "#0b0d0b" : "#2e3a2c",
               border:"none", borderRadius:10, fontWeight:900, fontSize:13 }}>
             LOG
-          </Btn>
+          </button>
         </div>
       )}
 
@@ -572,14 +567,8 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof }) {
     if (!hevyText.trim() || hevyLoading) return;
     setHevyLoading(true); setHevyResult(null);
     try {
-      const res = await fetch(AI_ENDPOINT, { method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:200,
-          messages:[{ role:"user", content:
-            `Parse this workout log and estimate calories burned. User: ${p.weight}kg bodyweight, ${p.bodyFat}% body fat.\n\nWorkout:\n${hevyText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`
-          }] }) });
-      const data = await res.json();
-      const text = (data.content || []).map(b => b.text || "").join("").trim();
-      setHevyResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
+      const prompt = `Parse this workout log and estimate calories burned. User: ${p.weight}kg bodyweight, ${p.bodyFat}% body fat.\n\nWorkout:\n${hevyText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`;
+      setHevyResult(await callAIJson(prompt, 200));
     } catch(e) {
       setHevyResult({ error:"Parse failed — Cloudflare Worker required." });
     }
@@ -738,29 +727,29 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             <div style={{ padding:"7px 10px", background:"#131a11", border:`1px solid ${BD}`,
               borderRadius:10, fontSize:13, fontWeight:900, color:A }}>🔥{streak}</div>
           )}
-          <Btn onClick={() => setView("profile")} style={{ width:34, height:34, background:"#131a11",
+          <button onClick={() => setView("profile")} style={{ width:34, height:34, background:"#131a11",
             border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:14,
-            display:"flex", alignItems:"center", justifyContent:"center" }}>⚙️</Btn>
-          <Btn onClick={() => setView("history")} style={{ width:34, height:34, background:"#131a11",
+            display:"flex", alignItems:"center", justifyContent:"center" }}>⚙️</button>
+          <button onClick={() => setView("history")} style={{ width:34, height:34, background:"#131a11",
             border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:15,
-            display:"flex", alignItems:"center", justifyContent:"center" }}>📊</Btn>
-          <Btn onClick={() => setView("achievements")} style={{ width:34, height:34, background:"#131a11",
+            display:"flex", alignItems:"center", justifyContent:"center" }}>📊</button>
+          <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"#131a11",
             border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:14,
-            display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</Btn>
+            display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</button>
         </div>
       </div>
 
       {/* Mode selector */}
       <div style={{ display:"flex", gap:6, marginBottom:12 }}>
         {Object.entries(MODES).map(([k, v]) => (
-          <Btn key={k} onClick={() => setMode(k)}
+          <button key={k} onClick={() => setMode(k)}
             style={{ flex:1, padding:"9px 4px",
               background: mode === k ? v.color + "22" : "#131a11",
               color: mode === k ? v.color : "#445040",
               border: `1px solid ${mode === k ? v.color + "55" : BD}`,
               borderRadius:10, fontSize:11, fontWeight:900, letterSpacing:"0.06em" }}>
             {v.label}
-          </Btn>
+          </button>
         ))}
       </div>
 
@@ -768,12 +757,12 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       <WorkoutLogger workouts={workouts} onAdd={onAddWorkout} onRemove={onRemoveWorkout} prof={prof}/>
 
       {!hasProfile && (
-        <Btn onClick={() => setView("profile")}
+        <button onClick={() => setView("profile")}
           style={{ width:"100%", padding:"11px", background:"#131a11",
             border:`1px solid ${A}33`, borderRadius:12, color:A,
             fontSize:12, fontWeight:700, marginBottom:12, letterSpacing:"0.06em" }}>
           👤 Set body stats for personalised targets →
-        </Btn>
+        </button>
       )}
 
       {/* Calorie card */}
@@ -832,14 +821,14 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             </div>
           </div>
           <div style={{ display:"flex", gap:8 }}>
-            <Btn onClick={() => setWater(Math.max(0, water - 1))}
+            <button onClick={() => setWater(Math.max(0, water - 1))}
               style={{ width:36, height:36, borderRadius:10, background:"#131826",
                 border:"1px solid #1e2a3a", color:"#4b9fff", fontSize:20,
-                display:"flex", alignItems:"center", justifyContent:"center" }}>−</Btn>
-            <Btn onClick={() => setWater(water + 1)}
+                display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+            <button onClick={() => setWater(water + 1)}
               style={{ width:36, height:36, borderRadius:10, background:"#0f1c2e",
                 border:"1px solid #2a4a7a", color:"#4b9fff", fontSize:20,
-                display:"flex", alignItems:"center", justifyContent:"center" }}>+</Btn>
+                display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
           </div>
         </div>
         <div style={{ display:"flex", gap:5 }}>
@@ -861,12 +850,12 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           { e:"⚡",  l:"QUICK ADD", s:"preset meals",  v:"quick"  },
           { e:"🔍", l:"SEARCH",    s:"food database",  v:"search" },
         ].map(b => (
-          <Btn key={b.v} onClick={() => setView(b.v)}
+          <button key={b.v} onClick={() => setView(b.v)}
             style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:16, padding:"16px 8px", textAlign:"center" }}>
             <div style={{ fontSize:22, marginBottom:5 }}>{b.e}</div>
             <div style={{ fontSize:11, fontWeight:900, color:A, letterSpacing:"0.07em" }}>{b.l}</div>
             <div style={{ fontSize:10, color:"#334030", marginTop:3 }}>{b.s}</div>
-          </Btn>
+          </button>
         ))}
       </div>
 
@@ -1055,16 +1044,7 @@ function AILog({ onAdd, onBack }) {
     if (!desc.trim()) return;
     setLoading(true); setError(""); setItems(null); setLoggedAll(false);
     try {
-      // Fire AI and OFT searches in parallel
-      const aiPromise = fetch(AI_ENDPOINT, { method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000,
-          messages:[{ role:"user", content: AI_PROMPT(desc) }] })
-      }).then(r => r.json());
-
-      const aiData = await aiPromise;
-      const text   = (aiData.content || []).map(b => b.text || "").join("");
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const parsed = await callAIJson(AI_PROMPT(desc), 1000);
       let aiItems  = parsed.items || [];
 
       // OFT parallel lookup for each item
@@ -1086,14 +1066,7 @@ function AILog({ onAdd, onBack }) {
   const reestimate = async (idx, newName) => {
     setReestIdx(idx);
     try {
-      const res  = await fetch(AI_ENDPOINT, { method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:300,
-          messages:[{ role:"user", content: AI_REESTIMATE_PROMPT(newName) }] })
-      });
-      const data = await res.json();
-      const text = (data.content || []).map(b => b.text || "").join("");
-      const updated = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const updated = await callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
 
       // Try OFT for the new name too
       const oft = await searchOFT(newName);
@@ -1240,38 +1213,38 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
       <div style={{ display:"flex", gap:10, marginBottom:16 }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search meals..." style={{ ...INP, flex:1, padding:"12px 16px" }}/>
-        <Btn onClick={() => setModal({ meal:null, index:null })}
+        <button onClick={() => setModal({ meal:null, index:null })}
           style={{ padding:"12px 18px", background:"#131a11", border:`1px solid ${A}44`,
-            borderRadius:12, color:A, fontWeight:900, fontSize:16, flexShrink:0 }}>＋</Btn>
+            borderRadius:12, color:A, fontWeight:900, fontSize:16, flexShrink:0 }}>＋</button>
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {filtered.map(m => (
           <div key={m._i} style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14,
             padding:"13px 14px", display:"flex", alignItems:"center", gap:8 }}>
-            <Btn onClick={() => { onAdd(m); onBack(); }}
+            <button onClick={() => { onAdd(m); onBack(); }}
               style={{ flex:1, background:"none", border:"none", textAlign:"left", padding:0, minWidth:0 }}>
               <div style={{ fontSize:14, fontWeight:600, color:"#d8e8d0",
                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.name}</div>
               <div style={{ fontSize:11, color:"#3d4a38", marginTop:3 }}>
                 P:{m.protein}g · C:{m.carbs}g · F:{m.fat}g
               </div>
-            </Btn>
+            </button>
             <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{m.kcal}</span>
-            <Btn onClick={() => setModal({ meal:m, index:m._i })}
-              style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>✏️</Btn>
-            <Btn onClick={() => save(meals.filter((_, i) => i !== m._i))}
-              style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>🗑️</Btn>
+            <button onClick={() => setModal({ meal:m, index:m._i })}
+              style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>✏️</button>
+            <button onClick={() => save(meals.filter((_, i) => i !== m._i))}
+              style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>🗑️</button>
           </div>
         ))}
         {filtered.length === 0 && (
           <div style={{ textAlign:"center", color:"#2a3228", padding:"30px 0", fontSize:14 }}>No meals found</div>
         )}
       </div>
-      <Btn onClick={() => save([...DEF_MEALS])}
+      <button onClick={() => save([...DEF_MEALS])}
         style={{ marginTop:16, width:"100%", padding:"11px", background:"none",
           border:`1px dashed #1a2a18`, borderRadius:12, color:"#2a3a28", fontSize:12, fontFamily:"inherit" }}>
         ↩ Reset to defaults
-      </Btn>
+      </button>
     </div>
   );
 }
@@ -1333,20 +1306,20 @@ function FoodSearch({ onAdd, onBack }) {
           onKeyDown={e => e.key === "Enter" && search()}
           placeholder="e.g. 'Grenade bar', 'Weetabix'..."
           style={{ ...INP, flex:1, padding:"13px 16px" }}/>
-        <Btn onClick={search} disabled={loading || !q.trim()}
+        <button onClick={search} disabled={loading || !q.trim()}
           style={{ padding:"13px 16px",
             background: q.trim() && !loading ? A : "#161a16",
             color:      q.trim() && !loading ? "#0b0d0b" : "#2e3a2c",
             border:"none", borderRadius:12, fontWeight:900, fontSize:13,
             flexShrink:0, letterSpacing:"0.06em" }}>
           {loading ? "..." : "SEARCH"}
-        </Btn>
+        </button>
       </div>
       {loading && <div style={{ textAlign:"center", color:"#445040", padding:24, fontSize:14 }}>🔍 Searching...</div>}
       {error   && <p style={{ color:"#ff5555", fontSize:13, textAlign:"center", marginBottom:10 }}>{error}</p>}
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {results.map((r, i) => (
-          <Btn key={i} onClick={() => { onAdd(r); onBack(); }}
+          <button key={i} onClick={() => { onAdd(r); onBack(); }}
             style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
               textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%" }}>
             <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
@@ -1357,7 +1330,7 @@ function FoodSearch({ onAdd, onBack }) {
               </div>
             </div>
             <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{r.kcal}</span>
-          </Btn>
+          </button>
         ))}
       </div>
       {done && !results.length && !loading && !error && (
@@ -1467,11 +1440,11 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
       )}
       <BackHdr title="HISTORY" onBack={onBack} right={
         history.length > 0 && (
-          <Btn onClick={exportCSV}
+          <button onClick={exportCSV}
             style={{ padding:"8px 14px", background:"#131a11", border:`1px solid ${A}44`,
               borderRadius:10, color:A, fontSize:11, fontWeight:900, cursor:"pointer", letterSpacing:"0.07em" }}>
             📥 CSV
-          </Btn>
+          </button>
         )
       }/>
 
@@ -1486,14 +1459,14 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
         <>
           <div style={{ display:"flex", gap:6, marginBottom:18, overflowX:"auto", paddingBottom:4 }}>
             {RANGES.map(r => (
-              <Btn key={r} onClick={() => setRange(r)}
+              <button key={r} onClick={() => setRange(r)}
                 style={{ padding:"7px 14px",
                   background: range === r ? A : "#131a11",
                   color:      range === r ? "#0b0d0b" : "#556050",
                   border: `1px solid ${range === r ? A : BD}`,
                   borderRadius:99, fontSize:12, fontWeight:900, flexShrink:0 }}>
                 {RLBL[r]}
-              </Btn>
+              </button>
             ))}
           </div>
 
@@ -1501,9 +1474,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
             <>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 marginBottom:18, background:CARD, border:`1px solid ${BD}`, borderRadius:16, padding:"12px 16px" }}>
-                <Btn onClick={() => setDayIdx(i => Math.max(0, i - 1))} disabled={dayIdx === 0}
+                <button onClick={() => setDayIdx(i => Math.max(0, i - 1))} disabled={dayIdx === 0}
                   style={{ background:"none", border:"none",
-                    color: dayIdx === 0 ? "#2a3028" : "#7a9a70", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</Btn>
+                    color: dayIdx === 0 ? "#2a3028" : "#7a9a70", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</button>
                 <div style={{ textAlign:"center" }}>
                   <div style={{ fontSize:13, fontWeight:800, color:"#d8e8d0" }}>{day ? fmtFull(day.date) : "—"}</div>
                   {day && (
@@ -1514,21 +1487,21 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
                           {MODES[day.mode]?.label}
                         </span>
                       )}
-                      <Btn onClick={() => patch({ training: !day.training })}
+                      <button onClick={() => patch({ training: !day.training })}
                         style={{ fontSize:10, fontWeight:900, padding:"2px 8px",
                           background: day.training ? A + "22" : "#131a11",
                           color: day.training ? A : "#445040",
                           border: `1px solid ${day.training ? A + "44" : BD}`, borderRadius:99 }}>
                         {day.training ? "⚡ TRAINING" : "💤 REST"}
-                      </Btn>
+                      </button>
                     </div>
                   )}
                 </div>
-                <Btn onClick={() => setDayIdx(i => Math.min(history.length - 1, i + 1))}
+                <button onClick={() => setDayIdx(i => Math.min(history.length - 1, i + 1))}
                   disabled={dayIdx === history.length - 1}
                   style={{ background:"none", border:"none",
                     color: dayIdx === history.length - 1 ? "#2a3028" : "#7a9a70",
-                    fontSize:24, padding:"0 6px", lineHeight:1 }}>›</Btn>
+                    fontSize:24, padding:"0 6px", lineHeight:1 }}>›</button>
               </div>
 
               {day && dayTots && (
@@ -1579,14 +1552,14 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
                       <span style={{ fontSize:14, color:"#4b9fff", fontWeight:900 }}>{day.water} / 8</span>
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
-                      <Btn onClick={() => patch({ water: Math.max(0, (day.water || 0) - 1) })}
+                      <button onClick={() => patch({ water: Math.max(0, (day.water || 0) - 1) })}
                         style={{ width:32, height:32, borderRadius:8, background:"#131826",
                           border:"1px solid #1e2a3a", color:"#4b9fff", fontSize:18,
-                          display:"flex", alignItems:"center", justifyContent:"center" }}>−</Btn>
-                      <Btn onClick={() => patch({ water: (day.water || 0) + 1 })}
+                          display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+                      <button onClick={() => patch({ water: (day.water || 0) + 1 })}
                         style={{ width:32, height:32, borderRadius:8, background:"#0f1c2e",
                           border:"1px solid #2a4a7a", color:"#4b9fff", fontSize:18,
-                          display:"flex", alignItems:"center", justifyContent:"center" }}>+</Btn>
+                          display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
                     </div>
                   </div>
 
@@ -1612,23 +1585,23 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
                           </div>
                         </div>
                         <span style={{ fontSize:15, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
-                        <Btn onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
-                          style={{ background:"none", border:"none", color:"#2a3028", fontSize:18, padding:"2px 10px" }}>×</Btn>
+                        <button onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
+                          style={{ background:"none", border:"none", color:"#2a3028", fontSize:18, padding:"2px 10px" }}>×</button>
                       </div>
                     ))}
                   </div>
 
                   <div style={{ display:"flex", gap:8 }}>
-                    <Btn onClick={() => setAddCtx("quick")}
+                    <button onClick={() => setAddCtx("quick")}
                       style={{ flex:1, padding:"11px", background:"#131a11",
                         border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ⚡ QUICK ADD
-                    </Btn>
-                    <Btn onClick={() => setAddCtx("manual")}
+                    </button>
+                    <button onClick={() => setAddCtx("manual")}
                       style={{ flex:1, padding:"11px", background:"#131a11",
                         border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ＋ MANUAL
-                    </Btn>
+                    </button>
                   </div>
                 </>
               )}
@@ -1639,34 +1612,34 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
             <>
               <div style={{ display:"flex", gap:7, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
                 {Object.entries(MM).map(([k, m]) => (
-                  <Btn key={k} onClick={() => { setShowWeight(false); toggleM(k); }}
+                  <button key={k} onClick={() => { setShowWeight(false); toggleM(k); }}
                     style={{ padding:"6px 13px",
                       background: !showWeight && metrics.includes(k) ? m.color + "22" : "#131a11",
                       color:      !showWeight && metrics.includes(k) ? m.color       : "#445040",
                       border: `1px solid ${!showWeight && metrics.includes(k) ? m.color + "55" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     {m.label}
-                  </Btn>
+                  </button>
                 ))}
                 {filteredWeighIns.length > 0 && (
-                  <Btn onClick={() => setShowWeight(w => !w)}
+                  <button onClick={() => setShowWeight(w => !w)}
                     style={{ padding:"6px 13px",
                       background: showWeight ? "#4b9fff22" : "#131a11",
                       color:      showWeight ? "#4b9fff"   : "#445040",
                       border: `1px solid ${showWeight ? "#4b9fff55" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     ⚖️ Weight
-                  </Btn>
+                  </button>
                 )}
                 <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
                   {[["line","📈"],["bar","📊"]].map(([t, e]) => (
-                    <Btn key={t} onClick={() => setChartType(t)}
+                    <button key={t} onClick={() => setChartType(t)}
                       style={{ padding:"6px 12px",
                         background: chartType === t ? "#1e2a1e" : "#131a11",
                         color:      chartType === t ? "#d8e8d0" : "#445040",
                         border: `1px solid ${chartType === t ? "#334a33" : BD}`, borderRadius:8, fontSize:12 }}>
                       {e}
-                    </Btn>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1978,6 +1951,8 @@ function App() {
         input::placeholder, textarea::placeholder { color: #2a3228; }
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
         select { background: #0b0d0b; color: #d8e8d0; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; }
       `}</style>
 
       {/* Badge celebration */}
