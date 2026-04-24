@@ -85,7 +85,7 @@
     // Make React hooks and Recharts available as globals for the compiled app
     const { useState, useEffect } = React;
     const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-            XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
+            XAxis, YAxis, Tooltip, ResponsiveContainer } = (typeof Recharts !== "undefined" ? Recharts : {});
   </script>
 
   <!-- Pre-compiled app — no Babel, no line limit -->
