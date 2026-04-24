@@ -1,4 +1,4 @@
-const CACHE = "fuel-log-v19";
+const CACHE = "fuel-log-v20";
 const ASSETS = ["./", "./index.html", "./manifest.json",
   "./vendor/react.js", "./vendor/react-dom.js",
   "./vendor/prop-types.js", "./vendor/recharts.js"];
