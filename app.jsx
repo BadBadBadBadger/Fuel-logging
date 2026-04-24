@@ -166,6 +166,23 @@ const ss = async (k, v) => {
   try { await window.storage.set(k, v); } catch(e) {}
 };
 
+// ── Data migrations ───────────────────────────────────────────
+// Bump SCHEMA_VERSION and add a migration block each time the stored
+// data shape changes. runMigrations() is called once on startup.
+
+const SCHEMA_VERSION = 1;
+
+const runMigrations = async () => {
+  const stored = await sg("fuel_schema_v");
+  const v = stored ? parseInt(stored) : 0;
+  if (v >= SCHEMA_VERSION) return;
+
+  // v0 → v1: baseline release — no transforms needed, just stamp version.
+  // Add future migrations here: if (v < 2) { ... }
+
+  await ss("fuel_schema_v", String(SCHEMA_VERSION));
+};
+
 // Shared AI fetch — returns the text content string, throws on failure
 const callAI = async (prompt, maxTokens = 500) => {
   const res  = await fetch(AI_ENDPOINT, { method:"POST",
@@ -1824,6 +1841,7 @@ function App() {
 
   useEffect(() => {
     const load = async () => {
+      await runMigrations();
       const k = todayKey();
       const lv = await sg("logs__"  + k); if (lv)  setLogs(JSON.parse(lv));
       const wv = await sg("water__" + k); if (wv)  setWater(parseInt(wv) || 0);

@@ -1,9 +1,13 @@
-const CACHE = "fuel-log-v13";
+const CACHE = "fuel-log-v16";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
+  // Don't skipWaiting — let the update banner prompt the user to reload.
+});
+
+self.addEventListener("message", e => {
+  if (e.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys =>

@@ -388,3 +388,59 @@ describe("runCalibration", () => {
     if (result) expect(result.adj).toBeGreaterThan(0);
   });
 });
+
+// ── runMigrations ─────────────────────────────────────────────
+// Mirror of the migration logic in app.jsx — uses a plain object as
+// the storage mock so tests run synchronously in Node.
+
+const SCHEMA_VERSION = 1;
+
+const makeMockStorage = (initial = {}) => {
+  const store = { ...initial };
+  return {
+    store,
+    get: async k => store[k] != null ? store[k] : null,
+    set: async (k, v) => { store[k] = v; },
+  };
+};
+
+const runMigrations = async (storage) => {
+  const sg = async k => storage.get(k);
+  const ss = async (k, v) => storage.set(k, v);
+
+  const stored = await sg("fuel_schema_v");
+  const v = stored ? parseInt(stored) : 0;
+  if (v >= SCHEMA_VERSION) return;
+
+  // v0 → v1: baseline — no transforms needed.
+
+  await ss("fuel_schema_v", String(SCHEMA_VERSION));
+};
+
+describe("runMigrations", () => {
+  test("stamps schema version when none exists", async () => {
+    const storage = makeMockStorage();
+    await runMigrations(storage);
+    expect(storage.store["fuel_schema_v"]).toBe("1");
+  });
+
+  test("is a no-op when already at current version", async () => {
+    const storage = makeMockStorage({ fuel_schema_v: "1", profile: '{"weight":80}' });
+    await runMigrations(storage);
+    expect(storage.store["profile"]).toBe('{"weight":80}');
+    expect(storage.store["fuel_schema_v"]).toBe("1");
+  });
+
+  test("does not overwrite existing user data during migration", async () => {
+    const storage = makeMockStorage({ logs__2026_01_01: "[{\"kcal\":500}]" });
+    await runMigrations(storage);
+    expect(storage.store["logs__2026_01_01"]).toBe("[{\"kcal\":500}]");
+  });
+
+  test("applies migration only once across multiple calls", async () => {
+    const storage = makeMockStorage();
+    await runMigrations(storage);
+    await runMigrations(storage);
+    expect(storage.store["fuel_schema_v"]).toBe("1");
+  });
+});

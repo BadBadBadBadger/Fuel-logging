@@ -423,18 +423,52 @@ var ss = /*#__PURE__*/function () {
   };
 }();
 
-// Shared AI fetch — returns the text content string, throws on failure
-var callAI = /*#__PURE__*/function () {
-  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(prompt) {
-    var maxTokens,
-      res,
-      data,
-      _args3 = arguments;
+// ── Data migrations ───────────────────────────────────────────
+// Bump SCHEMA_VERSION and add a migration block each time the stored
+// data shape changes. runMigrations() is called once on startup.
+
+var SCHEMA_VERSION = 1;
+var runMigrations = /*#__PURE__*/function () {
+  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+    var stored, v;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.n) {
         case 0:
-          maxTokens = _args3.length > 1 && _args3[1] !== undefined ? _args3[1] : 500;
           _context3.n = 1;
+          return sg("fuel_schema_v");
+        case 1:
+          stored = _context3.v;
+          v = stored ? parseInt(stored) : 0;
+          if (!(v >= SCHEMA_VERSION)) {
+            _context3.n = 2;
+            break;
+          }
+          return _context3.a(2);
+        case 2:
+          _context3.n = 3;
+          return ss("fuel_schema_v", String(SCHEMA_VERSION));
+        case 3:
+          return _context3.a(2);
+      }
+    }, _callee3);
+  }));
+  return function runMigrations() {
+    return _ref3.apply(this, arguments);
+  };
+}();
+
+// Shared AI fetch — returns the text content string, throws on failure
+var callAI = /*#__PURE__*/function () {
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(prompt) {
+    var maxTokens,
+      res,
+      data,
+      _args4 = arguments;
+    return _regenerator().w(function (_context4) {
+      while (1) switch (_context4.n) {
+        case 0:
+          maxTokens = _args4.length > 1 && _args4[1] !== undefined ? _args4[1] : 500;
+          _context4.n = 1;
           return fetch(AI_ENDPOINT, {
             method: "POST",
             headers: {
@@ -450,40 +484,40 @@ var callAI = /*#__PURE__*/function () {
             })
           });
         case 1:
-          res = _context3.v;
-          _context3.n = 2;
+          res = _context4.v;
+          _context4.n = 2;
           return res.json();
         case 2:
-          data = _context3.v;
-          return _context3.a(2, (data.content || []).map(function (b) {
+          data = _context4.v;
+          return _context4.a(2, (data.content || []).map(function (b) {
             return b.text || "";
           }).join("").trim());
       }
-    }, _callee3);
+    }, _callee4);
   }));
   return function callAI(_x4) {
-    return _ref3.apply(this, arguments);
+    return _ref4.apply(this, arguments);
   };
 }();
 var callAIJson = /*#__PURE__*/function () {
-  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(prompt) {
+  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(prompt) {
     var maxTokens,
       text,
-      _args4 = arguments;
-    return _regenerator().w(function (_context4) {
-      while (1) switch (_context4.n) {
+      _args5 = arguments;
+    return _regenerator().w(function (_context5) {
+      while (1) switch (_context5.n) {
         case 0:
-          maxTokens = _args4.length > 1 && _args4[1] !== undefined ? _args4[1] : 500;
-          _context4.n = 1;
+          maxTokens = _args5.length > 1 && _args5[1] !== undefined ? _args5[1] : 500;
+          _context5.n = 1;
           return callAI(prompt, maxTokens);
         case 1:
-          text = _context4.v;
-          return _context4.a(2, JSON.parse(text.replace(/```json|```/g, "").trim()));
+          text = _context5.v;
+          return _context5.a(2, JSON.parse(text.replace(/```json|```/g, "").trim()));
       }
-    }, _callee4);
+    }, _callee5);
   }));
   return function callAIJson(_x5) {
-    return _ref4.apply(this, arguments);
+    return _ref5.apply(this, arguments);
   };
 }();
 
@@ -547,10 +581,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref5) {
-  var title = _ref5.title,
-    onBack = _ref5.onBack,
-    right = _ref5.right;
+function BackHdr(_ref6) {
+  var title = _ref6.title,
+    onBack = _ref6.onBack,
+    right = _ref6.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -591,10 +625,10 @@ function BackHdr(_ref5) {
     }
   }, title), right);
 }
-function Chip(_ref6) {
-  var label = _ref6.label,
-    value = _ref6.value,
-    color = _ref6.color;
+function Chip(_ref7) {
+  var label = _ref7.label,
+    value = _ref7.value,
+    color = _ref7.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -617,11 +651,11 @@ function Chip(_ref6) {
     }
   }, label));
 }
-function MBar(_ref7) {
-  var label = _ref7.label,
-    value = _ref7.value,
-    target = _ref7.target,
-    color = _ref7.color;
+function MBar(_ref8) {
+  var label = _ref8.label,
+    value = _ref8.value,
+    target = _ref8.target,
+    color = _ref8.color;
   var pct = Math.min(100, value / target * 100);
   var over = value > target;
   return /*#__PURE__*/React.createElement("div", {
@@ -665,12 +699,12 @@ function MBar(_ref7) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref8) {
-  var mode = _ref8.mode,
-    totals = _ref8.totals,
-    targets = _ref8.targets,
-    streak = _ref8.streak,
-    water = _ref8.water;
+function CoachCard(_ref9) {
+  var mode = _ref9.mode,
+    totals = _ref9.totals,
+    targets = _ref9.targets,
+    streak = _ref9.streak,
+    water = _ref9.water;
   var _useState = useState(""),
     _useState2 = _slicedToArray(_useState, 2),
     tip = _useState2[0],
@@ -697,49 +731,49 @@ function CoachCard(_ref8) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5() {
+    var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
       var h, timeLabel, prompt, t, r, _t3;
-      return _regenerator().w(function (_context5) {
-        while (1) switch (_context5.p = _context5.n) {
+      return _regenerator().w(function (_context6) {
+        while (1) switch (_context6.p = _context6.n) {
           case 0:
             if (!(loading || refreshes >= 3)) {
-              _context5.n = 1;
+              _context6.n = 1;
               break;
             }
-            return _context5.a(2);
+            return _context6.a(2);
           case 1:
             setLoading(true);
-            _context5.p = 2;
+            _context6.p = 2;
             h = getCurrentHour();
             timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
             prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today: ").concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
-            _context5.n = 3;
+            _context6.n = 3;
             return callAI(prompt, 200);
           case 3:
-            t = _context5.v;
+            t = _context6.v;
             r = refreshes + 1;
             setTip(t);
             setRefreshes(r);
-            _context5.n = 4;
+            _context6.n = 4;
             return ss("coach__" + todayKey(), JSON.stringify({
               tip: t,
               r: r
             }));
           case 4:
-            _context5.n = 6;
+            _context6.n = 6;
             break;
           case 5:
-            _context5.p = 5;
-            _t3 = _context5.v;
+            _context6.p = 5;
+            _t3 = _context6.v;
           case 6:
             setLoading(false);
           case 7:
-            return _context5.a(2);
+            return _context6.a(2);
         }
-      }, _callee5, null, [[2, 5]]);
+      }, _callee6, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref9.apply(this, arguments);
+      return _ref0.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -798,14 +832,14 @@ function CoachCard(_ref8) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen(_ref0) {
-  var profile = _ref0.profile,
-    onSave = _ref0.onSave,
-    onBack = _ref0.onBack,
-    _ref0$tdeeAdj = _ref0.tdeeAdj,
-    tdeeAdj = _ref0$tdeeAdj === void 0 ? 0 : _ref0$tdeeAdj,
-    _ref0$weighIns = _ref0.weighIns,
-    weighIns = _ref0$weighIns === void 0 ? [] : _ref0$weighIns;
+function ProfileScreen(_ref1) {
+  var profile = _ref1.profile,
+    onSave = _ref1.onSave,
+    onBack = _ref1.onBack,
+    _ref1$tdeeAdj = _ref1.tdeeAdj,
+    tdeeAdj = _ref1$tdeeAdj === void 0 ? 0 : _ref1$tdeeAdj,
+    _ref1$weighIns = _ref1.weighIns,
+    weighIns = _ref1$weighIns === void 0 ? [] : _ref1$weighIns;
   var _useState7 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState8 = _slicedToArray(_useState7, 2),
     f = _useState8[0],
@@ -1072,10 +1106,10 @@ function ProfileScreen(_ref0) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref1) {
-    var mode = _ref1.mode,
-      label = _ref1.label,
-      color = _ref1.color;
+  }].map(function (_ref10) {
+    var mode = _ref10.mode,
+      label = _ref10.label,
+      color = _ref10.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -1098,11 +1132,11 @@ function ProfileScreen(_ref0) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref10) {
-      var _ref11 = _slicedToArray(_ref10, 3),
-        k = _ref11[0],
-        key = _ref11[1],
-        u = _ref11[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref11) {
+      var _ref12 = _slicedToArray(_ref11, 3),
+        k = _ref12[0],
+        key = _ref12[1],
+        u = _ref12[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -1134,10 +1168,10 @@ function ProfileScreen(_ref0) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref12) {
-  var meal = _ref12.meal,
-    onSave = _ref12.onSave,
-    onCancel = _ref12.onCancel;
+function MealForm(_ref13) {
+  var meal = _ref13.meal,
+    onSave = _ref13.onSave,
+    onCancel = _ref13.onCancel;
   var blank = {
     name: "",
     kcal: "",
@@ -1294,11 +1328,11 @@ function MealForm(_ref12) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref13) {
-  var weighIns = _ref13.weighIns,
-    onWeighIn = _ref13.onWeighIn,
-    tdeeAdj = _ref13.tdeeAdj,
-    baseTDEE = _ref13.baseTDEE;
+function WeighInWidget(_ref14) {
+  var weighIns = _ref14.weighIns,
+    onWeighIn = _ref14.onWeighIn,
+    tdeeAdj = _ref14.tdeeAdj,
+    baseTDEE = _ref14.baseTDEE;
   var _useState11 = useState(""),
     _useState12 = _slicedToArray(_useState11, 2),
     val = _useState12[0],
@@ -1453,11 +1487,11 @@ function WeighInWidget(_ref13) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref14) {
-  var workouts = _ref14.workouts,
-    onAdd = _ref14.onAdd,
-    onRemove = _ref14.onRemove,
-    prof = _ref14.prof;
+function WorkoutLogger(_ref15) {
+  var workouts = _ref15.workouts,
+    onAdd = _ref15.onAdd,
+    onRemove = _ref15.onRemove,
+    prof = _ref15.prof;
   var _useState13 = useState("legs"),
     _useState14 = _slicedToArray(_useState13, 2),
     type = _useState14[0],
@@ -1505,43 +1539,43 @@ function WorkoutLogger(_ref14) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+    var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
       var prompt, _t4, _t5;
-      return _regenerator().w(function (_context6) {
-        while (1) switch (_context6.p = _context6.n) {
+      return _regenerator().w(function (_context7) {
+        while (1) switch (_context7.p = _context7.n) {
           case 0:
             if (!(!hevyText.trim() || hevyLoading)) {
-              _context6.n = 1;
+              _context7.n = 1;
               break;
             }
-            return _context6.a(2);
+            return _context7.a(2);
           case 1:
             setHevyLoading(true);
             setHevyResult(null);
-            _context6.p = 2;
+            _context7.p = 2;
             prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
             _t4 = setHevyResult;
-            _context6.n = 3;
+            _context7.n = 3;
             return callAIJson(prompt, 200);
           case 3:
-            _t4(_context6.v);
-            _context6.n = 5;
+            _t4(_context7.v);
+            _context7.n = 5;
             break;
           case 4:
-            _context6.p = 4;
-            _t5 = _context6.v;
+            _context7.p = 4;
+            _t5 = _context7.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
           case 5:
             setHevyLoading(false);
           case 6:
-            return _context6.a(2);
+            return _context7.a(2);
         }
-      }, _callee6, null, [[2, 4]]);
+      }, _callee7, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref15.apply(this, arguments);
+      return _ref16.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -1851,29 +1885,29 @@ function WorkoutLogger(_ref14) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-function Dashboard(_ref16) {
-  var logs = _ref16.logs,
-    totals = _ref16.totals,
-    targets = _ref16.targets,
-    remaining = _ref16.remaining,
-    water = _ref16.water,
-    setWater = _ref16.setWater,
-    mode = _ref16.mode,
-    setMode = _ref16.setMode,
-    setView = _ref16.setView,
-    removeLog = _ref16.removeLog,
-    addToQA = _ref16.addToQA,
-    hasProfile = _ref16.hasProfile,
-    streak = _ref16.streak,
-    prof = _ref16.prof,
-    weighIns = _ref16.weighIns,
-    onWeighIn = _ref16.onWeighIn,
-    tdeeAdj = _ref16.tdeeAdj,
-    baseTDEE = _ref16.baseTDEE,
-    coachKey = _ref16.coachKey,
-    workouts = _ref16.workouts,
-    onAddWorkout = _ref16.onAddWorkout,
-    onRemoveWorkout = _ref16.onRemoveWorkout;
+function Dashboard(_ref17) {
+  var logs = _ref17.logs,
+    totals = _ref17.totals,
+    targets = _ref17.targets,
+    remaining = _ref17.remaining,
+    water = _ref17.water,
+    setWater = _ref17.setWater,
+    mode = _ref17.mode,
+    setMode = _ref17.setMode,
+    setView = _ref17.setView,
+    removeLog = _ref17.removeLog,
+    addToQA = _ref17.addToQA,
+    hasProfile = _ref17.hasProfile,
+    streak = _ref17.streak,
+    prof = _ref17.prof,
+    weighIns = _ref17.weighIns,
+    onWeighIn = _ref17.onWeighIn,
+    tdeeAdj = _ref17.tdeeAdj,
+    baseTDEE = _ref17.baseTDEE,
+    coachKey = _ref17.coachKey,
+    workouts = _ref17.workouts,
+    onAddWorkout = _ref17.onAddWorkout,
+    onRemoveWorkout = _ref17.onRemoveWorkout;
   var over = totals.kcal > targets.kcal;
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -1883,11 +1917,11 @@ function Dashboard(_ref16) {
     savedIds = _useState28[0],
     setSavedIds = _useState28[1];
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(log) {
-      return _regenerator().w(function (_context7) {
-        while (1) switch (_context7.n) {
+    var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(log) {
+      return _regenerator().w(function (_context8) {
+        while (1) switch (_context8.n) {
           case 0:
-            _context7.n = 1;
+            _context8.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -1899,12 +1933,12 @@ function Dashboard(_ref16) {
               });
             }, 1800);
           case 2:
-            return _context7.a(2);
+            return _context8.a(2);
         }
-      }, _callee7);
+      }, _callee8);
     }));
     return function handleAddToQA(_x6) {
-      return _ref17.apply(this, arguments);
+      return _ref18.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -2010,10 +2044,10 @@ function Dashboard(_ref16) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref18) {
-    var _ref19 = _slicedToArray(_ref18, 2),
-      k = _ref19[0],
-      v = _ref19[1];
+  }, Object.entries(MODES).map(function (_ref19) {
+    var _ref20 = _slicedToArray(_ref19, 2),
+      k = _ref20[0],
+      v = _ref20[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -2456,32 +2490,32 @@ function searchOFT(_x7) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(query) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(query) {
     var _p$product_name2, res, data, p, sg2, f, n, _t9;
-    return _regenerator().w(function (_context19) {
-      while (1) switch (_context19.p = _context19.n) {
+    return _regenerator().w(function (_context20) {
+      while (1) switch (_context20.p = _context20.n) {
         case 0:
-          _context19.p = 0;
-          _context19.n = 1;
+          _context20.p = 0;
+          _context20.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context19.v;
-          _context19.n = 2;
+          res = _context20.v;
+          _context20.n = 2;
           return res.json();
         case 2:
-          data = _context19.v;
+          data = _context20.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context19.n = 3;
+            _context20.n = 3;
             break;
           }
-          return _context19.a(2, null);
+          return _context20.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context19.a(2, {
+          return _context20.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -2492,18 +2526,18 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context19.p = 4;
-          _t9 = _context19.v;
-          return _context19.a(2, null);
+          _context20.p = 4;
+          _t9 = _context20.v;
+          return _context20.a(2, null);
       }
-    }, _callee19, null, [[0, 4]]);
+    }, _callee20, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref20) {
-  var item = _ref20.item,
-    onReestimate = _ref20.onReestimate,
-    reestimating = _ref20.reestimating;
+function ItemRow(_ref21) {
+  var item = _ref21.item,
+    onReestimate = _ref21.onReestimate,
+    reestimating = _ref21.reestimating;
   var _useState29 = useState(false),
     _useState30 = _slicedToArray(_useState29, 2),
     editing = _useState30[0],
@@ -2623,9 +2657,9 @@ function ItemRow(_ref20) {
     }
   }, item.reasoning));
 }
-function AILog(_ref21) {
-  var onAdd = _ref21.onAdd,
-    onBack = _ref21.onBack;
+function AILog(_ref22) {
+  var onAdd = _ref22.onAdd,
+    onBack = _ref22.onBack;
   var _useState33 = useState(""),
     _useState34 = _slicedToArray(_useState33, 2),
     desc = _useState34[0],
@@ -2667,33 +2701,33 @@ function AILog(_ref21) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
+    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
       var parsed, aiItems, oftResults, merged, _t6;
-      return _regenerator().w(function (_context8) {
-        while (1) switch (_context8.p = _context8.n) {
+      return _regenerator().w(function (_context9) {
+        while (1) switch (_context9.p = _context9.n) {
           case 0:
             if (desc.trim()) {
-              _context8.n = 1;
+              _context9.n = 1;
               break;
             }
-            return _context8.a(2);
+            return _context9.a(2);
           case 1:
             setLoading(true);
             setError("");
             setItems(null);
             setLoggedAll(false);
-            _context8.p = 2;
-            _context8.n = 3;
+            _context9.p = 2;
+            _context9.n = 3;
             return callAIJson(AI_PROMPT(desc), 1000);
           case 3:
-            parsed = _context8.v;
+            parsed = _context9.v;
             aiItems = parsed.items || []; // OFT parallel lookup for each item
-            _context8.n = 4;
+            _context9.n = 4;
             return Promise.all(aiItems.map(function (it) {
               return searchOFT(it.name);
             }));
           case 4:
-            oftResults = _context8.v;
+            oftResults = _context9.v;
             merged = aiItems.map(function (it, i) {
               var oft = oftResults[i];
               // Use OFT data if found AND it has higher confidence than AI estimate
@@ -2703,39 +2737,39 @@ function AILog(_ref21) {
               return it;
             });
             setItems(merged);
-            _context8.n = 6;
+            _context9.n = 6;
             break;
           case 5:
-            _context8.p = 5;
-            _t6 = _context8.v;
+            _context9.p = 5;
+            _t6 = _context9.v;
             setError("Estimation failed: " + _t6.message);
           case 6:
             setLoading(false);
           case 7:
-            return _context8.a(2);
+            return _context9.a(2);
         }
-      }, _callee8, null, [[2, 5]]);
+      }, _callee9, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref22.apply(this, arguments);
+      return _ref23.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(idx, newName) {
+    var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(idx, newName) {
       var updated, oft, _final, _t7;
-      return _regenerator().w(function (_context9) {
-        while (1) switch (_context9.p = _context9.n) {
+      return _regenerator().w(function (_context0) {
+        while (1) switch (_context0.p = _context0.n) {
           case 0:
             setReestIdx(idx);
-            _context9.p = 1;
-            _context9.n = 2;
+            _context0.p = 1;
+            _context0.n = 2;
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            updated = _context9.v;
-            _context9.n = 3;
+            updated = _context0.v;
+            _context0.n = 3;
             return searchOFT(newName);
           case 3:
-            oft = _context9.v;
+            oft = _context0.v;
             _final = oft && oft.confidence > updated.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
               name: newName
             }) : _objectSpread(_objectSpread({}, updated), {}, {
@@ -2746,20 +2780,20 @@ function AILog(_ref21) {
                 return i === idx ? _final : it;
               });
             });
-            _context9.n = 5;
+            _context0.n = 5;
             break;
           case 4:
-            _context9.p = 4;
-            _t7 = _context9.v;
+            _context0.p = 4;
+            _t7 = _context0.v;
           case 5:
             setReestIdx(null);
           case 6:
-            return _context9.a(2);
+            return _context0.a(2);
         }
-      }, _callee9, null, [[1, 4]]);
+      }, _callee0, null, [[1, 4]]);
     }));
     return function reestimate(_x8, _x9) {
-      return _ref23.apply(this, arguments);
+      return _ref24.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -2979,11 +3013,11 @@ function AILog(_ref21) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref24) {
-  var onAdd = _ref24.onAdd,
-    onBack = _ref24.onBack,
-    meals = _ref24.meals,
-    setMeals = _ref24.setMeals;
+function QuickAdd(_ref25) {
+  var onAdd = _ref25.onAdd,
+    onBack = _ref25.onBack,
+    meals = _ref25.meals,
+    setMeals = _ref25.setMeals;
   var _useState45 = useState(""),
     _useState46 = _slicedToArray(_useState45, 2),
     search = _useState46[0],
@@ -2993,20 +3027,20 @@ function QuickAdd(_ref24) {
     modal = _useState48[0],
     setModal = _useState48[1];
   var save = /*#__PURE__*/function () {
-    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(m) {
-      return _regenerator().w(function (_context0) {
-        while (1) switch (_context0.n) {
+    var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(m) {
+      return _regenerator().w(function (_context1) {
+        while (1) switch (_context1.n) {
           case 0:
             setMeals(m);
-            _context0.n = 1;
+            _context1.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context0.a(2);
+            return _context1.a(2);
         }
-      }, _callee0);
+      }, _callee1);
     }));
     return function save(_x0) {
-      return _ref25.apply(this, arguments);
+      return _ref26.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -3181,9 +3215,9 @@ function QuickAdd(_ref24) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref26) {
-  var onAdd = _ref26.onAdd,
-    onBack = _ref26.onBack;
+function FoodSearch(_ref27) {
+  var onAdd = _ref27.onAdd,
+    onBack = _ref27.onBack;
   var _useState49 = useState(""),
     _useState50 = _slicedToArray(_useState49, 2),
     q = _useState50[0],
@@ -3205,36 +3239,36 @@ function FoodSearch(_ref26) {
     done = _useState58[0],
     setDone = _useState58[1];
   var search = /*#__PURE__*/function () {
-    var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1() {
+    var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
       var res, data, parseServing, parseKcal, valid, _t8;
-      return _regenerator().w(function (_context1) {
-        while (1) switch (_context1.p = _context1.n) {
+      return _regenerator().w(function (_context10) {
+        while (1) switch (_context10.p = _context10.n) {
           case 0:
             if (q.trim()) {
-              _context1.n = 1;
+              _context10.n = 1;
               break;
             }
-            return _context1.a(2);
+            return _context10.a(2);
           case 1:
             setLoading(true);
             setError("");
             setResults([]);
             setDone(true);
-            _context1.p = 2;
-            _context1.n = 3;
+            _context10.p = 2;
+            _context10.n = 3;
             return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
           case 3:
-            res = _context1.v;
+            res = _context10.v;
             if (res.ok) {
-              _context1.n = 4;
+              _context10.n = 4;
               break;
             }
             throw new Error("Network error");
           case 4:
-            _context1.n = 5;
+            _context10.n = 5;
             return res.json();
           case 5:
-            data = _context1.v;
+            data = _context10.v;
             parseServing = function parseServing(raw) {
               if (!raw) return 100;
               var n = parseFloat(raw);
@@ -3250,12 +3284,12 @@ function FoodSearch(_ref26) {
               return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
             });
             if (valid.length) {
-              _context1.n = 6;
+              _context10.n = 6;
               break;
             }
             setError("No results — try a brand name or simpler search term.");
             setLoading(false);
-            return _context1.a(2);
+            return _context10.a(2);
           case 6:
             setResults(valid.slice(0, 12).map(function (p) {
               var _p$brands;
@@ -3273,21 +3307,21 @@ function FoodSearch(_ref26) {
                 notes: "Per serving (~".concat(Math.round(sg2), "g)")
               };
             }));
-            _context1.n = 8;
+            _context10.n = 8;
             break;
           case 7:
-            _context1.p = 7;
-            _t8 = _context1.v;
+            _context10.p = 7;
+            _t8 = _context10.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
           case 9:
-            return _context1.a(2);
+            return _context10.a(2);
         }
-      }, _callee1, null, [[2, 7]]);
+      }, _callee10, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref27.apply(this, arguments);
+      return _ref28.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3418,13 +3452,13 @@ function FoodSearch(_ref26) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref28) {
+function History(_ref29) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref28.history,
-    onBack = _ref28.onBack,
-    onUpdateDay = _ref28.onUpdateDay,
-    _ref28$weighIns = _ref28.weighIns,
-    weighIns = _ref28$weighIns === void 0 ? [] : _ref28$weighIns;
+  var history = _ref29.history,
+    onBack = _ref29.onBack,
+    onUpdateDay = _ref29.onUpdateDay,
+    _ref29$weighIns = _ref29.weighIns,
+    weighIns = _ref29$weighIns === void 0 ? [] : _ref29$weighIns;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -4057,10 +4091,10 @@ function History(_ref28) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref29) {
-    var _ref30 = _slicedToArray(_ref29, 2),
-      k = _ref30[0],
-      m = _ref30[1];
+  }, Object.entries(MM).map(function (_ref30) {
+    var _ref31 = _slicedToArray(_ref30, 2),
+      k = _ref31[0],
+      m = _ref31[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -4098,10 +4132,10 @@ function History(_ref28) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref31) {
-    var _ref32 = _slicedToArray(_ref31, 2),
-      t = _ref32[0],
-      e = _ref32[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref32) {
+    var _ref33 = _slicedToArray(_ref32, 2),
+      t = _ref33[0],
+      e = _ref33[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -4267,10 +4301,10 @@ function History(_ref28) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref33) {
-    var _ref34 = _slicedToArray(_ref33, 2),
-      k = _ref34[0],
-      m = _ref34[1];
+  }, Object.entries(MM).map(function (_ref34) {
+    var _ref35 = _slicedToArray(_ref34, 2),
+      k = _ref35[0],
+      m = _ref35[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -4403,9 +4437,9 @@ function History(_ref28) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref35) {
-  var earnedBdgs = _ref35.earnedBdgs,
-    onBack = _ref35.onBack;
+function Achievements(_ref36) {
+  var earnedBdgs = _ref36.earnedBdgs,
+    onBack = _ref36.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -4578,70 +4612,73 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
+      var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
         var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav;
-        return _regenerator().w(function (_context10) {
-          while (1) switch (_context10.n) {
+        return _regenerator().w(function (_context11) {
+          while (1) switch (_context11.n) {
             case 0:
-              k = todayKey();
-              _context10.n = 1;
-              return sg("logs__" + k);
+              _context11.n = 1;
+              return runMigrations();
             case 1:
-              lv = _context10.v;
-              if (lv) setLogs(JSON.parse(lv));
-              _context10.n = 2;
-              return sg("water__" + k);
+              k = todayKey();
+              _context11.n = 2;
+              return sg("logs__" + k);
             case 2:
-              wv = _context10.v;
-              if (wv) setWater(parseInt(wv) || 0);
-              _context10.n = 3;
-              return sg("mode__" + k);
+              lv = _context11.v;
+              if (lv) setLogs(JSON.parse(lv));
+              _context11.n = 3;
+              return sg("water__" + k);
             case 3:
-              mv = _context10.v;
-              if (mv) setMode(mv);
-              _context10.n = 4;
-              return sg("profile");
+              wv = _context11.v;
+              if (wv) setWater(parseInt(wv) || 0);
+              _context11.n = 4;
+              return sg("mode__" + k);
             case 4:
-              pv = _context10.v;
-              if (pv) setProf(JSON.parse(pv));
-              _context10.n = 5;
-              return sg("meals");
+              mv = _context11.v;
+              if (mv) setMode(mv);
+              _context11.n = 5;
+              return sg("profile");
             case 5:
-              mv2 = _context10.v;
-              if (mv2) setMeals(JSON.parse(mv2));
-              _context10.n = 6;
-              return sg("workouts__" + k);
+              pv = _context11.v;
+              if (pv) setProf(JSON.parse(pv));
+              _context11.n = 6;
+              return sg("meals");
             case 6:
-              wkv = _context10.v;
-              if (wkv) setWorkouts(JSON.parse(wkv));
-              _context10.n = 7;
-              return sg("badges");
+              mv2 = _context11.v;
+              if (mv2) setMeals(JSON.parse(mv2));
+              _context11.n = 7;
+              return sg("workouts__" + k);
             case 7:
-              bv = _context10.v;
-              if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context10.n = 8;
-              return sg("history");
+              wkv = _context11.v;
+              if (wkv) setWorkouts(JSON.parse(wkv));
+              _context11.n = 8;
+              return sg("badges");
             case 8:
-              hv = _context10.v;
-              if (hv) setHist(JSON.parse(hv));
-              _context10.n = 9;
-              return sg("weighins");
+              bv = _context11.v;
+              if (bv) setEarnedBdgs(JSON.parse(bv));
+              _context11.n = 9;
+              return sg("history");
             case 9:
-              wiv = _context10.v;
-              if (wiv) setWeighIns(JSON.parse(wiv));
-              _context10.n = 10;
-              return sg("tdee_adj");
+              hv = _context11.v;
+              if (hv) setHist(JSON.parse(hv));
+              _context11.n = 10;
+              return sg("weighins");
             case 10:
-              tav = _context10.v;
+              wiv = _context11.v;
+              if (wiv) setWeighIns(JSON.parse(wiv));
+              _context11.n = 11;
+              return sg("tdee_adj");
+            case 11:
+              tav = _context11.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
               setReady(true);
-            case 11:
-              return _context10.a(2);
+            case 12:
+              return _context11.a(2);
           }
-        }, _callee10);
+        }, _callee11);
       }));
       return function load() {
-        return _ref36.apply(this, arguments);
+        return _ref37.apply(this, arguments);
       };
     }();
     load();
@@ -4683,88 +4720,88 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(l) {
-      return _regenerator().w(function (_context11) {
-        while (1) switch (_context11.n) {
-          case 0:
-            setLogs(l);
-            _context11.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            return _context11.a(2);
-        }
-      }, _callee11);
-    }));
-    return function saveLogs(_x1) {
-      return _ref37.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(w) {
+    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(l) {
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.n) {
           case 0:
-            setWater(w);
+            setLogs(l);
             _context12.n = 1;
-            return ss("water__" + todayKey(), String(w));
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
             return _context12.a(2);
         }
       }, _callee12);
     }));
-    return function saveWater(_x10) {
+    return function saveLogs(_x1) {
       return _ref38.apply(this, arguments);
     };
   }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(m) {
+  var saveWater = /*#__PURE__*/function () {
+    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(w) {
       return _regenerator().w(function (_context13) {
         while (1) switch (_context13.n) {
           case 0:
-            setMode(m);
+            setWater(w);
             _context13.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("water__" + todayKey(), String(w));
           case 1:
             return _context13.a(2);
         }
       }, _callee13);
     }));
-    return function saveMode(_x11) {
+    return function saveWater(_x10) {
       return _ref39.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(p) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(m) {
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.n) {
           case 0:
-            setProf(p);
+            setMode(m);
             _context14.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("mode__" + todayKey(), m);
           case 1:
             return _context14.a(2);
         }
       }, _callee14);
     }));
-    return function saveProf(_x12) {
+    return function saveMode(_x11) {
       return _ref40.apply(this, arguments);
     };
   }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(w) {
+  var saveProf = /*#__PURE__*/function () {
+    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(p) {
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.n) {
           case 0:
-            setWorkouts(w);
+            setProf(p);
             _context15.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("profile", JSON.stringify(p));
           case 1:
             return _context15.a(2);
         }
       }, _callee15);
     }));
-    return function saveWorkouts(_x13) {
+    return function saveProf(_x12) {
       return _ref41.apply(this, arguments);
+    };
+  }();
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(w) {
+      return _regenerator().w(function (_context16) {
+        while (1) switch (_context16.n) {
+          case 0:
+            setWorkouts(w);
+            _context16.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            return _context16.a(2);
+        }
+      }, _callee16);
+    }));
+    return function saveWorkouts(_x13) {
+      return _ref42.apply(this, arguments);
     };
   }();
   var addLog = function addLog(e) {
@@ -4790,19 +4827,19 @@ function App() {
     }));
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(entry) {
+    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(entry) {
       var name, clean, updated;
-      return _regenerator().w(function (_context16) {
-        while (1) switch (_context16.n) {
+      return _regenerator().w(function (_context17) {
+        while (1) switch (_context17.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context16.n = 1;
+              _context17.n = 1;
               break;
             }
-            return _context16.a(2);
+            return _context17.a(2);
           case 1:
             clean = {
               name: name,
@@ -4813,15 +4850,15 @@ function App() {
             };
             updated = [].concat(_toConsumableArray(meals), [clean]);
             setMeals(updated);
-            _context16.n = 2;
+            _context17.n = 2;
             return ss("meals", JSON.stringify(updated));
           case 2:
-            return _context16.a(2);
+            return _context17.a(2);
         }
-      }, _callee16);
+      }, _callee17);
     }));
     return function addToQA(_x14) {
-      return _ref42.apply(this, arguments);
+      return _ref43.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -4849,10 +4886,10 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(upd) {
+    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(upd) {
       var nh;
-      return _regenerator().w(function (_context17) {
-        while (1) switch (_context17.n) {
+      return _regenerator().w(function (_context18) {
+        while (1) switch (_context18.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -4860,22 +4897,22 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context17.n = 1;
+            _context18.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
-            return _context17.a(2);
+            return _context18.a(2);
         }
-      }, _callee17);
+      }, _callee18);
     }));
     return function updateDay(_x15) {
-      return _ref43.apply(this, arguments);
+      return _ref44.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(weight) {
+    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(weight) {
       var entry, updated, p, base, result, newAdj;
-      return _regenerator().w(function (_context18) {
-        while (1) switch (_context18.n) {
+      return _regenerator().w(function (_context19) {
+        while (1) switch (_context19.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -4887,7 +4924,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context18.n = 1;
+            _context19.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             // Run calibration whenever a new weigh-in arrives
@@ -4895,20 +4932,20 @@ function App() {
             base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context18.n = 2;
+              _context19.n = 2;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context18.n = 2;
+            _context19.n = 2;
             return ss("tdee_adj", String(newAdj));
           case 2:
-            return _context18.a(2);
+            return _context19.a(2);
         }
-      }, _callee18);
+      }, _callee19);
     }));
     return function onWeighIn(_x16) {
-      return _ref44.apply(this, arguments);
+      return _ref45.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
