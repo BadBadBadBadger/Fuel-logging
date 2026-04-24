@@ -34,7 +34,7 @@ const TIERS      = [3, 6, 12, 24, 48, 96];
 const TIER_NAMES = ["Bronze","Silver","Gold","Platinum","Diamond","Elite"];
 const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
-const DEF_PROFILE = { weight:80, height:178, bodyFat:18 };
+const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null };
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
@@ -97,7 +97,7 @@ const sumLogs = logs => logs.reduce((a, l) => ({
 
 const calcStreak = hist => {
   let s = 0;
-  const d = new Date();
+  const d = new Date(Date.now() + getDevDateOffset() * 86400000);
   for (;;) {
     const k = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
     if (!(hist.find(h => h.date === k)?.logs?.length)) break;
@@ -110,17 +110,27 @@ const calcStreak = hist => {
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
+const SAFE_MIN = { male:1400, female:1200 };
+
 const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
+  const sex = p.sex || "male";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
   const tdee = Math.round(bmr * 1.2) + tdeeAdj;
-  const kcal  = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
-  const protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
-  const fat     = Math.round(w   * (mode === "cut" ? 0.8 : 1.0));
+  let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
+  const protein = Math.round(lbm * (sex === "female"
+    ? (mode === "cut" ? 2.0 : mode === "bulk" ? 1.8 : 1.6)
+    : (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8)));
+  const fat     = Math.round(w   * (sex === "female"
+    ? (mode === "cut" ? 0.7 : 0.9)
+    : (mode === "cut" ? 0.8 : 1.0)));
+  const safeMin = SAFE_MIN[sex] || 1400;
+  const safeMinApplied = kcal < safeMin;
+  if (safeMinApplied) kcal = safeMin;
   const carbs   = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus: totalWorkoutKcal || 0 };
+  return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus: totalWorkoutKcal || 0, safeMinApplied };
 };
 
 // ── Adaptive TDEE ─────────────────────────────────────────────
@@ -262,17 +272,129 @@ function Chip({ label, value, color }) {
 }
 
 function MBar({ label, value, target, color }) {
-  const pct = Math.min(100, (value / target) * 100);
-  const over = value > target;
+  const pct   = Math.min(100, (value / target) * 100);
+  const overG = value - target;
+  const accent = overG > 15 ? "#ff5555" : overG > 5 ? "#ffb84b" : null;
   return (
     <div style={{ marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4 }}>
-        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: over ? "#ff5555" : "#8aaa80" }}>{label}</span>
-        <span style={{ color: over ? "#ff5555" : "#6a8a60" }}>{Math.round(value)}g / {target}g</span>
+        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: accent || "#8aaa80" }}>{label}</span>
+        <span style={{ color: accent || "#6a8a60" }}>{Math.round(value)}g / {target}g</span>
       </div>
       <div style={{ height:7, background:"#1a1a1a", borderRadius:99, overflow:"hidden" }}>
-        <div style={{ height:"100%", width:`${pct}%`, background: over ? "#ff5555" : color,
+        <div style={{ height:"100%", width:`${pct}%`, background: accent || color,
           borderRadius:99, transition:"width 0.4s" }}/>
+      </div>
+    </div>
+  );
+}
+
+// ── Streak Celebration ────────────────────────────────────────
+
+function StreakCelebration({ anim, onDone }) {
+  const { prevStreak, newStreak, isMilestone } = anim;
+  const [count, setCount] = useState(prevStreak);
+
+  // Pre-computed floaters — stable across re-renders via useState initializer
+  const [floaters] = useState(() => {
+    const n = isMilestone ? 26 : 14;
+    return Array.from({ length: n }, (_, i) => ({
+      x:     5  + Math.random() * 90,
+      y:     5  + Math.random() * 90,
+      size:  isMilestone ? 22 + Math.random() * 30 : 16 + Math.random() * 20,
+      delay: Math.random() * 0.7,
+      dur:   0.8 + Math.random() * 0.5,
+      emoji: isMilestone && i % 4 === 0 ? (i % 8 === 0 ? "🎉" : "🎊") : "🔥",
+    }));
+  });
+
+  useEffect(() => {
+    // ── Web Audio: whoosh then heavy thud ──────────────────────
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Whoosh: sawtooth sweep 800 → 180 Hz
+      const osc = ctx.createOscillator();
+      const g1  = ctx.createGain();
+      osc.connect(g1); g1.connect(ctx.destination);
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.32);
+      g1.gain.setValueAtTime(0.22, ctx.currentTime);
+      g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.32);
+      // Heavy thud: noise burst at 0.4s
+      const sr  = ctx.sampleRate;
+      const buf = ctx.createBuffer(1, Math.ceil(sr * 0.55), sr);
+      const ch  = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i++)
+        ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sr * 0.07));
+      const src = ctx.createBufferSource();
+      const g2  = ctx.createGain();
+      src.buffer = buf; src.connect(g2); g2.connect(ctx.destination);
+      g2.gain.setValueAtTime(1.8, ctx.currentTime + 0.42);
+      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
+      src.start(ctx.currentTime + 0.42);
+    } catch(e) {}
+
+    // ── Count up prevStreak → newStreak over 800ms ─────────────
+    const duration = 800;
+    const start    = Date.now();
+    const range    = newStreak - prevStreak;
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - start) / duration);
+      setCount(Math.round(prevStreak + range * p));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+
+    const timer = setTimeout(onDone, 1500);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.93)",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      zIndex:1000, animation:"sc_fade 0.18s ease-out" }}>
+      <style>{`
+        @keyframes sc_fade  { from{opacity:0} to{opacity:1} }
+        @keyframes sc_float { from{transform:translateY(0) rotate(-12deg)} to{transform:translateY(-24px) rotate(12deg)} }
+        @keyframes sc_pop   { 0%{transform:scale(0.25);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }
+        @keyframes sc_pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.14)} }
+        @keyframes sc_num   { 0%{transform:scale(0.4);opacity:0} 100%{transform:scale(1);opacity:1} }
+      `}</style>
+
+      {/* Floating 🔥 / 🎉🎊 */}
+      {floaters.map((f, i) => (
+        <div key={i} style={{ position:"absolute", left:`${f.x}%`, top:`${f.y}%`,
+          fontSize:f.size, pointerEvents:"none", userSelect:"none",
+          animation:`sc_float ${f.dur}s ease-in-out infinite alternate`,
+          animationDelay:`${f.delay}s`, opacity:0.88 }}>
+          {f.emoji}
+        </div>
+      ))}
+
+      {/* Centre content */}
+      <div style={{ textAlign:"center", position:"relative", zIndex:1 }}>
+        <div style={{ fontSize: isMilestone ? 128 : 108, lineHeight:1,
+          animation:"sc_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both" }}>
+          💪
+        </div>
+        <div style={{ fontSize: isMilestone ? 92 : 78, fontWeight:900, color:A,
+          textShadow:`0 0 40px ${A}99`, lineHeight:1, marginTop:-10,
+          animation: isMilestone
+            ? "sc_pulse 0.55s ease-in-out 0.45s infinite"
+            : "sc_num 0.45s ease-out 0.2s both" }}>
+          {count}
+        </div>
+        <div style={{ fontSize:14, color:A, fontWeight:900, letterSpacing:"0.14em",
+          marginTop:12, textShadow:`0 0 18px ${A}66` }}>
+          {isMilestone ? `🏆 ${newStreak} DAY MILESTONE!` : "DAY STREAK 🔥"}
+        </div>
+        {isMilestone && (
+          <div style={{ fontSize:38, marginTop:18, animation:"sc_pop 0.4s ease-out 0.5s both" }}>
+            🎉🎊🎉🎊🎉
+          </div>
+        )}
       </div>
     </div>
   );
@@ -330,12 +452,15 @@ function CoachCard({ mode, totals, targets, streak, water }) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) {
-  const [f, setF]       = useState({ ...DEF_PROFILE, ...profile });
+function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false }) {
+  const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
+  const [bfFocused, setBfFocused] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]:v }));
   const valid = Number(f.weight) > 0 && Number(f.height) > 0 &&
                 Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
+  const bfVal = Number(f.bodyFat);
+  const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   const prev     = calcTargets(f, "cut", 0, 0);
   const formulaTDEE = prev.tdee;
   const adjTDEE     = formulaTDEE + tdeeAdj;
@@ -349,7 +474,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
       setTimeout(() => setSaved(false), 1800);
     }, 600);
     return () => clearTimeout(t);
-  }, [f.weight, f.height, f.bodyFat]); // eslint-disable-line
+  }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
 
   const row = (label, val, unit, color = "#d8e8d0") => (
     <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
@@ -384,7 +509,43 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
           BODY FAT <span style={{ color:"#445040" }}>(%)</span>
         </div>
         <input type="number" min="0" max="99" value={f.bodyFat}
-          onChange={e => set("bodyFat", e.target.value)} style={{ ...INP, marginBottom:4 }}/>
+          onChange={e => set("bodyFat", e.target.value)}
+          onFocus={() => setBfFocused(true)} onBlur={() => setBfFocused(false)}
+          style={{ ...INP, marginBottom:4 }}/>
+        {bfFocused && !bfImplausible && (
+          <div style={{ fontSize:11, color:"#7a9a70", marginBottom:6, lineHeight:1.5 }}>
+            Not sure? Use 25% for men or 30% for women as a starting estimate. A more accurate figure improves your calorie and macro targets.
+          </div>
+        )}
+        {bfImplausible && (
+          <div style={{ fontSize:11, color:"#ffb84b", marginBottom:6, lineHeight:1.5 }}>
+            That seems unusual — double-check this number as it affects your calorie targets.
+          </div>
+        )}
+        <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
+          SEX <span style={{ color:"#445040", fontSize:10, fontWeight:400 }}>— used to calculate your calorie and macro targets</span>
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:6 }}>
+          {["male","female"].map(s => (
+            <button key={s} onClick={() => set("sex", s)}
+              style={{ flex:1, padding:"10px 0", borderRadius:10, fontWeight:900, fontSize:12,
+                letterSpacing:"0.06em", border:`1px solid ${f.sex === s ? A + "88" : BD}`,
+                background: f.sex === s ? A + "18" : "#0b0d0b",
+                color: f.sex === s ? A : "#445040" }}>
+              {s === "male" ? "MALE" : "FEMALE"}
+            </button>
+          ))}
+        </div>
+        {!f.sex && (
+          <div style={{ fontSize:11, color:"#ffb84b", marginBottom:10, lineHeight:1.5 }}>
+            Set your sex for more accurate targets — defaulting to male calculations.
+          </div>
+        )}
+        {f.sex === "female" && (
+          <div style={{ fontSize:11, color:"#7a9a70", marginBottom:10, lineHeight:1.5 }}>
+            Targets may need adjusting around your cycle — override anytime.
+          </div>
+        )}
         <div style={{ fontSize:11, color:"#334a30", marginBottom:14, lineHeight:1.5 }}>
           Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
         </div>
@@ -443,6 +604,15 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [] }) 
           })}
           <div style={{ fontSize:11, color:"#334a30", marginTop:8 }}>
             Workout kcal are added when you log sessions on the dashboard.
+          </div>
+        </div>
+      )}
+      {aggressiveCutAcked && (
+        <div style={{ background:"#1a1000", border:"1px solid #ffb84b33", borderRadius:12,
+          padding:"10px 14px", marginTop:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15 }}>⚠️</div>
+          <div style={{ fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+            You have previously acknowledged an aggressive cut target. Review your profile stats and targets if your circumstances have changed.
           </div>
         </div>
       )}
@@ -726,14 +896,47 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   mode, setMode, setView, removeLog, addToQA,
   hasProfile, streak, prof,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
-  workouts, onAddWorkout, onRemoveWorkout }) {
+  workouts, onAddWorkout, onRemoveWorkout,
+  customKcal, onSetCustomKcal, isCustomMode,
+  aggressiveCutAcked, onAckAggressiveCut }) {
 
-  const over      = totals.kcal > targets.kcal;
-  const pct       = Math.min(100, (totals.kcal / targets.kcal) * 100);
-  const mc        = MODES[mode].color;
+  const overAmt    = Math.round(totals.kcal - targets.kcal);
+  const pct        = Math.min(100, (totals.kcal / targets.kcal) * 100);
+  const mc         = MODES[mode].color;
   const isTraining = workouts.length > 0;
+  // Graduated calorie status: ok (≤100 over) | amber-soft (100-200) | amber (200-500) | red (500+)
+  const AMBER = "#ffb84b";
+  const RED   = "#ff5555";
+  const kcalAccent  = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
+  const kcalLabel   = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
+  const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mc}88,${mc})`;
+  const kcalBorder  = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#1c241c";
 
-  const [savedIds, setSavedIds] = useState({});
+  const [savedIds,      setSavedIds]      = useState({});
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetInputVal, setTargetInputVal] = useState("");
+
+  const commitTarget = () => {
+    const v = parseInt(targetInputVal);
+    if (v > 0) onSetCustomKcal(v);
+    setEditingTarget(false);
+  };
+
+  // Warnings computed from custom target vs effective TDEE
+  const tdee = targets.tdee; // effective TDEE (formula + adaptive adj)
+  const targetWarning = (() => {
+    if (!isCustomMode || targets.safeMinApplied) return null;
+    const diff = customKcal - tdee; // negative = deficit
+    if (diff < -1000) return { level: aggressiveCutAcked ? "amber" : "red",
+      text: "This deficit is not recommended. Extreme cuts cause muscle loss, fatigue and metabolic damage. Are you sure?" };
+    if (diff < -750)  return { level:"amber",
+      text:`This is an aggressive deficit. You may lose muscle alongside fat. Consider ${(tdee - 750).toLocaleString()} kcal or above.` };
+    if (diff >= -150 && diff < 0) return { level:"info",
+      text:"Deficit is small — progress will be slow but sustainable 👍" };
+    if (diff > 0 && diff <= 150) return { level:"info",
+      text:"Small surplus — lean gains but slow 👍" };
+    return null;
+  })();
 
   const handleAddToQA = async log => {
     await addToQA(log);
@@ -771,16 +974,19 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Mode selector */}
       <div style={{ display:"flex", gap:6, marginBottom:12 }}>
-        {Object.entries(MODES).map(([k, v]) => (
-          <button key={k} onClick={() => setMode(k)}
-            style={{ flex:1, padding:"9px 4px",
-              background: mode === k ? v.color + "22" : "#131a11",
-              color: mode === k ? v.color : "#445040",
-              border: `1px solid ${mode === k ? v.color + "55" : BD}`,
-              borderRadius:10, fontSize:11, fontWeight:900, letterSpacing:"0.06em" }}>
-            {v.label}
-          </button>
-        ))}
+        {Object.entries(MODES).map(([k, v]) => {
+          const active = !isCustomMode && mode === k;
+          return (
+            <button key={k} onClick={() => setMode(k)}
+              style={{ flex:1, padding:"9px 4px",
+                background: active ? v.color + "22" : "#131a11",
+                color:      active ? v.color : "#445040",
+                border:    `1px solid ${active ? v.color + "55" : BD}`,
+                borderRadius:10, fontSize:11, fontWeight:900, letterSpacing:"0.06em" }}>
+              {v.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Workout logger */}
@@ -795,19 +1001,98 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </button>
       )}
 
+      {/* Target-setting warnings */}
+      {targetWarning && (
+        <div style={{ marginBottom:10 }}>
+          {targetWarning.level === "red" ? (
+            <div style={{ background:"#1a0505", border:"1px solid #ff555544", borderRadius:12, padding:"12px 14px" }}>
+              <div style={{ fontSize:12, color:"#ff5555", fontWeight:800, letterSpacing:"0.06em", marginBottom:6 }}>
+                ⚠️ NOT RECOMMENDED
+              </div>
+              <div style={{ fontSize:11, color:"#aa4444", lineHeight:1.6, marginBottom:10 }}>
+                {targetWarning.text}
+              </div>
+              <button onClick={onAckAggressiveCut}
+                style={{ background:"#ff555522", border:"1px solid #ff555544", borderRadius:8,
+                  color:"#ff7777", fontSize:11, fontWeight:800, padding:"7px 14px", cursor:"pointer" }}>
+                Yes, I understand →
+              </button>
+            </div>
+          ) : targetWarning.level === "amber" ? (
+            <div style={{ background:"#151000", border:"1px solid #ffb84b33", borderRadius:12,
+              padding:"10px 14px", fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+              ⚠️ {targetWarning.text}
+            </div>
+          ) : (
+            <div style={{ background:"#101510", border:"1px solid #3a5030", borderRadius:12,
+              padding:"10px 14px", fontSize:11, color:"#556050", lineHeight:1.5 }}>
+              ℹ {targetWarning.text}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Safe minimum warning */}
+      {targets.safeMinApplied && (
+        <div style={{ background:"#1a1200", border:"1px solid #ffb84b33", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>⚠️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              SAFE MINIMUM APPLIED
+            </div>
+            <div style={{ fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+              {isCustomMode
+                ? `That's below the safe minimum for your body. We've set it to ${targets.kcal.toLocaleString()} kcal to keep you safe.`
+                : "Your target has been set to the safe minimum."
+              }{" "}
+              <button onClick={() => setView("profile")}
+                style={{ background:"none", border:"none", color:AMBER, fontSize:11,
+                  fontWeight:700, padding:0, cursor:"pointer", textDecoration:"underline" }}>
+                Check your profile stats.
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Calorie card */}
       <div style={{ background:CARD, borderRadius:22,
-        border:`1px solid ${over ? "#ff555328" : "#1c241c"}`, padding:"20px 22px", marginBottom:14 }}>
+        border:`1px solid ${kcalBorder}`, padding:"20px 22px", marginBottom:14 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
           <div style={{ fontSize:11, color:mc, letterSpacing:"0.12em", fontWeight:800 }}>
             {MODES[mode].label}{isTraining ? " · ⚡" : ""}
           </div>
-          <div style={{ fontSize:11, color:"#2e3a2c" }}>TARGET {targets.kcal.toLocaleString()} kcal</div>
+          {editingTarget ? (
+            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <span style={{ fontSize:10, color:"#445040" }}>TARGET</span>
+              <input type="number" inputMode="numeric" value={targetInputVal}
+                onChange={e => setTargetInputVal(e.target.value)}
+                onBlur={commitTarget}
+                onKeyDown={e => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingTarget(false); }}
+                autoFocus
+                style={{ background:"none", border:"none", borderBottom:`1px solid ${mc}`,
+                  color:mc, fontSize:13, fontWeight:900, width:54, textAlign:"center",
+                  fontFamily:"inherit", outline:"none", padding:"0 2px" }}/>
+              <span style={{ fontSize:10, color:"#445040" }}>kcal</span>
+            </div>
+          ) : (
+            <div onClick={() => { setTargetInputVal(String(targets.kcal)); setEditingTarget(true); }}
+              style={{ cursor:"text", display:"flex", alignItems:"center", gap:3 }}>
+              <span style={{ fontSize:11, color: isCustomMode ? mc + "cc" : "#2e3a2c",
+                borderBottom:`1px dashed ${isCustomMode ? mc + "55" : "#2e3a2c44"}`,
+                paddingBottom:1 }}>
+                TARGET {targets.kcal.toLocaleString()} kcal
+              </span>
+              <span style={{ fontSize:9, color:"#334a30" }}>✎</span>
+            </div>
+          )}
         </div>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:14 }}>
           <div>
             <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", marginBottom:4 }}>CONSUMED</div>
-            <div style={{ fontSize:42, fontWeight:900, color: over ? "#ff5555" : "#e8f0e0",
+            <div style={{ fontSize:42, fontWeight:900,
+              color: overAmt > 100 ? kcalAccent : "#e8f0e0",
               lineHeight:1, letterSpacing:"-0.03em" }}>
               {Math.round(totals.kcal).toLocaleString()}
               <span style={{ fontSize:14, color:"#445040", fontWeight:400, marginLeft:5 }}>kcal</span>
@@ -815,17 +1100,18 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           </div>
           <div style={{ textAlign:"right" }}>
             <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", marginBottom:4 }}>
-              {over ? "OVER BY" : "REMAINING"}
+              {kcalLabel}
             </div>
-            <div style={{ fontSize:30, fontWeight:900, color: over ? "#ff5555" : mc, lineHeight:1 }}>
+            <div style={{ fontSize:30, fontWeight:900, color: kcalAccent, lineHeight:1 }}>
               {Math.abs(Math.round(remaining)).toLocaleString()}
-              <span style={{ fontSize:12, color: over ? "#aa3333" : "#6a9a30", fontWeight:400, marginLeft:4 }}>kcal</span>
+              <span style={{ fontSize:12, color: overAmt > 100 ? kcalAccent + "99" : "#6a9a30",
+                fontWeight:400, marginLeft:4 }}>kcal</span>
             </div>
           </div>
         </div>
         <div style={{ height:10, background:"#161a16", borderRadius:99, overflow:"hidden" }}>
           <div style={{ height:"100%", width:`${pct}%`,
-            background: over ? "#ff5555" : `linear-gradient(90deg,${mc}88,${mc})`,
+            background: kcalBarBg,
             borderRadius:99, transition:"width 0.5s" }}/>
         </div>
       </div>
@@ -1841,7 +2127,10 @@ function App() {
   const [ready,      setReady]      = useState(false);
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
-  const [coachKey,   setCoachKey]   = useState(0);
+  const [coachKey,         setCoachKey]         = useState(0);
+  const [streakAnim,       setStreakAnim]       = useState(null);
+  const [customKcal,       setCustomKcal]       = useState(null);
+  const [aggressiveCutAcked, setAggressiveCutAcked] = useState(false);
 
   // Expose dev refresh hook for test harness
   useEffect(() => {
@@ -1866,6 +2155,8 @@ function App() {
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
       const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
       const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
+      const ckv = await sg("target_kcal"); if (ckv) { const n = parseInt(ckv); if (n > 0) setCustomKcal(n); }
+      const acv = await sg("aggressive_cut_acked"); if (acv) setAggressiveCutAcked(true);
       setReady(true);
     };
     load();
@@ -1902,11 +2193,49 @@ function App() {
   const saveProf     = async p => { setProf(p);     await ss("profile",                JSON.stringify(p)); };
   const saveWorkouts = async w => { setWorkouts(w); await ss("workouts__" + todayKey(), JSON.stringify(w)); };
 
-  const addLog       = e  => saveLogs([...logs, { ...e, id:Date.now(),
-    time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }]);
+  const addLog = async e => {
+    const isFirstToday = logs.length === 0;
+    await saveLogs([...logs, { ...e, id:Date.now(),
+      time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }]);
+    if (isFirstToday) {
+      const animKey = "streak_anim__" + todayKey();
+      if (!localStorage.getItem(animKey)) {
+        const today = todayKey();
+        const simulatedHist = [
+          ...hist.filter(d => d.date !== today),
+          { date: today, logs: [e] }
+        ];
+        const newStreak = calcStreak(simulatedHist);
+        if (newStreak > 0) {
+          localStorage.setItem(animKey, "1");
+          setStreakAnim({
+            prevStreak:  Math.max(0, newStreak - 1),
+            newStreak,
+            isMilestone: [7, 14, 30, 50, 100].includes(newStreak),
+          });
+        }
+      }
+    }
+  };
   const removeLog    = id => saveLogs(logs.filter(l => l.id !== id));
   const addWorkout   = w  => saveWorkouts([...workouts, w]);
   const removeWorkout = id => saveWorkouts(workouts.filter(w => w.id !== id));
+
+  const saveCustomKcal = async kcal => {
+    setCustomKcal(kcal);
+    if (kcal == null) await ss("target_kcal", "");
+    else              await ss("target_kcal", String(kcal));
+  };
+
+  const handleSetMode = async m => {
+    await saveMode(m);
+    await saveCustomKcal(null);
+  };
+
+  const handleAckAggressiveCut = async () => {
+    setAggressiveCutAcked(true);
+    await ss("aggressive_cut_acked", "1");
+  };
 
   const addToQA = async entry => {
     const name = entry.name;
@@ -1949,9 +2278,12 @@ function App() {
     setWeighIns(updated);
     await ss("weighins", JSON.stringify(updated));
 
+    // Sync profile weight so targets recalculate immediately
+    const updatedProf = { ...(prof || DEF_PROFILE), weight };
+    await saveProf(updatedProf);
+
     // Run calibration whenever a new weigh-in arrives
-    const p = prof || DEF_PROFILE;
-    const base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
+    const base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat/100))) * 1.2);
     const result = runCalibration(hist, updated, base + tdeeAdj);
     if (result && Math.abs(result.adj) >= 50) {
       const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
@@ -1962,8 +2294,29 @@ function App() {
 
   const p        = prof || DEF_PROFILE;
   const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
+  const effectiveTDEE = baseTDEE + tdeeAdj;
+  const effectiveMode = customKcal != null
+    ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
+    : mode;
 
-  const targets   = calcTargets(prof || DEF_PROFILE, mode, workouts.reduce((s, w) => s + (w.kcal || 0), 0), tdeeAdj);
+  const workoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
+  const baseTargets = calcTargets(p, effectiveMode, workoutKcal, tdeeAdj);
+  const targets = (() => {
+    if (customKcal == null) return baseTargets;
+    const safeMin = SAFE_MIN[p.sex || "male"] || 1400;
+    const safeKcal = Math.max(safeMin, customKcal);
+    const scale = baseTargets.kcal > 0 ? safeKcal / baseTargets.kcal : 1;
+    return {
+      ...baseTargets,
+      kcal:    safeKcal,
+      protein: Math.round(baseTargets.protein * scale),
+      carbs:   Math.max(50, Math.round(baseTargets.carbs * scale)),
+      fat:     Math.round(baseTargets.fat * scale),
+      safeMinApplied:   safeKcal > customKcal,
+      customKcalApplied: true,
+    };
+  })();
+
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
   const streak    = calcStreak(hist);
@@ -1985,6 +2338,9 @@ function App() {
         button { cursor: pointer; }
         button:disabled { cursor: not-allowed; }
       `}</style>
+
+      {/* Streak celebration */}
+      {streakAnim && <StreakCelebration anim={streakAnim} onDone={() => setStreakAnim(null)} />}
 
       {/* Badge celebration */}
       {newBadge && (
@@ -2009,12 +2365,14 @@ function App() {
 
       {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining}
           water={water} setWater={saveWater}
-          mode={mode} setMode={saveMode} setView={setView} removeLog={removeLog} addToQA={addToQA}
+          mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} prof={prof}
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}
           coachKey={coachKey}
-          workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}/>}
-      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns}/>}
+          workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}
+          customKcal={customKcal} onSetCustomKcal={saveCustomKcal} isCustomMode={customKcal != null}
+          aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}/>}
+      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
