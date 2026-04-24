@@ -1,3 +1,5 @@
+"use strict";
+
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
@@ -33,7 +35,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
 // Build: npx babel src/app.jsx --presets @babel/preset-react -o app.js
 // ─────────────────────────────────────────────────────────────
 
-var exports = window.exports || {};
+var _exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
 var A = "#a3ff4b",
@@ -2718,7 +2720,7 @@ function AILog(_ref22) {
             setLoggedAll(false);
             _context9.p = 2;
             _context9.n = 3;
-            return callAIJson(AI_PROMPT(desc), 1000);
+            return callAIJson(AI_PROMPT(desc), 2000);
           case 3:
             parsed = _context9.v;
             aiItems = parsed.items || []; // OFT parallel lookup for each item

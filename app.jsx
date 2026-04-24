@@ -1061,7 +1061,7 @@ function AILog({ onAdd, onBack }) {
     if (!desc.trim()) return;
     setLoading(true); setError(""); setItems(null); setLoggedAll(false);
     try {
-      const parsed = await callAIJson(AI_PROMPT(desc), 1000);
+      const parsed = await callAIJson(AI_PROMPT(desc), 2000);
       let aiItems  = parsed.items || [];
 
       // OFT parallel lookup for each item
