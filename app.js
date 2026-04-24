@@ -501,6 +501,20 @@ var callAI = /*#__PURE__*/function () {
     return _ref4.apply(this, arguments);
   };
 }();
+var repairJson = function repairJson(text) {
+  var s = text.replace(/```json\s*|```/g, "").trim();
+  // Extract outermost JSON object
+  var start = s.indexOf('{'),
+    end = s.lastIndexOf('}');
+  if (start !== -1 && end !== -1) s = s.slice(start, end + 1);
+  // Fix trailing decimal points: 450. -> 450
+  s = s.replace(/(\d+)\.\s*([,\}\]\n\r])/g, '$1$2');
+  // Remove JS-style // comments
+  s = s.replace(/\/\/[^\n]*/g, '');
+  // Remove trailing commas before } or ]
+  s = s.replace(/,(\s*[}\]])/g, '$1');
+  return JSON.parse(s);
+};
 var callAIJson = /*#__PURE__*/function () {
   var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(prompt) {
     var maxTokens,
@@ -514,7 +528,7 @@ var callAIJson = /*#__PURE__*/function () {
           return callAI(prompt, maxTokens);
         case 1:
           text = _context5.v;
-          return _context5.a(2, JSON.parse(text.replace(/```json|```/g, "").trim()));
+          return _context5.a(2, repairJson(text));
       }
     }, _callee5);
   }));

@@ -192,9 +192,22 @@ const callAI = async (prompt, maxTokens = 500) => {
   const data = await res.json();
   return (data.content || []).map(b => b.text || "").join("").trim();
 };
+const repairJson = (text) => {
+  let s = text.replace(/```json\s*|```/g, "").trim();
+  // Extract outermost JSON object
+  const start = s.indexOf('{'), end = s.lastIndexOf('}');
+  if (start !== -1 && end !== -1) s = s.slice(start, end + 1);
+  // Fix trailing decimal points: 450. -> 450
+  s = s.replace(/(\d+)\.\s*([,\}\]\n\r])/g, '$1$2');
+  // Remove JS-style // comments
+  s = s.replace(/\/\/[^\n]*/g, '');
+  // Remove trailing commas before } or ]
+  s = s.replace(/,(\s*[}\]])/g, '$1');
+  return JSON.parse(s);
+};
 const callAIJson = async (prompt, maxTokens = 500) => {
   const text = await callAI(prompt, maxTokens);
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  return repairJson(text);
 };
 
 // ── Error Boundary ────────────────────────────────────────────
