@@ -16,15 +16,31 @@
     input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
     input::placeholder, textarea::placeholder { color: #2a3228; }
     select { background: #0b0d0b; color: #d8e8d0; }
+    #update-banner {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+      background: #1c201c; border-top: 1px solid #a3ff4b;
+      padding: 14px 20px; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    #update-banner.show { display: flex; }
+    #update-banner span { color: #d8e8d0; font-size: 14px; }
+    #update-banner button {
+      background: #a3ff4b; color: #0b0d0b; border: none; border-radius: 8px;
+      padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
+  <div id="update-banner">
+    <span>A new version of Fuel Log is ready.</span>
+    <button id="update-btn">Reload</button>
+  </div>
 
   <!-- CDN dependencies — loaded before app.js -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <script src="vendor/react.js"></script>
+  <script src="vendor/react-dom.js"></script>
+  <script src="vendor/prop-types.js"></script>
+  <script src="vendor/recharts.js"></script>
 
   <script>
     // localStorage bridge — matches window.storage API used in app
@@ -34,16 +50,57 @@
       delete: async k => { localStorage.removeItem(k); return { deleted: true }; },
     };
 
-    // Register service worker
+    // Service worker — register and handle update banner
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () =>
-        navigator.serviceWorker.register("sw.js").catch(() => {}));
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").then(reg => {
+          const showBanner = waitingSW => {
+            const banner = document.getElementById("update-banner");
+            banner.classList.add("show");
+            document.getElementById("update-btn").onclick = () => {
+              waitingSW.postMessage({ type: "SKIP_WAITING" });
+            };
+          };
+
+          if (reg.waiting) showBanner(reg.waiting);
+
+          reg.addEventListener("updatefound", () => {
+            const sw = reg.installing;
+            sw.addEventListener("statechange", () => {
+              if (sw.state === "installed" && navigator.serviceWorker.controller) {
+                showBanner(sw);
+              }
+            });
+          });
+        }).catch(() => {});
+
+        // When a new SW takes control, reload to pick up fresh assets
+        let reloading = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!reloading) { reloading = true; location.reload(); }
+        });
+      });
     }
 
-    // Make React hooks and Recharts available as globals for the compiled app
-    const { useState, useEffect } = React;
-    const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-            XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
+    // Expose React hooks and Recharts components as explicit window globals.
+    // Using window.X = ... (not const) ensures app.js can access them regardless
+    // of strict-mode 'this' context differences across mobile browsers.
+    window.useState  = React.useState;
+    window.useEffect = React.useEffect;
+    (function() {
+      var R = typeof Recharts !== "undefined" ? Recharts : {};
+      window.LineChart         = R.LineChart;
+      window.Line              = R.Line;
+      window.BarChart          = R.BarChart;
+      window.Bar               = R.Bar;
+      window.PieChart          = R.PieChart;
+      window.Pie               = R.Pie;
+      window.Cell              = R.Cell;
+      window.XAxis             = R.XAxis;
+      window.YAxis             = R.YAxis;
+      window.Tooltip           = R.Tooltip;
+      window.ResponsiveContainer = R.ResponsiveContainer;
+    })();
   </script>
 
   <!-- Pre-compiled app — no Babel, no line limit -->

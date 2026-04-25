@@ -108,7 +108,8 @@ var TIER_ICONS = ["🟤", "⚪", "🟡", "🔵", "💎", "👑"];
 var DEF_PROFILE = {
   weight: 80,
   height: 178,
-  bodyFat: 18
+  bodyFat: 18,
+  sex: null
 };
 var AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 var DEF_MEALS = [{
@@ -287,7 +288,7 @@ var sumLogs = function sumLogs(logs) {
 };
 var calcStreak = function calcStreak(hist) {
   var s = 0;
-  var d = new Date();
+  var d = new Date(Date.now() + getDevDateOffset() * 86400000);
   var _loop = function _loop() {
     var _hist$find;
     var k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -306,17 +307,25 @@ var estimateSessionKcal = function estimateSessionKcal(w, bf, type, dur, _int) {
   var _MET$type;
   return Math.round((((_MET$type = MET[type]) === null || _MET$type === void 0 ? void 0 : _MET$type[_int]) || 5) * w * (w * (1 - bf / 100) / 70) * (dur / 60));
 };
+var SAFE_MIN = {
+  male: 1400,
+  female: 1200
+};
 var calcTargets = function calcTargets(p, mode) {
   var totalWorkoutKcal = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
   var tdeeAdj = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
   var w = Number(p.weight) || 80;
   var bf = Number(p.bodyFat) || 18;
+  var sex = p.sex || "male";
   var lbm = w * (1 - bf / 100);
   var bmr = Math.round(370 + 21.6 * lbm);
   var tdee = Math.round(bmr * 1.2) + tdeeAdj;
   var kcal = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
-  var protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
-  var fat = Math.round(w * (mode === "cut" ? 0.8 : 1.0));
+  var protein = Math.round(lbm * (sex === "female" ? mode === "cut" ? 2.0 : mode === "bulk" ? 1.8 : 1.6 : mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
+  var fat = Math.round(w * (sex === "female" ? mode === "cut" ? 0.7 : 0.9 : mode === "cut" ? 0.8 : 1.0));
+  var safeMin = SAFE_MIN[sex] || 1400;
+  var safeMinApplied = kcal < safeMin;
+  if (safeMinApplied) kcal = safeMin;
   var carbs = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return {
     kcal: kcal,
@@ -326,7 +335,8 @@ var calcTargets = function calcTargets(p, mode) {
     tdee: tdee,
     bmr: bmr,
     lbm: Math.round(lbm),
-    bonus: totalWorkoutKcal || 0
+    bonus: totalWorkoutKcal || 0,
+    safeMinApplied: safeMinApplied
   };
 };
 
@@ -423,18 +433,52 @@ var ss = /*#__PURE__*/function () {
   };
 }();
 
-// Shared AI fetch — returns the text content string, throws on failure
-var callAI = /*#__PURE__*/function () {
-  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(prompt) {
-    var maxTokens,
-      res,
-      data,
-      _args3 = arguments;
+// ── Data migrations ───────────────────────────────────────────
+// Bump SCHEMA_VERSION and add a migration block each time the stored
+// data shape changes. runMigrations() is called once on startup.
+
+var SCHEMA_VERSION = 1;
+var runMigrations = /*#__PURE__*/function () {
+  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+    var stored, v;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.n) {
         case 0:
-          maxTokens = _args3.length > 1 && _args3[1] !== undefined ? _args3[1] : 500;
           _context3.n = 1;
+          return sg("fuel_schema_v");
+        case 1:
+          stored = _context3.v;
+          v = stored ? parseInt(stored) : 0;
+          if (!(v >= SCHEMA_VERSION)) {
+            _context3.n = 2;
+            break;
+          }
+          return _context3.a(2);
+        case 2:
+          _context3.n = 3;
+          return ss("fuel_schema_v", String(SCHEMA_VERSION));
+        case 3:
+          return _context3.a(2);
+      }
+    }, _callee3);
+  }));
+  return function runMigrations() {
+    return _ref3.apply(this, arguments);
+  };
+}();
+
+// Shared AI fetch — returns the text content string, throws on failure
+var callAI = /*#__PURE__*/function () {
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(prompt) {
+    var maxTokens,
+      res,
+      data,
+      _args4 = arguments;
+    return _regenerator().w(function (_context4) {
+      while (1) switch (_context4.n) {
+        case 0:
+          maxTokens = _args4.length > 1 && _args4[1] !== undefined ? _args4[1] : 500;
+          _context4.n = 1;
           return fetch(AI_ENDPOINT, {
             method: "POST",
             headers: {
@@ -450,40 +494,54 @@ var callAI = /*#__PURE__*/function () {
             })
           });
         case 1:
-          res = _context3.v;
-          _context3.n = 2;
+          res = _context4.v;
+          _context4.n = 2;
           return res.json();
         case 2:
-          data = _context3.v;
-          return _context3.a(2, (data.content || []).map(function (b) {
+          data = _context4.v;
+          return _context4.a(2, (data.content || []).map(function (b) {
             return b.text || "";
           }).join("").trim());
       }
-    }, _callee3);
-  }));
-  return function callAI(_x4) {
-    return _ref3.apply(this, arguments);
-  };
-}();
-var callAIJson = /*#__PURE__*/function () {
-  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(prompt) {
-    var maxTokens,
-      text,
-      _args4 = arguments;
-    return _regenerator().w(function (_context4) {
-      while (1) switch (_context4.n) {
-        case 0:
-          maxTokens = _args4.length > 1 && _args4[1] !== undefined ? _args4[1] : 500;
-          _context4.n = 1;
-          return callAI(prompt, maxTokens);
-        case 1:
-          text = _context4.v;
-          return _context4.a(2, JSON.parse(text.replace(/```json|```/g, "").trim()));
-      }
     }, _callee4);
   }));
-  return function callAIJson(_x5) {
+  return function callAI(_x4) {
     return _ref4.apply(this, arguments);
+  };
+}();
+var repairJson = function repairJson(text) {
+  var s = text.replace(/```json\s*|```/g, "").trim();
+  // Extract outermost JSON object
+  var start = s.indexOf('{'),
+    end = s.lastIndexOf('}');
+  if (start !== -1 && end !== -1) s = s.slice(start, end + 1);
+  // Fix trailing decimal points: 450. -> 450
+  s = s.replace(/(\d+)\.\s*([,\}\]\n\r])/g, '$1$2');
+  // Remove JS-style // comments
+  s = s.replace(/\/\/[^\n]*/g, '');
+  // Remove trailing commas before } or ]
+  s = s.replace(/,(\s*[}\]])/g, '$1');
+  return JSON.parse(s);
+};
+var callAIJson = /*#__PURE__*/function () {
+  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(prompt) {
+    var maxTokens,
+      text,
+      _args5 = arguments;
+    return _regenerator().w(function (_context5) {
+      while (1) switch (_context5.n) {
+        case 0:
+          maxTokens = _args5.length > 1 && _args5[1] !== undefined ? _args5[1] : 500;
+          _context5.n = 1;
+          return callAI(prompt, maxTokens);
+        case 1:
+          text = _context5.v;
+          return _context5.a(2, repairJson(text));
+      }
+    }, _callee5);
+  }));
+  return function callAIJson(_x5) {
+    return _ref5.apply(this, arguments);
   };
 }();
 
@@ -547,10 +605,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref5) {
-  var title = _ref5.title,
-    onBack = _ref5.onBack,
-    right = _ref5.right;
+function BackHdr(_ref6) {
+  var title = _ref6.title,
+    onBack = _ref6.onBack,
+    right = _ref6.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -591,10 +649,10 @@ function BackHdr(_ref5) {
     }
   }, title), right);
 }
-function Chip(_ref6) {
-  var label = _ref6.label,
-    value = _ref6.value,
-    color = _ref6.color;
+function Chip(_ref7) {
+  var label = _ref7.label,
+    value = _ref7.value,
+    color = _ref7.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -617,13 +675,14 @@ function Chip(_ref6) {
     }
   }, label));
 }
-function MBar(_ref7) {
-  var label = _ref7.label,
-    value = _ref7.value,
-    target = _ref7.target,
-    color = _ref7.color;
+function MBar(_ref8) {
+  var label = _ref8.label,
+    value = _ref8.value,
+    target = _ref8.target,
+    color = _ref8.color;
   var pct = Math.min(100, value / target * 100);
-  var over = value > target;
+  var overG = value - target;
+  var accent = overG > 15 ? "#ff5555" : overG > 5 ? "#ffb84b" : null;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 10
@@ -639,11 +698,11 @@ function MBar(_ref7) {
     style: {
       fontWeight: 800,
       letterSpacing: "0.06em",
-      color: over ? "#ff5555" : "#8aaa80"
+      color: accent || "#8aaa80"
     }
   }, label), /*#__PURE__*/React.createElement("span", {
     style: {
-      color: over ? "#ff5555" : "#6a8a60"
+      color: accent || "#6a8a60"
     }
   }, Math.round(value), "g / ", target, "g")), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -656,33 +715,177 @@ function MBar(_ref7) {
     style: {
       height: "100%",
       width: "".concat(pct, "%"),
-      background: over ? "#ff5555" : color,
+      background: accent || color,
       borderRadius: 99,
       transition: "width 0.4s"
     }
   })));
 }
 
+// ── Streak Celebration ────────────────────────────────────────
+
+function StreakCelebration(_ref9) {
+  var anim = _ref9.anim,
+    onDone = _ref9.onDone;
+  var prevStreak = anim.prevStreak,
+    newStreak = anim.newStreak,
+    isMilestone = anim.isMilestone;
+  var _useState = useState(prevStreak),
+    _useState2 = _slicedToArray(_useState, 2),
+    count = _useState2[0],
+    setCount = _useState2[1];
+
+  // Pre-computed floaters — stable across re-renders via useState initializer
+  var _useState3 = useState(function () {
+      var n = isMilestone ? 26 : 14;
+      return Array.from({
+        length: n
+      }, function (_, i) {
+        return {
+          x: 5 + Math.random() * 90,
+          y: 5 + Math.random() * 90,
+          size: isMilestone ? 22 + Math.random() * 30 : 16 + Math.random() * 20,
+          delay: Math.random() * 0.7,
+          dur: 0.8 + Math.random() * 0.5,
+          emoji: isMilestone && i % 4 === 0 ? i % 8 === 0 ? "🎉" : "🎊" : "🔥"
+        };
+      });
+    }),
+    _useState4 = _slicedToArray(_useState3, 1),
+    floaters = _useState4[0];
+  useEffect(function () {
+    // ── Web Audio: whoosh then heavy thud ──────────────────────
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Whoosh: sawtooth sweep 800 → 180 Hz
+      var osc = ctx.createOscillator();
+      var g1 = ctx.createGain();
+      osc.connect(g1);
+      g1.connect(ctx.destination);
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.32);
+      g1.gain.setValueAtTime(0.22, ctx.currentTime);
+      g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.32);
+      // Heavy thud: noise burst at 0.4s
+      var sr = ctx.sampleRate;
+      var buf = ctx.createBuffer(1, Math.ceil(sr * 0.55), sr);
+      var ch = buf.getChannelData(0);
+      for (var i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sr * 0.07));
+      var src = ctx.createBufferSource();
+      var g2 = ctx.createGain();
+      src.buffer = buf;
+      src.connect(g2);
+      g2.connect(ctx.destination);
+      g2.gain.setValueAtTime(1.8, ctx.currentTime + 0.42);
+      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
+      src.start(ctx.currentTime + 0.42);
+    } catch (e) {}
+
+    // ── Count up prevStreak → newStreak over 800ms ─────────────
+    var duration = 800;
+    var start = Date.now();
+    var range = newStreak - prevStreak;
+    var _tick = function tick() {
+      var p = Math.min(1, (Date.now() - start) / duration);
+      setCount(Math.round(prevStreak + range * p));
+      if (p < 1) requestAnimationFrame(_tick);
+    };
+    requestAnimationFrame(_tick);
+    var timer = setTimeout(onDone, 1500);
+    return function () {
+      return clearTimeout(timer);
+    };
+  }, []); // eslint-disable-line
+
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.93)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      animation: "sc_fade 0.18s ease-out"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, "\n        @keyframes sc_fade  { from{opacity:0} to{opacity:1} }\n        @keyframes sc_float { from{transform:translateY(0) rotate(-12deg)} to{transform:translateY(-24px) rotate(12deg)} }\n        @keyframes sc_pop   { 0%{transform:scale(0.25);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }\n        @keyframes sc_pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.14)} }\n        @keyframes sc_num   { 0%{transform:scale(0.4);opacity:0} 100%{transform:scale(1);opacity:1} }\n      "), floaters.map(function (f, i) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        position: "absolute",
+        left: "".concat(f.x, "%"),
+        top: "".concat(f.y, "%"),
+        fontSize: f.size,
+        pointerEvents: "none",
+        userSelect: "none",
+        animation: "sc_float ".concat(f.dur, "s ease-in-out infinite alternate"),
+        animationDelay: "".concat(f.delay, "s"),
+        opacity: 0.88
+      }
+    }, f.emoji);
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      position: "relative",
+      zIndex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: isMilestone ? 128 : 108,
+      lineHeight: 1,
+      animation: "sc_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both"
+    }
+  }, "\uD83D\uDCAA"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: isMilestone ? 92 : 78,
+      fontWeight: 900,
+      color: A,
+      textShadow: "0 0 40px ".concat(A, "99"),
+      lineHeight: 1,
+      marginTop: -10,
+      animation: isMilestone ? "sc_pulse 0.55s ease-in-out 0.45s infinite" : "sc_num 0.45s ease-out 0.2s both"
+    }
+  }, count), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: A,
+      fontWeight: 900,
+      letterSpacing: "0.14em",
+      marginTop: 12,
+      textShadow: "0 0 18px ".concat(A, "66")
+    }
+  }, isMilestone ? "\uD83C\uDFC6 ".concat(newStreak, " DAY MILESTONE!") : "DAY STREAK 🔥"), isMilestone && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 38,
+      marginTop: 18,
+      animation: "sc_pop 0.4s ease-out 0.5s both"
+    }
+  }, "\uD83C\uDF89\uD83C\uDF8A\uD83C\uDF89\uD83C\uDF8A\uD83C\uDF89")));
+}
+
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref8) {
-  var mode = _ref8.mode,
-    totals = _ref8.totals,
-    targets = _ref8.targets,
-    streak = _ref8.streak,
-    water = _ref8.water;
-  var _useState = useState(""),
-    _useState2 = _slicedToArray(_useState, 2),
-    tip = _useState2[0],
-    setTip = _useState2[1];
-  var _useState3 = useState(0),
-    _useState4 = _slicedToArray(_useState3, 2),
-    refreshes = _useState4[0],
-    setRefreshes = _useState4[1];
-  var _useState5 = useState(false),
+function CoachCard(_ref0) {
+  var mode = _ref0.mode,
+    totals = _ref0.totals,
+    targets = _ref0.targets,
+    streak = _ref0.streak,
+    water = _ref0.water;
+  var _useState5 = useState(""),
     _useState6 = _slicedToArray(_useState5, 2),
-    loading = _useState6[0],
-    setLoading = _useState6[1];
+    tip = _useState6[0],
+    setTip = _useState6[1];
+  var _useState7 = useState(0),
+    _useState8 = _slicedToArray(_useState7, 2),
+    refreshes = _useState8[0],
+    setRefreshes = _useState8[1];
+  var _useState9 = useState(false),
+    _useState0 = _slicedToArray(_useState9, 2),
+    loading = _useState0[0],
+    setLoading = _useState0[1];
   useEffect(function () {
     sg("coach__" + todayKey()).then(function (v) {
       if (v) {
@@ -697,49 +900,49 @@ function CoachCard(_ref8) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5() {
+    var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
       var h, timeLabel, prompt, t, r, _t3;
-      return _regenerator().w(function (_context5) {
-        while (1) switch (_context5.p = _context5.n) {
+      return _regenerator().w(function (_context6) {
+        while (1) switch (_context6.p = _context6.n) {
           case 0:
             if (!(loading || refreshes >= 3)) {
-              _context5.n = 1;
+              _context6.n = 1;
               break;
             }
-            return _context5.a(2);
+            return _context6.a(2);
           case 1:
             setLoading(true);
-            _context5.p = 2;
+            _context6.p = 2;
             h = getCurrentHour();
             timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
             prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today: ").concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
-            _context5.n = 3;
+            _context6.n = 3;
             return callAI(prompt, 200);
           case 3:
-            t = _context5.v;
+            t = _context6.v;
             r = refreshes + 1;
             setTip(t);
             setRefreshes(r);
-            _context5.n = 4;
+            _context6.n = 4;
             return ss("coach__" + todayKey(), JSON.stringify({
               tip: t,
               r: r
             }));
           case 4:
-            _context5.n = 6;
+            _context6.n = 6;
             break;
           case 5:
-            _context5.p = 5;
-            _t3 = _context5.v;
+            _context6.p = 5;
+            _t3 = _context6.v;
           case 6:
             setLoading(false);
           case 7:
-            return _context5.a(2);
+            return _context6.a(2);
         }
-      }, _callee5, null, [[2, 5]]);
+      }, _callee6, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref9.apply(this, arguments);
+      return _ref1.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -798,28 +1001,36 @@ function CoachCard(_ref8) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen(_ref0) {
-  var profile = _ref0.profile,
-    onSave = _ref0.onSave,
-    onBack = _ref0.onBack,
-    _ref0$tdeeAdj = _ref0.tdeeAdj,
-    tdeeAdj = _ref0$tdeeAdj === void 0 ? 0 : _ref0$tdeeAdj,
-    _ref0$weighIns = _ref0.weighIns,
-    weighIns = _ref0$weighIns === void 0 ? [] : _ref0$weighIns;
-  var _useState7 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
-    _useState8 = _slicedToArray(_useState7, 2),
-    f = _useState8[0],
-    setF = _useState8[1];
-  var _useState9 = useState(false),
-    _useState0 = _slicedToArray(_useState9, 2),
-    saved = _useState0[0],
-    setSaved = _useState0[1];
+function ProfileScreen(_ref10) {
+  var profile = _ref10.profile,
+    onSave = _ref10.onSave,
+    onBack = _ref10.onBack,
+    _ref10$tdeeAdj = _ref10.tdeeAdj,
+    tdeeAdj = _ref10$tdeeAdj === void 0 ? 0 : _ref10$tdeeAdj,
+    _ref10$weighIns = _ref10.weighIns,
+    weighIns = _ref10$weighIns === void 0 ? [] : _ref10$weighIns,
+    _ref10$aggressiveCutA = _ref10.aggressiveCutAcked,
+    aggressiveCutAcked = _ref10$aggressiveCutA === void 0 ? false : _ref10$aggressiveCutA;
+  var _useState1 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
+    _useState10 = _slicedToArray(_useState1, 2),
+    f = _useState10[0],
+    setF = _useState10[1];
+  var _useState11 = useState(false),
+    _useState12 = _slicedToArray(_useState11, 2),
+    saved = _useState12[0],
+    setSaved = _useState12[1];
+  var _useState13 = useState(false),
+    _useState14 = _slicedToArray(_useState13, 2),
+    bfFocused = _useState14[0],
+    setBfFocused = _useState14[1];
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
     });
   };
   var valid = Number(f.weight) > 0 && Number(f.height) > 0 && Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
+  var bfVal = Number(f.bodyFat);
+  var bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   var prev = calcTargets(f, "cut", 0, 0);
   var formulaTDEE = prev.tdee;
   var adjTDEE = formulaTDEE + tdeeAdj;
@@ -836,7 +1047,7 @@ function ProfileScreen(_ref0) {
     return function () {
       return clearTimeout(t);
     };
-  }, [f.weight, f.height, f.bodyFat]); // eslint-disable-line
+  }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
 
   var row = function row(label, val, unit) {
     var color = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : "#d8e8d0";
@@ -968,10 +1179,82 @@ function ProfileScreen(_ref0) {
     onChange: function onChange(e) {
       return set("bodyFat", e.target.value);
     },
+    onFocus: function onFocus() {
+      return setBfFocused(true);
+    },
+    onBlur: function onBlur() {
+      return setBfFocused(false);
+    },
     style: _objectSpread(_objectSpread({}, INP), {}, {
       marginBottom: 4
     })
-  }), /*#__PURE__*/React.createElement("div", {
+  }), bfFocused && !bfImplausible && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#7a9a70",
+      marginBottom: 6,
+      lineHeight: 1.5
+    }
+  }, "Not sure? Use 25% for men or 30% for women as a starting estimate. A more accurate figure improves your calorie and macro targets."), bfImplausible && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#ffb84b",
+      marginBottom: 6,
+      lineHeight: 1.5
+    }
+  }, "That seems unusual \u2014 double-check this number as it affects your calorie targets."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: A,
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      marginBottom: 5
+    }
+  }, "SEX ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#445040",
+      fontSize: 10,
+      fontWeight: 400
+    }
+  }, "\u2014 used to calculate your calorie and macro targets")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 6
+    }
+  }, ["male", "female"].map(function (s) {
+    return /*#__PURE__*/React.createElement("button", {
+      key: s,
+      onClick: function onClick() {
+        return set("sex", s);
+      },
+      style: {
+        flex: 1,
+        padding: "10px 0",
+        borderRadius: 10,
+        fontWeight: 900,
+        fontSize: 12,
+        letterSpacing: "0.06em",
+        border: "1px solid ".concat(f.sex === s ? A + "88" : BD),
+        background: f.sex === s ? A + "18" : "#0b0d0b",
+        color: f.sex === s ? A : "#445040"
+      }
+    }, s === "male" ? "MALE" : "FEMALE");
+  })), !f.sex && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#ffb84b",
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, "Set your sex for more accurate targets \u2014 defaulting to male calculations."), f.sex === "female" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#7a9a70",
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, "Targets may need adjusting around your cycle \u2014 override anytime."), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "#334a30",
@@ -1072,10 +1355,10 @@ function ProfileScreen(_ref0) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref1) {
-    var mode = _ref1.mode,
-      label = _ref1.label,
-      color = _ref1.color;
+  }].map(function (_ref11) {
+    var mode = _ref11.mode,
+      label = _ref11.label,
+      color = _ref11.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -1098,11 +1381,11 @@ function ProfileScreen(_ref0) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref10) {
-      var _ref11 = _slicedToArray(_ref10, 3),
-        k = _ref11[0],
-        key = _ref11[1],
-        u = _ref11[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref12) {
+      var _ref13 = _slicedToArray(_ref12, 3),
+        k = _ref13[0],
+        key = _ref13[1],
+        u = _ref13[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -1129,15 +1412,36 @@ function ProfileScreen(_ref0) {
       color: "#334a30",
       marginTop: 8
     }
-  }, "Workout kcal are added when you log sessions on the dashboard.")));
+  }, "Workout kcal are added when you log sessions on the dashboard.")), aggressiveCutAcked && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#1a1000",
+      border: "1px solid #ffb84b33",
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginTop: 12,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15
+    }
+  }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#8a7030",
+      lineHeight: 1.5
+    }
+  }, "You have previously acknowledged an aggressive cut target. Review your profile stats and targets if your circumstances have changed.")));
 }
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref12) {
-  var meal = _ref12.meal,
-    onSave = _ref12.onSave,
-    onCancel = _ref12.onCancel;
+function MealForm(_ref14) {
+  var meal = _ref14.meal,
+    onSave = _ref14.onSave,
+    onCancel = _ref14.onCancel;
   var blank = {
     name: "",
     kcal: "",
@@ -1145,16 +1449,16 @@ function MealForm(_ref12) {
     carbs: "",
     fat: ""
   };
-  var _useState1 = useState(meal ? {
+  var _useState15 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
-    _useState10 = _slicedToArray(_useState1, 2),
-    f = _useState10[0],
-    setF = _useState10[1];
+    _useState16 = _slicedToArray(_useState15, 2),
+    f = _useState16[0],
+    setF = _useState16[1];
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -1294,15 +1598,15 @@ function MealForm(_ref12) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref13) {
-  var weighIns = _ref13.weighIns,
-    onWeighIn = _ref13.onWeighIn,
-    tdeeAdj = _ref13.tdeeAdj,
-    baseTDEE = _ref13.baseTDEE;
-  var _useState11 = useState(""),
-    _useState12 = _slicedToArray(_useState11, 2),
-    val = _useState12[0],
-    setVal = _useState12[1];
+function WeighInWidget(_ref15) {
+  var weighIns = _ref15.weighIns,
+    onWeighIn = _ref15.onWeighIn,
+    tdeeAdj = _ref15.tdeeAdj,
+    baseTDEE = _ref15.baseTDEE;
+  var _useState17 = useState(""),
+    _useState18 = _slicedToArray(_useState17, 2),
+    val = _useState18[0],
+    setVal = _useState18[1];
   var today = todayKey();
   var todayEntry = weighIns.find(function (w) {
     return w.date === today;
@@ -1453,39 +1757,39 @@ function WeighInWidget(_ref13) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref14) {
-  var workouts = _ref14.workouts,
-    onAdd = _ref14.onAdd,
-    onRemove = _ref14.onRemove,
-    prof = _ref14.prof;
-  var _useState13 = useState("legs"),
-    _useState14 = _slicedToArray(_useState13, 2),
-    type = _useState14[0],
-    setType = _useState14[1];
-  var _useState15 = useState(45),
-    _useState16 = _slicedToArray(_useState15, 2),
-    dur = _useState16[0],
-    setDur = _useState16[1];
-  var _useState17 = useState("moderate"),
-    _useState18 = _slicedToArray(_useState17, 2),
-    intensity = _useState18[0],
-    setIntensity = _useState18[1];
-  var _useState19 = useState(false),
+function WorkoutLogger(_ref16) {
+  var workouts = _ref16.workouts,
+    onAdd = _ref16.onAdd,
+    onRemove = _ref16.onRemove,
+    prof = _ref16.prof;
+  var _useState19 = useState("legs"),
     _useState20 = _slicedToArray(_useState19, 2),
-    hevyMode = _useState20[0],
-    setHevyMode = _useState20[1];
-  var _useState21 = useState(""),
+    type = _useState20[0],
+    setType = _useState20[1];
+  var _useState21 = useState(45),
     _useState22 = _slicedToArray(_useState21, 2),
-    hevyText = _useState22[0],
-    setHevyText = _useState22[1];
-  var _useState23 = useState(false),
+    dur = _useState22[0],
+    setDur = _useState22[1];
+  var _useState23 = useState("moderate"),
     _useState24 = _slicedToArray(_useState23, 2),
-    hevyLoading = _useState24[0],
-    setHevyLoading = _useState24[1];
-  var _useState25 = useState(null),
+    intensity = _useState24[0],
+    setIntensity = _useState24[1];
+  var _useState25 = useState(false),
     _useState26 = _slicedToArray(_useState25, 2),
-    hevyResult = _useState26[0],
-    setHevyResult = _useState26[1];
+    hevyMode = _useState26[0],
+    setHevyMode = _useState26[1];
+  var _useState27 = useState(""),
+    _useState28 = _slicedToArray(_useState27, 2),
+    hevyText = _useState28[0],
+    setHevyText = _useState28[1];
+  var _useState29 = useState(false),
+    _useState30 = _slicedToArray(_useState29, 2),
+    hevyLoading = _useState30[0],
+    setHevyLoading = _useState30[1];
+  var _useState31 = useState(null),
+    _useState32 = _slicedToArray(_useState31, 2),
+    hevyResult = _useState32[0],
+    setHevyResult = _useState32[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -1505,43 +1809,43 @@ function WorkoutLogger(_ref14) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+    var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
       var prompt, _t4, _t5;
-      return _regenerator().w(function (_context6) {
-        while (1) switch (_context6.p = _context6.n) {
+      return _regenerator().w(function (_context7) {
+        while (1) switch (_context7.p = _context7.n) {
           case 0:
             if (!(!hevyText.trim() || hevyLoading)) {
-              _context6.n = 1;
+              _context7.n = 1;
               break;
             }
-            return _context6.a(2);
+            return _context7.a(2);
           case 1:
             setHevyLoading(true);
             setHevyResult(null);
-            _context6.p = 2;
+            _context7.p = 2;
             prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
             _t4 = setHevyResult;
-            _context6.n = 3;
+            _context7.n = 3;
             return callAIJson(prompt, 200);
           case 3:
-            _t4(_context6.v);
-            _context6.n = 5;
+            _t4(_context7.v);
+            _context7.n = 5;
             break;
           case 4:
-            _context6.p = 4;
-            _t5 = _context6.v;
+            _context7.p = 4;
+            _t5 = _context7.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
           case 5:
             setHevyLoading(false);
           case 6:
-            return _context6.a(2);
+            return _context7.a(2);
         }
-      }, _callee6, null, [[2, 4]]);
+      }, _callee7, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref15.apply(this, arguments);
+      return _ref17.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -1851,43 +2155,92 @@ function WorkoutLogger(_ref14) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-function Dashboard(_ref16) {
-  var logs = _ref16.logs,
-    totals = _ref16.totals,
-    targets = _ref16.targets,
-    remaining = _ref16.remaining,
-    water = _ref16.water,
-    setWater = _ref16.setWater,
-    mode = _ref16.mode,
-    setMode = _ref16.setMode,
-    setView = _ref16.setView,
-    removeLog = _ref16.removeLog,
-    addToQA = _ref16.addToQA,
-    hasProfile = _ref16.hasProfile,
-    streak = _ref16.streak,
-    prof = _ref16.prof,
-    weighIns = _ref16.weighIns,
-    onWeighIn = _ref16.onWeighIn,
-    tdeeAdj = _ref16.tdeeAdj,
-    baseTDEE = _ref16.baseTDEE,
-    coachKey = _ref16.coachKey,
-    workouts = _ref16.workouts,
-    onAddWorkout = _ref16.onAddWorkout,
-    onRemoveWorkout = _ref16.onRemoveWorkout;
-  var over = totals.kcal > targets.kcal;
+function Dashboard(_ref18) {
+  var logs = _ref18.logs,
+    totals = _ref18.totals,
+    targets = _ref18.targets,
+    remaining = _ref18.remaining,
+    water = _ref18.water,
+    setWater = _ref18.setWater,
+    mode = _ref18.mode,
+    setMode = _ref18.setMode,
+    setView = _ref18.setView,
+    removeLog = _ref18.removeLog,
+    addToQA = _ref18.addToQA,
+    hasProfile = _ref18.hasProfile,
+    streak = _ref18.streak,
+    prof = _ref18.prof,
+    weighIns = _ref18.weighIns,
+    onWeighIn = _ref18.onWeighIn,
+    tdeeAdj = _ref18.tdeeAdj,
+    baseTDEE = _ref18.baseTDEE,
+    coachKey = _ref18.coachKey,
+    workouts = _ref18.workouts,
+    onAddWorkout = _ref18.onAddWorkout,
+    onRemoveWorkout = _ref18.onRemoveWorkout,
+    customKcal = _ref18.customKcal,
+    onSetCustomKcal = _ref18.onSetCustomKcal,
+    isCustomMode = _ref18.isCustomMode,
+    aggressiveCutAcked = _ref18.aggressiveCutAcked,
+    onAckAggressiveCut = _ref18.onAckAggressiveCut;
+  var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
   var isTraining = workouts.length > 0;
-  var _useState27 = useState({}),
-    _useState28 = _slicedToArray(_useState27, 2),
-    savedIds = _useState28[0],
-    setSavedIds = _useState28[1];
+  // Graduated calorie status: ok (≤100 over) | amber-soft (100-200) | amber (200-500) | red (500+)
+  var AMBER = "#ffb84b";
+  var RED = "#ff5555";
+  var kcalAccent = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
+  var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
+  var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
+  var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#1c241c";
+  var _useState33 = useState({}),
+    _useState34 = _slicedToArray(_useState33, 2),
+    savedIds = _useState34[0],
+    setSavedIds = _useState34[1];
+  var _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    editingTarget = _useState36[0],
+    setEditingTarget = _useState36[1];
+  var _useState37 = useState(""),
+    _useState38 = _slicedToArray(_useState37, 2),
+    targetInputVal = _useState38[0],
+    setTargetInputVal = _useState38[1];
+  var commitTarget = function commitTarget() {
+    var v = parseInt(targetInputVal);
+    if (v > 0) onSetCustomKcal(v);
+    setEditingTarget(false);
+  };
+
+  // Warnings computed from custom target vs effective TDEE
+  var tdee = targets.tdee; // effective TDEE (formula + adaptive adj)
+  var targetWarning = function () {
+    if (!isCustomMode || targets.safeMinApplied) return null;
+    var diff = customKcal - tdee; // negative = deficit
+    if (diff < -1000) return {
+      level: aggressiveCutAcked ? "amber" : "red",
+      text: "This deficit is not recommended. Extreme cuts cause muscle loss, fatigue and metabolic damage. Are you sure?"
+    };
+    if (diff < -750) return {
+      level: "amber",
+      text: "This is an aggressive deficit. You may lose muscle alongside fat. Consider ".concat((tdee - 750).toLocaleString(), " kcal or above.")
+    };
+    if (diff >= -150 && diff < 0) return {
+      level: "info",
+      text: "Deficit is small — progress will be slow but sustainable 👍"
+    };
+    if (diff > 0 && diff <= 150) return {
+      level: "info",
+      text: "Small surplus — lean gains but slow 👍"
+    };
+    return null;
+  }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(log) {
-      return _regenerator().w(function (_context7) {
-        while (1) switch (_context7.n) {
+    var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(log) {
+      return _regenerator().w(function (_context8) {
+        while (1) switch (_context8.n) {
           case 0:
-            _context7.n = 1;
+            _context8.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -1899,12 +2252,12 @@ function Dashboard(_ref16) {
               });
             }, 1800);
           case 2:
-            return _context7.a(2);
+            return _context8.a(2);
         }
-      }, _callee7);
+      }, _callee8);
     }));
     return function handleAddToQA(_x6) {
-      return _ref17.apply(this, arguments);
+      return _ref19.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -2010,10 +2363,11 @@ function Dashboard(_ref16) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref18) {
-    var _ref19 = _slicedToArray(_ref18, 2),
-      k = _ref19[0],
-      v = _ref19[1];
+  }, Object.entries(MODES).map(function (_ref20) {
+    var _ref21 = _slicedToArray(_ref20, 2),
+      k = _ref21[0],
+      v = _ref21[1];
+    var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -2022,9 +2376,9 @@ function Dashboard(_ref16) {
       style: {
         flex: 1,
         padding: "9px 4px",
-        background: mode === k ? v.color + "22" : "#131a11",
-        color: mode === k ? v.color : "#445040",
-        border: "1px solid ".concat(mode === k ? v.color + "55" : BD),
+        background: active ? v.color + "22" : "#131a11",
+        color: active ? v.color : "#445040",
+        border: "1px solid ".concat(active ? v.color + "55" : BD),
         borderRadius: 10,
         fontSize: 11,
         fontWeight: 900,
@@ -2052,11 +2406,117 @@ function Dashboard(_ref16) {
       marginBottom: 12,
       letterSpacing: "0.06em"
     }
-  }, "\uD83D\uDC64 Set body stats for personalised targets \u2192"), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDC64 Set body stats for personalised targets \u2192"), targetWarning && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 10
+    }
+  }, targetWarning.level === "red" ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#1a0505",
+      border: "1px solid #ff555544",
+      borderRadius: 12,
+      padding: "12px 14px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#ff5555",
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 6
+    }
+  }, "\u26A0\uFE0F NOT RECOMMENDED"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#aa4444",
+      lineHeight: 1.6,
+      marginBottom: 10
+    }
+  }, targetWarning.text), /*#__PURE__*/React.createElement("button", {
+    onClick: onAckAggressiveCut,
+    style: {
+      background: "#ff555522",
+      border: "1px solid #ff555544",
+      borderRadius: 8,
+      color: "#ff7777",
+      fontSize: 11,
+      fontWeight: 800,
+      padding: "7px 14px",
+      cursor: "pointer"
+    }
+  }, "Yes, I understand \u2192")) : targetWarning.level === "amber" ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#151000",
+      border: "1px solid #ffb84b33",
+      borderRadius: 12,
+      padding: "10px 14px",
+      fontSize: 11,
+      color: "#8a7030",
+      lineHeight: 1.5
+    }
+  }, "\u26A0\uFE0F ", targetWarning.text) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#101510",
+      border: "1px solid #3a5030",
+      borderRadius: 12,
+      padding: "10px 14px",
+      fontSize: 11,
+      color: "#556050",
+      lineHeight: 1.5
+    }
+  }, "\u2139 ", targetWarning.text)), targets.safeMinApplied && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#1a1200",
+      border: "1px solid #ffb84b33",
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      marginTop: 1
+    }
+  }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: AMBER,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 2
+    }
+  }, "SAFE MINIMUM APPLIED"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#8a7030",
+      lineHeight: 1.5
+    }
+  }, isCustomMode ? "That's below the safe minimum for your body. We've set it to ".concat(targets.kcal.toLocaleString(), " kcal to keep you safe.") : "Your target has been set to the safe minimum.", " ", /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return setView("profile");
+    },
+    style: {
+      background: "none",
+      border: "none",
+      color: AMBER,
+      fontSize: 11,
+      fontWeight: 700,
+      padding: 0,
+      cursor: "pointer",
+      textDecoration: "underline"
+    }
+  }, "Check your profile stats.")))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       borderRadius: 22,
-      border: "1px solid ".concat(over ? "#ff555328" : "#1c241c"),
+      border: "1px solid ".concat(kcalBorder),
       padding: "20px 22px",
       marginBottom: 14
     }
@@ -2074,12 +2534,73 @@ function Dashboard(_ref16) {
       letterSpacing: "0.12em",
       fontWeight: 800
     }
-  }, MODES[mode].label, isTraining ? " · ⚡" : ""), /*#__PURE__*/React.createElement("div", {
+  }, MODES[mode].label, isTraining ? " · ⚡" : ""), editingTarget ? /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 11,
-      color: "#2e3a2c"
+      display: "flex",
+      alignItems: "center",
+      gap: 4,
+      background: mc + "12",
+      border: "1px solid ".concat(mc + "55"),
+      borderRadius: 8,
+      padding: "5px 10px"
     }
-  }, "TARGET ", targets.kcal.toLocaleString(), " kcal")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    value: targetInputVal,
+    onChange: function onChange(e) {
+      return setTargetInputVal(e.target.value);
+    },
+    onBlur: commitTarget,
+    onKeyDown: function onKeyDown(e) {
+      if (e.key === "Enter") e.target.blur();
+      if (e.key === "Escape") setEditingTarget(false);
+    },
+    autoFocus: true,
+    style: {
+      background: "none",
+      border: "none",
+      color: mc,
+      fontSize: 13,
+      fontWeight: 900,
+      width: 60,
+      textAlign: "center",
+      fontFamily: "inherit",
+      outline: "none",
+      padding: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: mc + "99"
+    }
+  }, "kcal")) : /*#__PURE__*/React.createElement("div", {
+    onClick: function onClick() {
+      setTargetInputVal(String(targets.kcal));
+      setEditingTarget(true);
+    },
+    style: {
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: 4,
+      background: isCustomMode ? mc + "12" : "#161a14",
+      border: "1px solid ".concat(isCustomMode ? mc + "44" : "#2a3828"),
+      borderRadius: 8,
+      padding: "5px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: isCustomMode ? mc : "#6a9060",
+      fontWeight: 700
+    }
+  }, targets.kcal.toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: isCustomMode ? mc + "99" : "#4a6a44"
+    }
+  }, "\u270E"))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
@@ -2097,7 +2618,7 @@ function Dashboard(_ref16) {
     style: {
       fontSize: 42,
       fontWeight: 900,
-      color: over ? "#ff5555" : "#e8f0e0",
+      color: overAmt > 100 ? kcalAccent : "#e8f0e0",
       lineHeight: 1,
       letterSpacing: "-0.03em"
     }
@@ -2119,17 +2640,17 @@ function Dashboard(_ref16) {
       letterSpacing: "0.12em",
       marginBottom: 4
     }
-  }, over ? "OVER BY" : "REMAINING"), /*#__PURE__*/React.createElement("div", {
+  }, kcalLabel), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 30,
       fontWeight: 900,
-      color: over ? "#ff5555" : mc,
+      color: kcalAccent,
       lineHeight: 1
     }
   }, Math.abs(Math.round(remaining)).toLocaleString(), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: over ? "#aa3333" : "#6a9a30",
+      color: overAmt > 100 ? kcalAccent + "99" : "#6a9a30",
       fontWeight: 400,
       marginLeft: 4
     }
@@ -2144,7 +2665,7 @@ function Dashboard(_ref16) {
     style: {
       height: "100%",
       width: "".concat(pct, "%"),
-      background: over ? "#ff5555" : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")"),
+      background: kcalBarBg,
       borderRadius: 99,
       transition: "width 0.5s"
     }
@@ -2456,32 +2977,32 @@ function searchOFT(_x7) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(query) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(query) {
     var _p$product_name2, res, data, p, sg2, f, n, _t9;
-    return _regenerator().w(function (_context19) {
-      while (1) switch (_context19.p = _context19.n) {
+    return _regenerator().w(function (_context24) {
+      while (1) switch (_context24.p = _context24.n) {
         case 0:
-          _context19.p = 0;
-          _context19.n = 1;
+          _context24.p = 0;
+          _context24.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context19.v;
-          _context19.n = 2;
+          res = _context24.v;
+          _context24.n = 2;
           return res.json();
         case 2:
-          data = _context19.v;
+          data = _context24.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context19.n = 3;
+            _context24.n = 3;
             break;
           }
-          return _context19.a(2, null);
+          return _context24.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context19.a(2, {
+          return _context24.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -2492,26 +3013,26 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context19.p = 4;
-          _t9 = _context19.v;
-          return _context19.a(2, null);
+          _context24.p = 4;
+          _t9 = _context24.v;
+          return _context24.a(2, null);
       }
-    }, _callee19, null, [[0, 4]]);
+    }, _callee24, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref20) {
-  var item = _ref20.item,
-    onReestimate = _ref20.onReestimate,
-    reestimating = _ref20.reestimating;
-  var _useState29 = useState(false),
-    _useState30 = _slicedToArray(_useState29, 2),
-    editing = _useState30[0],
-    setEditing = _useState30[1];
-  var _useState31 = useState(item.name),
-    _useState32 = _slicedToArray(_useState31, 2),
-    draft = _useState32[0],
-    setDraft = _useState32[1];
+function ItemRow(_ref22) {
+  var item = _ref22.item,
+    onReestimate = _ref22.onReestimate,
+    reestimating = _ref22.reestimating;
+  var _useState39 = useState(false),
+    _useState40 = _slicedToArray(_useState39, 2),
+    editing = _useState40[0],
+    setEditing = _useState40[1];
+  var _useState41 = useState(item.name),
+    _useState42 = _slicedToArray(_useState41, 2),
+    draft = _useState42[0],
+    setDraft = _useState42[1];
   var cc = confColor(item.confidence);
   var submit = function submit() {
     setEditing(false);
@@ -2623,33 +3144,33 @@ function ItemRow(_ref20) {
     }
   }, item.reasoning));
 }
-function AILog(_ref21) {
-  var onAdd = _ref21.onAdd,
-    onBack = _ref21.onBack;
-  var _useState33 = useState(""),
-    _useState34 = _slicedToArray(_useState33, 2),
-    desc = _useState34[0],
-    setDesc = _useState34[1];
-  var _useState35 = useState(false),
-    _useState36 = _slicedToArray(_useState35, 2),
-    loading = _useState36[0],
-    setLoading = _useState36[1];
-  var _useState37 = useState(null),
-    _useState38 = _slicedToArray(_useState37, 2),
-    items = _useState38[0],
-    setItems = _useState38[1];
-  var _useState39 = useState(null),
-    _useState40 = _slicedToArray(_useState39, 2),
-    reestIdx = _useState40[0],
-    setReestIdx = _useState40[1];
-  var _useState41 = useState(""),
-    _useState42 = _slicedToArray(_useState41, 2),
-    error = _useState42[0],
-    setError = _useState42[1];
-  var _useState43 = useState(false),
+function AILog(_ref23) {
+  var onAdd = _ref23.onAdd,
+    onBack = _ref23.onBack;
+  var _useState43 = useState(""),
     _useState44 = _slicedToArray(_useState43, 2),
-    loggedAll = _useState44[0],
-    setLoggedAll = _useState44[1];
+    desc = _useState44[0],
+    setDesc = _useState44[1];
+  var _useState45 = useState(false),
+    _useState46 = _slicedToArray(_useState45, 2),
+    loading = _useState46[0],
+    setLoading = _useState46[1];
+  var _useState47 = useState(null),
+    _useState48 = _slicedToArray(_useState47, 2),
+    items = _useState48[0],
+    setItems = _useState48[1];
+  var _useState49 = useState(null),
+    _useState50 = _slicedToArray(_useState49, 2),
+    reestIdx = _useState50[0],
+    setReestIdx = _useState50[1];
+  var _useState51 = useState(""),
+    _useState52 = _slicedToArray(_useState51, 2),
+    error = _useState52[0],
+    setError = _useState52[1];
+  var _useState53 = useState(false),
+    _useState54 = _slicedToArray(_useState53, 2),
+    loggedAll = _useState54[0],
+    setLoggedAll = _useState54[1];
   var totals = items ? items.reduce(function (a, it) {
     return {
       kcal: a.kcal + it.kcal,
@@ -2667,33 +3188,33 @@ function AILog(_ref21) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8() {
+    var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
       var parsed, aiItems, oftResults, merged, _t6;
-      return _regenerator().w(function (_context8) {
-        while (1) switch (_context8.p = _context8.n) {
+      return _regenerator().w(function (_context9) {
+        while (1) switch (_context9.p = _context9.n) {
           case 0:
             if (desc.trim()) {
-              _context8.n = 1;
+              _context9.n = 1;
               break;
             }
-            return _context8.a(2);
+            return _context9.a(2);
           case 1:
             setLoading(true);
             setError("");
             setItems(null);
             setLoggedAll(false);
-            _context8.p = 2;
-            _context8.n = 3;
-            return callAIJson(AI_PROMPT(desc), 1000);
+            _context9.p = 2;
+            _context9.n = 3;
+            return callAIJson(AI_PROMPT(desc), 2000);
           case 3:
-            parsed = _context8.v;
+            parsed = _context9.v;
             aiItems = parsed.items || []; // OFT parallel lookup for each item
-            _context8.n = 4;
+            _context9.n = 4;
             return Promise.all(aiItems.map(function (it) {
               return searchOFT(it.name);
             }));
           case 4:
-            oftResults = _context8.v;
+            oftResults = _context9.v;
             merged = aiItems.map(function (it, i) {
               var oft = oftResults[i];
               // Use OFT data if found AND it has higher confidence than AI estimate
@@ -2703,39 +3224,39 @@ function AILog(_ref21) {
               return it;
             });
             setItems(merged);
-            _context8.n = 6;
+            _context9.n = 6;
             break;
           case 5:
-            _context8.p = 5;
-            _t6 = _context8.v;
+            _context9.p = 5;
+            _t6 = _context9.v;
             setError("Estimation failed: " + _t6.message);
           case 6:
             setLoading(false);
           case 7:
-            return _context8.a(2);
+            return _context9.a(2);
         }
-      }, _callee8, null, [[2, 5]]);
+      }, _callee9, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref22.apply(this, arguments);
+      return _ref24.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(idx, newName) {
+    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(idx, newName) {
       var updated, oft, _final, _t7;
-      return _regenerator().w(function (_context9) {
-        while (1) switch (_context9.p = _context9.n) {
+      return _regenerator().w(function (_context0) {
+        while (1) switch (_context0.p = _context0.n) {
           case 0:
             setReestIdx(idx);
-            _context9.p = 1;
-            _context9.n = 2;
+            _context0.p = 1;
+            _context0.n = 2;
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            updated = _context9.v;
-            _context9.n = 3;
+            updated = _context0.v;
+            _context0.n = 3;
             return searchOFT(newName);
           case 3:
-            oft = _context9.v;
+            oft = _context0.v;
             _final = oft && oft.confidence > updated.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
               name: newName
             }) : _objectSpread(_objectSpread({}, updated), {}, {
@@ -2746,20 +3267,20 @@ function AILog(_ref21) {
                 return i === idx ? _final : it;
               });
             });
-            _context9.n = 5;
+            _context0.n = 5;
             break;
           case 4:
-            _context9.p = 4;
-            _t7 = _context9.v;
+            _context0.p = 4;
+            _t7 = _context0.v;
           case 5:
             setReestIdx(null);
           case 6:
-            return _context9.a(2);
+            return _context0.a(2);
         }
-      }, _callee9, null, [[1, 4]]);
+      }, _callee0, null, [[1, 4]]);
     }));
     return function reestimate(_x8, _x9) {
-      return _ref23.apply(this, arguments);
+      return _ref25.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -2979,34 +3500,34 @@ function AILog(_ref21) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref24) {
-  var onAdd = _ref24.onAdd,
-    onBack = _ref24.onBack,
-    meals = _ref24.meals,
-    setMeals = _ref24.setMeals;
-  var _useState45 = useState(""),
-    _useState46 = _slicedToArray(_useState45, 2),
-    search = _useState46[0],
-    setSearch = _useState46[1];
-  var _useState47 = useState(null),
-    _useState48 = _slicedToArray(_useState47, 2),
-    modal = _useState48[0],
-    setModal = _useState48[1];
+function QuickAdd(_ref26) {
+  var onAdd = _ref26.onAdd,
+    onBack = _ref26.onBack,
+    meals = _ref26.meals,
+    setMeals = _ref26.setMeals;
+  var _useState55 = useState(""),
+    _useState56 = _slicedToArray(_useState55, 2),
+    search = _useState56[0],
+    setSearch = _useState56[1];
+  var _useState57 = useState(null),
+    _useState58 = _slicedToArray(_useState57, 2),
+    modal = _useState58[0],
+    setModal = _useState58[1];
   var save = /*#__PURE__*/function () {
-    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(m) {
-      return _regenerator().w(function (_context0) {
-        while (1) switch (_context0.n) {
+    var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(m) {
+      return _regenerator().w(function (_context1) {
+        while (1) switch (_context1.n) {
           case 0:
             setMeals(m);
-            _context0.n = 1;
+            _context1.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context0.a(2);
+            return _context1.a(2);
         }
-      }, _callee0);
+      }, _callee1);
     }));
     return function save(_x0) {
-      return _ref25.apply(this, arguments);
+      return _ref27.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -3181,60 +3702,60 @@ function QuickAdd(_ref24) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref26) {
-  var onAdd = _ref26.onAdd,
-    onBack = _ref26.onBack;
-  var _useState49 = useState(""),
-    _useState50 = _slicedToArray(_useState49, 2),
-    q = _useState50[0],
-    setQ = _useState50[1];
-  var _useState51 = useState([]),
-    _useState52 = _slicedToArray(_useState51, 2),
-    results = _useState52[0],
-    setResults = _useState52[1];
-  var _useState53 = useState(false),
-    _useState54 = _slicedToArray(_useState53, 2),
-    loading = _useState54[0],
-    setLoading = _useState54[1];
-  var _useState55 = useState(""),
-    _useState56 = _slicedToArray(_useState55, 2),
-    error = _useState56[0],
-    setError = _useState56[1];
-  var _useState57 = useState(false),
-    _useState58 = _slicedToArray(_useState57, 2),
-    done = _useState58[0],
-    setDone = _useState58[1];
+function FoodSearch(_ref28) {
+  var onAdd = _ref28.onAdd,
+    onBack = _ref28.onBack;
+  var _useState59 = useState(""),
+    _useState60 = _slicedToArray(_useState59, 2),
+    q = _useState60[0],
+    setQ = _useState60[1];
+  var _useState61 = useState([]),
+    _useState62 = _slicedToArray(_useState61, 2),
+    results = _useState62[0],
+    setResults = _useState62[1];
+  var _useState63 = useState(false),
+    _useState64 = _slicedToArray(_useState63, 2),
+    loading = _useState64[0],
+    setLoading = _useState64[1];
+  var _useState65 = useState(""),
+    _useState66 = _slicedToArray(_useState65, 2),
+    error = _useState66[0],
+    setError = _useState66[1];
+  var _useState67 = useState(false),
+    _useState68 = _slicedToArray(_useState67, 2),
+    done = _useState68[0],
+    setDone = _useState68[1];
   var search = /*#__PURE__*/function () {
-    var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1() {
+    var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
       var res, data, parseServing, parseKcal, valid, _t8;
-      return _regenerator().w(function (_context1) {
-        while (1) switch (_context1.p = _context1.n) {
+      return _regenerator().w(function (_context10) {
+        while (1) switch (_context10.p = _context10.n) {
           case 0:
             if (q.trim()) {
-              _context1.n = 1;
+              _context10.n = 1;
               break;
             }
-            return _context1.a(2);
+            return _context10.a(2);
           case 1:
             setLoading(true);
             setError("");
             setResults([]);
             setDone(true);
-            _context1.p = 2;
-            _context1.n = 3;
+            _context10.p = 2;
+            _context10.n = 3;
             return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
           case 3:
-            res = _context1.v;
+            res = _context10.v;
             if (res.ok) {
-              _context1.n = 4;
+              _context10.n = 4;
               break;
             }
             throw new Error("Network error");
           case 4:
-            _context1.n = 5;
+            _context10.n = 5;
             return res.json();
           case 5:
-            data = _context1.v;
+            data = _context10.v;
             parseServing = function parseServing(raw) {
               if (!raw) return 100;
               var n = parseFloat(raw);
@@ -3250,12 +3771,12 @@ function FoodSearch(_ref26) {
               return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
             });
             if (valid.length) {
-              _context1.n = 6;
+              _context10.n = 6;
               break;
             }
             setError("No results — try a brand name or simpler search term.");
             setLoading(false);
-            return _context1.a(2);
+            return _context10.a(2);
           case 6:
             setResults(valid.slice(0, 12).map(function (p) {
               var _p$brands;
@@ -3273,21 +3794,21 @@ function FoodSearch(_ref26) {
                 notes: "Per serving (~".concat(Math.round(sg2), "g)")
               };
             }));
-            _context1.n = 8;
+            _context10.n = 8;
             break;
           case 7:
-            _context1.p = 7;
-            _t8 = _context1.v;
+            _context10.p = 7;
+            _t8 = _context10.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
           case 9:
-            return _context1.a(2);
+            return _context10.a(2);
         }
-      }, _callee1, null, [[2, 7]]);
+      }, _callee10, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref27.apply(this, arguments);
+      return _ref29.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3418,13 +3939,13 @@ function FoodSearch(_ref26) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref28) {
+function History(_ref30) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref28.history,
-    onBack = _ref28.onBack,
-    onUpdateDay = _ref28.onUpdateDay,
-    _ref28$weighIns = _ref28.weighIns,
-    weighIns = _ref28$weighIns === void 0 ? [] : _ref28$weighIns;
+  var history = _ref30.history,
+    onBack = _ref30.onBack,
+    onUpdateDay = _ref30.onUpdateDay,
+    _ref30$weighIns = _ref30.weighIns,
+    weighIns = _ref30$weighIns === void 0 ? [] : _ref30$weighIns;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -3460,30 +3981,30 @@ function History(_ref28) {
       unit: "g"
     }
   };
-  var _useState59 = useState("30D"),
-    _useState60 = _slicedToArray(_useState59, 2),
-    range = _useState60[0],
-    setRange = _useState60[1];
-  var _useState61 = useState(["KCAL"]),
-    _useState62 = _slicedToArray(_useState61, 2),
-    metrics = _useState62[0],
-    setMetrics = _useState62[1];
-  var _useState63 = useState(false),
-    _useState64 = _slicedToArray(_useState63, 2),
-    showWeight = _useState64[0],
-    setShowWeight = _useState64[1];
-  var _useState65 = useState("line"),
-    _useState66 = _slicedToArray(_useState65, 2),
-    chartType = _useState66[0],
-    setChartType = _useState66[1];
-  var _useState67 = useState(Math.max(0, history.length - 1)),
-    _useState68 = _slicedToArray(_useState67, 2),
-    dayIdx = _useState68[0],
-    setDayIdx = _useState68[1];
-  var _useState69 = useState(null),
+  var _useState69 = useState("30D"),
     _useState70 = _slicedToArray(_useState69, 2),
-    addCtx = _useState70[0],
-    setAddCtx = _useState70[1];
+    range = _useState70[0],
+    setRange = _useState70[1];
+  var _useState71 = useState(["KCAL"]),
+    _useState72 = _slicedToArray(_useState71, 2),
+    metrics = _useState72[0],
+    setMetrics = _useState72[1];
+  var _useState73 = useState(false),
+    _useState74 = _slicedToArray(_useState73, 2),
+    showWeight = _useState74[0],
+    setShowWeight = _useState74[1];
+  var _useState75 = useState("line"),
+    _useState76 = _slicedToArray(_useState75, 2),
+    chartType = _useState76[0],
+    setChartType = _useState76[1];
+  var _useState77 = useState(Math.max(0, history.length - 1)),
+    _useState78 = _slicedToArray(_useState77, 2),
+    dayIdx = _useState78[0],
+    setDayIdx = _useState78[1];
+  var _useState79 = useState(null),
+    _useState80 = _slicedToArray(_useState79, 2),
+    addCtx = _useState80[0],
+    setAddCtx = _useState80[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -4057,10 +4578,10 @@ function History(_ref28) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref29) {
-    var _ref30 = _slicedToArray(_ref29, 2),
-      k = _ref30[0],
-      m = _ref30[1];
+  }, Object.entries(MM).map(function (_ref31) {
+    var _ref32 = _slicedToArray(_ref31, 2),
+      k = _ref32[0],
+      m = _ref32[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -4098,10 +4619,10 @@ function History(_ref28) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref31) {
-    var _ref32 = _slicedToArray(_ref31, 2),
-      t = _ref32[0],
-      e = _ref32[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref33) {
+    var _ref34 = _slicedToArray(_ref33, 2),
+      t = _ref34[0],
+      e = _ref34[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -4267,10 +4788,10 @@ function History(_ref28) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref33) {
-    var _ref34 = _slicedToArray(_ref33, 2),
-      k = _ref34[0],
-      m = _ref34[1];
+  }, Object.entries(MM).map(function (_ref35) {
+    var _ref36 = _slicedToArray(_ref35, 2),
+      k = _ref36[0],
+      m = _ref36[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -4403,9 +4924,9 @@ function History(_ref28) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref35) {
-  var earnedBdgs = _ref35.earnedBdgs,
-    onBack = _ref35.onBack;
+function Achievements(_ref37) {
+  var earnedBdgs = _ref37.earnedBdgs,
+    onBack = _ref37.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -4503,62 +5024,74 @@ function Achievements(_ref35) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState71 = useState("dashboard"),
-    _useState72 = _slicedToArray(_useState71, 2),
-    view = _useState72[0],
-    setView = _useState72[1];
-  var _useState73 = useState([]),
-    _useState74 = _slicedToArray(_useState73, 2),
-    logs = _useState74[0],
-    setLogs = _useState74[1];
-  var _useState75 = useState(0),
-    _useState76 = _slicedToArray(_useState75, 2),
-    water = _useState76[0],
-    setWater = _useState76[1];
-  var _useState77 = useState("cut"),
-    _useState78 = _slicedToArray(_useState77, 2),
-    mode = _useState78[0],
-    setMode = _useState78[1];
-  var _useState79 = useState(null),
-    _useState80 = _slicedToArray(_useState79, 2),
-    prof = _useState80[0],
-    setProf = _useState80[1];
-  var _useState81 = useState([]),
+  var _useState81 = useState("dashboard"),
     _useState82 = _slicedToArray(_useState81, 2),
-    hist = _useState82[0],
-    setHist = _useState82[1];
-  var _useState83 = useState([].concat(DEF_MEALS)),
+    view = _useState82[0],
+    setView = _useState82[1];
+  var _useState83 = useState([]),
     _useState84 = _slicedToArray(_useState83, 2),
-    meals = _useState84[0],
-    setMeals = _useState84[1];
-  var _useState85 = useState([]),
+    logs = _useState84[0],
+    setLogs = _useState84[1];
+  var _useState85 = useState(0),
     _useState86 = _slicedToArray(_useState85, 2),
-    workouts = _useState86[0],
-    setWorkouts = _useState86[1];
-  var _useState87 = useState([]),
+    water = _useState86[0],
+    setWater = _useState86[1];
+  var _useState87 = useState("cut"),
     _useState88 = _slicedToArray(_useState87, 2),
-    earnedBdgs = _useState88[0],
-    setEarnedBdgs = _useState88[1];
+    mode = _useState88[0],
+    setMode = _useState88[1];
   var _useState89 = useState(null),
     _useState90 = _slicedToArray(_useState89, 2),
-    newBadge = _useState90[0],
-    setNewBadge = _useState90[1];
-  var _useState91 = useState(false),
+    prof = _useState90[0],
+    setProf = _useState90[1];
+  var _useState91 = useState([]),
     _useState92 = _slicedToArray(_useState91, 2),
-    ready = _useState92[0],
-    setReady = _useState92[1];
-  var _useState93 = useState([]),
+    hist = _useState92[0],
+    setHist = _useState92[1];
+  var _useState93 = useState([].concat(DEF_MEALS)),
     _useState94 = _slicedToArray(_useState93, 2),
-    weighIns = _useState94[0],
-    setWeighIns = _useState94[1];
-  var _useState95 = useState(0),
+    meals = _useState94[0],
+    setMeals = _useState94[1];
+  var _useState95 = useState([]),
     _useState96 = _slicedToArray(_useState95, 2),
-    tdeeAdj = _useState96[0],
-    setTdeeAdj = _useState96[1];
-  var _useState97 = useState(0),
+    workouts = _useState96[0],
+    setWorkouts = _useState96[1];
+  var _useState97 = useState([]),
     _useState98 = _slicedToArray(_useState97, 2),
-    coachKey = _useState98[0],
-    setCoachKey = _useState98[1];
+    earnedBdgs = _useState98[0],
+    setEarnedBdgs = _useState98[1];
+  var _useState99 = useState(null),
+    _useState100 = _slicedToArray(_useState99, 2),
+    newBadge = _useState100[0],
+    setNewBadge = _useState100[1];
+  var _useState101 = useState(false),
+    _useState102 = _slicedToArray(_useState101, 2),
+    ready = _useState102[0],
+    setReady = _useState102[1];
+  var _useState103 = useState([]),
+    _useState104 = _slicedToArray(_useState103, 2),
+    weighIns = _useState104[0],
+    setWeighIns = _useState104[1];
+  var _useState105 = useState(0),
+    _useState106 = _slicedToArray(_useState105, 2),
+    tdeeAdj = _useState106[0],
+    setTdeeAdj = _useState106[1];
+  var _useState107 = useState(0),
+    _useState108 = _slicedToArray(_useState107, 2),
+    coachKey = _useState108[0],
+    setCoachKey = _useState108[1];
+  var _useState109 = useState(null),
+    _useState110 = _slicedToArray(_useState109, 2),
+    streakAnim = _useState110[0],
+    setStreakAnim = _useState110[1];
+  var _useState111 = useState(null),
+    _useState112 = _slicedToArray(_useState111, 2),
+    customKcal = _useState112[0],
+    setCustomKcal = _useState112[1];
+  var _useState113 = useState(false),
+    _useState114 = _slicedToArray(_useState113, 2),
+    aggressiveCutAcked = _useState114[0],
+    setAggressiveCutAcked = _useState114[1];
 
   // Expose dev refresh hook for test harness
   useEffect(function () {
@@ -4578,70 +5111,86 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
-        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav;
-        return _regenerator().w(function (_context10) {
-          while (1) switch (_context10.n) {
+      var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
+        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv;
+        return _regenerator().w(function (_context11) {
+          while (1) switch (_context11.n) {
             case 0:
-              k = todayKey();
-              _context10.n = 1;
-              return sg("logs__" + k);
+              _context11.n = 1;
+              return runMigrations();
             case 1:
-              lv = _context10.v;
-              if (lv) setLogs(JSON.parse(lv));
-              _context10.n = 2;
-              return sg("water__" + k);
+              k = todayKey();
+              _context11.n = 2;
+              return sg("logs__" + k);
             case 2:
-              wv = _context10.v;
-              if (wv) setWater(parseInt(wv) || 0);
-              _context10.n = 3;
-              return sg("mode__" + k);
+              lv = _context11.v;
+              if (lv) setLogs(JSON.parse(lv));
+              _context11.n = 3;
+              return sg("water__" + k);
             case 3:
-              mv = _context10.v;
-              if (mv) setMode(mv);
-              _context10.n = 4;
-              return sg("profile");
+              wv = _context11.v;
+              if (wv) setWater(parseInt(wv) || 0);
+              _context11.n = 4;
+              return sg("mode__" + k);
             case 4:
-              pv = _context10.v;
-              if (pv) setProf(JSON.parse(pv));
-              _context10.n = 5;
-              return sg("meals");
+              mv = _context11.v;
+              if (mv) setMode(mv);
+              _context11.n = 5;
+              return sg("profile");
             case 5:
-              mv2 = _context10.v;
-              if (mv2) setMeals(JSON.parse(mv2));
-              _context10.n = 6;
-              return sg("workouts__" + k);
+              pv = _context11.v;
+              if (pv) setProf(JSON.parse(pv));
+              _context11.n = 6;
+              return sg("meals");
             case 6:
-              wkv = _context10.v;
-              if (wkv) setWorkouts(JSON.parse(wkv));
-              _context10.n = 7;
-              return sg("badges");
+              mv2 = _context11.v;
+              if (mv2) setMeals(JSON.parse(mv2));
+              _context11.n = 7;
+              return sg("workouts__" + k);
             case 7:
-              bv = _context10.v;
-              if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context10.n = 8;
-              return sg("history");
+              wkv = _context11.v;
+              if (wkv) setWorkouts(JSON.parse(wkv));
+              _context11.n = 8;
+              return sg("badges");
             case 8:
-              hv = _context10.v;
-              if (hv) setHist(JSON.parse(hv));
-              _context10.n = 9;
-              return sg("weighins");
+              bv = _context11.v;
+              if (bv) setEarnedBdgs(JSON.parse(bv));
+              _context11.n = 9;
+              return sg("history");
             case 9:
-              wiv = _context10.v;
-              if (wiv) setWeighIns(JSON.parse(wiv));
-              _context10.n = 10;
-              return sg("tdee_adj");
+              hv = _context11.v;
+              if (hv) setHist(JSON.parse(hv));
+              _context11.n = 10;
+              return sg("weighins");
             case 10:
-              tav = _context10.v;
-              if (tav) setTdeeAdj(parseInt(tav) || 0);
-              setReady(true);
+              wiv = _context11.v;
+              if (wiv) setWeighIns(JSON.parse(wiv));
+              _context11.n = 11;
+              return sg("tdee_adj");
             case 11:
-              return _context10.a(2);
+              tav = _context11.v;
+              if (tav) setTdeeAdj(parseInt(tav) || 0);
+              _context11.n = 12;
+              return sg("target_kcal");
+            case 12:
+              ckv = _context11.v;
+              if (ckv) {
+                n = parseInt(ckv);
+                if (n > 0) setCustomKcal(n);
+              }
+              _context11.n = 13;
+              return sg("aggressive_cut_acked");
+            case 13:
+              acv = _context11.v;
+              if (acv) setAggressiveCutAcked(true);
+              setReady(true);
+            case 14:
+              return _context11.a(2);
           }
-        }, _callee10);
+        }, _callee11);
       }));
       return function load() {
-        return _ref36.apply(this, arguments);
+        return _ref38.apply(this, arguments);
       };
     }();
     load();
@@ -4683,99 +5232,136 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(l) {
-      return _regenerator().w(function (_context11) {
-        while (1) switch (_context11.n) {
-          case 0:
-            setLogs(l);
-            _context11.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            return _context11.a(2);
-        }
-      }, _callee11);
-    }));
-    return function saveLogs(_x1) {
-      return _ref37.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(w) {
+    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(l) {
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.n) {
           case 0:
-            setWater(w);
+            setLogs(l);
             _context12.n = 1;
-            return ss("water__" + todayKey(), String(w));
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
             return _context12.a(2);
         }
       }, _callee12);
     }));
-    return function saveWater(_x10) {
-      return _ref38.apply(this, arguments);
+    return function saveLogs(_x1) {
+      return _ref39.apply(this, arguments);
     };
   }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(m) {
+  var saveWater = /*#__PURE__*/function () {
+    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(w) {
       return _regenerator().w(function (_context13) {
         while (1) switch (_context13.n) {
           case 0:
-            setMode(m);
+            setWater(w);
             _context13.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("water__" + todayKey(), String(w));
           case 1:
             return _context13.a(2);
         }
       }, _callee13);
     }));
-    return function saveMode(_x11) {
-      return _ref39.apply(this, arguments);
+    return function saveWater(_x10) {
+      return _ref40.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(p) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(m) {
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.n) {
           case 0:
-            setProf(p);
+            setMode(m);
             _context14.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("mode__" + todayKey(), m);
           case 1:
             return _context14.a(2);
         }
       }, _callee14);
     }));
-    return function saveProf(_x12) {
-      return _ref40.apply(this, arguments);
+    return function saveMode(_x11) {
+      return _ref41.apply(this, arguments);
     };
   }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(w) {
+  var saveProf = /*#__PURE__*/function () {
+    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(p) {
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.n) {
           case 0:
-            setWorkouts(w);
+            setProf(p);
             _context15.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("profile", JSON.stringify(p));
           case 1:
             return _context15.a(2);
         }
       }, _callee15);
     }));
-    return function saveWorkouts(_x13) {
-      return _ref41.apply(this, arguments);
+    return function saveProf(_x12) {
+      return _ref42.apply(this, arguments);
     };
   }();
-  var addLog = function addLog(e) {
-    return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      })
-    })]));
-  };
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(w) {
+      return _regenerator().w(function (_context16) {
+        while (1) switch (_context16.n) {
+          case 0:
+            setWorkouts(w);
+            _context16.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            return _context16.a(2);
+        }
+      }, _callee16);
+    }));
+    return function saveWorkouts(_x13) {
+      return _ref43.apply(this, arguments);
+    };
+  }();
+  var addLog = /*#__PURE__*/function () {
+    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(e) {
+      var isFirstToday, animKey, today, simulatedHist, newStreak;
+      return _regenerator().w(function (_context17) {
+        while (1) switch (_context17.n) {
+          case 0:
+            isFirstToday = logs.length === 0;
+            _context17.n = 1;
+            return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
+              id: Date.now(),
+              time: new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+              })
+            })]));
+          case 1:
+            if (isFirstToday) {
+              animKey = "streak_anim__" + todayKey();
+              if (!localStorage.getItem(animKey)) {
+                today = todayKey();
+                simulatedHist = [].concat(_toConsumableArray(hist.filter(function (d) {
+                  return d.date !== today;
+                })), [{
+                  date: today,
+                  logs: [e]
+                }]);
+                newStreak = calcStreak(simulatedHist);
+                if (newStreak > 0) {
+                  localStorage.setItem(animKey, "1");
+                  setStreakAnim({
+                    prevStreak: Math.max(0, newStreak - 1),
+                    newStreak: newStreak,
+                    isMilestone: [7, 14, 30, 50, 100].includes(newStreak)
+                  });
+                }
+              }
+            }
+          case 2:
+            return _context17.a(2);
+        }
+      }, _callee17);
+    }));
+    return function addLog(_x14) {
+      return _ref44.apply(this, arguments);
+    };
+  }();
   var removeLog = function removeLog(id) {
     return saveLogs(logs.filter(function (l) {
       return l.id !== id;
@@ -4789,20 +5375,83 @@ function App() {
       return w.id !== id;
     }));
   };
+  var saveCustomKcal = /*#__PURE__*/function () {
+    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(kcal) {
+      return _regenerator().w(function (_context18) {
+        while (1) switch (_context18.n) {
+          case 0:
+            setCustomKcal(kcal);
+            if (!(kcal == null)) {
+              _context18.n = 2;
+              break;
+            }
+            _context18.n = 1;
+            return ss("target_kcal", "");
+          case 1:
+            _context18.n = 3;
+            break;
+          case 2:
+            _context18.n = 3;
+            return ss("target_kcal", String(kcal));
+          case 3:
+            return _context18.a(2);
+        }
+      }, _callee18);
+    }));
+    return function saveCustomKcal(_x15) {
+      return _ref45.apply(this, arguments);
+    };
+  }();
+  var handleSetMode = /*#__PURE__*/function () {
+    var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(m) {
+      return _regenerator().w(function (_context19) {
+        while (1) switch (_context19.n) {
+          case 0:
+            _context19.n = 1;
+            return saveMode(m);
+          case 1:
+            _context19.n = 2;
+            return saveCustomKcal(null);
+          case 2:
+            return _context19.a(2);
+        }
+      }, _callee19);
+    }));
+    return function handleSetMode(_x16) {
+      return _ref46.apply(this, arguments);
+    };
+  }();
+  var handleAckAggressiveCut = /*#__PURE__*/function () {
+    var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
+      return _regenerator().w(function (_context20) {
+        while (1) switch (_context20.n) {
+          case 0:
+            setAggressiveCutAcked(true);
+            _context20.n = 1;
+            return ss("aggressive_cut_acked", "1");
+          case 1:
+            return _context20.a(2);
+        }
+      }, _callee20);
+    }));
+    return function handleAckAggressiveCut() {
+      return _ref47.apply(this, arguments);
+    };
+  }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(entry) {
+    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(entry) {
       var name, clean, updated;
-      return _regenerator().w(function (_context16) {
-        while (1) switch (_context16.n) {
+      return _regenerator().w(function (_context21) {
+        while (1) switch (_context21.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context16.n = 1;
+              _context21.n = 1;
               break;
             }
-            return _context16.a(2);
+            return _context21.a(2);
           case 1:
             clean = {
               name: name,
@@ -4813,15 +5462,15 @@ function App() {
             };
             updated = [].concat(_toConsumableArray(meals), [clean]);
             setMeals(updated);
-            _context16.n = 2;
+            _context21.n = 2;
             return ss("meals", JSON.stringify(updated));
           case 2:
-            return _context16.a(2);
+            return _context21.a(2);
         }
-      }, _callee16);
+      }, _callee21);
     }));
-    return function addToQA(_x14) {
-      return _ref42.apply(this, arguments);
+    return function addToQA(_x17) {
+      return _ref48.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -4849,10 +5498,10 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(upd) {
+    var _ref49 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(upd) {
       var nh;
-      return _regenerator().w(function (_context17) {
-        while (1) switch (_context17.n) {
+      return _regenerator().w(function (_context22) {
+        while (1) switch (_context22.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -4860,22 +5509,22 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context17.n = 1;
+            _context22.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
-            return _context17.a(2);
+            return _context22.a(2);
         }
-      }, _callee17);
+      }, _callee22);
     }));
-    return function updateDay(_x15) {
-      return _ref43.apply(this, arguments);
+    return function updateDay(_x18) {
+      return _ref49.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(weight) {
-      var entry, updated, p, base, result, newAdj;
-      return _regenerator().w(function (_context18) {
-        while (1) switch (_context18.n) {
+    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(weight) {
+      var entry, updated, updatedProf, base, result, newAdj;
+      return _regenerator().w(function (_context23) {
+        while (1) switch (_context23.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -4887,35 +5536,58 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context18.n = 1;
+            _context23.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
+            // Sync profile weight so targets recalculate immediately
+            updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
+              weight: weight
+            });
+            _context23.n = 2;
+            return saveProf(updatedProf);
+          case 2:
             // Run calibration whenever a new weigh-in arrives
-            p = prof || DEF_PROFILE;
-            base = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
+            base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context18.n = 2;
+              _context23.n = 3;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context18.n = 2;
+            _context23.n = 3;
             return ss("tdee_adj", String(newAdj));
-          case 2:
-            return _context18.a(2);
+          case 3:
+            return _context23.a(2);
         }
-      }, _callee18);
+      }, _callee23);
     }));
-    return function onWeighIn(_x16) {
-      return _ref44.apply(this, arguments);
+    return function onWeighIn(_x19) {
+      return _ref50.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
   var baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
-  var targets = calcTargets(prof || DEF_PROFILE, mode, workouts.reduce(function (s, w) {
+  var effectiveTDEE = baseTDEE + tdeeAdj;
+  var effectiveMode = customKcal != null ? customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain" : mode;
+  var workoutKcal = workouts.reduce(function (s, w) {
     return s + (w.kcal || 0);
-  }, 0), tdeeAdj);
+  }, 0);
+  var baseTargets = calcTargets(p, effectiveMode, workoutKcal, tdeeAdj);
+  var targets = function () {
+    if (customKcal == null) return baseTargets;
+    var safeMin = SAFE_MIN[p.sex || "male"] || 1400;
+    var safeKcal = Math.max(safeMin, customKcal);
+    var scale = baseTargets.kcal > 0 ? safeKcal / baseTargets.kcal : 1;
+    return _objectSpread(_objectSpread({}, baseTargets), {}, {
+      kcal: safeKcal,
+      protein: Math.round(baseTargets.protein * scale),
+      carbs: Math.max(50, Math.round(baseTargets.carbs * scale)),
+      fat: Math.round(baseTargets.fat * scale),
+      safeMinApplied: safeKcal > customKcal,
+      customKcalApplied: true
+    });
+  }();
   var totals = sumLogs(logs);
   var remaining = targets.kcal - totals.kcal;
   var streak = calcStreak(hist);
@@ -4942,7 +5614,12 @@ function App() {
       color: "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     }
-  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: #2a3228; }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: #0b0d0b; color: #d8e8d0; }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n      "), newBadge && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: #2a3228; }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: #0b0d0b; color: #d8e8d0; }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n      "), streakAnim && /*#__PURE__*/React.createElement(StreakCelebration, {
+    anim: streakAnim,
+    onDone: function onDone() {
+      return setStreakAnim(null);
+    }
+  }), newBadge && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       inset: 0,
@@ -5011,8 +5688,8 @@ function App() {
     remaining: remaining,
     water: water,
     setWater: saveWater,
-    mode: mode,
-    setMode: saveMode,
+    mode: effectiveMode,
+    setMode: handleSetMode,
     setView: setView,
     removeLog: removeLog,
     addToQA: addToQA,
@@ -5026,7 +5703,12 @@ function App() {
     coachKey: coachKey,
     workouts: workouts,
     onAddWorkout: addWorkout,
-    onRemoveWorkout: removeWorkout
+    onRemoveWorkout: removeWorkout,
+    customKcal: customKcal,
+    onSetCustomKcal: saveCustomKcal,
+    isCustomMode: customKcal != null,
+    aggressiveCutAcked: aggressiveCutAcked,
+    onAckAggressiveCut: handleAckAggressiveCut
   }), view === "profile" && /*#__PURE__*/React.createElement(ProfileScreen, {
     profile: prof || DEF_PROFILE,
     onSave: saveProf,
@@ -5034,7 +5716,8 @@ function App() {
       return setView("dashboard");
     },
     tdeeAdj: tdeeAdj,
-    weighIns: weighIns
+    weighIns: weighIns,
+    aggressiveCutAcked: aggressiveCutAcked
   }), view === "ai" && /*#__PURE__*/React.createElement(AILog, {
     onAdd: addLog,
     onBack: function onBack() {

@@ -7,7 +7,7 @@ fuel-log/
 ├── app.jsx              ← EDIT THIS. Full source, JSX + ES6.
 ├── app.js               ← Built output. Never edit directly.
 ├── babel.config.json    ← Babel config (preset-react + preset-env modules:false).
-├── index.html           ← HTML shell. Loads CDN deps + app.js.
+├── index.html           ← HTML shell. Loads vendored deps + app.js.
 ├── manifest.json        ← PWA manifest.
 ├── sw.js                ← Service worker. Bump CACHE version on each deploy.
 ├── icon-192.png         ← App icon.
@@ -15,9 +15,14 @@ fuel-log/
 ├── cloudflare-worker.js ← Paste into Cloudflare to proxy AI requests.
 ├── dev-server.js        ← Local dev server (node dev-server.js).
 ├── preview.html         ← Mobile preview harness (localhost:3000/preview.html).
+├── seed-data.js         ← Dev-only: populates 6 months of realistic test data.
+├── vendor/              ← Vendored JS bundles (React, ReactDOM, PropTypes, Recharts).
+├── features/
+│   └── fuel-log.feature ← Gherkin specs. Update before implementing any feature change.
 ├── __tests__/
 │   └── logic.test.js    ← Jest unit tests for all pure logic.
 ├── package.json         ← Dev deps + scripts.
+├── DOCS.md              ← Full product documentation.
 └── SETUP.md             ← You're reading it.
 ```
 
@@ -53,7 +58,7 @@ npx babel app.jsx --out-file app.js
 npm test
 ```
 
-40 tests covering all pure logic functions. No browser required.
+44 tests covering all pure logic functions. No browser required.
 
 ---
 
@@ -66,6 +71,16 @@ node dev-server.js
 Then open **http://localhost:3000/preview.html** in your browser for a phone-frame preview with device size switchers (iPhone 14, Pixel 7, iPhone SE).
 
 The preview uses the same `localStorage` as the main page, so test data persists.
+
+### Dev panel controls
+
+| Control | What it does |
+|---|---|
+| **▶ Progress Day** | Advances the simulated date by one day (increments `dev_date_offset`). Use this to test streak logic without waiting a real day. |
+| **↺ Reset to Today** | Clears the date offset and returns to real today. |
+| **Update Coach Tip** | Sets a simulated hour for the Coach Tip time-of-day logic without reloading the page. |
+| **Use real time** | Clears the simulated hour and reverts to the system clock. |
+| **⚡ Seed Data** | Populates 6 months of realistic food logs, weigh-ins, and workouts via `seed-data.js`. |
 
 ---
 
@@ -121,10 +136,11 @@ The service worker must bypass all AI and external API calls, otherwise POST res
 
 ## Making Changes
 
-1. Edit `app.jsx`
-2. Run `npm run build`
-3. Push `app.js` (and any other changed files) to GitHub
-4. Done — no other steps
+1. Update `features/fuel-log.feature` if the change affects user-visible behaviour
+2. Edit `app.jsx`
+3. Run `npm run build`
+4. Push `app.js` (and any other changed files) to GitHub
+5. Done — no other steps
 
 ---
 
@@ -134,7 +150,7 @@ All data in `localStorage`, flat single-user keys:
 
 | Key | Value |
 |---|---|
-| `profile` | JSON: `{weight, height, bodyFat, activity}` |
+| `profile` | JSON: `{weight, height, bodyFat, sex}` — `sex` is `"male"`, `"female"`, or `null` |
 | `meals` | JSON: meal library array |
 | `history` | JSON: all daily snapshots sorted by date |
 | `badges` | JSON: earned badge key array |
@@ -142,10 +158,14 @@ All data in `localStorage`, flat single-user keys:
 | `tdee_adj` | Integer string: cumulative TDEE calibration offset (kcal, can be negative) |
 | `logs__YYYY-MM-DD` | JSON: food entries for that day |
 | `water__YYYY-MM-DD` | Integer string (glasses) |
-| `train__YYYY-MM-DD` | `"true"` / `"false"` |
+| `workouts__YYYY-MM-DD` | JSON: `[{id, type, duration, intensity, kcal, time, notes?}]` |
 | `mode__YYYY-MM-DD` | `"cut"` / `"maintain"` / `"bulk"` |
-| `session__YYYY-MM-DD` | JSON: `{type, duration, intensity, hevyKcal?}` |
 | `coach__YYYY-MM-DD` | JSON: `{tip, r}` — AI tip + refresh count |
+| `target_kcal` | Integer string: custom daily calorie target (absent = use preset mode) |
+| `aggressive_cut_acked` | `"1"` when user has acknowledged the red aggressive-cut warning |
+| `streak_anim__YYYY-MM-DD` | `"1"` — prevents streak celebration replaying on the same day |
+| `dev_date_offset` | Integer string: days ahead of real today (preview harness only) |
+| `dev_time_hour` | Integer string: simulated hour 0–23 (preview harness only) |
 
 ---
 
@@ -184,3 +204,8 @@ The adjustment is capped at ±150 kcal per calibration run and ±600 kcal lifeti
 **Weigh-in not triggering calibration**
 → Need at least 8 weigh-ins total and 4 food-log days in the last 7 days
 → Calibration runs automatically on each weigh-in once thresholds are met
+
+**Streak not incrementing in preview harness**
+→ Use the **▶ Progress Day** button to advance the simulated date, then log food
+→ The streak celebration plays on the first log of each simulated day
+→ To replay today's animation: clear `streak_anim__YYYY-MM-DD` from localStorage

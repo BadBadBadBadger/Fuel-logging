@@ -1,9 +1,15 @@
-const CACHE = "fuel-log-v13";
-const ASSETS = ["./", "./index.html", "./manifest.json"];
+const CACHE = "fuel-log-v21";
+const ASSETS = ["./", "./index.html", "./manifest.json", "./app.js",
+  "./vendor/react.js", "./vendor/react-dom.js",
+  "./vendor/prop-types.js", "./vendor/recharts.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
+  self.skipWaiting(); // Take control immediately so stale caches don't linger.
+});
+
+self.addEventListener("message", e => {
+  if (e.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys =>
@@ -21,6 +27,6 @@ self.addEventListener("fetch", e => {
       const clone = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, clone));
       return res;
-    }).catch(() => caches.match("./index.html")))
+    }).catch(() => e.request.mode === "navigate" ? caches.match("./index.html") : new Response("",{status:503})))
   );
 });

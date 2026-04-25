@@ -151,9 +151,10 @@
   </style>
 
   <!-- App dependencies (same as index.html) -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="recharts.js"></script>
+  <script src="vendor/react.js"></script>
+  <script src="vendor/react-dom.js"></script>
+  <script src="vendor/prop-types.js"></script>
+  <script src="vendor/recharts.js"></script>
 </head>
 <body>
 
@@ -220,9 +221,22 @@
     };
 
     // Expose globals the app expects
-    const { useState, useEffect } = React;
-    const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-            XAxis, YAxis, Tooltip, ResponsiveContainer } = (typeof Recharts !== "undefined" ? Recharts : {});
+    window.useState  = React.useState;
+    window.useEffect = React.useEffect;
+    (function() {
+      var R = typeof Recharts !== "undefined" ? Recharts : {};
+      window.LineChart         = R.LineChart;
+      window.Line              = R.Line;
+      window.BarChart          = R.BarChart;
+      window.Bar               = R.Bar;
+      window.PieChart          = R.PieChart;
+      window.Pie               = R.Pie;
+      window.Cell              = R.Cell;
+      window.XAxis             = R.XAxis;
+      window.YAxis             = R.YAxis;
+      window.Tooltip           = R.Tooltip;
+      window.ResponsiveContainer = R.ResponsiveContainer;
+    })();
 
     function setDevice(w, h, btn) {
       const shell = document.getElementById("app-shell");
