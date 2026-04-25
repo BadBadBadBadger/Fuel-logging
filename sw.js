@@ -1,4 +1,4 @@
-const CACHE = "fuel-log-v21";
+const CACHE = "fuel-log-v22";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./app.js",
   "./vendor/react.js", "./vendor/react-dom.js",
   "./vendor/prop-types.js", "./vendor/recharts.js"];
@@ -21,7 +21,10 @@ self.addEventListener("fetch", e => {
   if (e.request.url.includes("api.anthropic.com") ||
       e.request.url.includes("workers.dev") ||
       e.request.url.includes("openfoodfacts.org") ||
-      e.request.url.includes("unpkg.com")) return;
+      e.request.url.includes("unpkg.com") ||
+      e.request.url.includes("accounts.google.com") ||
+      e.request.url.includes("googleapis.com") ||
+      e.request.url.includes("supabase.co")) return;
   e.respondWith(
     caches.match(e.request).then(r => r || fetch(e.request).then(res => {
       const clone = res.clone();

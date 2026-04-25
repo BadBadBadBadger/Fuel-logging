@@ -40,6 +40,12 @@ var A = "#a3ff4b",
   BG = "#0b0d0b",
   CARD = "#111311",
   BD = "#1c201c";
+
+// ── Auth / Premium ────────────────────────────────────────────
+// Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
+// Leave empty ("") to skip Google Sign In and go straight to voucher entry (dev mode).
+var GOOGLE_CLIENT_ID = "";
+var VOUCHER_CODE = "FreeFoodTips2026";
 var MODES = {
   cut: {
     label: "CUT",
@@ -432,6 +438,13 @@ var ss = /*#__PURE__*/function () {
     return _ref2.apply(this, arguments);
   };
 }();
+var parseJwt = function parseJwt(token) {
+  try {
+    return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch (e) {
+    return {};
+  }
+};
 
 // ── Data migrations ───────────────────────────────────────────
 // Bump SCHEMA_VERSION and add a migration block each time the stored
@@ -592,7 +605,520 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
       };
     }
   }]);
-}(React.Component); // ── Shared UI ─────────────────────────────────────────────────
+}(React.Component); // ── Premium Modals ────────────────────────────────────────────
+function PremiumModal(_ref6) {
+  var feature = _ref6.feature,
+    onUpgrade = _ref6.onUpgrade,
+    onDismiss = _ref6.onDismiss;
+  var emoji = feature ? feature.emoji : "⭐";
+  var name = feature ? feature.name : "This feature";
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.92)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 999,
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      borderRadius: 24,
+      padding: "36px 28px",
+      textAlign: "center",
+      border: "1px solid ".concat(A, "44"),
+      maxWidth: 300,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 64,
+      marginBottom: 10
+    }
+  }, emoji), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: A,
+      letterSpacing: "0.12em",
+      fontWeight: 800,
+      marginBottom: 6
+    }
+  }, "PREMIUM FEATURE"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 20,
+      fontWeight: 900,
+      color: "#d8e8d0",
+      marginBottom: 8
+    }
+  }, name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#556050",
+      lineHeight: 1.6,
+      marginBottom: 16
+    }
+  }, "AI features require a Premium account"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#0b0d0b",
+      borderRadius: 12,
+      padding: "14px 16px",
+      marginBottom: 20,
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: A,
+      fontWeight: 800,
+      letterSpacing: "0.1em",
+      marginBottom: 10
+    }
+  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref7, i) {
+    var _ref8 = _slicedToArray(_ref7, 2),
+      e = _ref8[0],
+      t = _ref8[1];
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        display: "flex",
+        gap: 10,
+        marginBottom: 6,
+        alignItems: "center"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 15,
+        flexShrink: 0
+      }
+    }, e), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: "#8aaa80",
+        lineHeight: 1.4
+      }
+    }, t));
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#445040",
+      marginTop: 10,
+      borderTop: "1px solid ".concat(BD),
+      paddingTop: 10
+    }
+  }, "\xA34.99/month \xB7 \xA349.99/year \xB7 30-day free trial")), /*#__PURE__*/React.createElement("button", {
+    onClick: onUpgrade,
+    style: {
+      width: "100%",
+      padding: "14px",
+      background: A,
+      color: "#0b0d0b",
+      border: "none",
+      borderRadius: 12,
+      fontSize: 14,
+      fontWeight: 900,
+      marginBottom: 10
+    }
+  }, "Start Free Trial \uD83D\uDE80"), /*#__PURE__*/React.createElement("button", {
+    onClick: onDismiss,
+    style: {
+      width: "100%",
+      padding: "10px",
+      background: "none",
+      color: "#445040",
+      border: "none",
+      fontSize: 13,
+      cursor: "pointer"
+    }
+  }, "Maybe Later")));
+}
+function SignInModal(_ref9) {
+  var onSuccess = _ref9.onSuccess,
+    onCancel = _ref9.onCancel;
+  var devMode = !GOOGLE_CLIENT_ID;
+  var _useState = useState(devMode ? "payment" : "google"),
+    _useState2 = _slicedToArray(_useState, 2),
+    step = _useState2[0],
+    setStep = _useState2[1];
+  var _useState3 = useState(devMode ? {
+      name: "Guest",
+      email: "",
+      picture: ""
+    } : null),
+    _useState4 = _slicedToArray(_useState3, 2),
+    gUser = _useState4[0],
+    setGUser = _useState4[1];
+  var _useState5 = useState(""),
+    _useState6 = _slicedToArray(_useState5, 2),
+    voucher = _useState6[0],
+    setVoucher = _useState6[1];
+  var _useState7 = useState(""),
+    _useState8 = _slicedToArray(_useState7, 2),
+    vError = _useState8[0],
+    setVError = _useState8[1];
+  useEffect(function () {
+    if (step !== "google" || devMode || typeof google === "undefined") return;
+    try {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: function callback(resp) {
+          var p = parseJwt(resp.credential);
+          setGUser({
+            name: p.name || "User",
+            email: p.email || "",
+            picture: p.picture || ""
+          });
+          setStep("payment");
+        },
+        auto_select: false,
+        cancel_on_tap_outside: false
+      });
+      var el = document.getElementById("gsi-btn");
+      if (el) google.accounts.id.renderButton(el, {
+        theme: "outline",
+        size: "large",
+        width: 252,
+        text: "continue_with"
+      });
+    } catch (e) {}
+  }, [step]); // eslint-disable-line
+
+  var handleVoucher = function handleVoucher() {
+    if (voucher.trim().toUpperCase() === VOUCHER_CODE.toUpperCase()) {
+      onSuccess(gUser || {
+        name: "Guest",
+        email: "",
+        picture: ""
+      }, "voucher");
+    } else {
+      setVError("That code isn't right — check the spelling and try again.");
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.92)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      borderRadius: 24,
+      padding: "32px 24px",
+      border: "1px solid ".concat(A, "33"),
+      maxWidth: 300,
+      width: "100%"
+    }
+  }, step === "google" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 32,
+      textAlign: "center",
+      marginBottom: 12
+    }
+  }, "\uD83D\uDD10"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 900,
+      color: "#d8e8d0",
+      textAlign: "center",
+      marginBottom: 6
+    }
+  }, "Sign in to continue"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#445040",
+      textAlign: "center",
+      lineHeight: 1.6,
+      marginBottom: 24
+    }
+  }, "We use Google Sign In to protect your account. No separate password needed."), /*#__PURE__*/React.createElement("div", {
+    id: "gsi-btn",
+    style: {
+      display: "flex",
+      justifyContent: "center",
+      marginBottom: 14
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: onCancel,
+    style: {
+      width: "100%",
+      padding: "10px",
+      background: "none",
+      color: "#445040",
+      border: "none",
+      fontSize: 13,
+      cursor: "pointer"
+    }
+  }, "Cancel")), step === "payment" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: A,
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      marginBottom: 4
+    }
+  }, "\uD83D\uDC4B HI, ", (((gUser === null || gUser === void 0 ? void 0 : gUser.name) || "").split(" ")[0] || "THERE").toUpperCase()), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 900,
+      color: "#d8e8d0",
+      marginBottom: 14
+    }
+  }, "Start your free trial"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#0b0d0b",
+      borderRadius: 12,
+      padding: "14px 16px",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 17,
+      fontWeight: 900,
+      color: A
+    }
+  }, "30 days free"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#445040",
+      marginTop: 3
+    }
+  }, "then \xA34.99/month or \xA349.99/year"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#334a30",
+      marginTop: 6
+    }
+  }, "Cancel anytime before trial ends")), /*#__PURE__*/React.createElement("button", {
+    disabled: true,
+    style: {
+      width: "100%",
+      padding: "14px",
+      background: "#1c201c",
+      border: "1px solid ".concat(BD),
+      borderRadius: 12,
+      color: "#445040",
+      fontSize: 13,
+      fontWeight: 700,
+      marginBottom: 16,
+      cursor: "not-allowed"
+    }
+  }, "Subscribe \u2014 Coming Soon"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#556050",
+      textAlign: "center",
+      marginBottom: 8
+    }
+  }, "Have an access code?"), /*#__PURE__*/React.createElement("input", {
+    value: voucher,
+    onChange: function onChange(e) {
+      setVoucher(e.target.value);
+      setVError("");
+    },
+    placeholder: "Enter code...",
+    onKeyDown: function onKeyDown(e) {
+      return e.key === "Enter" && handleVoucher();
+    },
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      background: "#0b0d0b",
+      border: "1px solid ".concat(vError ? "#ff5555" : BD),
+      borderRadius: 10,
+      padding: "12px 14px",
+      color: "#d8e8d0",
+      fontSize: 14,
+      fontFamily: "inherit",
+      outline: "none",
+      marginBottom: vError ? 6 : 10
+    }
+  }), vError && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#ff5555",
+      marginBottom: 10
+    }
+  }, vError), /*#__PURE__*/React.createElement("button", {
+    onClick: handleVoucher,
+    style: {
+      width: "100%",
+      padding: "12px",
+      background: "#161a16",
+      border: "1px solid ".concat(BD),
+      borderRadius: 12,
+      color: "#8aaa80",
+      fontSize: 13,
+      fontWeight: 700,
+      marginBottom: 10
+    }
+  }, "Redeem Code"), /*#__PURE__*/React.createElement("button", {
+    onClick: onCancel,
+    style: {
+      width: "100%",
+      padding: "10px",
+      background: "none",
+      color: "#445040",
+      border: "none",
+      fontSize: 13,
+      cursor: "pointer"
+    }
+  }, "Cancel"))));
+}
+function SignOutModal(_ref0) {
+  var userName = _ref0.userName,
+    onConfirm = _ref0.onConfirm,
+    onCancel = _ref0.onCancel;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.88)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      borderRadius: 24,
+      padding: "28px 24px",
+      border: "1px solid ".concat(BD),
+      maxWidth: 300,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 36,
+      textAlign: "center",
+      marginBottom: 12
+    }
+  }, "\uD83D\uDD13"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 900,
+      color: "#d8e8d0",
+      textAlign: "center",
+      marginBottom: 10
+    }
+  }, "Sign out", userName ? ", ".concat(userName.split(" ")[0]) : "", "?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#556050",
+      lineHeight: 1.7,
+      marginBottom: 22,
+      textAlign: "center"
+    }
+  }, "Signing out will remove local data.", /*#__PURE__*/React.createElement("br", null), "Your cloud data is safe and will restore on next login."), /*#__PURE__*/React.createElement("button", {
+    onClick: onConfirm,
+    style: {
+      width: "100%",
+      padding: "13px",
+      background: "#1a0d0d",
+      border: "1px solid #3a1a1a",
+      borderRadius: 12,
+      color: "#ff5555",
+      fontSize: 14,
+      fontWeight: 900,
+      marginBottom: 10
+    }
+  }, "Sign Out"), /*#__PURE__*/React.createElement("button", {
+    onClick: onCancel,
+    style: {
+      width: "100%",
+      padding: "12px",
+      background: A,
+      color: "#0b0d0b",
+      border: "none",
+      borderRadius: 12,
+      fontSize: 14,
+      fontWeight: 900
+    }
+  }, "Stay Signed In")));
+}
+function LapsedModal(_ref1) {
+  var onRenew = _ref1.onRenew,
+    onDismiss = _ref1.onDismiss;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.88)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      borderRadius: 24,
+      padding: "28px 24px",
+      border: "1px solid #ffb84b44",
+      maxWidth: 300,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 40,
+      textAlign: "center",
+      marginBottom: 12
+    }
+  }, "\u231B"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 900,
+      color: "#d8e8d0",
+      textAlign: "center",
+      marginBottom: 10
+    }
+  }, "Your Premium subscription has ended"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#556050",
+      lineHeight: 1.7,
+      marginBottom: 22,
+      textAlign: "center"
+    }
+  }, "Your data is safe and still visible. Quick Add and logging still work. Renew to unlock AI features and cloud sync."), /*#__PURE__*/React.createElement("button", {
+    onClick: onRenew,
+    style: {
+      width: "100%",
+      padding: "13px",
+      background: A,
+      color: "#0b0d0b",
+      border: "none",
+      borderRadius: 12,
+      fontSize: 14,
+      fontWeight: 900,
+      marginBottom: 10
+    }
+  }, "Renew Premium"), /*#__PURE__*/React.createElement("button", {
+    onClick: onDismiss,
+    style: {
+      width: "100%",
+      padding: "11px",
+      background: "none",
+      color: "#445040",
+      border: "none",
+      fontSize: 13,
+      cursor: "pointer"
+    }
+  }, "Continue for Free")));
+}
+
+// ── Shared UI ─────────────────────────────────────────────────
+
 var INP = {
   width: "100%",
   boxSizing: "border-box",
@@ -605,10 +1131,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref6) {
-  var title = _ref6.title,
-    onBack = _ref6.onBack,
-    right = _ref6.right;
+function BackHdr(_ref10) {
+  var title = _ref10.title,
+    onBack = _ref10.onBack,
+    right = _ref10.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -649,10 +1175,10 @@ function BackHdr(_ref6) {
     }
   }, title), right);
 }
-function Chip(_ref7) {
-  var label = _ref7.label,
-    value = _ref7.value,
-    color = _ref7.color;
+function Chip(_ref11) {
+  var label = _ref11.label,
+    value = _ref11.value,
+    color = _ref11.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -675,11 +1201,11 @@ function Chip(_ref7) {
     }
   }, label));
 }
-function MBar(_ref8) {
-  var label = _ref8.label,
-    value = _ref8.value,
-    target = _ref8.target,
-    color = _ref8.color;
+function MBar(_ref12) {
+  var label = _ref12.label,
+    value = _ref12.value,
+    target = _ref12.target,
+    color = _ref12.color;
   var pct = Math.min(100, value / target * 100);
   var overG = value - target;
   var accent = overG > 15 ? "#ff5555" : overG > 5 ? "#ffb84b" : null;
@@ -724,19 +1250,19 @@ function MBar(_ref8) {
 
 // ── Streak Celebration ────────────────────────────────────────
 
-function StreakCelebration(_ref9) {
-  var anim = _ref9.anim,
-    onDone = _ref9.onDone;
+function StreakCelebration(_ref13) {
+  var anim = _ref13.anim,
+    onDone = _ref13.onDone;
   var prevStreak = anim.prevStreak,
     newStreak = anim.newStreak,
     isMilestone = anim.isMilestone;
-  var _useState = useState(prevStreak),
-    _useState2 = _slicedToArray(_useState, 2),
-    count = _useState2[0],
-    setCount = _useState2[1];
+  var _useState9 = useState(prevStreak),
+    _useState0 = _slicedToArray(_useState9, 2),
+    count = _useState0[0],
+    setCount = _useState0[1];
 
   // Pre-computed floaters — stable across re-renders via useState initializer
-  var _useState3 = useState(function () {
+  var _useState1 = useState(function () {
       var n = isMilestone ? 26 : 14;
       return Array.from({
         length: n
@@ -751,8 +1277,8 @@ function StreakCelebration(_ref9) {
         };
       });
     }),
-    _useState4 = _slicedToArray(_useState3, 1),
-    floaters = _useState4[0];
+    _useState10 = _slicedToArray(_useState1, 1),
+    floaters = _useState10[0];
   useEffect(function () {
     // ── Web Audio: whoosh then heavy thud ──────────────────────
     try {
@@ -868,24 +1394,24 @@ function StreakCelebration(_ref9) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref0) {
-  var mode = _ref0.mode,
-    totals = _ref0.totals,
-    targets = _ref0.targets,
-    streak = _ref0.streak,
-    water = _ref0.water;
-  var _useState5 = useState(""),
-    _useState6 = _slicedToArray(_useState5, 2),
-    tip = _useState6[0],
-    setTip = _useState6[1];
-  var _useState7 = useState(0),
-    _useState8 = _slicedToArray(_useState7, 2),
-    refreshes = _useState8[0],
-    setRefreshes = _useState8[1];
-  var _useState9 = useState(false),
-    _useState0 = _slicedToArray(_useState9, 2),
-    loading = _useState0[0],
-    setLoading = _useState0[1];
+function CoachCard(_ref14) {
+  var mode = _ref14.mode,
+    totals = _ref14.totals,
+    targets = _ref14.targets,
+    streak = _ref14.streak,
+    water = _ref14.water;
+  var _useState11 = useState(""),
+    _useState12 = _slicedToArray(_useState11, 2),
+    tip = _useState12[0],
+    setTip = _useState12[1];
+  var _useState13 = useState(0),
+    _useState14 = _slicedToArray(_useState13, 2),
+    refreshes = _useState14[0],
+    setRefreshes = _useState14[1];
+  var _useState15 = useState(false),
+    _useState16 = _slicedToArray(_useState15, 2),
+    loading = _useState16[0],
+    setLoading = _useState16[1];
   useEffect(function () {
     sg("coach__" + todayKey()).then(function (v) {
       if (v) {
@@ -900,7 +1426,7 @@ function CoachCard(_ref0) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+    var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
       var h, timeLabel, prompt, t, r, _t3;
       return _regenerator().w(function (_context6) {
         while (1) switch (_context6.p = _context6.n) {
@@ -942,7 +1468,7 @@ function CoachCard(_ref0) {
       }, _callee6, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref1.apply(this, arguments);
+      return _ref15.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -1001,28 +1527,28 @@ function CoachCard(_ref0) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen(_ref10) {
-  var profile = _ref10.profile,
-    onSave = _ref10.onSave,
-    onBack = _ref10.onBack,
-    _ref10$tdeeAdj = _ref10.tdeeAdj,
-    tdeeAdj = _ref10$tdeeAdj === void 0 ? 0 : _ref10$tdeeAdj,
-    _ref10$weighIns = _ref10.weighIns,
-    weighIns = _ref10$weighIns === void 0 ? [] : _ref10$weighIns,
-    _ref10$aggressiveCutA = _ref10.aggressiveCutAcked,
-    aggressiveCutAcked = _ref10$aggressiveCutA === void 0 ? false : _ref10$aggressiveCutA;
-  var _useState1 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
-    _useState10 = _slicedToArray(_useState1, 2),
-    f = _useState10[0],
-    setF = _useState10[1];
-  var _useState11 = useState(false),
-    _useState12 = _slicedToArray(_useState11, 2),
-    saved = _useState12[0],
-    setSaved = _useState12[1];
-  var _useState13 = useState(false),
-    _useState14 = _slicedToArray(_useState13, 2),
-    bfFocused = _useState14[0],
-    setBfFocused = _useState14[1];
+function ProfileScreen(_ref16) {
+  var profile = _ref16.profile,
+    onSave = _ref16.onSave,
+    onBack = _ref16.onBack,
+    _ref16$tdeeAdj = _ref16.tdeeAdj,
+    tdeeAdj = _ref16$tdeeAdj === void 0 ? 0 : _ref16$tdeeAdj,
+    _ref16$weighIns = _ref16.weighIns,
+    weighIns = _ref16$weighIns === void 0 ? [] : _ref16$weighIns,
+    _ref16$aggressiveCutA = _ref16.aggressiveCutAcked,
+    aggressiveCutAcked = _ref16$aggressiveCutA === void 0 ? false : _ref16$aggressiveCutA;
+  var _useState17 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
+    _useState18 = _slicedToArray(_useState17, 2),
+    f = _useState18[0],
+    setF = _useState18[1];
+  var _useState19 = useState(false),
+    _useState20 = _slicedToArray(_useState19, 2),
+    saved = _useState20[0],
+    setSaved = _useState20[1];
+  var _useState21 = useState(false),
+    _useState22 = _slicedToArray(_useState21, 2),
+    bfFocused = _useState22[0],
+    setBfFocused = _useState22[1];
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -1355,10 +1881,10 @@ function ProfileScreen(_ref10) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref11) {
-    var mode = _ref11.mode,
-      label = _ref11.label,
-      color = _ref11.color;
+  }].map(function (_ref17) {
+    var mode = _ref17.mode,
+      label = _ref17.label,
+      color = _ref17.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -1381,11 +1907,11 @@ function ProfileScreen(_ref10) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref12) {
-      var _ref13 = _slicedToArray(_ref12, 3),
-        k = _ref13[0],
-        key = _ref13[1],
-        u = _ref13[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref18) {
+      var _ref19 = _slicedToArray(_ref18, 3),
+        k = _ref19[0],
+        key = _ref19[1],
+        u = _ref19[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -1438,10 +1964,10 @@ function ProfileScreen(_ref10) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref14) {
-  var meal = _ref14.meal,
-    onSave = _ref14.onSave,
-    onCancel = _ref14.onCancel;
+function MealForm(_ref20) {
+  var meal = _ref20.meal,
+    onSave = _ref20.onSave,
+    onCancel = _ref20.onCancel;
   var blank = {
     name: "",
     kcal: "",
@@ -1449,16 +1975,16 @@ function MealForm(_ref14) {
     carbs: "",
     fat: ""
   };
-  var _useState15 = useState(meal ? {
+  var _useState23 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
-    _useState16 = _slicedToArray(_useState15, 2),
-    f = _useState16[0],
-    setF = _useState16[1];
+    _useState24 = _slicedToArray(_useState23, 2),
+    f = _useState24[0],
+    setF = _useState24[1];
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -1598,15 +2124,15 @@ function MealForm(_ref14) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref15) {
-  var weighIns = _ref15.weighIns,
-    onWeighIn = _ref15.onWeighIn,
-    tdeeAdj = _ref15.tdeeAdj,
-    baseTDEE = _ref15.baseTDEE;
-  var _useState17 = useState(""),
-    _useState18 = _slicedToArray(_useState17, 2),
-    val = _useState18[0],
-    setVal = _useState18[1];
+function WeighInWidget(_ref21) {
+  var weighIns = _ref21.weighIns,
+    onWeighIn = _ref21.onWeighIn,
+    tdeeAdj = _ref21.tdeeAdj,
+    baseTDEE = _ref21.baseTDEE;
+  var _useState25 = useState(""),
+    _useState26 = _slicedToArray(_useState25, 2),
+    val = _useState26[0],
+    setVal = _useState26[1];
   var today = todayKey();
   var todayEntry = weighIns.find(function (w) {
     return w.date === today;
@@ -1757,39 +2283,41 @@ function WeighInWidget(_ref15) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref16) {
-  var workouts = _ref16.workouts,
-    onAdd = _ref16.onAdd,
-    onRemove = _ref16.onRemove,
-    prof = _ref16.prof;
-  var _useState19 = useState("legs"),
-    _useState20 = _slicedToArray(_useState19, 2),
-    type = _useState20[0],
-    setType = _useState20[1];
-  var _useState21 = useState(45),
-    _useState22 = _slicedToArray(_useState21, 2),
-    dur = _useState22[0],
-    setDur = _useState22[1];
-  var _useState23 = useState("moderate"),
-    _useState24 = _slicedToArray(_useState23, 2),
-    intensity = _useState24[0],
-    setIntensity = _useState24[1];
-  var _useState25 = useState(false),
-    _useState26 = _slicedToArray(_useState25, 2),
-    hevyMode = _useState26[0],
-    setHevyMode = _useState26[1];
-  var _useState27 = useState(""),
+function WorkoutLogger(_ref22) {
+  var workouts = _ref22.workouts,
+    onAdd = _ref22.onAdd,
+    onRemove = _ref22.onRemove,
+    prof = _ref22.prof,
+    isPremium = _ref22.isPremium,
+    onPremiumGate = _ref22.onPremiumGate;
+  var _useState27 = useState("legs"),
     _useState28 = _slicedToArray(_useState27, 2),
-    hevyText = _useState28[0],
-    setHevyText = _useState28[1];
-  var _useState29 = useState(false),
+    type = _useState28[0],
+    setType = _useState28[1];
+  var _useState29 = useState(45),
     _useState30 = _slicedToArray(_useState29, 2),
-    hevyLoading = _useState30[0],
-    setHevyLoading = _useState30[1];
-  var _useState31 = useState(null),
+    dur = _useState30[0],
+    setDur = _useState30[1];
+  var _useState31 = useState("moderate"),
     _useState32 = _slicedToArray(_useState31, 2),
-    hevyResult = _useState32[0],
-    setHevyResult = _useState32[1];
+    intensity = _useState32[0],
+    setIntensity = _useState32[1];
+  var _useState33 = useState(false),
+    _useState34 = _slicedToArray(_useState33, 2),
+    hevyMode = _useState34[0],
+    setHevyMode = _useState34[1];
+  var _useState35 = useState(""),
+    _useState36 = _slicedToArray(_useState35, 2),
+    hevyText = _useState36[0],
+    setHevyText = _useState36[1];
+  var _useState37 = useState(false),
+    _useState38 = _slicedToArray(_useState37, 2),
+    hevyLoading = _useState38[0],
+    setHevyLoading = _useState38[1];
+  var _useState39 = useState(null),
+    _useState40 = _slicedToArray(_useState39, 2),
+    hevyResult = _useState40[0],
+    setHevyResult = _useState40[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -1809,7 +2337,7 @@ function WorkoutLogger(_ref16) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
+    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
       var prompt, _t4, _t5;
       return _regenerator().w(function (_context7) {
         while (1) switch (_context7.p = _context7.n) {
@@ -1845,7 +2373,7 @@ function WorkoutLogger(_ref16) {
       }, _callee7, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref17.apply(this, arguments);
+      return _ref23.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -2037,19 +2565,22 @@ function WorkoutLogger(_ref16) {
     }
   }, "+ LOG WORKOUT"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
-      return setHevyMode(true);
+      return isPremium ? setHevyMode(true) : onPremiumGate && onPremiumGate({
+        emoji: "🏋️",
+        name: "Workout AI Parser"
+      });
     },
     style: {
       padding: "10px 14px",
       background: "#0b0d0b",
-      border: "1px solid ".concat(A, "33"),
+      border: "1px solid ".concat(isPremium ? A + "33" : BD),
       borderRadius: 10,
-      color: A,
+      color: isPremium ? A : "#445040",
       fontSize: 12,
       fontWeight: 700,
       cursor: "pointer"
     }
-  }, "\uD83D\uDCCB Paste log"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("textarea", {
+  }, "\uD83D\uDCCB ", isPremium ? "Paste log" : "Paste log ⭐"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("textarea", {
     value: hevyText,
     onChange: function onChange(e) {
       return setHevyText(e.target.value);
@@ -2155,34 +2686,39 @@ function WorkoutLogger(_ref16) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-function Dashboard(_ref18) {
-  var logs = _ref18.logs,
-    totals = _ref18.totals,
-    targets = _ref18.targets,
-    remaining = _ref18.remaining,
-    water = _ref18.water,
-    setWater = _ref18.setWater,
-    mode = _ref18.mode,
-    setMode = _ref18.setMode,
-    setView = _ref18.setView,
-    removeLog = _ref18.removeLog,
-    addToQA = _ref18.addToQA,
-    hasProfile = _ref18.hasProfile,
-    streak = _ref18.streak,
-    prof = _ref18.prof,
-    weighIns = _ref18.weighIns,
-    onWeighIn = _ref18.onWeighIn,
-    tdeeAdj = _ref18.tdeeAdj,
-    baseTDEE = _ref18.baseTDEE,
-    coachKey = _ref18.coachKey,
-    workouts = _ref18.workouts,
-    onAddWorkout = _ref18.onAddWorkout,
-    onRemoveWorkout = _ref18.onRemoveWorkout,
-    customKcal = _ref18.customKcal,
-    onSetCustomKcal = _ref18.onSetCustomKcal,
-    isCustomMode = _ref18.isCustomMode,
-    aggressiveCutAcked = _ref18.aggressiveCutAcked,
-    onAckAggressiveCut = _ref18.onAckAggressiveCut;
+function Dashboard(_ref24) {
+  var logs = _ref24.logs,
+    totals = _ref24.totals,
+    targets = _ref24.targets,
+    remaining = _ref24.remaining,
+    water = _ref24.water,
+    setWater = _ref24.setWater,
+    mode = _ref24.mode,
+    setMode = _ref24.setMode,
+    setView = _ref24.setView,
+    removeLog = _ref24.removeLog,
+    addToQA = _ref24.addToQA,
+    hasProfile = _ref24.hasProfile,
+    streak = _ref24.streak,
+    prof = _ref24.prof,
+    weighIns = _ref24.weighIns,
+    onWeighIn = _ref24.onWeighIn,
+    tdeeAdj = _ref24.tdeeAdj,
+    baseTDEE = _ref24.baseTDEE,
+    coachKey = _ref24.coachKey,
+    workouts = _ref24.workouts,
+    onAddWorkout = _ref24.onAddWorkout,
+    onRemoveWorkout = _ref24.onRemoveWorkout,
+    customKcal = _ref24.customKcal,
+    onSetCustomKcal = _ref24.onSetCustomKcal,
+    isCustomMode = _ref24.isCustomMode,
+    aggressiveCutAcked = _ref24.aggressiveCutAcked,
+    onAckAggressiveCut = _ref24.onAckAggressiveCut,
+    authState = _ref24.authState,
+    authUser = _ref24.authUser,
+    onPremiumGate = _ref24.onPremiumGate,
+    onSignOut = _ref24.onSignOut;
+  var isPremium = authState === "premium";
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -2194,18 +2730,18 @@ function Dashboard(_ref18) {
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#1c241c";
-  var _useState33 = useState({}),
-    _useState34 = _slicedToArray(_useState33, 2),
-    savedIds = _useState34[0],
-    setSavedIds = _useState34[1];
-  var _useState35 = useState(false),
-    _useState36 = _slicedToArray(_useState35, 2),
-    editingTarget = _useState36[0],
-    setEditingTarget = _useState36[1];
-  var _useState37 = useState(""),
-    _useState38 = _slicedToArray(_useState37, 2),
-    targetInputVal = _useState38[0],
-    setTargetInputVal = _useState38[1];
+  var _useState41 = useState({}),
+    _useState42 = _slicedToArray(_useState41, 2),
+    savedIds = _useState42[0],
+    setSavedIds = _useState42[1];
+  var _useState43 = useState(false),
+    _useState44 = _slicedToArray(_useState43, 2),
+    editingTarget = _useState44[0],
+    setEditingTarget = _useState44[1];
+  var _useState45 = useState(""),
+    _useState46 = _slicedToArray(_useState45, 2),
+    targetInputVal = _useState46[0],
+    setTargetInputVal = _useState46[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) onSetCustomKcal(v);
@@ -2236,7 +2772,7 @@ function Dashboard(_ref18) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(log) {
+    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(log) {
       return _regenerator().w(function (_context8) {
         while (1) switch (_context8.n) {
           case 0:
@@ -2257,7 +2793,7 @@ function Dashboard(_ref18) {
       }, _callee8);
     }));
     return function handleAddToQA(_x6) {
-      return _ref19.apply(this, arguments);
+      return _ref25.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -2357,16 +2893,45 @@ function Dashboard(_ref18) {
       alignItems: "center",
       justifyContent: "center"
     }
-  }, "\uD83C\uDFC6"))), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83C\uDFC6"), isPremium && /*#__PURE__*/React.createElement("button", {
+    onClick: onSignOut,
+    style: {
+      width: 34,
+      height: 34,
+      background: "".concat(A, "18"),
+      border: "1px solid ".concat(A, "44"),
+      borderRadius: 10,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+      padding: 0
+    }
+  }, authUser !== null && authUser !== void 0 && authUser.picture ? /*#__PURE__*/React.createElement("img", {
+    src: authUser.picture,
+    width: 34,
+    height: 34,
+    style: {
+      display: "block",
+      borderRadius: 10
+    },
+    alt: ""
+  }) : /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 900,
+      color: A
+    }
+  }, ((authUser === null || authUser === void 0 ? void 0 : authUser.name) || "P")[0].toUpperCase())))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref20) {
-    var _ref21 = _slicedToArray(_ref20, 2),
-      k = _ref21[0],
-      v = _ref21[1];
+  }, Object.entries(MODES).map(function (_ref26) {
+    var _ref27 = _slicedToArray(_ref26, 2),
+      k = _ref27[0],
+      v = _ref27[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -2389,7 +2954,9 @@ function Dashboard(_ref18) {
     workouts: workouts,
     onAdd: onAddWorkout,
     onRemove: onRemoveWorkout,
-    prof: prof
+    prof: prof,
+    isPremium: isPremium,
+    onPremiumGate: onPremiumGate
   }), !hasProfile && /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setView("profile");
@@ -2700,7 +3267,7 @@ function Dashboard(_ref18) {
     value: totals.fat,
     target: targets.fat,
     color: "#ff7b4b"
-  })), /*#__PURE__*/React.createElement(CoachCard, {
+  })), isPremium && /*#__PURE__*/React.createElement(CoachCard, {
     key: coachKey,
     mode: mode,
     totals: totals,
@@ -2813,27 +3380,33 @@ function Dashboard(_ref18) {
   }, [{
     e: "🤖",
     l: "AI LOG",
-    s: "describe it",
-    v: "ai"
+    s: isPremium ? "describe it" : "premium ⭐",
+    v: "ai",
+    premium: true
   }, {
     e: "⚡",
     l: "QUICK ADD",
     s: "preset meals",
-    v: "quick"
+    v: "quick",
+    premium: false
   }, {
     e: "🔍",
     l: "SEARCH",
     s: "food database",
-    v: "search"
+    v: "search",
+    premium: false
   }].map(function (b) {
     return /*#__PURE__*/React.createElement("button", {
       key: b.v,
       onClick: function onClick() {
-        return setView(b.v);
+        return b.premium && !isPremium ? onPremiumGate({
+          emoji: b.e,
+          name: b.l
+        }) : setView(b.v);
       },
       style: {
         background: CARD,
-        border: "1px solid ".concat(BD),
+        border: "1px solid ".concat(b.premium && !isPremium ? BD : BD),
         borderRadius: 16,
         padding: "16px 8px",
         textAlign: "center"
@@ -2847,7 +3420,7 @@ function Dashboard(_ref18) {
       style: {
         fontSize: 11,
         fontWeight: 900,
-        color: A,
+        color: b.premium && !isPremium ? "#445040" : A,
         letterSpacing: "0.07em"
       }
     }, b.l), /*#__PURE__*/React.createElement("div", {
@@ -2977,32 +3550,32 @@ function searchOFT(_x7) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(query) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(query) {
     var _p$product_name2, res, data, p, sg2, f, n, _t9;
-    return _regenerator().w(function (_context24) {
-      while (1) switch (_context24.p = _context24.n) {
+    return _regenerator().w(function (_context26) {
+      while (1) switch (_context26.p = _context26.n) {
         case 0:
-          _context24.p = 0;
-          _context24.n = 1;
+          _context26.p = 0;
+          _context26.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context24.v;
-          _context24.n = 2;
+          res = _context26.v;
+          _context26.n = 2;
           return res.json();
         case 2:
-          data = _context24.v;
+          data = _context26.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context24.n = 3;
+            _context26.n = 3;
             break;
           }
-          return _context24.a(2, null);
+          return _context26.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context24.a(2, {
+          return _context26.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -3013,26 +3586,26 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context24.p = 4;
-          _t9 = _context24.v;
-          return _context24.a(2, null);
+          _context26.p = 4;
+          _t9 = _context26.v;
+          return _context26.a(2, null);
       }
-    }, _callee24, null, [[0, 4]]);
+    }, _callee26, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref22) {
-  var item = _ref22.item,
-    onReestimate = _ref22.onReestimate,
-    reestimating = _ref22.reestimating;
-  var _useState39 = useState(false),
-    _useState40 = _slicedToArray(_useState39, 2),
-    editing = _useState40[0],
-    setEditing = _useState40[1];
-  var _useState41 = useState(item.name),
-    _useState42 = _slicedToArray(_useState41, 2),
-    draft = _useState42[0],
-    setDraft = _useState42[1];
+function ItemRow(_ref28) {
+  var item = _ref28.item,
+    onReestimate = _ref28.onReestimate,
+    reestimating = _ref28.reestimating;
+  var _useState47 = useState(false),
+    _useState48 = _slicedToArray(_useState47, 2),
+    editing = _useState48[0],
+    setEditing = _useState48[1];
+  var _useState49 = useState(item.name),
+    _useState50 = _slicedToArray(_useState49, 2),
+    draft = _useState50[0],
+    setDraft = _useState50[1];
   var cc = confColor(item.confidence);
   var submit = function submit() {
     setEditing(false);
@@ -3144,33 +3717,33 @@ function ItemRow(_ref22) {
     }
   }, item.reasoning));
 }
-function AILog(_ref23) {
-  var onAdd = _ref23.onAdd,
-    onBack = _ref23.onBack;
-  var _useState43 = useState(""),
-    _useState44 = _slicedToArray(_useState43, 2),
-    desc = _useState44[0],
-    setDesc = _useState44[1];
-  var _useState45 = useState(false),
-    _useState46 = _slicedToArray(_useState45, 2),
-    loading = _useState46[0],
-    setLoading = _useState46[1];
-  var _useState47 = useState(null),
-    _useState48 = _slicedToArray(_useState47, 2),
-    items = _useState48[0],
-    setItems = _useState48[1];
-  var _useState49 = useState(null),
-    _useState50 = _slicedToArray(_useState49, 2),
-    reestIdx = _useState50[0],
-    setReestIdx = _useState50[1];
+function AILog(_ref29) {
+  var onAdd = _ref29.onAdd,
+    onBack = _ref29.onBack;
   var _useState51 = useState(""),
     _useState52 = _slicedToArray(_useState51, 2),
-    error = _useState52[0],
-    setError = _useState52[1];
+    desc = _useState52[0],
+    setDesc = _useState52[1];
   var _useState53 = useState(false),
     _useState54 = _slicedToArray(_useState53, 2),
-    loggedAll = _useState54[0],
-    setLoggedAll = _useState54[1];
+    loading = _useState54[0],
+    setLoading = _useState54[1];
+  var _useState55 = useState(null),
+    _useState56 = _slicedToArray(_useState55, 2),
+    items = _useState56[0],
+    setItems = _useState56[1];
+  var _useState57 = useState(null),
+    _useState58 = _slicedToArray(_useState57, 2),
+    reestIdx = _useState58[0],
+    setReestIdx = _useState58[1];
+  var _useState59 = useState(""),
+    _useState60 = _slicedToArray(_useState59, 2),
+    error = _useState60[0],
+    setError = _useState60[1];
+  var _useState61 = useState(false),
+    _useState62 = _slicedToArray(_useState61, 2),
+    loggedAll = _useState62[0],
+    setLoggedAll = _useState62[1];
   var totals = items ? items.reduce(function (a, it) {
     return {
       kcal: a.kcal + it.kcal,
@@ -3188,7 +3761,7 @@ function AILog(_ref23) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
+    var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
       var parsed, aiItems, oftResults, merged, _t6;
       return _regenerator().w(function (_context9) {
         while (1) switch (_context9.p = _context9.n) {
@@ -3238,11 +3811,11 @@ function AILog(_ref23) {
       }, _callee9, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref24.apply(this, arguments);
+      return _ref30.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(idx, newName) {
+    var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(idx, newName) {
       var updated, oft, _final, _t7;
       return _regenerator().w(function (_context0) {
         while (1) switch (_context0.p = _context0.n) {
@@ -3280,7 +3853,7 @@ function AILog(_ref23) {
       }, _callee0, null, [[1, 4]]);
     }));
     return function reestimate(_x8, _x9) {
-      return _ref25.apply(this, arguments);
+      return _ref31.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -3500,21 +4073,21 @@ function AILog(_ref23) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref26) {
-  var onAdd = _ref26.onAdd,
-    onBack = _ref26.onBack,
-    meals = _ref26.meals,
-    setMeals = _ref26.setMeals;
-  var _useState55 = useState(""),
-    _useState56 = _slicedToArray(_useState55, 2),
-    search = _useState56[0],
-    setSearch = _useState56[1];
-  var _useState57 = useState(null),
-    _useState58 = _slicedToArray(_useState57, 2),
-    modal = _useState58[0],
-    setModal = _useState58[1];
+function QuickAdd(_ref32) {
+  var onAdd = _ref32.onAdd,
+    onBack = _ref32.onBack,
+    meals = _ref32.meals,
+    setMeals = _ref32.setMeals;
+  var _useState63 = useState(""),
+    _useState64 = _slicedToArray(_useState63, 2),
+    search = _useState64[0],
+    setSearch = _useState64[1];
+  var _useState65 = useState(null),
+    _useState66 = _slicedToArray(_useState65, 2),
+    modal = _useState66[0],
+    setModal = _useState66[1];
   var save = /*#__PURE__*/function () {
-    var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(m) {
+    var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(m) {
       return _regenerator().w(function (_context1) {
         while (1) switch (_context1.n) {
           case 0:
@@ -3527,7 +4100,7 @@ function QuickAdd(_ref26) {
       }, _callee1);
     }));
     return function save(_x0) {
-      return _ref27.apply(this, arguments);
+      return _ref33.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -3702,31 +4275,31 @@ function QuickAdd(_ref26) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref28) {
-  var onAdd = _ref28.onAdd,
-    onBack = _ref28.onBack;
-  var _useState59 = useState(""),
-    _useState60 = _slicedToArray(_useState59, 2),
-    q = _useState60[0],
-    setQ = _useState60[1];
-  var _useState61 = useState([]),
-    _useState62 = _slicedToArray(_useState61, 2),
-    results = _useState62[0],
-    setResults = _useState62[1];
-  var _useState63 = useState(false),
-    _useState64 = _slicedToArray(_useState63, 2),
-    loading = _useState64[0],
-    setLoading = _useState64[1];
-  var _useState65 = useState(""),
-    _useState66 = _slicedToArray(_useState65, 2),
-    error = _useState66[0],
-    setError = _useState66[1];
-  var _useState67 = useState(false),
+function FoodSearch(_ref34) {
+  var onAdd = _ref34.onAdd,
+    onBack = _ref34.onBack;
+  var _useState67 = useState(""),
     _useState68 = _slicedToArray(_useState67, 2),
-    done = _useState68[0],
-    setDone = _useState68[1];
+    q = _useState68[0],
+    setQ = _useState68[1];
+  var _useState69 = useState([]),
+    _useState70 = _slicedToArray(_useState69, 2),
+    results = _useState70[0],
+    setResults = _useState70[1];
+  var _useState71 = useState(false),
+    _useState72 = _slicedToArray(_useState71, 2),
+    loading = _useState72[0],
+    setLoading = _useState72[1];
+  var _useState73 = useState(""),
+    _useState74 = _slicedToArray(_useState73, 2),
+    error = _useState74[0],
+    setError = _useState74[1];
+  var _useState75 = useState(false),
+    _useState76 = _slicedToArray(_useState75, 2),
+    done = _useState76[0],
+    setDone = _useState76[1];
   var search = /*#__PURE__*/function () {
-    var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
+    var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
       var res, data, parseServing, parseKcal, valid, _t8;
       return _regenerator().w(function (_context10) {
         while (1) switch (_context10.p = _context10.n) {
@@ -3808,7 +4381,7 @@ function FoodSearch(_ref28) {
       }, _callee10, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref29.apply(this, arguments);
+      return _ref35.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3939,13 +4512,13 @@ function FoodSearch(_ref28) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref30) {
+function History(_ref36) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref30.history,
-    onBack = _ref30.onBack,
-    onUpdateDay = _ref30.onUpdateDay,
-    _ref30$weighIns = _ref30.weighIns,
-    weighIns = _ref30$weighIns === void 0 ? [] : _ref30$weighIns;
+  var history = _ref36.history,
+    onBack = _ref36.onBack,
+    onUpdateDay = _ref36.onUpdateDay,
+    _ref36$weighIns = _ref36.weighIns,
+    weighIns = _ref36$weighIns === void 0 ? [] : _ref36$weighIns;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -3981,30 +4554,30 @@ function History(_ref30) {
       unit: "g"
     }
   };
-  var _useState69 = useState("30D"),
-    _useState70 = _slicedToArray(_useState69, 2),
-    range = _useState70[0],
-    setRange = _useState70[1];
-  var _useState71 = useState(["KCAL"]),
-    _useState72 = _slicedToArray(_useState71, 2),
-    metrics = _useState72[0],
-    setMetrics = _useState72[1];
-  var _useState73 = useState(false),
-    _useState74 = _slicedToArray(_useState73, 2),
-    showWeight = _useState74[0],
-    setShowWeight = _useState74[1];
-  var _useState75 = useState("line"),
-    _useState76 = _slicedToArray(_useState75, 2),
-    chartType = _useState76[0],
-    setChartType = _useState76[1];
-  var _useState77 = useState(Math.max(0, history.length - 1)),
+  var _useState77 = useState("30D"),
     _useState78 = _slicedToArray(_useState77, 2),
-    dayIdx = _useState78[0],
-    setDayIdx = _useState78[1];
-  var _useState79 = useState(null),
+    range = _useState78[0],
+    setRange = _useState78[1];
+  var _useState79 = useState(["KCAL"]),
     _useState80 = _slicedToArray(_useState79, 2),
-    addCtx = _useState80[0],
-    setAddCtx = _useState80[1];
+    metrics = _useState80[0],
+    setMetrics = _useState80[1];
+  var _useState81 = useState(false),
+    _useState82 = _slicedToArray(_useState81, 2),
+    showWeight = _useState82[0],
+    setShowWeight = _useState82[1];
+  var _useState83 = useState("line"),
+    _useState84 = _slicedToArray(_useState83, 2),
+    chartType = _useState84[0],
+    setChartType = _useState84[1];
+  var _useState85 = useState(Math.max(0, history.length - 1)),
+    _useState86 = _slicedToArray(_useState85, 2),
+    dayIdx = _useState86[0],
+    setDayIdx = _useState86[1];
+  var _useState87 = useState(null),
+    _useState88 = _slicedToArray(_useState87, 2),
+    addCtx = _useState88[0],
+    setAddCtx = _useState88[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -4578,10 +5151,10 @@ function History(_ref30) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref31) {
-    var _ref32 = _slicedToArray(_ref31, 2),
-      k = _ref32[0],
-      m = _ref32[1];
+  }, Object.entries(MM).map(function (_ref37) {
+    var _ref38 = _slicedToArray(_ref37, 2),
+      k = _ref38[0],
+      m = _ref38[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -4619,10 +5192,10 @@ function History(_ref30) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref33) {
-    var _ref34 = _slicedToArray(_ref33, 2),
-      t = _ref34[0],
-      e = _ref34[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref39) {
+    var _ref40 = _slicedToArray(_ref39, 2),
+      t = _ref40[0],
+      e = _ref40[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -4788,10 +5361,10 @@ function History(_ref30) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref35) {
-    var _ref36 = _slicedToArray(_ref35, 2),
-      k = _ref36[0],
-      m = _ref36[1];
+  }, Object.entries(MM).map(function (_ref41) {
+    var _ref42 = _slicedToArray(_ref41, 2),
+      k = _ref42[0],
+      m = _ref42[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -4924,9 +5497,9 @@ function History(_ref30) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref37) {
-  var earnedBdgs = _ref37.earnedBdgs,
-    onBack = _ref37.onBack;
+function Achievements(_ref43) {
+  var earnedBdgs = _ref43.earnedBdgs,
+    onBack = _ref43.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -5024,74 +5597,100 @@ function Achievements(_ref37) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState81 = useState("dashboard"),
-    _useState82 = _slicedToArray(_useState81, 2),
-    view = _useState82[0],
-    setView = _useState82[1];
-  var _useState83 = useState([]),
-    _useState84 = _slicedToArray(_useState83, 2),
-    logs = _useState84[0],
-    setLogs = _useState84[1];
-  var _useState85 = useState(0),
-    _useState86 = _slicedToArray(_useState85, 2),
-    water = _useState86[0],
-    setWater = _useState86[1];
-  var _useState87 = useState("cut"),
-    _useState88 = _slicedToArray(_useState87, 2),
-    mode = _useState88[0],
-    setMode = _useState88[1];
-  var _useState89 = useState(null),
+  var _useState89 = useState("dashboard"),
     _useState90 = _slicedToArray(_useState89, 2),
-    prof = _useState90[0],
-    setProf = _useState90[1];
+    view = _useState90[0],
+    setView = _useState90[1];
   var _useState91 = useState([]),
     _useState92 = _slicedToArray(_useState91, 2),
-    hist = _useState92[0],
-    setHist = _useState92[1];
-  var _useState93 = useState([].concat(DEF_MEALS)),
+    logs = _useState92[0],
+    setLogs = _useState92[1];
+  var _useState93 = useState(0),
     _useState94 = _slicedToArray(_useState93, 2),
-    meals = _useState94[0],
-    setMeals = _useState94[1];
-  var _useState95 = useState([]),
+    water = _useState94[0],
+    setWater = _useState94[1];
+  var _useState95 = useState("cut"),
     _useState96 = _slicedToArray(_useState95, 2),
-    workouts = _useState96[0],
-    setWorkouts = _useState96[1];
-  var _useState97 = useState([]),
+    mode = _useState96[0],
+    setMode = _useState96[1];
+  var _useState97 = useState(null),
     _useState98 = _slicedToArray(_useState97, 2),
-    earnedBdgs = _useState98[0],
-    setEarnedBdgs = _useState98[1];
-  var _useState99 = useState(null),
+    prof = _useState98[0],
+    setProf = _useState98[1];
+  var _useState99 = useState([]),
     _useState100 = _slicedToArray(_useState99, 2),
-    newBadge = _useState100[0],
-    setNewBadge = _useState100[1];
-  var _useState101 = useState(false),
+    hist = _useState100[0],
+    setHist = _useState100[1];
+  var _useState101 = useState([].concat(DEF_MEALS)),
     _useState102 = _slicedToArray(_useState101, 2),
-    ready = _useState102[0],
-    setReady = _useState102[1];
+    meals = _useState102[0],
+    setMeals = _useState102[1];
   var _useState103 = useState([]),
     _useState104 = _slicedToArray(_useState103, 2),
-    weighIns = _useState104[0],
-    setWeighIns = _useState104[1];
-  var _useState105 = useState(0),
+    workouts = _useState104[0],
+    setWorkouts = _useState104[1];
+  var _useState105 = useState([]),
     _useState106 = _slicedToArray(_useState105, 2),
-    tdeeAdj = _useState106[0],
-    setTdeeAdj = _useState106[1];
-  var _useState107 = useState(0),
+    earnedBdgs = _useState106[0],
+    setEarnedBdgs = _useState106[1];
+  var _useState107 = useState(null),
     _useState108 = _slicedToArray(_useState107, 2),
-    coachKey = _useState108[0],
-    setCoachKey = _useState108[1];
-  var _useState109 = useState(null),
+    newBadge = _useState108[0],
+    setNewBadge = _useState108[1];
+  var _useState109 = useState(false),
     _useState110 = _slicedToArray(_useState109, 2),
-    streakAnim = _useState110[0],
-    setStreakAnim = _useState110[1];
-  var _useState111 = useState(null),
+    ready = _useState110[0],
+    setReady = _useState110[1];
+  var _useState111 = useState([]),
     _useState112 = _slicedToArray(_useState111, 2),
-    customKcal = _useState112[0],
-    setCustomKcal = _useState112[1];
-  var _useState113 = useState(false),
+    weighIns = _useState112[0],
+    setWeighIns = _useState112[1];
+  var _useState113 = useState(0),
     _useState114 = _slicedToArray(_useState113, 2),
-    aggressiveCutAcked = _useState114[0],
-    setAggressiveCutAcked = _useState114[1];
+    tdeeAdj = _useState114[0],
+    setTdeeAdj = _useState114[1];
+  var _useState115 = useState(0),
+    _useState116 = _slicedToArray(_useState115, 2),
+    coachKey = _useState116[0],
+    setCoachKey = _useState116[1];
+  var _useState117 = useState(null),
+    _useState118 = _slicedToArray(_useState117, 2),
+    streakAnim = _useState118[0],
+    setStreakAnim = _useState118[1];
+  var _useState119 = useState(null),
+    _useState120 = _slicedToArray(_useState119, 2),
+    customKcal = _useState120[0],
+    setCustomKcal = _useState120[1];
+  var _useState121 = useState(false),
+    _useState122 = _slicedToArray(_useState121, 2),
+    aggressiveCutAcked = _useState122[0],
+    setAggressiveCutAcked = _useState122[1];
+
+  // ── Auth state ────────────────────────────────────────────────
+  var _useState123 = useState("anonymous"),
+    _useState124 = _slicedToArray(_useState123, 2),
+    authState = _useState124[0],
+    setAuthState = _useState124[1];
+  var _useState125 = useState(null),
+    _useState126 = _slicedToArray(_useState125, 2),
+    authUser = _useState126[0],
+    setAuthUser = _useState126[1];
+  var _useState127 = useState(null),
+    _useState128 = _slicedToArray(_useState127, 2),
+    premiumGate = _useState128[0],
+    setPremiumGate = _useState128[1]; // {emoji, name} | null
+  var _useState129 = useState(false),
+    _useState130 = _slicedToArray(_useState129, 2),
+    showSignIn = _useState130[0],
+    setShowSignIn = _useState130[1];
+  var _useState131 = useState(false),
+    _useState132 = _slicedToArray(_useState131, 2),
+    showSignOut = _useState132[0],
+    setShowSignOut = _useState132[1];
+  var _useState133 = useState(false),
+    _useState134 = _slicedToArray(_useState133, 2),
+    showLapsed = _useState134[0],
+    setShowLapsed = _useState134[1];
 
   // Expose dev refresh hook for test harness
   useEffect(function () {
@@ -5111,8 +5710,8 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
-        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv;
+      var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11() {
+        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u;
         return _regenerator().w(function (_context11) {
           while (1) switch (_context11.n) {
             case 0:
@@ -5183,14 +5782,43 @@ function App() {
             case 13:
               acv = _context11.v;
               if (acv) setAggressiveCutAcked(true);
-              setReady(true);
+
+              // Auth — load premium state and check expiry
+              _context11.n = 14;
+              return sg("auth_state");
             case 14:
+              asv = _context11.v;
+              _context11.n = 15;
+              return sg("auth_user");
+            case 15:
+              auv = _context11.v;
+              if (!(asv === "premium" && auv)) {
+                _context11.n = 18;
+                break;
+              }
+              u = JSON.parse(auv);
+              if (!(u.subExpiry && Date.now() > u.subExpiry)) {
+                _context11.n = 17;
+                break;
+              }
+              _context11.n = 16;
+              return ss("auth_state", "anonymous");
+            case 16:
+              setShowLapsed(true);
+              _context11.n = 18;
+              break;
+            case 17:
+              setAuthState("premium");
+              setAuthUser(u);
+            case 18:
+              setReady(true);
+            case 19:
               return _context11.a(2);
           }
         }, _callee11);
       }));
       return function load() {
-        return _ref38.apply(this, arguments);
+        return _ref44.apply(this, arguments);
       };
     }();
     load();
@@ -5232,7 +5860,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(l) {
+    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(l) {
       return _regenerator().w(function (_context12) {
         while (1) switch (_context12.n) {
           case 0:
@@ -5245,11 +5873,11 @@ function App() {
       }, _callee12);
     }));
     return function saveLogs(_x1) {
-      return _ref39.apply(this, arguments);
+      return _ref45.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(w) {
+    var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(w) {
       return _regenerator().w(function (_context13) {
         while (1) switch (_context13.n) {
           case 0:
@@ -5262,11 +5890,11 @@ function App() {
       }, _callee13);
     }));
     return function saveWater(_x10) {
-      return _ref40.apply(this, arguments);
+      return _ref46.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(m) {
+    var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(m) {
       return _regenerator().w(function (_context14) {
         while (1) switch (_context14.n) {
           case 0:
@@ -5279,11 +5907,11 @@ function App() {
       }, _callee14);
     }));
     return function saveMode(_x11) {
-      return _ref41.apply(this, arguments);
+      return _ref47.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(p) {
+    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(p) {
       return _regenerator().w(function (_context15) {
         while (1) switch (_context15.n) {
           case 0:
@@ -5296,11 +5924,11 @@ function App() {
       }, _callee15);
     }));
     return function saveProf(_x12) {
-      return _ref42.apply(this, arguments);
+      return _ref48.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(w) {
+    var _ref49 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(w) {
       return _regenerator().w(function (_context16) {
         while (1) switch (_context16.n) {
           case 0:
@@ -5313,11 +5941,11 @@ function App() {
       }, _callee16);
     }));
     return function saveWorkouts(_x13) {
-      return _ref43.apply(this, arguments);
+      return _ref49.apply(this, arguments);
     };
   }();
   var addLog = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(e) {
+    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(e) {
       var isFirstToday, animKey, today, simulatedHist, newStreak;
       return _regenerator().w(function (_context17) {
         while (1) switch (_context17.n) {
@@ -5359,7 +5987,7 @@ function App() {
       }, _callee17);
     }));
     return function addLog(_x14) {
-      return _ref44.apply(this, arguments);
+      return _ref50.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -5376,7 +6004,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(kcal) {
+    var _ref51 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(kcal) {
       return _regenerator().w(function (_context18) {
         while (1) switch (_context18.n) {
           case 0:
@@ -5399,11 +6027,11 @@ function App() {
       }, _callee18);
     }));
     return function saveCustomKcal(_x15) {
-      return _ref45.apply(this, arguments);
+      return _ref51.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(m) {
+    var _ref52 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(m) {
       return _regenerator().w(function (_context19) {
         while (1) switch (_context19.n) {
           case 0:
@@ -5418,11 +6046,11 @@ function App() {
       }, _callee19);
     }));
     return function handleSetMode(_x16) {
-      return _ref46.apply(this, arguments);
+      return _ref52.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
+    var _ref53 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
       return _regenerator().w(function (_context20) {
         while (1) switch (_context20.n) {
           case 0:
@@ -5435,11 +6063,11 @@ function App() {
       }, _callee20);
     }));
     return function handleAckAggressiveCut() {
-      return _ref47.apply(this, arguments);
+      return _ref53.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(entry) {
+    var _ref54 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(entry) {
       var name, clean, updated;
       return _regenerator().w(function (_context21) {
         while (1) switch (_context21.n) {
@@ -5470,7 +6098,96 @@ function App() {
       }, _callee21);
     }));
     return function addToQA(_x17) {
-      return _ref48.apply(this, arguments);
+      return _ref54.apply(this, arguments);
+    };
+  }();
+
+  // ── Auth handlers ─────────────────────────────────────────────
+
+  var handleSignInSuccess = /*#__PURE__*/function () {
+    var _ref55 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(googleUser, grantedBy) {
+      var user;
+      return _regenerator().w(function (_context22) {
+        while (1) switch (_context22.n) {
+          case 0:
+            user = {
+              name: googleUser.name || "User",
+              email: googleUser.email || "",
+              picture: googleUser.picture || "",
+              grantedBy: grantedBy,
+              subExpiry: null,
+              // null = no expiry (voucher phase); real payments will set this
+              since: Date.now()
+            };
+            setAuthUser(user);
+            setAuthState("premium");
+            _context22.n = 1;
+            return ss("auth_state", "premium");
+          case 1:
+            _context22.n = 2;
+            return ss("auth_user", JSON.stringify(user));
+          case 2:
+            setShowSignIn(false);
+            setPremiumGate(null);
+          case 3:
+            return _context22.a(2);
+        }
+      }, _callee22);
+    }));
+    return function handleSignInSuccess(_x18, _x19) {
+      return _ref55.apply(this, arguments);
+    };
+  }();
+  var handleSignOut = /*#__PURE__*/function () {
+    var _ref56 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
+      var clearKeys, _i, _clearKeys, k, i, key;
+      return _regenerator().w(function (_context23) {
+        while (1) switch (_context23.n) {
+          case 0:
+            clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "target_kcal", "aggressive_cut_acked"];
+            _i = 0, _clearKeys = clearKeys;
+          case 1:
+            if (!(_i < _clearKeys.length)) {
+              _context23.n = 3;
+              break;
+            }
+            k = _clearKeys[_i];
+            _context23.n = 2;
+            return ss(k, "");
+          case 2:
+            _i++;
+            _context23.n = 1;
+            break;
+          case 3:
+            try {
+              for (i = localStorage.length - 1; i >= 0; i--) {
+                key = localStorage.key(i);
+                if (key && (key.startsWith("logs__") || key.startsWith("water__") || key.startsWith("workouts__") || key.startsWith("mode__") || key.startsWith("coach__") || key.startsWith("streak_anim__"))) {
+                  localStorage.removeItem(key);
+                }
+              }
+            } catch (e) {}
+            setAuthState("anonymous");
+            setAuthUser(null);
+            setLogs([]);
+            setWater(0);
+            setMode("cut");
+            setProf(null);
+            setHist([]);
+            setMeals([].concat(DEF_MEALS));
+            setWorkouts([]);
+            setEarnedBdgs([]);
+            setWeighIns([]);
+            setTdeeAdj(0);
+            setCustomKcal(null);
+            setShowSignOut(false);
+          case 4:
+            return _context23.a(2);
+        }
+      }, _callee23);
+    }));
+    return function handleSignOut() {
+      return _ref56.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -5498,10 +6215,10 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref49 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(upd) {
+    var _ref57 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(upd) {
       var nh;
-      return _regenerator().w(function (_context22) {
-        while (1) switch (_context22.n) {
+      return _regenerator().w(function (_context24) {
+        while (1) switch (_context24.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -5509,22 +6226,22 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context22.n = 1;
+            _context24.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
-            return _context22.a(2);
+            return _context24.a(2);
         }
-      }, _callee22);
+      }, _callee24);
     }));
-    return function updateDay(_x18) {
-      return _ref49.apply(this, arguments);
+    return function updateDay(_x20) {
+      return _ref57.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(weight) {
+    var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(weight) {
       var entry, updated, updatedProf, base, result, newAdj;
-      return _regenerator().w(function (_context23) {
-        while (1) switch (_context23.n) {
+      return _regenerator().w(function (_context25) {
+        while (1) switch (_context25.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -5536,34 +6253,34 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context23.n = 1;
+            _context25.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             // Sync profile weight so targets recalculate immediately
             updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
               weight: weight
             });
-            _context23.n = 2;
+            _context25.n = 2;
             return saveProf(updatedProf);
           case 2:
             // Run calibration whenever a new weigh-in arrives
             base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context23.n = 3;
+              _context25.n = 3;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context23.n = 3;
+            _context25.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
-            return _context23.a(2);
+            return _context25.a(2);
         }
-      }, _callee23);
+      }, _callee25);
     }));
-    return function onWeighIn(_x19) {
-      return _ref50.apply(this, arguments);
+    return function onWeighIn(_x21) {
+      return _ref58.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -5618,6 +6335,34 @@ function App() {
     anim: streakAnim,
     onDone: function onDone() {
       return setStreakAnim(null);
+    }
+  }), premiumGate && !showSignIn && /*#__PURE__*/React.createElement(PremiumModal, {
+    feature: premiumGate,
+    onUpgrade: function onUpgrade() {
+      return setShowSignIn(true);
+    },
+    onDismiss: function onDismiss() {
+      return setPremiumGate(null);
+    }
+  }), showSignIn && /*#__PURE__*/React.createElement(SignInModal, {
+    onSuccess: handleSignInSuccess,
+    onCancel: function onCancel() {
+      setShowSignIn(false);
+      setPremiumGate(null);
+    }
+  }), showSignOut && /*#__PURE__*/React.createElement(SignOutModal, {
+    userName: authUser === null || authUser === void 0 ? void 0 : authUser.name,
+    onConfirm: handleSignOut,
+    onCancel: function onCancel() {
+      return setShowSignOut(false);
+    }
+  }), showLapsed && /*#__PURE__*/React.createElement(LapsedModal, {
+    onRenew: function onRenew() {
+      setShowLapsed(false);
+      setShowSignIn(true);
+    },
+    onDismiss: function onDismiss() {
+      return setShowLapsed(false);
     }
   }), newBadge && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5708,7 +6453,15 @@ function App() {
     onSetCustomKcal: saveCustomKcal,
     isCustomMode: customKcal != null,
     aggressiveCutAcked: aggressiveCutAcked,
-    onAckAggressiveCut: handleAckAggressiveCut
+    onAckAggressiveCut: handleAckAggressiveCut,
+    authState: authState,
+    authUser: authUser,
+    onPremiumGate: function onPremiumGate(feature) {
+      return setPremiumGate(feature);
+    },
+    onSignOut: function onSignOut() {
+      return setShowSignOut(true);
+    }
   }), view === "profile" && /*#__PURE__*/React.createElement(ProfileScreen, {
     profile: prof || DEF_PROFILE,
     onSave: saveProf,

@@ -525,7 +525,15 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 ## 23. Roadmap
 
-### Phase 3 features
+### In progress — Auth & Premium (candidate branch)
+| Phase | Description | Status |
+|---|---|---|
+| Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **In progress** |
+| Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | Pending Supabase setup |
+| Phase 3 | Real payments: Google Play Billing (Android TWA), Stripe (web/Apple) | Pending Google Play Console |
+| Phase 4 | Cloudflare Worker auth gate: verify Supabase JWT before proxying AI | Pending Phase 2 |
+
+### Other backlog
 | Feature | Notes |
 |---|---|
 | Multi-user login | Per-device named users with PIN, namespaced storage |
@@ -534,5 +542,278 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 | Edit log entry in place | Currently: delete and re-add |
 | Weekly weigh-in summary notification | Recap of the week's calibration |
 | Push notifications | Meal + water reminders |
-| Cloud sync | Cross-device data |
-| Play Store submission | PWABuilder AAB + $25 Google developer account |
+
+---
+
+## 24. Authentication & Subscription Model
+
+### Two states only
+
+| State | Storage | AI features | Cloud sync | Logging |
+|---|---|---|---|---|
+| **Anonymous** | `localStorage` only | Hidden | None | Quick Add, Search, History |
+| **Premium** | `localStorage` + Supabase (Phase 2) | All | Full | All features |
+
+There is no intermediate "free with limits" state. Either the user is anonymous, or they are premium.
+
+### Pricing
+| Plan | Price |
+|---|---|
+| Monthly | £4.99 / month |
+| Annual | £49.99 / year (~£4.17/month) |
+| Free trial | 30 days, rolls into monthly if not cancelled |
+
+### Voucher code (Phase 1 — pre-payment)
+During Phase 1, subscriptions are not yet wired to payment. Users can access premium by entering the voucher code `FreeFoodTips2026` after Google Sign In. This grants premium with no expiry date until real payments are configured.
+
+### Platform strategy
+- **Android (Play Store)**: TWA (Trusted Web Activity) via PWABuilder. Payments via **Google Play Billing** (required by Google policy for digital subscriptions sold inside Android apps). Uses the Digital Goods API.
+- **iOS / Safari (web)**: If reached via browser, payments via **Stripe** (web checkout). Apple does not require in-app purchase for web apps accessed via Safari.
+
+### Auth storage keys
+| Key | Value |
+|---|---|
+| `auth_state` | `"anonymous"` \| `"premium"` |
+| `auth_user` | JSON: `{name, email, picture, grantedBy, subExpiry, since}` |
+
+`grantedBy`: `"voucher"` \| `"google_play"` \| `"stripe"`. Voucher grants no `subExpiry`. Real subscriptions set `subExpiry` to the renewal timestamp.
+
+---
+
+## 25. Premium Feature Gates
+
+| Feature | Anonymous | Premium |
+|---|---|---|
+| Quick Add | ✅ | ✅ |
+| Food Search | ✅ | ✅ |
+| History | ✅ | ✅ |
+| Achievements | ✅ | ✅ |
+| Profile / targets | ✅ | ✅ |
+| Weight log | ✅ | ✅ |
+| Adaptive TDEE | ✅ | ✅ |
+| **AI Meal Log** | ❌ → PremiumModal | ✅ |
+| **Workout AI Parser** (Hevy paste) | ❌ → PremiumModal | ✅ |
+| **Daily Coach tip** | ❌ hidden | ✅ |
+| **Cloud sync** | ❌ | ✅ (Phase 2) |
+
+### PremiumModal behaviour
+- Triggered when an anonymous user taps a locked feature button
+- Styled to match the badge celebration modal (same card, same green accent border)
+- Shows the feature's emoji and name at the top
+- Lists all 4 premium unlocks with emojis
+- Shows pricing: £4.99/month · £49.99/year · 30-day free trial
+- Two buttons: "Start Free Trial 🚀" → sign in flow | "Maybe Later" → dismiss
+- Feels like an invitation, not a paywall — never aggressive
+
+---
+
+## 26. Sign In & Upgrade Flow
+
+```
+Anonymous user taps locked feature
+  └─ PremiumModal appears
+       ├─ "Maybe Later" → dismiss, back to dashboard
+       └─ "Start Free Trial" → SignInModal (step: google)
+              ├─ GOOGLE_CLIENT_ID not set → skip to payment step (dev mode)
+              └─ Google Sign In (GIS popup) → credential parsed → step: payment
+                     ├─ "Subscribe" button (disabled until Phase 3)
+                     └─ "Enter access code" → voucher input
+                            ├─ Wrong code → inline error
+                            └─ "FreeFoodTips2026" → premium granted, modal closes
+                                   └─ App enters premium state, all AI features unlock
+```
+
+### Sign out flow
+```
+Premium user taps account avatar (top-right of dashboard)
+  └─ SignOutModal:
+       "Signing out will remove local data.
+        Your cloud data is safe and will restore on next login."
+       ├─ "Stay Signed In" → cancel
+       └─ "Sign Out" → all localStorage cleared, state reset to anonymous
+```
+
+### Subscription lapsed flow
+```
+App opens, auth_state === "premium", subExpiry < Date.now()
+  └─ LapsedModal:
+       "Your Premium subscription has ended"
+       Your data is retained and visible
+       ├─ "Renew Premium" → SignInModal (payment step)
+       └─ "Continue for Free" → dismiss, app runs as anonymous
+```
+
+### Google Sign In implementation
+- Library: Google Identity Services (GIS) — loaded in `index.html`
+- Script: `https://accounts.google.com/gsi/client`
+- Credential callback: `google.accounts.id.initialize({ client_id, callback })`
+- Button render: `google.accounts.id.renderButton(el, { theme:"outline", size:"large" })`
+- Credential is a JWT — decode with `parseJwt(credential)` to get `{name, email, picture}`
+- `GOOGLE_CLIENT_ID` constant in `app.jsx` — set after Google Cloud Console setup (§29)
+
+---
+
+## 27. New Storage Keys (Auth)
+
+Add to the storage key reference table in §5:
+
+| Key | Value |
+|---|---|
+| `auth_state` | `"anonymous"` or `"premium"` |
+| `auth_user` | JSON: `{name, email, picture, grantedBy, subExpiry, since}` |
+
+---
+
+## 28. Supabase Data Sync (Phase 2 — not yet implemented)
+
+**Schema file:** `setup/supabase-schema.sql` — run this once in Supabase SQL Editor.
+
+### Tables
+| Table | Purpose |
+|---|---|
+| `profiles` | Body stats (weight, height, bodyFat, sex) |
+| `food_logs` | Individual food log entries (keyed by `entry_id` = client timestamp) |
+| `water_logs` | Daily water count |
+| `workouts` | Workout entries |
+| `weigh_ins` | Daily body weight |
+| `settings` | Mode, tdeeAdj, customKcal, aggressiveCutAcked |
+| `meal_library` | User's saved custom meals |
+| `badges` | Earned badge keys |
+| `history_snapshots` | Daily summary snapshots |
+| `coach_tips` | Cached AI tip per day |
+
+All tables have `updated_at TIMESTAMPTZ` and Row Level Security — users can only read/write their own rows.
+
+### Conflict resolution
+**Latest timestamp wins.** When syncing, for each record compare `updated_at` in Supabase vs `updated_at` tracked locally. Whichever is more recent is the authoritative value. No data is silently deleted.
+
+Sync summary shows: "Synced — X records updated"
+
+### Local data migration on first premium login
+On first sign-in, all localStorage data is read and upserted to Supabase. After migration, Supabase becomes the source of truth for premium users. The `window.storage` bridge in `index.html` will be updated to a Supabase-aware adapter.
+
+### Offline mode
+- Premium users continue using localStorage when offline
+- A subtle indicator shows: "Offline — will sync when connected"
+- Data queued locally; on reconnect, sync runs automatically
+- User never sees an error for temporary failures
+- Error only shown if sync fails for more than 24 hours
+
+---
+
+## 29. Google OAuth Setup (Step by Step)
+
+**Do this when ready to wire up real Google Sign In.**
+
+1. Go to https://console.cloud.google.com
+2. Create a new project (or use an existing one) — name it "Fuel Log"
+3. Left sidebar → **APIs & Services → Credentials**
+4. **+ Create Credentials → OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Name: "Fuel Log Web"
+7. **Authorised JavaScript origins** — add all URLs the app is served from:
+   - `https://YOUR-USERNAME.github.io` (GitHub Pages)
+   - `http://localhost:3000` (local dev)
+8. **Authorised redirect URIs** — add the same URLs (GIS doesn't always need this but add to be safe)
+9. Click **Create** — copy the **Client ID** (looks like `XXXXXXXXXX.apps.googleusercontent.com`)
+10. In `app.jsx`, replace the `GOOGLE_CLIENT_ID` placeholder:
+    ```javascript
+    const GOOGLE_CLIENT_ID = "XXXXXXXXXX.apps.googleusercontent.com";
+    ```
+11. Also go to **OAuth consent screen**:
+    - User type: External
+    - App name: Fuel Log
+    - User support email: your email
+    - Scopes: just `email` and `profile` (default)
+    - Add test users while in development
+    - Submit for verification when ready for production (required for >100 users)
+12. Build and deploy
+
+---
+
+## 30. Supabase Setup (Step by Step)
+
+**Do this when ready to implement Phase 2 cloud sync.**
+
+1. Go to https://supabase.com → **New Project**
+2. Name: "fuel-log", region: closest to your users (Europe West for UK)
+3. Set a database password — save it somewhere safe
+4. Wait ~2 minutes for project to spin up
+5. Left sidebar → **SQL Editor → New Query**
+6. Paste the entire contents of `setup/supabase-schema.sql` and click **Run**
+7. Left sidebar → **Authentication → Providers**
+8. Enable **Google** — you'll need the Google OAuth Client ID and Secret from §29
+   - Client ID: from Google Cloud Console
+   - Client Secret: also from Google Cloud Console (under the same OAuth credential)
+9. Left sidebar → **Project Settings → API**
+10. Copy two values:
+    - **Project URL** (e.g. `https://xyzxyz.supabase.co`)
+    - **anon / public key** (long JWT string)
+11. In `index.html`, uncomment the Supabase script tag and fill in the values:
+    ```html
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    ```
+    And in `app.jsx`:
+    ```javascript
+    const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJ...";
+    ```
+12. Left sidebar → **Authentication → URL Configuration**
+    - Site URL: `https://YOUR-USERNAME.github.io`
+    - Redirect URLs: add `https://YOUR-USERNAME.github.io` and `http://localhost:3000`
+13. Build and deploy
+
+---
+
+## 31. Cloudflare Worker Auth Gate (Phase 2 — not yet active)
+
+**Do this after Phase 2 Supabase sync is working.**
+
+The current worker has no auth — any request to the worker URL can call the AI.
+Phase 2 will lock it so only verified premium users can call the AI.
+
+### How it works
+1. Premium users sign in via Supabase (Google OAuth)
+2. Supabase issues a JWT access token
+3. App sends `Authorization: Bearer <supabase_jwt>` header with every AI request
+4. Worker verifies the JWT using `SUPABASE_JWT_SECRET`
+5. Only verified, non-expired tokens get proxied to Anthropic
+
+### Updated worker code
+The updated `cloudflare-worker.js` (with auth gate) is ready — add these two secrets in Cloudflare Dashboard → Worker → Settings → Variables and Secrets:
+- `ANTHROPIC_KEY` — already set
+- `SUPABASE_JWT_SECRET` — from Supabase → Project Settings → API → JWT Secret
+
+---
+
+## 32. Play Store Submission (TWA via PWABuilder)
+
+**Target: Google Play Store via Trusted Web Activity (TWA)**
+
+### Prerequisites
+1. App live at GitHub Pages URL
+2. Google Developer Account ($25 one-time): https://play.google.com/console/signup
+3. App icons at 192×192 and 512×512 (already in repo)
+4. Privacy policy URL (required by Play Store for apps that handle user data)
+
+### Steps
+1. Go to https://www.pwabuilder.com
+2. Enter your GitHub Pages URL
+3. Click **Package for Stores → Android**
+4. Fill in:
+   - Package name: `com.fuellog.app` (or similar reverse-domain format)
+   - App version: 1.0.0
+   - Signing: generate a new keystore (save it — you'll need it for every update)
+5. Download the AAB file
+6. Google Play Console → Create app → Upload AAB
+7. Fill in Store Listing (description, screenshots, privacy policy URL)
+8. Content rating questionnaire
+9. Submit for review (typically 1–3 days)
+
+### Digital Goods API (for Google Play Billing in Phase 3)
+When Google Play Billing is implemented:
+- The TWA must declare `billing` permission in the Android manifest (PWABuilder handles this)
+- The app uses the Payment Request API with `https://play.google.com/billing` as the payment method
+- Products/subscriptions are defined in Play Console → Monetisation → Subscriptions
+- Product IDs: `premium_monthly`, `premium_annual`
+- 30-day free trial is configured in Play Console per product
