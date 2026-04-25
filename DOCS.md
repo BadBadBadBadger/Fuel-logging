@@ -182,6 +182,8 @@ cumulativeAdj  = clamp(cumulativeAdj + adj, -600, +600)        // lifetime cap
 | `target_kcal` | Integer string: user's custom daily calorie target (null/absent = use preset) |
 | `aggressive_cut_acked` | `"1"` when user has acknowledged the red aggressive-cut warning |
 | `streak_anim__YYYY-MM-DD` | `"1"` — set after the streak celebration plays, prevents replay same day |
+| `auth_state` | `"anonymous"` or `"premium"` — persists across reloads |
+| `auth_user` | JSON: `{name, email, picture, grantedBy, subExpiry, since}` — null/absent when anonymous |
 
 ---
 
@@ -208,6 +210,12 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `streakAnim` | object/null | `{streak, isMilestone}` — triggers `StreakCelebration` overlay |
 | `customKcal` | number/null | User-overridden daily calorie target; `null` = use preset |
 | `aggressiveCutAcked` | boolean | Whether user has acknowledged the red aggressive-cut warning |
+| `authState` | string | `"anonymous"` or `"premium"` |
+| `authUser` | object/null | `{name, email, picture, grantedBy, subExpiry, since}` — null when anonymous |
+| `premiumGate` | object/null | `{emoji, name}` of the feature that was tapped — drives which modal shows |
+| `showSignIn` | boolean | Whether the SignInModal is open |
+| `showSignOut` | boolean | Whether the SignOutModal is open |
+| `showLapsed` | boolean | Whether the LapsedModal is open (subscription expired on load) |
 
 ---
 
@@ -215,17 +223,21 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 
 | Component | Key props | Notes |
 |---|---|---|
-| `Dashboard` | `weighIns, onWeighIn, tdeeAdj, baseTDEE, workouts, onAddWorkout, onRemoveWorkout, customKcal, onSetCustomKcal, isCustomMode, aggressiveCutAcked, onAckAggressiveCut` | Shows all today's data + weigh-in widget + workout logger + target override |
+| `Dashboard` | `...existing... authState, authUser, onPremiumGate, onSignOut` | Shows all today's data; derives `isPremium = authState === "premium"`; gates AI LOG button and CoachCard; shows account avatar when premium |
 | `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
-| `WorkoutLogger` | `workouts, onAdd, onRemove, prof` | Log/delete multiple workouts; paste Hevy log for AI parse |
-| `CoachCard` | `mode, totals, targets, streak, water` | Auto-generates when 200+ kcal logged; uses `callAI` |
-| `ProfileScreen` | `tdeeAdj, weighIns, aggressiveCutAcked` | Shows formula TDEE, adjustment, effective TDEE, confidence, sex selector, BF% guidance |
-| `StreakCelebration` | `streak, isMilestone, onDone` | Full-screen emoji overlay; Web Audio whoosh+thud; auto-dismisses after 1.5s |
-| `AILog` | `onAdd` | AI-powered meal breakdown with confidence scores; uses `callAI`/`callAIJson` |
-| `QuickAdd` | `meals, setMeals` | Shared state from Root |
-| `FoodSearch` | `onAdd` | Open Food Facts search with robust kcal/serving parsing |
-| `History` | `history, onUpdateDay, weighIns` | Charts including weight + 7-day rolling avg, day edit, CSV |
-| `Achievements` | `earnedBdgs` | Badge display with tier progression |
+| `WorkoutLogger` | `workouts, onAdd, onRemove, prof, isPremium, onPremiumGate` | Paste log button calls `onPremiumGate` when `isPremium` is false; no UI change otherwise |
+| `CoachCard` | `mode, totals, targets, streak, water` | Only rendered when `isPremium` is true — no AI call is made for anonymous users |
+| `ProfileScreen` | `tdeeAdj, weighIns, aggressiveCutAcked` | Unchanged |
+| `StreakCelebration` | `anim, onDone` | Full-screen emoji overlay; Web Audio whoosh+thud; auto-dismisses after 1.5s |
+| `AILog` | `onAdd` | AI-powered meal breakdown; only reachable when premium (view is never set to `"ai"` for anonymous) |
+| `QuickAdd` | `meals, setMeals` | Available to all users |
+| `FoodSearch` | `onAdd` | Available to all users |
+| `History` | `history, onUpdateDay, weighIns` | Available to all users |
+| `Achievements` | `earnedBdgs` | Available to all users |
+| `PremiumModal` | `feature, onUpgrade, onDismiss` | `feature`: `{emoji, name}` of the locked feature tapped, or `null` for generic. "Start Free Trial" → `onUpgrade`. "Maybe Later" → `onDismiss` |
+| `SignInModal` | `onSuccess, onCancel` | Two steps: `"google"` then `"payment"`. When `GOOGLE_CLIENT_ID` is empty, skips straight to `"payment"` (dev mode). `onSuccess(googleUser, grantedBy)` called on successful voucher entry |
+| `SignOutModal` | `userName, onConfirm, onCancel` | Warning modal. "Sign Out" → `onConfirm` clears all data. "Stay Signed In" → `onCancel` |
+| `LapsedModal` | `onRenew, onDismiss` | Shown on startup when `auth_user.subExpiry` has passed. "Renew Premium" → `onRenew` opens SignInModal. "Continue for Free" → `onDismiss` |
 
 ---
 
@@ -545,7 +557,129 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 ---
 
-## 24. Authentication & Subscription Model
+## 24. Phase 1 Auth Implementation (candidate branch — complete)
+
+### What was built
+Phase 1 adds the full auth skeleton to `app.jsx` with no external service dependencies. Everything works off `localStorage`. The only external script added is the Google Identity Services library (GIS), which is inert until `GOOGLE_CLIENT_ID` is set.
+
+### New constants (`app.jsx` top of file)
+
+```javascript
+const GOOGLE_CLIENT_ID = "";       // Set after Google Cloud setup — see §29
+const VOUCHER_CODE     = "FreeFoodTips2026";
+```
+
+When `GOOGLE_CLIENT_ID` is an empty string, the sign-in modal skips the Google step entirely and goes straight to the voucher entry screen. This is the expected state until OAuth is configured.
+
+### New helper
+
+```javascript
+const parseJwt = token => {
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))); }
+  catch(e) { return {}; }
+};
+```
+
+Used to decode the Google Identity Services credential JWT and extract `{name, email, picture}`.
+
+### Auth state startup sequence
+
+Inside the existing `load()` function (on app mount):
+
+```
+1. Read auth_state from localStorage
+2. If "premium": read auth_user and parse
+   a. If subExpiry set and < Date.now(): reset to anonymous, set showLapsed = true
+   b. Otherwise: setAuthState("premium"), setAuthUser(user)
+3. If absent or "anonymous": remain anonymous (default)
+```
+
+### Sign-in success handler (`handleSignInSuccess`)
+
+```javascript
+const handleSignInSuccess = async (googleUser, grantedBy) => {
+  const user = { name, email, picture, grantedBy, subExpiry: null, since: Date.now() };
+  setAuthUser(user); setAuthState("premium");
+  await ss("auth_state", "premium");
+  await ss("auth_user",  JSON.stringify(user));
+  setShowSignIn(false); setPremiumGate(null);
+};
+```
+
+`subExpiry: null` means no expiry — used for the voucher phase. Real payments (Phase 3) will set this to the renewal timestamp.
+
+`grantedBy` values: `"voucher"` | `"google_play"` | `"stripe"`.
+
+### Sign-out handler (`handleSignOut`)
+
+Clears these specific `localStorage` keys: `auth_state`, `auth_user`, `profile`, `meals`, `history`, `badges`, `weighins`, `tdee_adj`, `target_kcal`, `aggressive_cut_acked`.
+
+Also iterates `localStorage` to clear all keys with prefixes: `logs__`, `water__`, `workouts__`, `mode__`, `coach__`, `streak_anim__`.
+
+Then resets all React state to defaults (`anonymous`, empty logs, default meals, etc.).
+
+### Feature gating
+
+| Feature | Gate mechanism |
+|---|---|
+| AI LOG button | `onClick`: if `!isPremium` → `onPremiumGate({emoji:"🤖", name:"AI LOG"})`. If premium → `setView("ai")` |
+| WorkoutLogger paste button | `onClick`: if `!isPremium` → `onPremiumGate({emoji:"🏋️", name:"Workout AI Parser"})`. If premium → `setHevyMode(true)` |
+| CoachCard | Wrapped: `{isPremium && <CoachCard .../>}` — not rendered at all for anonymous |
+| Quick Add | No gate — available to all |
+| Food Search | No gate — available to all |
+
+`isPremium` is derived locally inside Dashboard: `const isPremium = authState === "premium";`
+
+### Modal render order in App return
+
+```jsx
+{premiumGate && !showSignIn && <PremiumModal feature={premiumGate} onUpgrade={() => setShowSignIn(true)} onDismiss={() => setPremiumGate(null)}/>}
+{showSignIn  && <SignInModal  onSuccess={handleSignInSuccess} onCancel={() => { setShowSignIn(false); setPremiumGate(null); }}/>}
+{showSignOut && <SignOutModal userName={authUser?.name} onConfirm={handleSignOut} onCancel={() => setShowSignOut(false)}/>}
+{showLapsed  && <LapsedModal onRenew={() => { setShowLapsed(false); setShowSignIn(true); }} onDismiss={() => setShowLapsed(false)}/>}
+```
+
+PremiumModal hides when SignInModal opens (both driven by the same user action) so they don't stack.
+
+### SignInModal internal state
+
+| State | Values | Notes |
+|---|---|---|
+| `step` | `"google"` \| `"payment"` | Starts at `"payment"` when `GOOGLE_CLIENT_ID` is empty |
+| `gUser` | object/null | Google user `{name, email, picture}`; pre-filled as Guest in dev mode |
+| `voucher` | string | Current input value |
+| `vError` | string | Shown below input on wrong code |
+
+The `useEffect` on step `"google"` calls `google.accounts.id.initialize` + `renderButton` to mount the official GIS button inside `<div id="gsi-btn">`. If GIS library hasn't loaded yet (e.g. offline), the effect silently no-ops.
+
+### Account avatar (premium indicator)
+
+When `isPremium` is true, the dashboard header shows a 34×34 button to the right of 🏆:
+- If `authUser.picture` is set: renders `<img>` of Google profile photo
+- Otherwise: renders first letter of `authUser.name` in green
+
+Tapping this button calls `onSignOut` → sets `showSignOut = true` → `SignOutModal` opens.
+
+### `index.html` changes
+
+```html
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+```
+
+Added above the vendored React scripts. The `async defer` means it won't block page load and will be available when the user taps sign in.
+
+### `sw.js` changes
+
+- Cache version bumped: `fuel-log-v21` → `fuel-log-v22`
+- Three new bypasses added so the service worker never caches these external requests:
+  - `accounts.google.com` — GIS auth requests
+  - `googleapis.com` — Google API calls
+  - `supabase.co` — Phase 2 cloud sync (pre-emptive)
+
+---
+
+## 25. Authentication & Subscription Model
 
 ### Two states only
 
@@ -580,7 +714,7 @@ During Phase 1, subscriptions are not yet wired to payment. Users can access pre
 
 ---
 
-## 25. Premium Feature Gates
+## 26. Premium Feature Gates
 
 | Feature | Anonymous | Premium |
 |---|---|---|
@@ -607,7 +741,7 @@ During Phase 1, subscriptions are not yet wired to payment. Users can access pre
 
 ---
 
-## 26. Sign In & Upgrade Flow
+## 27. Sign In & Upgrade Flow
 
 ```
 Anonymous user taps locked feature
@@ -653,7 +787,7 @@ App opens, auth_state === "premium", subExpiry < Date.now()
 
 ---
 
-## 27. New Storage Keys (Auth)
+## 28. New Storage Keys (Auth)
 
 Add to the storage key reference table in §5:
 
@@ -664,7 +798,7 @@ Add to the storage key reference table in §5:
 
 ---
 
-## 28. Supabase Data Sync (Phase 2 — not yet implemented)
+## 29. Supabase Data Sync (Phase 2 — not yet implemented)
 
 **Schema file:** `setup/supabase-schema.sql` — run this once in Supabase SQL Editor.
 
@@ -701,7 +835,7 @@ On first sign-in, all localStorage data is read and upserted to Supabase. After 
 
 ---
 
-## 29. Google OAuth Setup (Step by Step)
+## 30. Google OAuth Setup (Step by Step)
 
 **Do this when ready to wire up real Google Sign In.**
 
@@ -731,7 +865,7 @@ On first sign-in, all localStorage data is read and upserted to Supabase. After 
 
 ---
 
-## 30. Supabase Setup (Step by Step)
+## 31. Supabase Setup (Step by Step)
 
 **Do this when ready to implement Phase 2 cloud sync.**
 
@@ -765,7 +899,7 @@ On first sign-in, all localStorage data is read and upserted to Supabase. After 
 
 ---
 
-## 31. Cloudflare Worker Auth Gate (Phase 2 — not yet active)
+## 32. Cloudflare Worker Auth Gate (Phase 2 — not yet active)
 
 **Do this after Phase 2 Supabase sync is working.**
 
@@ -786,7 +920,7 @@ The updated `cloudflare-worker.js` (with auth gate) is ready — add these two s
 
 ---
 
-## 32. Play Store Submission (TWA via PWABuilder)
+## 33. Play Store Submission (TWA via PWABuilder)
 
 **Target: Google Play Store via Trusted Web Activity (TWA)**
 
