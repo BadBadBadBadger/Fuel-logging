@@ -2538,14 +2538,13 @@ function Dashboard(_ref18) {
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 4
+      gap: 4,
+      background: mc + "12",
+      border: "1px solid ".concat(mc + "55"),
+      borderRadius: 8,
+      padding: "5px 10px"
     }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 10,
-      color: "#445040"
-    }
-  }, "TARGET"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("input", {
     type: "number",
     inputMode: "numeric",
     value: targetInputVal,
@@ -2561,20 +2560,19 @@ function Dashboard(_ref18) {
     style: {
       background: "none",
       border: "none",
-      borderBottom: "1px solid ".concat(mc),
       color: mc,
       fontSize: 13,
       fontWeight: 900,
-      width: 54,
+      width: 60,
       textAlign: "center",
       fontFamily: "inherit",
       outline: "none",
-      padding: "0 2px"
+      padding: 0
     }
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: "#445040"
+      color: mc + "99"
     }
   }, "kcal")) : /*#__PURE__*/React.createElement("div", {
     onClick: function onClick() {
@@ -2582,22 +2580,25 @@ function Dashboard(_ref18) {
       setEditingTarget(true);
     },
     style: {
-      cursor: "text",
+      cursor: "pointer",
       display: "flex",
       alignItems: "center",
-      gap: 3
+      gap: 4,
+      background: isCustomMode ? mc + "12" : "#161a14",
+      border: "1px solid ".concat(isCustomMode ? mc + "44" : "#2a3828"),
+      borderRadius: 8,
+      padding: "5px 10px"
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 11,
-      color: isCustomMode ? mc + "cc" : "#2e3a2c",
-      borderBottom: "1px dashed ".concat(isCustomMode ? mc + "55" : "#2e3a2c44"),
-      paddingBottom: 1
+      fontSize: 12,
+      color: isCustomMode ? mc : "#6a9060",
+      fontWeight: 700
     }
-  }, "TARGET ", targets.kcal.toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("span", {
+  }, targets.kcal.toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 9,
-      color: "#334a30"
+      fontSize: 10,
+      color: isCustomMode ? mc + "99" : "#4a6a44"
     }
   }, "\u270E"))), /*#__PURE__*/React.createElement("div", {
     style: {

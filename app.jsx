@@ -1064,27 +1064,29 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             {MODES[mode].label}{isTraining ? " · ⚡" : ""}
           </div>
           {editingTarget ? (
-            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-              <span style={{ fontSize:10, color:"#445040" }}>TARGET</span>
+            <div style={{ display:"flex", alignItems:"center", gap:4,
+              background: mc + "12", border:`1px solid ${mc + "55"}`,
+              borderRadius:8, padding:"5px 10px" }}>
               <input type="number" inputMode="numeric" value={targetInputVal}
                 onChange={e => setTargetInputVal(e.target.value)}
                 onBlur={commitTarget}
                 onKeyDown={e => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingTarget(false); }}
                 autoFocus
-                style={{ background:"none", border:"none", borderBottom:`1px solid ${mc}`,
-                  color:mc, fontSize:13, fontWeight:900, width:54, textAlign:"center",
-                  fontFamily:"inherit", outline:"none", padding:"0 2px" }}/>
-              <span style={{ fontSize:10, color:"#445040" }}>kcal</span>
+                style={{ background:"none", border:"none",
+                  color:mc, fontSize:13, fontWeight:900, width:60, textAlign:"center",
+                  fontFamily:"inherit", outline:"none", padding:0 }}/>
+              <span style={{ fontSize:10, color: mc + "99" }}>kcal</span>
             </div>
           ) : (
             <div onClick={() => { setTargetInputVal(String(targets.kcal)); setEditingTarget(true); }}
-              style={{ cursor:"text", display:"flex", alignItems:"center", gap:3 }}>
-              <span style={{ fontSize:11, color: isCustomMode ? mc + "cc" : "#2e3a2c",
-                borderBottom:`1px dashed ${isCustomMode ? mc + "55" : "#2e3a2c44"}`,
-                paddingBottom:1 }}>
-                TARGET {targets.kcal.toLocaleString()} kcal
+              style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:4,
+                background: isCustomMode ? mc + "12" : "#161a14",
+                border: `1px solid ${isCustomMode ? mc + "44" : "#2a3828"}`,
+                borderRadius:8, padding:"5px 10px" }}>
+              <span style={{ fontSize:12, color: isCustomMode ? mc : "#6a9060", fontWeight:700 }}>
+                {targets.kcal.toLocaleString()} kcal
               </span>
-              <span style={{ fontSize:9, color:"#334a30" }}>✎</span>
+              <span style={{ fontSize:10, color: isCustomMode ? mc + "99" : "#4a6a44" }}>✎</span>
             </div>
           )}
         </div>
