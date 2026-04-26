@@ -976,3 +976,110 @@ When Google Play Billing is implemented:
 - Products/subscriptions are defined in Play Console → Monetisation → Subscriptions
 - Product IDs: `premium_monthly`, `premium_annual`
 - 30-day free trial is configured in Play Console per product
+
+---
+
+## 34. Phase 1 & 2 Testing — Troubleshooting Log
+
+A record of every issue hit during Phase 1/2 testing and how each was resolved. Useful reference for future sessions or if any issue recurs.
+
+---
+
+### Issue 1 — `preview.html` missing Supabase and GIS scripts
+**Symptom:** Google Sign In button never appeared in the test harness.  
+**Cause:** `preview.html` only loaded vendor React/Recharts scripts. Supabase CDN and GIS were only in `index.html`.  
+**Fix:** Added both scripts to `preview.html`. Then vendored Supabase JS (see Issue 3).
+
+---
+
+### Issue 2 — Google OAuth `origin_mismatch` on localhost
+**Symptom:** `Error 400: origin_mismatch` when trying to sign in via the test harness.  
+**Cause:** `http://localhost:3000` was not registered as an Authorised JavaScript Origin in Google Cloud Console.  
+**Fix:** Google Cloud Console → APIs & Services → Credentials → Fuel Log OAuth client → Authorised JavaScript origins → added `http://localhost:3000` and `https://badbadbadbadbadger.github.io`. Also added both to Authorised redirect URIs.
+
+---
+
+### Issue 3 — Edge tracking prevention blocking Supabase CDN
+**Symptom:** Console showed `Tracking Prevention blocked access to storage for https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`. Supabase auth session could not be stored. Sign-in appeared to work but no data reached Supabase.  
+**Cause:** Microsoft Edge treats jsdelivr.net as a third-party tracker and blocks its localStorage access.  
+**Fix:** Downloaded Supabase JS and saved to `vendor/supabase.js`. Updated `index.html` and `preview.html` to load from `vendor/supabase.js` instead of CDN. Added to SW ASSETS list. Use Chrome for all local testing — Edge has compatibility issues with Google Sign In locally.
+
+---
+
+### Issue 4 — Google Cloud Console project not found
+**Symptom:** User could not find an existing project in Google Cloud Console.  
+**Cause:** OAuth credentials were created in a previous session without a named project, or under a different Google account view.  
+**Fix:** Found existing credentials by checking all projects in the console. Client ID: `922818167366-5nl6qfteipui307j1oi7asu7d3bkgvat.apps.googleusercontent.com`.
+
+---
+
+### Issue 5 — Google Client Secret lost / hand-typed incorrectly
+**Symptom:** Supabase Google provider was not authenticating users (no rows appearing in Authentication → Users).  
+**Cause:** Client Secret had been hand-typed from notes and likely had a typo. Google no longer allows viewing existing secrets.  
+**Fix:** Created a new Client Secret in Google Cloud Console (same OAuth client → Add client secret). Pasted the new secret directly into Supabase → Authentication → Sign in / Providers → Google.
+
+---
+
+### Issue 6 — Supabase Google provider disabled
+**Symptom:** No users appearing in Supabase Authentication → Users after signing in.  
+**Cause:** Supabase Google provider was never enabled.  
+**Navigation change:** Supabase renamed the menu — it is now under **Authentication → Sign in / Providers** (not "Providers" directly).  
+**Fix:** Enabled Google provider, filled in Client ID and Client Secret, saved.
+
+---
+
+### Issue 7 — No data in Supabase after sign-in (auth session not stored)
+**Symptom:** Google sign-in appeared to complete, voucher accepted, premium granted — but no rows in any Supabase table.  
+**Cause:** Edge tracking prevention (Issue 3) meant Supabase could not store its auth session token. `signInWithIdToken` failed silently, fell back to `parseJwt`, `user.id` was null, and all sync was skipped.  
+**Fix:** Same as Issue 3 — vendor Supabase JS. Confirmed working in Chrome.
+
+---
+
+### Issue 8 — QuickAdd meals not syncing to Supabase
+**Symptom:** Adding a new meal in Quick Add screen did not create a row in `meal_library` table.  
+**Cause:** `QuickAdd` component has its own local `save` function that calls `setMeals` and `ss()` directly, bypassing the `syncMeals` call.  
+**Fix:** Created `saveMeals` wrapper in App (sets state + localStorage + fires `syncMeals`). Passed as `setMeals` prop to QuickAdd. Also refactored `addToQA` to use `saveMeals`.
+
+---
+
+### Issue 9 — Data appeared "missing" after sign-in (dev date simulator)
+**Symptom:** After signing out and back in, food logs did not appear on the dashboard. Data was confirmed in Supabase.  
+**Cause:** Test data had been logged under a simulated future date (2026-05-01) using the dev harness "Progress Day" button. The dashboard shows today's date only, so the data was present but in the History view, not the dashboard.  
+**Fix:** Not a bug. Reset date to today in dev panel. Always reset to today before testing sign-out/sign-in restore flow.
+
+---
+
+### Issue 10 — Typo in GitHub Pages URL in Google Cloud Console
+**Symptom:** OAuth worked locally but failed on GitHub Pages.  
+**Cause:** One of the Authorised JavaScript Origins had `badbadbaddbadger.github.io` (extra `d`) instead of `badbadbadbadbadger.github.io`. Google matched the wrong URL.  
+**Fix:** Deleted the duplicate typo entry. The correct URL `https://badbadbadbadbadger.github.io` was already listed.
+
+---
+
+### Issue 11 — OAuth consent screen in Testing mode
+**Symptom:** `access_denied` or auth blocked for new users.  
+**Cause:** App is in Testing mode in Google Cloud Console (not published). Only explicitly added test users can sign in.  
+**Fix:** Google Cloud Console → Google Auth Platform → Audience → Test users → Add `adriandavidrichards@gmail.com`. Publishing to production requires Google verification — not needed until public launch.  
+**Note:** Testing mode is fine for personal use and internal testing indefinitely.
+
+---
+
+### Current status (as of 2026-04-26)
+
+| Item | Status |
+|---|---|
+| Google Sign In → Supabase auth | ✅ Working (Chrome) |
+| Food logs syncing to Supabase | ✅ Confirmed |
+| Water, history, settings syncing | ✅ Confirmed |
+| Meal library syncing | ✅ Fixed (Issue 8) |
+| Sign out → sign in → data restores | ✅ Confirmed (Chrome desktop) |
+| GitHub Pages deployment | ✅ Deployed |
+| Phone test (GitHub Pages) | ⏳ Pending — Google origin propagation delay |
+| Edge browser support | ⚠️ Works on deployed app; local testing requires Chrome |
+
+### Before going live checklist
+- [ ] Run cleanup SQL to wipe test data from Supabase
+- [ ] Test sign-in on phone (Chrome browser, not installed PWA)
+- [ ] Confirm data migrates from phone localStorage to Supabase on first sign-in
+- [ ] Reinstall PWA on phone after confirming browser flow works
+- [ ] Consider Phase 3 (real payments) before public launch
