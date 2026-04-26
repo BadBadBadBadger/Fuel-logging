@@ -540,10 +540,10 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 ### In progress — Auth & Premium (candidate branch)
 | Phase | Description | Status |
 |---|---|---|
-| Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **In progress** |
-| Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | Pending Supabase setup |
+| Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **Done** (candidate — see §24) |
+| Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | **Done** (candidate — see §29) |
 | Phase 3 | Real payments: Google Play Billing (Android TWA), Stripe (web/Apple) | Pending Google Play Console |
-| Phase 4 | Cloudflare Worker auth gate: verify Supabase JWT before proxying AI | Pending Phase 2 |
+| Phase 4 | Cloudflare Worker auth gate: verify Supabase JWT before proxying AI | Pending Phase 3 |
 
 ### Other backlog
 | Feature | Notes |
@@ -794,44 +794,69 @@ Add to the storage key reference table in §5:
 | Key | Value |
 |---|---|
 | `auth_state` | `"anonymous"` or `"premium"` |
-| `auth_user` | JSON: `{name, email, picture, grantedBy, subExpiry, since}` |
+| `auth_user` | JSON: `{id, name, email, picture, grantedBy, subExpiry, since}` — `id` is Supabase UUID (null in dev/voucher-only mode) |
 
 ---
 
-## 29. Supabase Data Sync (Phase 2 — not yet implemented)
+## 29. Supabase Data Sync (Phase 2 — complete, candidate branch)
 
-**Schema file:** `setup/supabase-schema.sql` — run this once in Supabase SQL Editor.
+**Credentials wired into:**
+- `index.html` — Supabase CDN + `window.supabaseClient = supabase.createClient(URL, ANON_KEY)`
+- `app.jsx` — `GOOGLE_CLIENT_ID` set; sync helpers use `sb() = window.supabaseClient`
+
+**Schema file:** `setup/supabase-schema.sql` — already run in Supabase SQL Editor.
 
 ### Tables
 | Table | Purpose |
 |---|---|
 | `profiles` | Body stats (weight, height, bodyFat, sex) |
-| `food_logs` | Individual food log entries (keyed by `entry_id` = client timestamp) |
-| `water_logs` | Daily water count |
-| `workouts` | Workout entries |
-| `weigh_ins` | Daily body weight |
+| `food_logs` | Food log entries — unique on `(user_id, entry_id)` |
+| `water_logs` | Daily water count — unique on `(user_id, date)` |
+| `workouts` | Workout entries — unique on `(user_id, entry_id)` |
+| `weigh_ins` | Daily body weight — unique on `(user_id, date)` |
 | `settings` | Mode, tdeeAdj, customKcal, aggressiveCutAcked |
-| `meal_library` | User's saved custom meals |
-| `badges` | Earned badge keys |
-| `history_snapshots` | Daily summary snapshots |
+| `meal_library` | Custom meals — unique on `(user_id, name)` |
+| `badges` | Earned badge keys — unique on `(user_id, badge_key)` |
+| `history_snapshots` | Daily snapshots — unique on `(user_id, date)` |
 | `coach_tips` | Cached AI tip per day |
 
-All tables have `updated_at TIMESTAMPTZ` and Row Level Security — users can only read/write their own rows.
+All tables have `updated_at TIMESTAMPTZ` and Row Level Security.
 
-### Conflict resolution
-**Latest timestamp wins.** When syncing, for each record compare `updated_at` in Supabase vs `updated_at` tracked locally. Whichever is more recent is the authoritative value. No data is silently deleted.
+### Sync architecture
+- **Write path:** localStorage first (instant), then fire-and-forget Supabase upsert
+- **Read path on startup:** load from localStorage immediately, background-pull Supabase and merge into React state
+- **On sign-in:** `migrateLocalToSupabase(uid)` pushes all local data once (guarded by `sync_migrated__<uid>` localStorage flag), then `pullFromSupabase(uid)` merges down any data from other devices
+- **Offline:** all syncs check `navigator.onLine` and return early; Dashboard header shows OFFLINE badge; no errors shown to user
+- **Conflict resolution:** last-write-wins via upsert with fresh `updated_at` on every save
 
-Sync summary shows: "Synced — X records updated"
+### Key helpers (app.jsx — after `parseJwt`)
+| Helper | Purpose |
+|---|---|
+| `sb()` | Returns `window.supabaseClient` |
+| `syncFoodLogs(uid, date, logs)` | Delete+re-insert all entries for a date |
+| `syncWater(uid, date, glasses)` | Upsert water count |
+| `syncWorkouts(uid, date, ws)` | Delete+re-insert workouts for a date |
+| `syncProfile(uid, p)` | Upsert fitness profile |
+| `syncWeighIns(uid, wis)` | Upsert all weigh-in rows |
+| `syncSettings(uid, mode, tdeeAdj, customKcal, acked)` | Upsert settings row |
+| `syncMeals(uid, meals)` | Upsert meal library |
+| `syncBadges(uid, keys)` | Upsert badge rows |
+| `syncHistory(uid, hist)` | Upsert history snapshot rows |
+| `migrateLocalToSupabase(uid)` | One-time push of all localStorage data |
+| `pullFromSupabase(uid)` | Pull all user data and write back to localStorage + React state |
 
-### Local data migration on first premium login
-On first sign-in, all localStorage data is read and upserted to Supabase. After migration, Supabase becomes the source of truth for premium users. The `window.storage` bridge in `index.html` will be updated to a Supabase-aware adapter.
+### SignInModal GIS callback (Phase 2)
+```javascript
+callback: async resp => {
+  const { data, error } = await sb().auth.signInWithIdToken({ provider:"google", token:resp.credential });
+  // Falls back to parseJwt if Supabase call fails
+  setGUser({ id: data.session.user.id, name: ..., email: ..., picture: ... });
+  setStep("payment");
+}
+```
 
-### Offline mode
-- Premium users continue using localStorage when offline
-- A subtle indicator shows: "Offline — will sync when connected"
-- Data queued locally; on reconnect, sync runs automatically
-- User never sees an error for temporary failures
-- Error only shown if sync fails for more than 24 hours
+### Sign-out (Phase 2)
+`sb().auth.signOut()` called before clearing localStorage. Also clears `sync_migrated__<uid>` keys.
 
 ---
 
@@ -865,9 +890,9 @@ On first sign-in, all localStorage data is read and upserted to Supabase. After 
 
 ---
 
-## 31. Supabase Setup (Step by Step)
+## 31. Supabase Setup (Step by Step — complete)
 
-**Do this when ready to implement Phase 2 cloud sync.**
+**Done.** Project: `hvohicddolqpcgzgrbwc.supabase.co`. Schema run. Google OAuth provider linked. Credentials wired into `index.html`.
 
 1. Go to https://supabase.com → **New Project**
 2. Name: "fuel-log", region: closest to your users (Europe West for UK)

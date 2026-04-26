@@ -11,7 +11,7 @@ const A = "#a3ff4b", BG = "#0b0d0b", CARD = "#111311", BD = "#1c201c";
 // ── Auth / Premium ────────────────────────────────────────────
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
 // Leave empty ("") to skip Google Sign In and go straight to voucher entry (dev mode).
-const GOOGLE_CLIENT_ID = "";
+const GOOGLE_CLIENT_ID = "922818167366-5nl6qfteipui307j1oi7asu7d3bkgvat.apps.googleusercontent.com";
 const VOUCHER_CODE     = "FreeFoodTips2026";
 
 const MODES = {
@@ -187,6 +187,221 @@ const parseJwt = token => {
   catch(e) { return {}; }
 };
 
+// ── Supabase cloud sync ───────────────────────────────────────
+const sb = () => window.supabaseClient;
+
+const syncUpsert = async (table, rows, conflict) => {
+  if (!sb() || !rows?.length) return;
+  try { await sb().from(table).upsert(rows, { onConflict: conflict }); } catch(e) {}
+};
+
+const syncFoodLogs = async (uid, date, logs) => {
+  if (!uid || !navigator.onLine) return;
+  try { await sb().from("food_logs").delete().eq("user_id", uid).eq("date", date); } catch(e) {}
+  if (!logs.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("food_logs",
+    logs.map(l => ({ user_id:uid, date, entry_id:l.id, name:l.name,
+      kcal:l.kcal, protein:l.protein, carbs:l.carbs, fat:l.fat,
+      time:l.time||null, updated_at:now })),
+    "user_id,entry_id");
+};
+
+const syncWater = async (uid, date, glasses) => {
+  if (!uid || !navigator.onLine) return;
+  await syncUpsert("water_logs",
+    [{ user_id:uid, date, glasses, updated_at:new Date().toISOString() }], "user_id,date");
+};
+
+const syncWorkouts = async (uid, date, ws) => {
+  if (!uid || !navigator.onLine) return;
+  try { await sb().from("workouts").delete().eq("user_id", uid).eq("date", date); } catch(e) {}
+  if (!ws.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("workouts",
+    ws.map(w => ({ user_id:uid, date, entry_id:w.id, type:w.type,
+      duration:w.duration, intensity:w.intensity, kcal:w.kcal||0,
+      time:w.time||null, notes:w.notes||null, updated_at:now })),
+    "user_id,entry_id");
+};
+
+const syncProfile = async (uid, p) => {
+  if (!uid || !navigator.onLine || !p) return;
+  try {
+    await sb().from("profiles").upsert({
+      id:uid, weight:p.weight, height:p.height,
+      body_fat:p.bodyFat, sex:p.sex||null, updated_at:new Date().toISOString()
+    });
+  } catch(e) {}
+};
+
+const syncWeighIns = async (uid, wis) => {
+  if (!uid || !navigator.onLine || !wis?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("weigh_ins",
+    wis.map(w => ({ user_id:uid, date:w.date, weight:w.weight, updated_at:now })),
+    "user_id,date");
+};
+
+const syncSettings = async (uid, mode, tdeeAdj, customKcal, acked) => {
+  if (!uid || !navigator.onLine) return;
+  try {
+    await sb().from("settings").upsert({
+      id:uid, mode:mode||"cut", tdee_adj:tdeeAdj||0,
+      custom_kcal:customKcal||null, aggressive_cut_acked:!!acked,
+      updated_at:new Date().toISOString()
+    });
+  } catch(e) {}
+};
+
+const syncMeals = async (uid, meals) => {
+  if (!uid || !navigator.onLine) return;
+  const now = new Date().toISOString();
+  await syncUpsert("meal_library",
+    meals.map(m => ({ user_id:uid, name:m.name, kcal:m.kcal,
+      protein:m.protein, carbs:m.carbs, fat:m.fat, updated_at:now })),
+    "user_id,name");
+};
+
+const syncBadges = async (uid, keys) => {
+  if (!uid || !navigator.onLine || !keys?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("badges",
+    keys.map(badge_key => ({ user_id:uid, badge_key, updated_at:now })),
+    "user_id,badge_key");
+};
+
+const syncHistory = async (uid, hist) => {
+  if (!uid || !navigator.onLine || !hist?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("history_snapshots",
+    hist.map(h => ({ user_id:uid, date:h.date, mode:h.mode, kcal:h.kcal,
+      protein:h.protein, carbs:h.carbs, fat:h.fat,
+      water:h.water||0, training:h.training||false, updated_at:now })),
+    "user_id,date");
+};
+
+const migrateLocalToSupabase = async uid => {
+  const migKey = "sync_migrated__" + uid;
+  if (localStorage.getItem(migKey)) return;
+  try {
+    const pv = await sg("profile");
+    if (pv) await syncProfile(uid, JSON.parse(pv));
+    const wiv = await sg("weighins");
+    if (wiv) await syncWeighIns(uid, JSON.parse(wiv));
+    const m  = await sg("mode__" + todayKey()) || "cut";
+    const ta = parseInt(await sg("tdee_adj") || "0") || 0;
+    const ck = await sg("target_kcal");
+    const ak = await sg("aggressive_cut_acked");
+    await syncSettings(uid, m, ta, ck ? parseInt(ck) : null, !!ak);
+    const mv = await sg("meals");
+    if (mv) await syncMeals(uid, JSON.parse(mv));
+    const bv = await sg("badges");
+    if (bv) await syncBadges(uid, JSON.parse(bv));
+    const hv = await sg("history");
+    if (hv) {
+      const hist = JSON.parse(hv);
+      await syncHistory(uid, hist);
+      for (const snap of hist) {
+        if (snap.logs?.length) await syncFoodLogs(uid, snap.date, snap.logs);
+        if (snap.water)        await syncWater(uid, snap.date, snap.water);
+      }
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("workouts__")) {
+        const v = localStorage.getItem(key);
+        if (v) await syncWorkouts(uid, key.replace("workouts__", ""), JSON.parse(v));
+      }
+    }
+    localStorage.setItem(migKey, "1");
+  } catch(e) {}
+};
+
+const pullFromSupabase = async uid => {
+  if (!uid || !navigator.onLine) return {};
+  try {
+    const [profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR] = await Promise.all([
+      sb().from("profiles").select("*").eq("id", uid).maybeSingle(),
+      sb().from("weigh_ins").select("*").eq("user_id", uid).order("date"),
+      sb().from("settings").select("*").eq("id", uid).maybeSingle(),
+      sb().from("meal_library").select("*").eq("user_id", uid),
+      sb().from("badges").select("badge_key").eq("user_id", uid),
+      sb().from("history_snapshots").select("*").eq("user_id", uid).order("date"),
+      sb().from("food_logs").select("*").eq("user_id", uid).order("date"),
+      sb().from("water_logs").select("*").eq("user_id", uid).order("date"),
+      sb().from("workouts").select("*").eq("user_id", uid).order("date"),
+    ]);
+    const result = {};
+    if (profR.data) {
+      const p = { weight:profR.data.weight, height:profR.data.height,
+        bodyFat:profR.data.body_fat, sex:profR.data.sex };
+      await ss("profile", JSON.stringify(p));
+      result.profile = p;
+    }
+    if (weighR.data?.length) {
+      const wi = weighR.data.map(r => ({ date:r.date, weight:Number(r.weight) }));
+      await ss("weighins", JSON.stringify(wi));
+      result.weighIns = wi;
+    }
+    if (settR.data) {
+      const s = settR.data;
+      if (s.mode)                 await ss("mode__" + todayKey(), s.mode);
+      if (s.tdee_adj != null)     await ss("tdee_adj", String(s.tdee_adj));
+      if (s.custom_kcal != null)  await ss("target_kcal", String(s.custom_kcal));
+      if (s.aggressive_cut_acked) await ss("aggressive_cut_acked", "1");
+      result.settings = s;
+    }
+    if (mealsR.data?.length) {
+      const meals = mealsR.data.map(m => ({ name:m.name, kcal:Number(m.kcal),
+        protein:Number(m.protein), carbs:Number(m.carbs), fat:Number(m.fat) }));
+      await ss("meals", JSON.stringify(meals));
+      result.meals = meals;
+    }
+    if (badgesR.data?.length) {
+      const keys = badgesR.data.map(b => b.badge_key);
+      await ss("badges", JSON.stringify(keys));
+      result.badges = keys;
+    }
+    const foodByDate = {};
+    if (foodR.data) {
+      for (const f of foodR.data) {
+        if (!foodByDate[f.date]) foodByDate[f.date] = [];
+        foodByDate[f.date].push({ id:f.entry_id, name:f.name, kcal:Number(f.kcal),
+          protein:Number(f.protein), carbs:Number(f.carbs), fat:Number(f.fat), time:f.time });
+      }
+    }
+    const waterByDate = {};
+    if (waterR.data) for (const w of waterR.data) waterByDate[w.date] = w.glasses;
+    if (histR.data?.length) {
+      const fullHist = histR.data.map(h => ({
+        date:h.date, mode:h.mode, kcal:h.kcal, protein:h.protein,
+        carbs:h.carbs, fat:h.fat, training:h.training,
+        water: waterByDate[h.date] ?? h.water ?? 0,
+        logs:  foodByDate[h.date] || []
+      }));
+      await ss("history", JSON.stringify(fullHist));
+      for (const snap of fullHist) {
+        await ss("logs__"  + snap.date, JSON.stringify(snap.logs || []));
+        await ss("water__" + snap.date, String(snap.water || 0));
+      }
+      result.history = fullHist;
+    }
+    if (workR.data?.length) {
+      const byDate = {};
+      for (const w of workR.data) {
+        if (!byDate[w.date]) byDate[w.date] = [];
+        byDate[w.date].push({ id:w.entry_id, type:w.type,
+          duration:w.duration, intensity:w.intensity, kcal:w.kcal,
+          time:w.time, notes:w.notes });
+      }
+      for (const [d, ws] of Object.entries(byDate)) await ss("workouts__" + d, JSON.stringify(ws));
+      result.workouts = byDate;
+    }
+    return result;
+  } catch(e) { return {}; }
+};
+
 // ── Data migrations ───────────────────────────────────────────
 // Bump SCHEMA_VERSION and add a migration block each time the stored
 // data shape changes. runMigrations() is called once on startup.
@@ -309,9 +524,17 @@ function SignInModal({ onSuccess, onCancel }) {
     try {
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
-        callback: resp => {
-          const p = parseJwt(resp.credential);
-          setGUser({ name: p.name || "User", email: p.email || "", picture: p.picture || "" });
+        callback: async resp => {
+          try {
+            const { data, error } = await sb().auth.signInWithIdToken({ provider: "google", token: resp.credential });
+            if (error) throw error;
+            const u = data.session.user;
+            setGUser({ id: u.id, name: u.user_metadata.full_name || "User",
+              email: u.email || "", picture: u.user_metadata.avatar_url || "" });
+          } catch(e) {
+            const p = parseJwt(resp.credential);
+            setGUser({ name: p.name || "User", email: p.email || "", picture: p.picture || "" });
+          }
           setStep("payment");
         },
         auto_select: false,
@@ -1120,7 +1343,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
   aggressiveCutAcked, onAckAggressiveCut,
-  authState, authUser, onPremiumGate, onSignOut }) {
+  authState, authUser, onPremiumGate, onSignOut,
+  isOnline, syncMsg }) {
 
   const isPremium = authState === "premium";
 
@@ -1178,6 +1402,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           <p style={{ margin:"4px 0 0", fontSize:12, color:"#445040", letterSpacing:"0.06em" }}>
             {new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"short" }).toUpperCase()}
           </p>
+          {!isOnline && <div style={{ marginTop:4, fontSize:10, color:"#ffb84b", fontWeight:700, letterSpacing:"0.06em" }}>OFFLINE</div>}
+          {syncMsg   && <div style={{ marginTop:2,  fontSize:10, color:"#445040" }}>{syncMsg}</div>}
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && (
@@ -2386,6 +2612,16 @@ function App() {
   const [showSignIn,  setShowSignIn]  = useState(false);
   const [showSignOut, setShowSignOut] = useState(false);
   const [showLapsed,  setShowLapsed]  = useState(false);
+  const [isOnline,    setIsOnline]    = useState(navigator.onLine);
+  const [syncMsg,     setSyncMsg]     = useState("");
+
+  useEffect(() => {
+    const up   = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener("online",  up);
+    window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []); // eslint-disable-line
 
   // Expose dev refresh hook for test harness
   useEffect(() => {
@@ -2424,6 +2660,28 @@ function App() {
         } else {
           setAuthState("premium");
           setAuthUser(u);
+          // Background pull — app shows immediately from local, Supabase data merges in
+          if (u.id && navigator.onLine) {
+            pullFromSupabase(u.id).then(pulled => {
+              if (pulled.profile)  setProf(pulled.profile);
+              if (pulled.weighIns) setWeighIns(pulled.weighIns);
+              if (pulled.meals)    setMeals(pulled.meals);
+              if (pulled.badges)   setEarnedBdgs(pulled.badges);
+              if (pulled.settings) {
+                if (pulled.settings.mode)                 setMode(pulled.settings.mode);
+                if (pulled.settings.tdee_adj != null)     setTdeeAdj(Number(pulled.settings.tdee_adj));
+                if (pulled.settings.custom_kcal != null)  setCustomKcal(Number(pulled.settings.custom_kcal));
+                if (pulled.settings.aggressive_cut_acked) setAggressiveCutAcked(true);
+              }
+              if (pulled.history) {
+                setHist(pulled.history);
+                const tod = todayKey();
+                const snap = pulled.history.find(h => h.date === tod);
+                if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
+              }
+              if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+            }).catch(() => {});
+          }
         }
       }
 
@@ -2454,14 +2712,41 @@ function App() {
       setEarnedBdgs(updated);
       ss("badges", JSON.stringify(updated));
       setNewBadge(newlyEarned[0]);
+      if (authState === "premium" && authUser?.id)
+        syncBadges(authUser.id, updated).catch(() => {});
     }
   }, [hist]); // eslint-disable-line
 
-  const saveLogs     = async l => { setLogs(l);     await ss("logs__"     + todayKey(), JSON.stringify(l)); };
-  const saveWater    = async w => { setWater(w);    await ss("water__"    + todayKey(), String(w));         };
-  const saveMode     = async m => { setMode(m);     await ss("mode__"     + todayKey(), m);                 };
-  const saveProf     = async p => { setProf(p);     await ss("profile",                JSON.stringify(p)); };
-  const saveWorkouts = async w => { setWorkouts(w); await ss("workouts__" + todayKey(), JSON.stringify(w)); };
+  const saveLogs = async l => {
+    setLogs(l);
+    await ss("logs__" + todayKey(), JSON.stringify(l));
+    if (authState === "premium" && authUser?.id)
+      syncFoodLogs(authUser.id, todayKey(), l).catch(() => {});
+  };
+  const saveWater = async w => {
+    setWater(w);
+    await ss("water__" + todayKey(), String(w));
+    if (authState === "premium" && authUser?.id)
+      syncWater(authUser.id, todayKey(), w).catch(() => {});
+  };
+  const saveMode = async m => {
+    setMode(m);
+    await ss("mode__" + todayKey(), m);
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked).catch(() => {});
+  };
+  const saveProf = async p => {
+    setProf(p);
+    await ss("profile", JSON.stringify(p));
+    if (authState === "premium" && authUser?.id)
+      syncProfile(authUser.id, p).catch(() => {});
+  };
+  const saveWorkouts = async w => {
+    setWorkouts(w);
+    await ss("workouts__" + todayKey(), JSON.stringify(w));
+    if (authState === "premium" && authUser?.id)
+      syncWorkouts(authUser.id, todayKey(), w).catch(() => {});
+  };
 
   const addLog = async e => {
     const isFirstToday = logs.length === 0;
@@ -2495,16 +2780,23 @@ function App() {
     setCustomKcal(kcal);
     if (kcal == null) await ss("target_kcal", "");
     else              await ss("target_kcal", String(kcal));
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked).catch(() => {});
   };
 
   const handleSetMode = async m => {
     await saveMode(m);
     await saveCustomKcal(null);
+    // Sync once more with correct (m, null) pair to resolve any stale-closure race
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked).catch(() => {});
   };
 
   const handleAckAggressiveCut = async () => {
     setAggressiveCutAcked(true);
     await ss("aggressive_cut_acked", "1");
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, mode, tdeeAdj, customKcal, true).catch(() => {});
   };
 
   const addToQA = async entry => {
@@ -2517,12 +2809,15 @@ function App() {
     const updated = [...meals, clean];
     setMeals(updated);
     await ss("meals", JSON.stringify(updated));
+    if (authState === "premium" && authUser?.id)
+      syncMeals(authUser.id, updated).catch(() => {});
   };
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   const handleSignInSuccess = async (googleUser, grantedBy) => {
     const user = {
+      id:        googleUser.id      || null,
       name:      googleUser.name    || "User",
       email:     googleUser.email   || "",
       picture:   googleUser.picture || "",
@@ -2536,9 +2831,36 @@ function App() {
     await ss("auth_user",  JSON.stringify(user));
     setShowSignIn(false);
     setPremiumGate(null);
+
+    if (user.id && navigator.onLine) {
+      setSyncMsg("Syncing your data…");
+      try {
+        await migrateLocalToSupabase(user.id);
+        const pulled = await pullFromSupabase(user.id);
+        if (pulled.profile)  setProf(pulled.profile);
+        if (pulled.weighIns) setWeighIns(pulled.weighIns);
+        if (pulled.meals)    setMeals(pulled.meals);
+        if (pulled.badges)   setEarnedBdgs(pulled.badges);
+        if (pulled.settings) {
+          if (pulled.settings.mode)                 setMode(pulled.settings.mode);
+          if (pulled.settings.tdee_adj != null)     setTdeeAdj(Number(pulled.settings.tdee_adj));
+          if (pulled.settings.custom_kcal != null)  setCustomKcal(Number(pulled.settings.custom_kcal));
+          if (pulled.settings.aggressive_cut_acked) setAggressiveCutAcked(true);
+        }
+        if (pulled.history) {
+          setHist(pulled.history);
+          const tod = todayKey();
+          const snap = pulled.history.find(h => h.date === tod);
+          if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
+        }
+        if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+      } catch(e) {}
+      setSyncMsg("");
+    }
   };
 
   const handleSignOut = async () => {
+    if (sb()) { try { await sb().auth.signOut(); } catch(e) {} }
     const clearKeys = ["auth_state","auth_user","profile","meals","history","badges",
       "weighins","tdee_adj","target_kcal","aggressive_cut_acked"];
     for (const k of clearKeys) await ss(k, "");
@@ -2547,7 +2869,8 @@ function App() {
         const key = localStorage.key(i);
         if (key && (key.startsWith("logs__") || key.startsWith("water__") ||
             key.startsWith("workouts__") || key.startsWith("mode__") ||
-            key.startsWith("coach__")    || key.startsWith("streak_anim__"))) {
+            key.startsWith("coach__")    || key.startsWith("streak_anim__") ||
+            key.startsWith("sync_migrated__"))) {
           localStorage.removeItem(key);
         }
       }
@@ -2572,6 +2895,8 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(upd);
     ss("history", JSON.stringify(upd));
+    if (authState === "premium" && authUser?.id)
+      syncHistory(authUser.id, upd).catch(() => {});
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   const updateDay = async upd => {
@@ -2579,6 +2904,10 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(nh);
     await ss("history", JSON.stringify(nh));
+    if (authState === "premium" && authUser?.id) {
+      syncHistory(authUser.id, nh).catch(() => {});
+      if (upd.logs) syncFoodLogs(authUser.id, upd.date, upd.logs).catch(() => {});
+    }
   };
 
   const onWeighIn = async weight => {
@@ -2587,6 +2916,8 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setWeighIns(updated);
     await ss("weighins", JSON.stringify(updated));
+    if (authState === "premium" && authUser?.id)
+      syncWeighIns(authUser.id, updated).catch(() => {});
 
     // Sync profile weight so targets recalculate immediately
     const updatedProf = { ...(prof || DEF_PROFILE), weight };
@@ -2599,6 +2930,8 @@ function App() {
       const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
       setTdeeAdj(newAdj);
       await ss("tdee_adj", String(newAdj));
+      if (authState === "premium" && authUser?.id)
+        syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked).catch(() => {});
     }
   };
 
@@ -2708,7 +3041,8 @@ function App() {
           aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}
           authState={authState} authUser={authUser}
           onPremiumGate={feature => setPremiumGate(feature)}
-          onSignOut={() => setShowSignOut(true)}/>}
+          onSignOut={() => setShowSignOut(true)}
+          isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
