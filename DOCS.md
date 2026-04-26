@@ -1082,8 +1082,8 @@ A record of every issue hit during Phase 1/2 testing and how each was resolved. 
 **Root cause of phone Google auth failure:** Google Cloud Console had `badbadbadbadbadger.github.io` (4 "bad"s) instead of `badbadbadbadger.github.io` (3 "bad"s + "badger" — matches GitHub username `BadBadBadBadger`). Fixed by correcting all authorized origins and redirect URIs.
 
 ### Before going live checklist
-- [ ] Run cleanup SQL to wipe test data from Supabase (harness + desktop test sessions)
+- [x] Run cleanup SQL to wipe test data from Supabase (harness + desktop test sessions)
 - [x] Test sign-in on phone (Chrome browser, not installed PWA)
 - [x] Confirm data migrates from phone localStorage to Supabase on first sign-in
-- [ ] Reinstall PWA on phone after confirming browser flow works
-- [ ] Consider Phase 3 (real payments) before public launch
+- [x] Reinstall PWA on phone after confirming browser flow works
+- [ ] Phase 3 (real payments) before public launch
