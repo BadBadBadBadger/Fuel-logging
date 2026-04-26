@@ -540,10 +540,11 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 ### In progress — Auth & Premium (candidate branch)
 | Phase | Description | Status |
 |---|---|---|
-| Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **Done** (candidate — see §24) |
-| Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | **Done** (candidate — see §29) |
-| Phase 3 | Real payments: Google Play Billing (Android TWA), Stripe (web/Apple) | Pending Google Play Console |
-| Phase 4 | Cloudflare Worker auth gate: verify Supabase JWT before proxying AI | Pending Phase 3 |
+| Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **Done** |
+| Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | **Done** |
+| Phase 3 | Real payments: Google Play Billing (Android TWA), Stripe (web/Apple) | Up next |
+| Phase 4 | AI Chef: AI-powered recipe suggestions and meal planning | Pending Phase 3 |
+| Phase 5 | Cloudflare Worker auth gate: verify Supabase JWT before proxying AI | Pending Phase 3 |
 
 ### Other backlog
 | Feature | Notes |
