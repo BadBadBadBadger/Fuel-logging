@@ -2799,6 +2799,13 @@ function App() {
       syncSettings(authUser.id, mode, tdeeAdj, customKcal, true).catch(() => {});
   };
 
+  const saveMeals = async updated => {
+    setMeals(updated);
+    await ss("meals", JSON.stringify(updated));
+    if (authState === "premium" && authUser?.id)
+      syncMeals(authUser.id, updated).catch(() => {});
+  };
+
   const addToQA = async entry => {
     const name = entry.name;
     if (meals.find(m => m.name.toLowerCase() === name.toLowerCase())) return;
@@ -2806,11 +2813,7 @@ function App() {
       protein: Math.round(entry.protein * 10) / 10,
       carbs:   Math.round(entry.carbs   * 10) / 10,
       fat:     Math.round(entry.fat     * 10) / 10 };
-    const updated = [...meals, clean];
-    setMeals(updated);
-    await ss("meals", JSON.stringify(updated));
-    if (authState === "premium" && authUser?.id)
-      syncMeals(authUser.id, updated).catch(() => {});
+    await saveMeals([...meals, clean]);
   };
 
   // ── Auth handlers ─────────────────────────────────────────────
@@ -3045,7 +3048,7 @@ function App() {
           isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
+      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
