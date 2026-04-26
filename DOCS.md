@@ -1064,7 +1064,7 @@ A record of every issue hit during Phase 1/2 testing and how each was resolved. 
 
 ---
 
-### Current status (as of 2026-04-26)
+### Current status (as of 2026-04-27)
 
 | Item | Status |
 |---|---|
@@ -1072,14 +1072,18 @@ A record of every issue hit during Phase 1/2 testing and how each was resolved. 
 | Food logs syncing to Supabase | ✅ Confirmed |
 | Water, history, settings syncing | ✅ Confirmed |
 | Meal library syncing | ✅ Fixed (Issue 8) |
-| Sign out → sign in → data restores | ✅ Confirmed (Chrome desktop) |
-| GitHub Pages deployment | ✅ Deployed |
-| Phone test (GitHub Pages) | ⏳ Pending — Google origin propagation delay |
+| Sign out → sign in → data restores | ✅ Confirmed (Chrome desktop + phone) |
+| GitHub Pages deployment | ✅ Deployed (`badbadbadbadger.github.io/Fuel-logging/`) |
+| Phone test (GitHub Pages) | ✅ Validated — sign-in, migration, restore all confirmed on device |
 | Edge browser support | ⚠️ Works on deployed app; local testing requires Chrome |
 
+**Phase 2 fully validated on real hardware (2026-04-27).** All sync paths confirmed working end-to-end on phone.
+
+**Root cause of phone Google auth failure:** Google Cloud Console had `badbadbadbadbadger.github.io` (4 "bad"s) instead of `badbadbadbadger.github.io` (3 "bad"s + "badger" — matches GitHub username `BadBadBadBadger`). Fixed by correcting all authorized origins and redirect URIs.
+
 ### Before going live checklist
-- [ ] Run cleanup SQL to wipe test data from Supabase
-- [ ] Test sign-in on phone (Chrome browser, not installed PWA)
-- [ ] Confirm data migrates from phone localStorage to Supabase on first sign-in
+- [ ] Run cleanup SQL to wipe test data from Supabase (harness + desktop test sessions)
+- [x] Test sign-in on phone (Chrome browser, not installed PWA)
+- [x] Confirm data migrates from phone localStorage to Supabase on first sign-in
 - [ ] Reinstall PWA on phone after confirming browser flow works
 - [ ] Consider Phase 3 (real payments) before public launch
