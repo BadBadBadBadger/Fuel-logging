@@ -8,6 +8,12 @@ var exports = window.exports || {};
 
 const A = "#a3ff4b", BG = "#0b0d0b", CARD = "#111311", BD = "#1c201c";
 
+// ── Auth / Premium ────────────────────────────────────────────
+// Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
+// Leave empty ("") to skip Google Sign In and go straight to voucher entry (dev mode).
+const GOOGLE_CLIENT_ID = "922818167366-5nl6qfteipui307j1oi7asu7d3bkgvat.apps.googleusercontent.com";
+const VOUCHER_CODE     = "FreeFoodTips2026";
+
 const MODES = {
   cut:      { label:"CUT",      color:"#4b9fff", adj:-500 },
   maintain: { label:"MAINTAIN", color:"#a3ff4b", adj:0    },
@@ -176,6 +182,226 @@ const ss = async (k, v) => {
   try { await window.storage.set(k, v); } catch(e) {}
 };
 
+const parseJwt = token => {
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))); }
+  catch(e) { return {}; }
+};
+
+// ── Supabase cloud sync ───────────────────────────────────────
+const sb = () => window.supabaseClient;
+
+const syncUpsert = async (table, rows, conflict) => {
+  if (!sb() || !rows?.length) return;
+  try { await sb().from(table).upsert(rows, { onConflict: conflict }); } catch(e) {}
+};
+
+const syncFoodLogs = async (uid, date, logs) => {
+  if (!uid || !navigator.onLine) return;
+  try { await sb().from("food_logs").delete().eq("user_id", uid).eq("date", date); } catch(e) {}
+  if (!logs.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("food_logs",
+    logs.map(l => ({ user_id:uid, date, entry_id:l.id, name:l.name,
+      kcal:l.kcal, protein:l.protein, carbs:l.carbs, fat:l.fat,
+      time:l.time||null, updated_at:now })),
+    "user_id,entry_id");
+};
+
+const syncWater = async (uid, date, glasses) => {
+  if (!uid || !navigator.onLine) return;
+  await syncUpsert("water_logs",
+    [{ user_id:uid, date, glasses, updated_at:new Date().toISOString() }], "user_id,date");
+};
+
+const syncWorkouts = async (uid, date, ws) => {
+  if (!uid || !navigator.onLine) return;
+  try { await sb().from("workouts").delete().eq("user_id", uid).eq("date", date); } catch(e) {}
+  if (!ws.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("workouts",
+    ws.map(w => ({ user_id:uid, date, entry_id:w.id, type:w.type,
+      duration:w.duration, intensity:w.intensity, kcal:w.kcal||0,
+      time:w.time||null, notes:w.notes||null, updated_at:now })),
+    "user_id,entry_id");
+};
+
+const syncProfile = async (uid, p) => {
+  if (!uid || !navigator.onLine || !p) return;
+  try {
+    await sb().from("profiles").upsert({
+      id:uid, weight:p.weight, height:p.height,
+      body_fat:p.bodyFat, sex:p.sex||null, updated_at:new Date().toISOString()
+    });
+  } catch(e) {}
+};
+
+const syncWeighIns = async (uid, wis) => {
+  if (!uid || !navigator.onLine || !wis?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("weigh_ins",
+    wis.map(w => ({ user_id:uid, date:w.date, weight:w.weight, updated_at:now })),
+    "user_id,date");
+};
+
+const syncSettings = async (uid, mode, tdeeAdj, customKcal, acked) => {
+  if (!uid || !navigator.onLine) return;
+  try {
+    await sb().from("settings").upsert({
+      id:uid, mode:mode||"cut", tdee_adj:tdeeAdj||0,
+      custom_kcal:customKcal||null, aggressive_cut_acked:!!acked,
+      updated_at:new Date().toISOString()
+    });
+  } catch(e) {}
+};
+
+const syncMeals = async (uid, meals) => {
+  if (!uid || !navigator.onLine) return;
+  const now = new Date().toISOString();
+  await syncUpsert("meal_library",
+    meals.map(m => ({ user_id:uid, name:m.name, kcal:m.kcal,
+      protein:m.protein, carbs:m.carbs, fat:m.fat, updated_at:now })),
+    "user_id,name");
+};
+
+const syncBadges = async (uid, keys) => {
+  if (!uid || !navigator.onLine || !keys?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("badges",
+    keys.map(badge_key => ({ user_id:uid, badge_key, updated_at:now })),
+    "user_id,badge_key");
+};
+
+const syncHistory = async (uid, hist) => {
+  if (!uid || !navigator.onLine || !hist?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("history_snapshots",
+    hist.map(h => ({ user_id:uid, date:h.date, mode:h.mode, kcal:h.kcal,
+      protein:h.protein, carbs:h.carbs, fat:h.fat,
+      water:h.water||0, training:h.training||false, updated_at:now })),
+    "user_id,date");
+};
+
+const migrateLocalToSupabase = async uid => {
+  const migKey = "sync_migrated__" + uid;
+  if (localStorage.getItem(migKey)) return;
+  try {
+    const pv = await sg("profile");
+    if (pv) await syncProfile(uid, JSON.parse(pv));
+    const wiv = await sg("weighins");
+    if (wiv) await syncWeighIns(uid, JSON.parse(wiv));
+    const m  = await sg("mode__" + todayKey()) || "cut";
+    const ta = parseInt(await sg("tdee_adj") || "0") || 0;
+    const ck = await sg("target_kcal");
+    const ak = await sg("aggressive_cut_acked");
+    await syncSettings(uid, m, ta, ck ? parseInt(ck) : null, !!ak);
+    const mv = await sg("meals");
+    if (mv) await syncMeals(uid, JSON.parse(mv));
+    const bv = await sg("badges");
+    if (bv) await syncBadges(uid, JSON.parse(bv));
+    const hv = await sg("history");
+    if (hv) {
+      const hist = JSON.parse(hv);
+      await syncHistory(uid, hist);
+      for (const snap of hist) {
+        if (snap.logs?.length) await syncFoodLogs(uid, snap.date, snap.logs);
+        if (snap.water)        await syncWater(uid, snap.date, snap.water);
+      }
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("workouts__")) {
+        const v = localStorage.getItem(key);
+        if (v) await syncWorkouts(uid, key.replace("workouts__", ""), JSON.parse(v));
+      }
+    }
+    localStorage.setItem(migKey, "1");
+  } catch(e) {}
+};
+
+const pullFromSupabase = async uid => {
+  if (!uid || !navigator.onLine) return {};
+  try {
+    const [profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR] = await Promise.all([
+      sb().from("profiles").select("*").eq("id", uid).maybeSingle(),
+      sb().from("weigh_ins").select("*").eq("user_id", uid).order("date"),
+      sb().from("settings").select("*").eq("id", uid).maybeSingle(),
+      sb().from("meal_library").select("*").eq("user_id", uid),
+      sb().from("badges").select("badge_key").eq("user_id", uid),
+      sb().from("history_snapshots").select("*").eq("user_id", uid).order("date"),
+      sb().from("food_logs").select("*").eq("user_id", uid).order("date"),
+      sb().from("water_logs").select("*").eq("user_id", uid).order("date"),
+      sb().from("workouts").select("*").eq("user_id", uid).order("date"),
+    ]);
+    const result = {};
+    if (profR.data) {
+      const p = { weight:profR.data.weight, height:profR.data.height,
+        bodyFat:profR.data.body_fat, sex:profR.data.sex };
+      await ss("profile", JSON.stringify(p));
+      result.profile = p;
+    }
+    if (weighR.data?.length) {
+      const wi = weighR.data.map(r => ({ date:r.date, weight:Number(r.weight) }));
+      await ss("weighins", JSON.stringify(wi));
+      result.weighIns = wi;
+    }
+    if (settR.data) {
+      const s = settR.data;
+      if (s.mode)                 await ss("mode__" + todayKey(), s.mode);
+      if (s.tdee_adj != null)     await ss("tdee_adj", String(s.tdee_adj));
+      if (s.custom_kcal != null)  await ss("target_kcal", String(s.custom_kcal));
+      if (s.aggressive_cut_acked) await ss("aggressive_cut_acked", "1");
+      result.settings = s;
+    }
+    if (mealsR.data?.length) {
+      const meals = mealsR.data.map(m => ({ name:m.name, kcal:Number(m.kcal),
+        protein:Number(m.protein), carbs:Number(m.carbs), fat:Number(m.fat) }));
+      await ss("meals", JSON.stringify(meals));
+      result.meals = meals;
+    }
+    if (badgesR.data?.length) {
+      const keys = badgesR.data.map(b => b.badge_key);
+      await ss("badges", JSON.stringify(keys));
+      result.badges = keys;
+    }
+    const foodByDate = {};
+    if (foodR.data) {
+      for (const f of foodR.data) {
+        if (!foodByDate[f.date]) foodByDate[f.date] = [];
+        foodByDate[f.date].push({ id:f.entry_id, name:f.name, kcal:Number(f.kcal),
+          protein:Number(f.protein), carbs:Number(f.carbs), fat:Number(f.fat), time:f.time });
+      }
+    }
+    const waterByDate = {};
+    if (waterR.data) for (const w of waterR.data) waterByDate[w.date] = w.glasses;
+    if (histR.data?.length) {
+      const fullHist = histR.data.map(h => ({
+        date:h.date, mode:h.mode, kcal:h.kcal, protein:h.protein,
+        carbs:h.carbs, fat:h.fat, training:h.training,
+        water: waterByDate[h.date] ?? h.water ?? 0,
+        logs:  foodByDate[h.date] || []
+      }));
+      await ss("history", JSON.stringify(fullHist));
+      for (const snap of fullHist) {
+        await ss("logs__"  + snap.date, JSON.stringify(snap.logs || []));
+        await ss("water__" + snap.date, String(snap.water || 0));
+      }
+      result.history = fullHist;
+    }
+    if (workR.data?.length) {
+      const byDate = {};
+      for (const w of workR.data) {
+        if (!byDate[w.date]) byDate[w.date] = [];
+        byDate[w.date].push({ id:w.entry_id, type:w.type,
+          duration:w.duration, intensity:w.intensity, kcal:w.kcal,
+          time:w.time, notes:w.notes });
+      }
+      for (const [d, ws] of Object.entries(byDate)) await ss("workouts__" + d, JSON.stringify(ws));
+      result.workouts = byDate;
+    }
+    return result;
+  } catch(e) { return {}; }
+};
+
 // ── Data migrations ───────────────────────────────────────────
 // Bump SCHEMA_VERSION and add a migration block each time the stored
 // data shape changes. runMigrations() is called once on startup.
@@ -236,6 +462,223 @@ class ErrorBoundary extends React.Component {
     );
     return this.props.children;
   }
+}
+
+// ── Premium Modals ────────────────────────────────────────────
+
+function PremiumModal({ feature, onUpgrade, onDismiss }) {
+  const emoji = feature ? feature.emoji : "⭐";
+  const name  = feature ? feature.name  : "This feature";
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, padding:24 }}>
+      <div style={{ background:CARD, borderRadius:24, padding:"36px 28px", textAlign:"center",
+        border:`1px solid ${A}44`, maxWidth:300, width:"100%" }}>
+        <div style={{ fontSize:64, marginBottom:10 }}>{emoji}</div>
+        <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>PREMIUM FEATURE</div>
+        <div style={{ fontSize:20, fontWeight:900, color:"#d8e8d0", marginBottom:8 }}>{name}</div>
+        <div style={{ fontSize:13, color:"#556050", lineHeight:1.6, marginBottom:16 }}>
+          AI features require a Premium account
+        </div>
+        <div style={{ background:"#0b0d0b", borderRadius:12, padding:"14px 16px", marginBottom:20, textAlign:"left" }}>
+          <div style={{ fontSize:10, color:A, fontWeight:800, letterSpacing:"0.1em", marginBottom:10 }}>PREMIUM UNLOCKS</div>
+          {[
+            ["🤖", "AI Meal Log — describe any meal"],
+            ["🏋️", "Workout AI Parser — paste and analyse"],
+            ["🧑‍💼", "Daily Coach — personalised tips"],
+            ["☁️",  "Cloud sync — log on any device"],
+          ].map(([e, t], i) => (
+            <div key={i} style={{ display:"flex", gap:10, marginBottom:6, alignItems:"center" }}>
+              <span style={{ fontSize:15, flexShrink:0 }}>{e}</span>
+              <span style={{ fontSize:12, color:"#8aaa80", lineHeight:1.4 }}>{t}</span>
+            </div>
+          ))}
+          <div style={{ fontSize:11, color:"#445040", marginTop:10, borderTop:`1px solid ${BD}`, paddingTop:10 }}>
+            £4.99/month · £49.99/year · 30-day free trial
+          </div>
+        </div>
+        <button onClick={onUpgrade}
+          style={{ width:"100%", padding:"14px", background:A, color:"#0b0d0b",
+            border:"none", borderRadius:12, fontSize:14, fontWeight:900, marginBottom:10 }}>
+          Start Free Trial 🚀
+        </button>
+        <button onClick={onDismiss}
+          style={{ width:"100%", padding:"10px", background:"none", color:"#445040",
+            border:"none", fontSize:13, cursor:"pointer" }}>
+          Maybe Later
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SignInModal({ onSuccess, onCancel }) {
+  const devMode = !GOOGLE_CLIENT_ID;
+  const [step,   setStep]   = useState(devMode ? "payment" : "google");
+  const [gUser,  setGUser]  = useState(devMode ? { name:"Guest", email:"", picture:"" } : null);
+  const [voucher, setVoucher] = useState("");
+  const [vError,  setVError]  = useState("");
+
+  useEffect(() => {
+    if (step !== "google" || devMode || typeof google === "undefined") return;
+    try {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async resp => {
+          try {
+            const { data, error } = await sb().auth.signInWithIdToken({ provider: "google", token: resp.credential });
+            if (error) throw error;
+            const u = data.session.user;
+            setGUser({ id: u.id, name: u.user_metadata.full_name || "User",
+              email: u.email || "", picture: u.user_metadata.avatar_url || "" });
+          } catch(e) {
+            const p = parseJwt(resp.credential);
+            setGUser({ name: p.name || "User", email: p.email || "", picture: p.picture || "" });
+          }
+          setStep("payment");
+        },
+        auto_select: false,
+        cancel_on_tap_outside: false,
+      });
+      const el = document.getElementById("gsi-btn");
+      if (el) google.accounts.id.renderButton(el, { theme:"outline", size:"large", width:252, text:"continue_with" });
+    } catch(e) {}
+  }, [step]); // eslint-disable-line
+
+  const handleVoucher = () => {
+    if (voucher.trim().toUpperCase() === VOUCHER_CODE.toUpperCase()) {
+      onSuccess(gUser || { name:"Guest", email:"", picture:"" }, "voucher");
+    } else {
+      setVError("That code isn't right — check the spelling and try again.");
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24 }}>
+      <div style={{ background:CARD, borderRadius:24, padding:"32px 24px",
+        border:`1px solid ${A}33`, maxWidth:300, width:"100%" }}>
+
+        {step === "google" && (
+          <>
+            <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>🔐</div>
+            <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", textAlign:"center", marginBottom:6 }}>
+              Sign in to continue
+            </div>
+            <div style={{ fontSize:13, color:"#445040", textAlign:"center", lineHeight:1.6, marginBottom:24 }}>
+              We use Google Sign In to protect your account. No separate password needed.
+            </div>
+            <div id="gsi-btn" style={{ display:"flex", justifyContent:"center", marginBottom:14 }}></div>
+            <button onClick={onCancel}
+              style={{ width:"100%", padding:"10px", background:"none", color:"#445040",
+                border:"none", fontSize:13, cursor:"pointer" }}>
+              Cancel
+            </button>
+          </>
+        )}
+
+        {step === "payment" && (
+          <>
+            <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
+              👋 HI, {((gUser?.name || "").split(" ")[0] || "THERE").toUpperCase()}
+            </div>
+            <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", marginBottom:14 }}>
+              Start your free trial
+            </div>
+            <div style={{ background:"#0b0d0b", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+              <div style={{ fontSize:17, fontWeight:900, color:A }}>30 days free</div>
+              <div style={{ fontSize:12, color:"#445040", marginTop:3 }}>then £4.99/month or £49.99/year</div>
+              <div style={{ fontSize:11, color:"#334a30", marginTop:6 }}>Cancel anytime before trial ends</div>
+            </div>
+            <button disabled
+              style={{ width:"100%", padding:"14px", background:"#1c201c",
+                border:`1px solid ${BD}`, borderRadius:12, color:"#445040",
+                fontSize:13, fontWeight:700, marginBottom:16, cursor:"not-allowed" }}>
+              Subscribe — Coming Soon
+            </button>
+            <div style={{ fontSize:11, color:"#556050", textAlign:"center", marginBottom:8 }}>Have an access code?</div>
+            <input value={voucher} onChange={e => { setVoucher(e.target.value); setVError(""); }}
+              placeholder="Enter code..." onKeyDown={e => e.key === "Enter" && handleVoucher()}
+              style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
+                border:`1px solid ${vError ? "#ff5555" : BD}`, borderRadius:10,
+                padding:"12px 14px", color:"#d8e8d0", fontSize:14,
+                fontFamily:"inherit", outline:"none", marginBottom: vError ? 6 : 10 }}/>
+            {vError && <div style={{ fontSize:12, color:"#ff5555", marginBottom:10 }}>{vError}</div>}
+            <button onClick={handleVoucher}
+              style={{ width:"100%", padding:"12px", background:"#161a16",
+                border:`1px solid ${BD}`, borderRadius:12, color:"#8aaa80",
+                fontSize:13, fontWeight:700, marginBottom:10 }}>
+              Redeem Code
+            </button>
+            <button onClick={onCancel}
+              style={{ width:"100%", padding:"10px", background:"none",
+                color:"#445040", border:"none", fontSize:13, cursor:"pointer" }}>
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SignOutModal({ userName, onConfirm, onCancel }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24 }}>
+      <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
+        border:`1px solid ${BD}`, maxWidth:300, width:"100%" }}>
+        <div style={{ fontSize:36, textAlign:"center", marginBottom:12 }}>🔓</div>
+        <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", textAlign:"center", marginBottom:10 }}>
+          Sign out{userName ? `, ${userName.split(" ")[0]}` : ""}?
+        </div>
+        <div style={{ fontSize:13, color:"#556050", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
+          Signing out will remove local data.<br/>
+          Your cloud data is safe and will restore on next login.
+        </div>
+        <button onClick={onConfirm}
+          style={{ width:"100%", padding:"13px", background:"#1a0d0d",
+            border:"1px solid #3a1a1a", borderRadius:12, color:"#ff5555",
+            fontSize:14, fontWeight:900, marginBottom:10 }}>
+          Sign Out
+        </button>
+        <button onClick={onCancel}
+          style={{ width:"100%", padding:"12px", background:A, color:"#0b0d0b",
+            border:"none", borderRadius:12, fontSize:14, fontWeight:900 }}>
+          Stay Signed In
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LapsedModal({ onRenew, onDismiss }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24 }}>
+      <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
+        border:"1px solid #ffb84b44", maxWidth:300, width:"100%" }}>
+        <div style={{ fontSize:40, textAlign:"center", marginBottom:12 }}>⌛</div>
+        <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", textAlign:"center", marginBottom:10 }}>
+          Your Premium subscription has ended
+        </div>
+        <div style={{ fontSize:13, color:"#556050", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
+          Your data is safe and still visible. Quick Add and logging still work.
+          Renew to unlock AI features and cloud sync.
+        </div>
+        <button onClick={onRenew}
+          style={{ width:"100%", padding:"13px", background:A, color:"#0b0d0b",
+            border:"none", borderRadius:12, fontSize:14, fontWeight:900, marginBottom:10 }}>
+          Renew Premium
+        </button>
+        <button onClick={onDismiss}
+          style={{ width:"100%", padding:"11px", background:"none",
+            color:"#445040", border:"none", fontSize:13, cursor:"pointer" }}>
+          Continue for Free
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ── Shared UI ─────────────────────────────────────────────────
@@ -745,7 +1188,7 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger({ workouts, onAdd, onRemove, prof }) {
+function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGate }) {
   const [type,      setType]      = useState("legs");
   const [dur,       setDur]       = useState(45);
   const [intensity, setIntensity] = useState("moderate");
@@ -837,10 +1280,11 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof }) {
                 border:"none", borderRadius:10, fontSize:12, fontWeight:900, cursor:"pointer", letterSpacing:"0.06em" }}>
               + LOG WORKOUT
             </button>
-            <button onClick={() => setHevyMode(true)}
-              style={{ padding:"10px 14px", background:"#0b0d0b", border:`1px solid ${A}33`,
-                borderRadius:10, color:A, fontSize:12, fontWeight:700, cursor:"pointer" }}>
-              📋 Paste log
+            <button onClick={() => isPremium ? setHevyMode(true) : onPremiumGate && onPremiumGate({ emoji:"🏋️", name:"Workout AI Parser" })}
+              style={{ padding:"10px 14px", background:"#0b0d0b",
+                border:`1px solid ${isPremium ? A + "33" : BD}`,
+                borderRadius:10, color: isPremium ? A : "#445040", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              📋 {isPremium ? "Paste log" : "Paste log ⭐"}
             </button>
           </div>
         </>
@@ -898,7 +1342,11 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
-  aggressiveCutAcked, onAckAggressiveCut }) {
+  aggressiveCutAcked, onAckAggressiveCut,
+  authState, authUser, onPremiumGate, onSignOut,
+  isOnline, syncMsg }) {
+
+  const isPremium = authState === "premium";
 
   const overAmt    = Math.round(totals.kcal - targets.kcal);
   const pct        = Math.min(100, (totals.kcal / targets.kcal) * 100);
@@ -954,6 +1402,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           <p style={{ margin:"4px 0 0", fontSize:12, color:"#445040", letterSpacing:"0.06em" }}>
             {new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"short" }).toUpperCase()}
           </p>
+          {!isOnline && <div style={{ marginTop:4, fontSize:10, color:"#ffb84b", fontWeight:700, letterSpacing:"0.06em" }}>OFFLINE</div>}
+          {syncMsg   && <div style={{ marginTop:2,  fontSize:10, color:"#445040" }}>{syncMsg}</div>}
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && (
@@ -969,6 +1419,19 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"#131a11",
             border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:14,
             display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</button>
+          {isPremium && (
+            <button onClick={onSignOut}
+              style={{ width:34, height:34, background:`${A}18`,
+                border:`1px solid ${A}44`, borderRadius:10,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                overflow:"hidden", padding:0 }}>
+              {authUser?.picture
+                ? <img src={authUser.picture} width={34} height={34} style={{ display:"block", borderRadius:10 }} alt=""/>
+                : <span style={{ fontSize:13, fontWeight:900, color:A }}>
+                    {(authUser?.name || "P")[0].toUpperCase()}
+                  </span>}
+            </button>
+          )}
         </div>
       </div>
 
@@ -990,7 +1453,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       </div>
 
       {/* Workout logger */}
-      <WorkoutLogger workouts={workouts} onAdd={onAddWorkout} onRemove={onRemoveWorkout} prof={prof}/>
+      <WorkoutLogger workouts={workouts} onAdd={onAddWorkout} onRemove={onRemoveWorkout} prof={prof}
+        isPremium={isPremium} onPremiumGate={onPremiumGate}/>
 
       {!hasProfile && (
         <button onClick={() => setView("profile")}
@@ -1127,7 +1591,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       </div>
 
       {/* Coach tip */}
-      <CoachCard key={coachKey} mode={mode} totals={totals} targets={targets} streak={streak} water={water}/>
+      {isPremium && <CoachCard key={coachKey} mode={mode} totals={totals} targets={targets} streak={streak} water={water}/>}
 
       {/* Water */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
@@ -1164,14 +1628,21 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       {/* Add food */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
         {[
-          { e:"🤖", l:"AI LOG",    s:"describe it",   v:"ai"     },
-          { e:"⚡",  l:"QUICK ADD", s:"preset meals",  v:"quick"  },
-          { e:"🔍", l:"SEARCH",    s:"food database",  v:"search" },
+          { e:"🤖", l:"AI LOG",    s: isPremium ? "describe it"   : "premium ⭐", v:"ai",    premium:true  },
+          { e:"⚡",  l:"QUICK ADD", s:"preset meals",                              v:"quick", premium:false },
+          { e:"🔍", l:"SEARCH",    s:"food database",                             v:"search",premium:false },
         ].map(b => (
-          <button key={b.v} onClick={() => setView(b.v)}
-            style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:16, padding:"16px 8px", textAlign:"center" }}>
+          <button key={b.v}
+            onClick={() => b.premium && !isPremium
+              ? onPremiumGate({ emoji: b.e, name: b.l })
+              : setView(b.v)}
+            style={{ background:CARD,
+              border:`1px solid ${b.premium && !isPremium ? BD : BD}`,
+              borderRadius:16, padding:"16px 8px", textAlign:"center" }}>
             <div style={{ fontSize:22, marginBottom:5 }}>{b.e}</div>
-            <div style={{ fontSize:11, fontWeight:900, color:A, letterSpacing:"0.07em" }}>{b.l}</div>
+            <div style={{ fontSize:11, fontWeight:900,
+              color: b.premium && !isPremium ? "#445040" : A,
+              letterSpacing:"0.07em" }}>{b.l}</div>
             <div style={{ fontSize:10, color:"#334030", marginTop:3 }}>{b.s}</div>
           </button>
         ))}
@@ -2134,6 +2605,24 @@ function App() {
   const [customKcal,       setCustomKcal]       = useState(null);
   const [aggressiveCutAcked, setAggressiveCutAcked] = useState(false);
 
+  // ── Auth state ────────────────────────────────────────────────
+  const [authState,   setAuthState]   = useState("anonymous");
+  const [authUser,    setAuthUser]    = useState(null);
+  const [premiumGate, setPremiumGate] = useState(null); // {emoji, name} | null
+  const [showSignIn,  setShowSignIn]  = useState(false);
+  const [showSignOut, setShowSignOut] = useState(false);
+  const [showLapsed,  setShowLapsed]  = useState(false);
+  const [isOnline,    setIsOnline]    = useState(navigator.onLine);
+  const [syncMsg,     setSyncMsg]     = useState("");
+
+  useEffect(() => {
+    const up   = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener("online",  up);
+    window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []); // eslint-disable-line
+
   // Expose dev refresh hook for test harness
   useEffect(() => {
     window.__devRefreshCoach = () => {
@@ -2159,6 +2648,43 @@ function App() {
       const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
       const ckv = await sg("target_kcal"); if (ckv) { const n = parseInt(ckv); if (n > 0) setCustomKcal(n); }
       const acv = await sg("aggressive_cut_acked"); if (acv) setAggressiveCutAcked(true);
+
+      // Auth — load premium state and check expiry
+      const asv = await sg("auth_state");
+      const auv = await sg("auth_user");
+      if (asv === "premium" && auv) {
+        const u = JSON.parse(auv);
+        if (u.subExpiry && Date.now() > u.subExpiry) {
+          await ss("auth_state", "anonymous");
+          setShowLapsed(true);
+        } else {
+          setAuthState("premium");
+          setAuthUser(u);
+          // Background pull — app shows immediately from local, Supabase data merges in
+          if (u.id && navigator.onLine) {
+            pullFromSupabase(u.id).then(pulled => {
+              if (pulled.profile)  setProf(pulled.profile);
+              if (pulled.weighIns) setWeighIns(pulled.weighIns);
+              if (pulled.meals)    setMeals(pulled.meals);
+              if (pulled.badges)   setEarnedBdgs(pulled.badges);
+              if (pulled.settings) {
+                if (pulled.settings.mode)                 setMode(pulled.settings.mode);
+                if (pulled.settings.tdee_adj != null)     setTdeeAdj(Number(pulled.settings.tdee_adj));
+                if (pulled.settings.custom_kcal != null)  setCustomKcal(Number(pulled.settings.custom_kcal));
+                if (pulled.settings.aggressive_cut_acked) setAggressiveCutAcked(true);
+              }
+              if (pulled.history) {
+                setHist(pulled.history);
+                const tod = todayKey();
+                const snap = pulled.history.find(h => h.date === tod);
+                if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
+              }
+              if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+            }).catch(() => {});
+          }
+        }
+      }
+
       setReady(true);
     };
     load();
@@ -2186,14 +2712,41 @@ function App() {
       setEarnedBdgs(updated);
       ss("badges", JSON.stringify(updated));
       setNewBadge(newlyEarned[0]);
+      if (authState === "premium" && authUser?.id)
+        syncBadges(authUser.id, updated).catch(() => {});
     }
   }, [hist]); // eslint-disable-line
 
-  const saveLogs     = async l => { setLogs(l);     await ss("logs__"     + todayKey(), JSON.stringify(l)); };
-  const saveWater    = async w => { setWater(w);    await ss("water__"    + todayKey(), String(w));         };
-  const saveMode     = async m => { setMode(m);     await ss("mode__"     + todayKey(), m);                 };
-  const saveProf     = async p => { setProf(p);     await ss("profile",                JSON.stringify(p)); };
-  const saveWorkouts = async w => { setWorkouts(w); await ss("workouts__" + todayKey(), JSON.stringify(w)); };
+  const saveLogs = async l => {
+    setLogs(l);
+    await ss("logs__" + todayKey(), JSON.stringify(l));
+    if (authState === "premium" && authUser?.id)
+      syncFoodLogs(authUser.id, todayKey(), l).catch(() => {});
+  };
+  const saveWater = async w => {
+    setWater(w);
+    await ss("water__" + todayKey(), String(w));
+    if (authState === "premium" && authUser?.id)
+      syncWater(authUser.id, todayKey(), w).catch(() => {});
+  };
+  const saveMode = async m => {
+    setMode(m);
+    await ss("mode__" + todayKey(), m);
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked).catch(() => {});
+  };
+  const saveProf = async p => {
+    setProf(p);
+    await ss("profile", JSON.stringify(p));
+    if (authState === "premium" && authUser?.id)
+      syncProfile(authUser.id, p).catch(() => {});
+  };
+  const saveWorkouts = async w => {
+    setWorkouts(w);
+    await ss("workouts__" + todayKey(), JSON.stringify(w));
+    if (authState === "premium" && authUser?.id)
+      syncWorkouts(authUser.id, todayKey(), w).catch(() => {});
+  };
 
   const addLog = async e => {
     const isFirstToday = logs.length === 0;
@@ -2227,16 +2780,30 @@ function App() {
     setCustomKcal(kcal);
     if (kcal == null) await ss("target_kcal", "");
     else              await ss("target_kcal", String(kcal));
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked).catch(() => {});
   };
 
   const handleSetMode = async m => {
     await saveMode(m);
     await saveCustomKcal(null);
+    // Sync once more with correct (m, null) pair to resolve any stale-closure race
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked).catch(() => {});
   };
 
   const handleAckAggressiveCut = async () => {
     setAggressiveCutAcked(true);
     await ss("aggressive_cut_acked", "1");
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, mode, tdeeAdj, customKcal, true).catch(() => {});
+  };
+
+  const saveMeals = async updated => {
+    setMeals(updated);
+    await ss("meals", JSON.stringify(updated));
+    if (authState === "premium" && authUser?.id)
+      syncMeals(authUser.id, updated).catch(() => {});
   };
 
   const addToQA = async entry => {
@@ -2246,9 +2813,76 @@ function App() {
       protein: Math.round(entry.protein * 10) / 10,
       carbs:   Math.round(entry.carbs   * 10) / 10,
       fat:     Math.round(entry.fat     * 10) / 10 };
-    const updated = [...meals, clean];
-    setMeals(updated);
-    await ss("meals", JSON.stringify(updated));
+    await saveMeals([...meals, clean]);
+  };
+
+  // ── Auth handlers ─────────────────────────────────────────────
+
+  const handleSignInSuccess = async (googleUser, grantedBy) => {
+    const user = {
+      id:        googleUser.id      || null,
+      name:      googleUser.name    || "User",
+      email:     googleUser.email   || "",
+      picture:   googleUser.picture || "",
+      grantedBy,
+      subExpiry: null, // null = no expiry (voucher phase); real payments will set this
+      since:     Date.now(),
+    };
+    setAuthUser(user);
+    setAuthState("premium");
+    await ss("auth_state", "premium");
+    await ss("auth_user",  JSON.stringify(user));
+    setShowSignIn(false);
+    setPremiumGate(null);
+
+    if (user.id && navigator.onLine) {
+      setSyncMsg("Syncing your data…");
+      try {
+        await migrateLocalToSupabase(user.id);
+        const pulled = await pullFromSupabase(user.id);
+        if (pulled.profile)  setProf(pulled.profile);
+        if (pulled.weighIns) setWeighIns(pulled.weighIns);
+        if (pulled.meals)    setMeals(pulled.meals);
+        if (pulled.badges)   setEarnedBdgs(pulled.badges);
+        if (pulled.settings) {
+          if (pulled.settings.mode)                 setMode(pulled.settings.mode);
+          if (pulled.settings.tdee_adj != null)     setTdeeAdj(Number(pulled.settings.tdee_adj));
+          if (pulled.settings.custom_kcal != null)  setCustomKcal(Number(pulled.settings.custom_kcal));
+          if (pulled.settings.aggressive_cut_acked) setAggressiveCutAcked(true);
+        }
+        if (pulled.history) {
+          setHist(pulled.history);
+          const tod = todayKey();
+          const snap = pulled.history.find(h => h.date === tod);
+          if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
+        }
+        if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+      } catch(e) {}
+      setSyncMsg("");
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (sb()) { try { await sb().auth.signOut(); } catch(e) {} }
+    const clearKeys = ["auth_state","auth_user","profile","meals","history","badges",
+      "weighins","tdee_adj","target_kcal","aggressive_cut_acked"];
+    for (const k of clearKeys) await ss(k, "");
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("logs__") || key.startsWith("water__") ||
+            key.startsWith("workouts__") || key.startsWith("mode__") ||
+            key.startsWith("coach__")    || key.startsWith("streak_anim__") ||
+            key.startsWith("sync_migrated__"))) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch(e) {}
+    setAuthState("anonymous"); setAuthUser(null);
+    setLogs([]); setWater(0); setMode("cut"); setProf(null);
+    setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
+    setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setCustomKcal(null);
+    setShowSignOut(false);
   };
 
   useEffect(() => {
@@ -2264,6 +2898,8 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(upd);
     ss("history", JSON.stringify(upd));
+    if (authState === "premium" && authUser?.id)
+      syncHistory(authUser.id, upd).catch(() => {});
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   const updateDay = async upd => {
@@ -2271,6 +2907,10 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(nh);
     await ss("history", JSON.stringify(nh));
+    if (authState === "premium" && authUser?.id) {
+      syncHistory(authUser.id, nh).catch(() => {});
+      if (upd.logs) syncFoodLogs(authUser.id, upd.date, upd.logs).catch(() => {});
+    }
   };
 
   const onWeighIn = async weight => {
@@ -2279,6 +2919,8 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setWeighIns(updated);
     await ss("weighins", JSON.stringify(updated));
+    if (authState === "premium" && authUser?.id)
+      syncWeighIns(authUser.id, updated).catch(() => {});
 
     // Sync profile weight so targets recalculate immediately
     const updatedProf = { ...(prof || DEF_PROFILE), weight };
@@ -2291,6 +2933,8 @@ function App() {
       const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
       setTdeeAdj(newAdj);
       await ss("tdee_adj", String(newAdj));
+      if (authState === "premium" && authUser?.id)
+        syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked).catch(() => {});
     }
   };
 
@@ -2344,6 +2988,30 @@ function App() {
       {/* Streak celebration */}
       {streakAnim && <StreakCelebration anim={streakAnim} onDone={() => setStreakAnim(null)} />}
 
+      {/* Auth modals */}
+      {premiumGate && !showSignIn && (
+        <PremiumModal
+          feature={premiumGate}
+          onUpgrade={() => setShowSignIn(true)}
+          onDismiss={() => setPremiumGate(null)}/>
+      )}
+      {showSignIn && (
+        <SignInModal
+          onSuccess={handleSignInSuccess}
+          onCancel={() => { setShowSignIn(false); setPremiumGate(null); }}/>
+      )}
+      {showSignOut && (
+        <SignOutModal
+          userName={authUser?.name}
+          onConfirm={handleSignOut}
+          onCancel={() => setShowSignOut(false)}/>
+      )}
+      {showLapsed && (
+        <LapsedModal
+          onRenew={() => { setShowLapsed(false); setShowSignIn(true); }}
+          onDismiss={() => setShowLapsed(false)}/>
+      )}
+
       {/* Badge celebration */}
       {newBadge && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
@@ -2373,10 +3041,14 @@ function App() {
           coachKey={coachKey}
           workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}
           customKcal={customKcal} onSetCustomKcal={saveCustomKcal} isCustomMode={customKcal != null}
-          aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}/>}
+          aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}
+          authState={authState} authUser={authUser}
+          onPremiumGate={feature => setPremiumGate(feature)}
+          onSignOut={() => setShowSignOut(true)}
+          isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={setMeals}/>}
+      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
