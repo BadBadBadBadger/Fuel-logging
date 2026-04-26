@@ -1,7 +1,7 @@
-const CACHE = "fuel-log-v23";
+const CACHE = "fuel-log-v24";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./app.js",
   "./vendor/react.js", "./vendor/react-dom.js",
-  "./vendor/prop-types.js", "./vendor/recharts.js"];
+  "./vendor/prop-types.js", "./vendor/recharts.js", "./vendor/supabase.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
