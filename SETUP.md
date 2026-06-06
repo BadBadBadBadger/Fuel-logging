@@ -16,7 +16,10 @@ fuel-log/
 ├── dev-server.js        ← Local dev server (node dev-server.js).
 ├── preview.html         ← Mobile preview harness (localhost:3000/preview.html).
 ├── seed-data.js         ← Dev-only: populates 6 months of realistic test data.
-├── vendor/              ← Vendored JS bundles (React, ReactDOM, PropTypes, Recharts).
+├── vendor/              ← Vendored JS bundles (React, ReactDOM, PropTypes, Recharts, Supabase).
+├── candidate/           ← Standalone CDN-based shell (loads ../app.js); no service worker.
+├── setup/
+│   └── supabase-schema.sql ← Supabase tables + RLS policies for cloud sync.
 ├── features/
 │   └── fuel-log.feature ← Gherkin specs. Update before implementing any feature change.
 ├── __tests__/
@@ -71,6 +74,11 @@ node dev-server.js
 Then open **http://localhost:3000/preview.html** in your browser for a phone-frame preview with device size switchers (iPhone 14, Pixel 7, iPhone SE).
 
 The preview uses the same `localStorage` as the main page, so test data persists.
+
+> **Service worker on localhost:** As of v6.1 the service worker is **not** registered
+> on `localhost`/`127.0.0.1` (and any existing one is auto-unregistered). Local edits
+> always show on reload — no more stale cached bundles. The SW still runs normally in
+> production (GitHub Pages). See DOCS.md §36.
 
 ### Dev panel controls
 
@@ -197,9 +205,14 @@ The adjustment is capped at ±150 kcal per calibration run and ±600 kcal lifeti
 → Try a simpler search term (brand name or generic food)
 → Open Food Facts coverage varies by region — UK/EU products have better data
 
-**Old version showing after push**
+**Old version showing after push (production only)**
 → Bump `CACHE = "fuel-log-vN"` in `sw.js` to force service worker refresh
 → On mobile: hold the refresh button → Hard Reload
+→ (Local dev no longer caches — the SW is skipped on `localhost`. If a stale page
+  persists locally, DevTools → Application → Storage → Clear site data once.)
+
+**`chrome-error://chromewebdata/ ... Unsafe attempt to load URL` in console**
+→ The dev server isn't running. Start it with `node dev-server.js`.
 
 **Weigh-in not triggering calibration**
 → Need at least 8 weigh-ins total and 4 food-log days in the last 7 days

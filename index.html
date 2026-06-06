@@ -64,8 +64,16 @@
       delete: async k => { localStorage.removeItem(k); return { deleted: true }; },
     };
 
+    // Service worker — register in PRODUCTION only.
+    // On localhost/127.0.0.1 (or file://) the SW is skipped, and any existing
+    // registration is removed, so local dev never serves a stale cached bundle.
+    var SW_HOST_OK = !["localhost", "127.0.0.1", ""].includes(location.hostname);
+    if ("serviceWorker" in navigator && !SW_HOST_OK) {
+      navigator.serviceWorker.getRegistrations()
+        .then(regs => regs.forEach(r => r.unregister())).catch(() => {});
+    }
     // Service worker — register and handle update banner
-    if ("serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator && SW_HOST_OK) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js").then(reg => {
           const showBanner = waitingSW => {

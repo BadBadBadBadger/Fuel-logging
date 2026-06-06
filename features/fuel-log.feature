@@ -33,16 +33,16 @@ Feature: Sex setting on profile screen
 
 Feature: Calorie tolerance — forgiving colour logic
 
-  Scenario: Under calorie target — green
+  Scenario: Under calorie target — in range
     Given I have consumed less than my calorie target
-    Then the calorie display shows green
-    And the progress bar shows green
+    Then the calorie display shows the in-range accent colour
+    And the progress bar shows the in-range accent colour
     And no warning is shown
 
-  Scenario: Within 100 kcal over target — still green
+  Scenario: Within 100 kcal over target — still in range
     Given I have consumed between 0 and 100 kcal over my target
-    Then the calorie display stays green
-    And the progress bar stays green
+    Then the calorie display stays the in-range accent colour
+    And the progress bar stays the in-range accent colour
     And no over message is shown
 
   Scenario: 100–200 kcal over target — amber warning
@@ -83,7 +83,7 @@ Feature: Macro tolerance — forgiving colour logic
     Then the macro bar turns red (#ff5555)
     And the label turns red
 
-  Scenario: Macro under target by any amount — green
+  Scenario: Macro under target by any amount — in range
     Given a macro is under its target by more than 5g
     Then the macro bar stays the macro's own colour
     And no warning colour is shown
@@ -327,3 +327,43 @@ Feature: Tap to override daily calorie target
     Then the target updates to that preset's value
     And the custom override is cleared
     And the relevant preset button becomes active again
+
+
+Feature: Top-aligned navigation — pages open at the top
+
+  Scenario: Opening a screen scrolls it to the top
+    Given I have scrolled down on the dashboard
+    When I navigate to any other screen (Profile, History, Achievements, AI Log, Quick Add, Food Search)
+    Then the new screen is shown scrolled to the very top
+    And I do not have to scroll up to see its header
+
+  Scenario: Returning to the dashboard resets scroll
+    Given I am scrolled down inside History
+    When I tap back to return to the dashboard
+    Then the dashboard is shown from the top
+
+  Scenario: Sub-navigation within a screen does not jump to top
+    Given I am viewing a specific day inside History
+    When I page to the previous or next day
+    Then the scroll position is not forced back to the top
+
+Feature: Premium account avatar — Google profile picture with fallback
+
+  Scenario: Premium user with a Google profile picture
+    Given I am signed in as a premium user with a profile picture
+    Then the header shows my Google profile photo
+    And the image request is sent with no referrer so it is not blocked
+
+  Scenario: Profile picture fails to load
+    Given I am a premium user whose profile image fails to load
+    Then the avatar falls back to the first letter of my name in the accent colour
+    And no broken-image icon is shown
+
+  Scenario: Premium user without a picture
+    Given I am a premium user with no profile picture
+    Then the avatar shows the first letter of my name in the accent colour
+
+  Scenario: Tapping the avatar opens sign-out
+    Given I am a premium user
+    When I tap the avatar in the header
+    Then the sign-out confirmation modal opens

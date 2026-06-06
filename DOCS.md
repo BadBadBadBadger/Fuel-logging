@@ -1,6 +1,12 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.0 (Flexible targets, sex-aware calculations, streak celebration)
-**Last Updated:** April 2026
+**Version:** 6.1 (Cream-grey UI refresh, WCAG-AA readability, top-aligned navigation)
+**Last Updated:** June 2026
+
+> **What's new in 6.1** — The neon-lime palette was replaced with a warm cream-grey
+> theme; all text lifted to ≥WCAG-AA contrast; every screen now opens top-aligned;
+> the Google avatar is more robust (no-referrer + graceful fallback); and the
+> service worker is skipped on `localhost` for friction-free local dev. See
+> §35 Design System, §36 Local Development, and §37 Changelog.
 
 ---
 
@@ -37,8 +43,10 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 - No `<form>` tags — use `<div>` + onClick.
 - `BackHdr` must be `position:sticky` so back button stays visible on scroll.
 - All AI calls must go through `callAI` / `callAIJson` helpers — never call `fetch(AI_ENDPOINT)` directly.
-- Service worker bypasses `workers.dev`, `unpkg.com`, and `openfoodfacts.org`. Any new external API must be added to the bypass list in `sw.js`, otherwise POST responses get cached incorrectly and the feature silently returns HTML instead of JSON.
+- Service worker bypasses (current `sw.js` list): `api.anthropic.com`, `workers.dev`, `openfoodfacts.org`, `unpkg.com`, `accounts.google.com`, `googleapis.com`, `supabase.co`. Any new external API must be added to this bypass list, otherwise POST responses get cached incorrectly and the feature silently returns HTML instead of JSON.
+- The service worker only registers in **production**. On `localhost`/`127.0.0.1`/`file://` it is skipped and any existing registration is unregistered, so local dev never serves a stale bundle (see §36).
 - Only `useState` and `useEffect` are destructured from React as globals. `useMemo`, `useCallback`, etc. are **not** available as globals — access them via `React.useMemo(...)` if needed, or use the `useState` initialiser pattern for stable values.
+- Colours come from four central constants (`A`, `BG`, `CARD`, `BD`) plus a hard-coded cream-grey text/surface scale — see §35 before changing any colour.
 
 ---
 
@@ -184,6 +192,8 @@ cumulativeAdj  = clamp(cumulativeAdj + adj, -600, +600)        // lifetime cap
 | `streak_anim__YYYY-MM-DD` | `"1"` — set after the streak celebration plays, prevents replay same day |
 | `auth_state` | `"anonymous"` or `"premium"` — persists across reloads |
 | `auth_user` | JSON: `{name, email, picture, grantedBy, subExpiry, since}` — null/absent when anonymous |
+| `sync_migrated__<uid>` | `"1"` — set once a signed-in user's local data has been migrated to Supabase, prevents re-migrating on later sign-ins (premium only) |
+| `fuel_schema_v` | Integer string: stored data schema version (current `SCHEMA_VERSION = 1`); see §38 |
 
 ---
 
@@ -216,6 +226,10 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `showSignIn` | boolean | Whether the SignInModal is open |
 | `showSignOut` | boolean | Whether the SignOutModal is open |
 | `showLapsed` | boolean | Whether the LapsedModal is open (subscription expired on load) |
+| `isOnline` | boolean | Live network status (from `online`/`offline` events); drives sync behaviour |
+| `syncMsg` | string | Transient cloud-sync status message shown in the header |
+
+**Top-aligned navigation:** an effect in `App` watching `view` resets scroll to the top on every top-level screen change (`window.scrollTo(0,0)` + `document.scrollingElement.scrollTop = 0`), so each page opens at the top rather than inheriting the previous screen's scroll position. Sub-navigation within a screen (e.g. paging days in History) does **not** reset.
 
 ---
 
@@ -223,7 +237,8 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 
 | Component | Key props | Notes |
 |---|---|---|
-| `Dashboard` | `...existing... authState, authUser, onPremiumGate, onSignOut` | Shows all today's data; derives `isPremium = authState === "premium"`; gates AI LOG button and CoachCard; shows account avatar when premium |
+| `Dashboard` | `...existing... authState, authUser, onPremiumGate, onSignOut, isOnline, syncMsg` | Shows all today's data; derives `isPremium = authState === "premium"`; gates AI LOG button and CoachCard; renders `<Avatar>` in the header when premium |
+| `Avatar` | `user, size = 34` | Google profile pic with graceful fallback. Uses `referrerPolicy="no-referrer"` so `googleusercontent` images don't 403/429, and an `onError` handler that falls back to the user's initial (cream on dark) instead of a broken-image icon |
 | `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
 | `WorkoutLogger` | `workouts, onAdd, onRemove, prof, isPremium, onPremiumGate` | Paste log button calls `onPremiumGate` when `isPremium` is false; no UI change otherwise |
 | `CoachCard` | `mode, totals, targets, streak, water` | Only rendered when `isPremium` is true — no AI call is made for anonymous users |
@@ -247,13 +262,13 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 
 | Consumption vs target | Colour | Label |
 |---|---|---|
-| Any amount under | Green | REMAINING |
-| 0–100 kcal over | Green | REMAINING |
+| Any amount under | Accent cream (#e8e2d4) | REMAINING |
+| 0–100 kcal over | Accent cream (#e8e2d4) | REMAINING |
 | 100–200 kcal over | Amber (#ffb84b) | JUST OVER |
 | 200–500 kcal over | Amber (#ffb84b) | OVER BY |
 | 500+ kcal over | Red (#ff5555) | OVER BY |
 
-The 100 kcal green buffer prevents punishing small estimation errors.
+The 100 kcal "in-range" buffer prevents punishing small estimation errors. (Before the 6.1 refresh the in-range colour was neon lime; it is now the cream accent — see §35.)
 
 ### Macro display
 
@@ -280,7 +295,7 @@ When a custom kcal is set, the mode label updates automatically:
 | Custom kcal vs TDEE | Mode label colour |
 |---|---|
 | Below TDEE | CUT (blue) |
-| Equal to TDEE | MAINTAIN (green) |
+| Equal to TDEE | MAINTAIN (cream accent) |
 | Above TDEE | BULK (orange) |
 
 Preset buttons appear deselected while a custom target is active.
@@ -426,7 +441,7 @@ Searches Open Food Facts (millions of products, no API key). Parsing:
 The History screen supports:
 - **Range filters**: Day / 7 Days / 30 Days / 3 Months / 1 Year / All Time
 - **Macro charts**: Kcal, Protein, Carbs, Fat (line or bar)
-- **Weight chart**: Toggle ⚖️ Weight to see body weight trend. Shows daily readings (blue dots) + 7-day rolling average line (green) to cut through noise. Rolling avg requires ≥3 readings in the window.
+- **Weight chart**: Toggle ⚖️ Weight to see body weight trend. Shows daily readings (blue dots, #4b9fff) + 7-day rolling average line (cream accent, `A`) to cut through noise. Rolling avg requires ≥3 readings in the window.
 - **Weight trend summary**: First → last weight and total change shown in averages card
 - **Day view**: Full food log, macro pie chart, water, training toggle, add/remove entries, CSV export
 
@@ -460,15 +475,17 @@ Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them 
 
 | Group | Tests | What's covered |
 |---|---|---|
-| `calcTargets — Katch-McArdle` | 15 | BMR, TDEE, all modes, training bonus, session override, macros, carb floor, activity multipliers |
-| `calcTargets — tdeeAdj` | 3 | Positive/negative adjustments propagate to kcal and tdee fields |
-| `estimateSessionKcal` | 6 | MET scaling by type/intensity/weight/duration/body fat, unknown type fallback |
+| `calcTargets — Katch-McArdle` | 15 | BMR, TDEE, all modes, training bonus, session override, macros, carb floor, and sex-specific safe-minimum clamping (`safeMinApplied`) |
+| `estimateSessionKcal — MET-based` | 6 | MET scaling by type/intensity/weight/duration/body fat, unknown type fallback |
 | `calcStreak` | 5 | Consecutive days, gap breaks streak, empty logs, empty history |
 | `sumLogs` | 4 | Multi-entry accumulation, empty array, partial fields |
+| `calcTargets — tdeeAdj` | 3 | Positive/negative adjustments propagate to kcal and tdee fields |
 | `weighRollingAvg` | 4 | Average accuracy, cutoff exclusion, insufficient data, empty array |
 | `runCalibration` | 3 | Insufficient data guards, positive adjustment when burning more than expected |
-| `safeMinimum` | 4 | Sex-specific floors, clamping, safeMinApplied flag |
+| `runMigrations` | 4 | Stamps schema version when absent, no-op when current, never overwrites user data, applies once across calls |
 | **Total** | **44** | |
+
+(Safe-minimum behaviour is verified inside the `calcTargets — Katch-McArdle` group, not a separate suite.)
 
 ---
 
@@ -486,6 +503,8 @@ Current features covered:
 7. Weight input sync
 8. Flexible daily calorie target with auto mode detection
 9. Tap to override daily calorie target
+10. Top-aligned navigation — pages open at the top
+11. Premium account avatar — Google profile picture with fallback
 
 ---
 
@@ -655,11 +674,12 @@ The `useEffect` on step `"google"` calls `google.accounts.id.initialize` + `rend
 
 ### Account avatar (premium indicator)
 
-When `isPremium` is true, the dashboard header shows a 34×34 button to the right of 🏆:
-- If `authUser.picture` is set: renders `<img>` of Google profile photo
-- Otherwise: renders first letter of `authUser.name` in green
+When `isPremium` is true, the dashboard header shows a 34×34 button to the right of 🏆, rendering the `<Avatar user={authUser}/>` component:
+- If `authUser.picture` is set: renders `<img>` of the Google profile photo with `referrerPolicy="no-referrer"` (stops `googleusercontent` 403/429 failures)
+- On image load failure (`onError`) or no picture: renders the first letter of `authUser.name` in the cream accent
 
 Tapping this button calls `onSignOut` → sets `showSignOut = true` → `SignOutModal` opens.
+(As of 6.1 this is the standalone `Avatar` component — see §7 and §35.)
 
 ### `index.html` changes
 
@@ -1088,3 +1108,184 @@ A record of every issue hit during Phase 1/2 testing and how each was resolved. 
 - [x] Confirm data migrates from phone localStorage to Supabase on first sign-in
 - [x] Reinstall PWA on phone after confirming browser flow works
 - [ ] Phase 3 (real payments) before public launch
+
+---
+
+## 35. Design System & Visual Theme
+
+Fuel Log uses a **dark, warm cream-grey** theme (introduced in v6.1, replacing the
+original neon-lime/black "energy-drink" palette). All styling is inline React
+styles — there is no CSS framework. Colours come from four central constants plus
+a hard-coded cream-grey scale.
+
+### Core constants (`app.jsx`, top of file)
+
+```javascript
+const A = "#e8e2d4", BG = "#0b0d0b", CARD = "#141210", BD = "#24211b";
+```
+
+| Constant | Hex | Role |
+|---|---|---|
+| `A`  | `#e8e2d4` | **Accent** — primary buttons, active tabs, calorie ring, MAINTAIN mode, chart rolling-average line, avatar initial. Cream on dark; dark text (`#0b0d0b`) sits on it for buttons. |
+| `BG` | `#0b0d0b` | App background (near-black). Also used as dark text colour on the cream accent. |
+| `CARD` | `#141210` | Card / panel surface (warm near-black). |
+| `BD` | `#24211b` | Borders and dividers (warm dark). |
+
+### Surface scale (warm dark neutrals)
+
+| Hex | Use |
+|---|---|
+| `#0b0d0b` | App background (`BG`) |
+| `#141210` | Cards (`CARD`), recessed backgrounds |
+| `#1c1a15` | Raised buttons / inactive toggles / icon buttons |
+| `#24211b` | Borders (`BD`), active/hover state backgrounds |
+| `#2c2820` | Disabled button background |
+| `#3a352a` | Lighter / active borders |
+
+### Text scale (warm cream-grey)
+
+All text colours target **≥WCAG-AA contrast (4.5:1)** against `BG` `#0b0d0b`, except
+placeholders and disabled text which are intentionally lower. Lighter = more
+prominent; the hierarchy is by lightness, not hue.
+
+| Hex | Approx contrast | Typical use |
+|---|---|---|
+| `#ffffff` / `#efeae0` | ~19:1 / ~16:1 | Headings, big stat numbers |
+| `#e6e1d7` | ~14:1 | Primary body text, `<select>` text |
+| `#c2bcb0` | ~10:1 | Bright secondary text |
+| `#b6b0a4` | ~9:1 | Secondary emphasis |
+| `#aea79c` / `#a7a197` | ~8:1 / ~7:1 | Secondary text |
+| `#9b958b` | ~5.9:1 | Muted labels (most common label colour) |
+| `#8b857c` | ~4.9:1 | Captions / hints |
+| `#827c73` | ~4.5:1 | Dim captions, inactive states |
+| `#6e6960` | ~3.6:1 | **Placeholders** (intentionally below body floor but readable) |
+| `#524d46` | ~2.4:1 | **Disabled** text / boundary nav arrows (intentional) |
+
+### Status colours (semantic — unchanged by the refresh)
+
+| Hex | Meaning |
+|---|---|
+| `#4b9fff` | Blue — CUT mode, water, daily weight dots |
+| `#ff7b4b` | Orange — BULK mode |
+| `#ffb84b` | Amber — warnings, "just over" calories, mid confidence |
+| `#ff5555` | Red — over-limit, errors, destructive (sign-out) |
+| `#8a7030` | Dark amber — amber accents on dark backgrounds |
+
+Blue-tinted dark surfaces (e.g. `#131826`, `#0f1c2e`, `#1e2a3a`, `#2a4a7a`) are kept
+for the water / CUT-mode sections and are **not** part of the cream-grey scale.
+
+### Rules when changing colours
+- Prefer the constants (`A`/`BG`/`CARD`/`BD`); only reach for raw hex when matching
+  an existing scale value above.
+- Keep body/label text at ≥4.5:1 against `BG`. Use the contrast table as the floor.
+- Placeholders are set globally in `index.html` **and** the in-app `<style>` block in
+  `app.jsx` — update both. The same applies to the `candidate/index.html` harness.
+- The accent is dual-purpose (fill **and** text). If you change `A`, verify both
+  dark-text-on-accent (buttons) and accent-text-on-dark (labels, ring) still read well.
+
+---
+
+## 36. Local Development & Service Worker
+
+### Dev server
+
+```bash
+node dev-server.js
+```
+
+Serves the repo root at **http://localhost:3000** with `Cache-Control: no-store`.
+`/` → `index.html` (the real app); `/preview.html` is the phone-frame harness with
+the dev panel (date/time simulator, seed data). See SETUP.md for the dev-panel controls.
+
+### Service worker is production-only (v6.1+)
+
+`index.html` registers the service worker **only** when the hostname is not
+`localhost`, `127.0.0.1`, or empty (`file://`). On those hosts it instead
+*unregisters* any existing service worker:
+
+```javascript
+var SW_HOST_OK = !["localhost", "127.0.0.1", ""].includes(location.hostname);
+if ("serviceWorker" in navigator && !SW_HOST_OK) {
+  navigator.serviceWorker.getRegistrations()
+    .then(regs => regs.forEach(r => r.unregister())).catch(() => {});
+}
+if ("serviceWorker" in navigator && SW_HOST_OK) { /* register + update banner */ }
+```
+
+This permanently fixes the "my change isn't showing on localhost" problem: the SW
+can no longer serve a stale cached bundle in local dev. Production (GitHub Pages)
+behaviour is unchanged — the SW registers and the "new version ready" banner still
+appears after a deploy.
+
+### If a stale bundle ever appears anyway (production / old cache)
+1. Reload — production shows the *"A new version of Fuel Log is ready — Reload"* banner; click it.
+2. Or DevTools → **Application** → **Storage** → **Clear site data**, then `Ctrl+Shift+R`.
+3. During dev, DevTools → Application → Service Workers → tick **Update on reload** + **Bypass for network**.
+
+### Common console noise on localhost (harmless)
+- `[GSI_LOGGER]: The given origin is not allowed for the given client ID` / `403` —
+  `http://localhost:3000` isn't an authorized JavaScript origin for the Google OAuth
+  client. Expected locally; use the voucher code (`FreeFoodTips2026`) to reach premium.
+- `Cross-Origin-Opener-Policy policy would block the window.postMessage call` —
+  a benign warning from Google's GIS library.
+- `chrome-error://chromewebdata/ ... Unsafe attempt to load URL` — Chrome's
+  "site can't be reached" page; means the **dev server isn't running** (`node dev-server.js`).
+
+---
+
+## 37. Changelog
+
+### v6.1 — Cream-grey UI refresh & readability (June 2026)
+- **Theme:** replaced the neon-lime/black palette with a warm cream-grey theme.
+  Accent `#a3ff4b → #e8e2d4`; all green text/labels and green-tinted dark
+  surfaces remapped to the cream-grey scale (§35). Blue/orange/amber/red status
+  colours retained.
+- **Readability:** every muted text colour lifted to ≥WCAG-AA contrast against the
+  background; placeholders made legible (were ~1.5:1, now ~3.6:1).
+- **Top-aligned navigation:** every top-level screen now opens scrolled to the top
+  (effect in `App` watching `view`).
+- **Avatar robustness:** new `Avatar` component — `referrerPolicy="no-referrer"`
+  fixes Google profile-pic 403/429 failures, and an `onError` fallback shows the
+  user's initial instead of a broken-image icon.
+- **Local dev:** service worker is now skipped (and auto-unregistered) on
+  `localhost`/`127.0.0.1`/`file://` so local testing is never served a stale bundle.
+- Files touched: `app.jsx`, `index.html`, `candidate/index.html`, `sw.js`
+  (cache → `fuel-log-v27`).
+
+### v6.0 — Flexible targets, sex-aware calculations, streak celebration (April 2026)
+- Flexible daily calorie target with tap-to-override and auto mode detection (§9).
+- Sex-aware protein/fat targets and safe-minimum calorie guard (§3, §10, §11).
+- Body-fat guidance, streak celebration animation, weight-input sync (§12–§14).
+- Auth & premium (Phase 1) and Supabase cloud sync (Phase 2) landed on the
+  candidate branch (§24–§31).
+
+---
+
+## 38. Data Migrations (schema versioning)
+
+`localStorage` data shape is versioned so future changes can transform existing
+users' data safely on upgrade.
+
+```javascript
+const SCHEMA_VERSION = 1;
+
+const runMigrations = async () => {
+  const v = parseInt(await sg("fuel_schema_v") || "0");
+  if (v >= SCHEMA_VERSION) return;
+  // v0 → v1: baseline release — no transforms needed, just stamp version.
+  // Add future migrations here: if (v < 2) { ... }
+  await ss("fuel_schema_v", String(SCHEMA_VERSION));
+};
+```
+
+- `runMigrations()` runs **once on startup** (early in `load()`), before state is read.
+- Stored version lives in `fuel_schema_v`; absent = treated as `0`.
+- To add a migration: bump `SCHEMA_VERSION`, add an `if (v < N) { ...transform... }`
+  block, then the stamp at the end records the new version. Migrations must be
+  idempotent and must never overwrite newer user data (covered by the
+  `runMigrations` test group, §19).
+
+Separately, `migrateLocalToSupabase(uid)` is a **one-time per-user** push of existing
+local data (profile, weigh-ins, settings, meals, badges, today's logs) to Supabase on
+first sign-in. It is guarded by the `sync_migrated__<uid>` key so it never re-runs for
+that user. This is cloud-sync onboarding, distinct from the schema migrations above.
