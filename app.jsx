@@ -2133,7 +2133,7 @@ function FoodSearch({ onAdd, onBack }) {
 
 const chartsAvailable = typeof ResponsiveContainer !== "undefined";
 
-function History({ history, onBack, onUpdateDay, weighIns = [] }) {
+function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEALS, setMeals = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -2215,18 +2215,17 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
     a.click();
   };
 
+  const addEntry = e => {
+    patch({ logs:[...(day.logs||[]), { ...e, id:Date.now(), time:new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }] });
+    setAddCtx(null);
+  };
+
+  if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onAdd={addEntry} onBack={() => setAddCtx(null)}/>;
+  if (addCtx === "manual") return <MealForm onSave={addEntry} onCancel={() => setAddCtx(null)}/>;
+  if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)}/>;
+
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
-      {addCtx === "quick" && (
-        <QuickAdd meals={DEF_MEALS} setMeals={() => {}}
-          onAdd={e => { patch({ logs:[...(day.logs||[]), { ...e, id:Date.now(), time:new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }] }); setAddCtx(null); }}
-          onBack={() => setAddCtx(null)}/>
-      )}
-      {addCtx === "manual" && (
-        <MealForm
-          onSave={e => { patch({ logs:[...(day.logs||[]), { ...e, id:Date.now(), time:new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }] }); setAddCtx(null); }}
-          onCancel={() => setAddCtx(null)}/>
-      )}
       <BackHdr title="HISTORY" onBack={onBack} right={
         history.length > 0 && (
           <button onClick={exportCSV}
@@ -2385,6 +2384,11 @@ function History({ history, onBack, onUpdateDay, weighIns = [] }) {
                       style={{ flex:1, padding:"11px", background:"#131a11",
                         border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ⚡ QUICK ADD
+                    </button>
+                    <button onClick={() => setAddCtx("ai")}
+                      style={{ flex:1, padding:"11px", background:"#131a11",
+                        border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
+                      🤖 AI LOG
                     </button>
                     <button onClick={() => setAddCtx("manual")}
                       style={{ flex:1, padding:"11px", background:"#131a11",
@@ -3050,7 +3054,7 @@ function App() {
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
     </div>
   );

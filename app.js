@@ -5405,7 +5405,11 @@ function History(_ref49) {
     onBack = _ref49.onBack,
     onUpdateDay = _ref49.onUpdateDay,
     _ref49$weighIns = _ref49.weighIns,
-    weighIns = _ref49$weighIns === void 0 ? [] : _ref49$weighIns;
+    weighIns = _ref49$weighIns === void 0 ? [] : _ref49$weighIns,
+    _ref49$meals = _ref49.meals,
+    meals = _ref49$meals === void 0 ? DEF_MEALS : _ref49$meals,
+    _ref49$setMeals = _ref49.setMeals,
+    setMeals = _ref49$setMeals === void 0 ? function () {} : _ref49$setMeals;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -5567,47 +5571,45 @@ function History(_ref49) {
     a.download = "fuel-log-" + todayKey() + ".csv";
     a.click();
   };
+  var addEntry = function addEntry(e) {
+    patch({
+      logs: [].concat(_toConsumableArray(day.logs || []), [_objectSpread(_objectSpread({}, e), {}, {
+        id: Date.now(),
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit"
+        })
+      })])
+    });
+    setAddCtx(null);
+  };
+  if (addCtx === "quick") return /*#__PURE__*/React.createElement(QuickAdd, {
+    meals: meals,
+    setMeals: setMeals,
+    onAdd: addEntry,
+    onBack: function onBack() {
+      return setAddCtx(null);
+    }
+  });
+  if (addCtx === "manual") return /*#__PURE__*/React.createElement(MealForm, {
+    onSave: addEntry,
+    onCancel: function onCancel() {
+      return setAddCtx(null);
+    }
+  });
+  if (addCtx === "ai") return /*#__PURE__*/React.createElement(AILog, {
+    onAdd: addEntry,
+    onBack: function onBack() {
+      return setAddCtx(null);
+    }
+  });
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
       maxWidth: 500,
       margin: "0 auto"
     }
-  }, addCtx === "quick" && /*#__PURE__*/React.createElement(QuickAdd, {
-    meals: DEF_MEALS,
-    setMeals: function setMeals() {},
-    onAdd: function onAdd(e) {
-      patch({
-        logs: [].concat(_toConsumableArray(day.logs || []), [_objectSpread(_objectSpread({}, e), {}, {
-          id: Date.now(),
-          time: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit"
-          })
-        })])
-      });
-      setAddCtx(null);
-    },
-    onBack: function onBack() {
-      return setAddCtx(null);
-    }
-  }), addCtx === "manual" && /*#__PURE__*/React.createElement(MealForm, {
-    onSave: function onSave(e) {
-      patch({
-        logs: [].concat(_toConsumableArray(day.logs || []), [_objectSpread(_objectSpread({}, e), {}, {
-          id: Date.now(),
-          time: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit"
-          })
-        })])
-      });
-      setAddCtx(null);
-    },
-    onCancel: function onCancel() {
-      return setAddCtx(null);
-    }
-  }), /*#__PURE__*/React.createElement(BackHdr, {
+  }, /*#__PURE__*/React.createElement(BackHdr, {
     title: "HISTORY",
     onBack: onBack,
     right: history.length > 0 && /*#__PURE__*/React.createElement("button", {
@@ -6016,6 +6018,21 @@ function History(_ref49) {
       letterSpacing: "0.07em"
     }
   }, "\u26A1 QUICK ADD"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return setAddCtx("ai");
+    },
+    style: {
+      flex: 1,
+      padding: "11px",
+      background: "#131a11",
+      border: "1px solid ".concat(A, "33"),
+      borderRadius: 12,
+      color: A,
+      fontSize: 12,
+      fontWeight: 900,
+      letterSpacing: "0.07em"
+    }
+  }, "\uD83E\uDD16 AI LOG"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return setAddCtx("manual");
     },
@@ -7534,7 +7551,9 @@ function App() {
       return setView("dashboard");
     },
     onUpdateDay: updateDay,
-    weighIns: weighIns
+    weighIns: weighIns,
+    meals: meals,
+    setMeals: saveMeals
   })), view === "achievements" && /*#__PURE__*/React.createElement(Achievements, {
     earnedBdgs: earnedBdgs,
     onBack: function onBack() {
