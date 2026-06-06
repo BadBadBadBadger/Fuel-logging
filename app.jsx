@@ -6,7 +6,7 @@
 var exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
-const A = "#a3ff4b", BG = "#0b0d0b", CARD = "#111311", BD = "#1c201c";
+const A = "#e8e2d4", BG = "#0b0d0b", CARD = "#141210", BD = "#24211b";
 
 // ── Auth / Premium ────────────────────────────────────────────
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
@@ -16,7 +16,7 @@ const VOUCHER_CODE     = "FreeFoodTips2026";
 
 const MODES = {
   cut:      { label:"CUT",      color:"#4b9fff", adj:-500 },
-  maintain: { label:"MAINTAIN", color:"#a3ff4b", adj:0    },
+  maintain: { label:"MAINTAIN", color:"#e8e2d4", adj:0    },
   bulk:     { label:"BULK",     color:"#ff7b4b", adj:500  },
 };
 
@@ -476,8 +476,8 @@ function PremiumModal({ feature, onUpgrade, onDismiss }) {
         border:`1px solid ${A}44`, maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:64, marginBottom:10 }}>{emoji}</div>
         <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>PREMIUM FEATURE</div>
-        <div style={{ fontSize:20, fontWeight:900, color:"#d8e8d0", marginBottom:8 }}>{name}</div>
-        <div style={{ fontSize:13, color:"#556050", lineHeight:1.6, marginBottom:16 }}>
+        <div style={{ fontSize:20, fontWeight:900, color:"#e6e1d7", marginBottom:8 }}>{name}</div>
+        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.6, marginBottom:16 }}>
           AI features require a Premium account
         </div>
         <div style={{ background:"#0b0d0b", borderRadius:12, padding:"14px 16px", marginBottom:20, textAlign:"left" }}>
@@ -490,10 +490,10 @@ function PremiumModal({ feature, onUpgrade, onDismiss }) {
           ].map(([e, t], i) => (
             <div key={i} style={{ display:"flex", gap:10, marginBottom:6, alignItems:"center" }}>
               <span style={{ fontSize:15, flexShrink:0 }}>{e}</span>
-              <span style={{ fontSize:12, color:"#8aaa80", lineHeight:1.4 }}>{t}</span>
+              <span style={{ fontSize:12, color:"#b6b0a4", lineHeight:1.4 }}>{t}</span>
             </div>
           ))}
-          <div style={{ fontSize:11, color:"#445040", marginTop:10, borderTop:`1px solid ${BD}`, paddingTop:10 }}>
+          <div style={{ fontSize:11, color:"#9b958b", marginTop:10, borderTop:`1px solid ${BD}`, paddingTop:10 }}>
             £4.99/month · £49.99/year · 30-day free trial
           </div>
         </div>
@@ -503,7 +503,7 @@ function PremiumModal({ feature, onUpgrade, onDismiss }) {
           Start Free Trial 🚀
         </button>
         <button onClick={onDismiss}
-          style={{ width:"100%", padding:"10px", background:"none", color:"#445040",
+          style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
             border:"none", fontSize:13, cursor:"pointer" }}>
           Maybe Later
         </button>
@@ -562,15 +562,15 @@ function SignInModal({ onSuccess, onCancel }) {
         {step === "google" && (
           <>
             <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>🔐</div>
-            <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", textAlign:"center", marginBottom:6 }}>
+            <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:6 }}>
               Sign in to continue
             </div>
-            <div style={{ fontSize:13, color:"#445040", textAlign:"center", lineHeight:1.6, marginBottom:24 }}>
+            <div style={{ fontSize:13, color:"#9b958b", textAlign:"center", lineHeight:1.6, marginBottom:24 }}>
               We use Google Sign In to protect your account. No separate password needed.
             </div>
             <div id="gsi-btn" style={{ display:"flex", justifyContent:"center", marginBottom:14 }}></div>
             <button onClick={onCancel}
-              style={{ width:"100%", padding:"10px", background:"none", color:"#445040",
+              style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
                 border:"none", fontSize:13, cursor:"pointer" }}>
               Cancel
             </button>
@@ -582,37 +582,37 @@ function SignInModal({ onSuccess, onCancel }) {
             <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
               👋 HI, {((gUser?.name || "").split(" ")[0] || "THERE").toUpperCase()}
             </div>
-            <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", marginBottom:14 }}>
+            <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", marginBottom:14 }}>
               Start your free trial
             </div>
             <div style={{ background:"#0b0d0b", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
               <div style={{ fontSize:17, fontWeight:900, color:A }}>30 days free</div>
-              <div style={{ fontSize:12, color:"#445040", marginTop:3 }}>then £4.99/month or £49.99/year</div>
-              <div style={{ fontSize:11, color:"#334a30", marginTop:6 }}>Cancel anytime before trial ends</div>
+              <div style={{ fontSize:12, color:"#9b958b", marginTop:3 }}>then £4.99/month or £49.99/year</div>
+              <div style={{ fontSize:11, color:"#827c73", marginTop:6 }}>Cancel anytime before trial ends</div>
             </div>
             <button disabled
-              style={{ width:"100%", padding:"14px", background:"#1c201c",
-                border:`1px solid ${BD}`, borderRadius:12, color:"#445040",
+              style={{ width:"100%", padding:"14px", background:"#24211b",
+                border:`1px solid ${BD}`, borderRadius:12, color:"#9b958b",
                 fontSize:13, fontWeight:700, marginBottom:16, cursor:"not-allowed" }}>
               Subscribe — Coming Soon
             </button>
-            <div style={{ fontSize:11, color:"#556050", textAlign:"center", marginBottom:8 }}>Have an access code?</div>
+            <div style={{ fontSize:11, color:"#aea79c", textAlign:"center", marginBottom:8 }}>Have an access code?</div>
             <input value={voucher} onChange={e => { setVoucher(e.target.value); setVError(""); }}
               placeholder="Enter code..." onKeyDown={e => e.key === "Enter" && handleVoucher()}
               style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
                 border:`1px solid ${vError ? "#ff5555" : BD}`, borderRadius:10,
-                padding:"12px 14px", color:"#d8e8d0", fontSize:14,
+                padding:"12px 14px", color:"#e6e1d7", fontSize:14,
                 fontFamily:"inherit", outline:"none", marginBottom: vError ? 6 : 10 }}/>
             {vError && <div style={{ fontSize:12, color:"#ff5555", marginBottom:10 }}>{vError}</div>}
             <button onClick={handleVoucher}
-              style={{ width:"100%", padding:"12px", background:"#161a16",
-                border:`1px solid ${BD}`, borderRadius:12, color:"#8aaa80",
+              style={{ width:"100%", padding:"12px", background:"#1c1a15",
+                border:`1px solid ${BD}`, borderRadius:12, color:"#b6b0a4",
                 fontSize:13, fontWeight:700, marginBottom:10 }}>
               Redeem Code
             </button>
             <button onClick={onCancel}
               style={{ width:"100%", padding:"10px", background:"none",
-                color:"#445040", border:"none", fontSize:13, cursor:"pointer" }}>
+                color:"#9b958b", border:"none", fontSize:13, cursor:"pointer" }}>
               Cancel
             </button>
           </>
@@ -629,10 +629,10 @@ function SignOutModal({ userName, onConfirm, onCancel }) {
       <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
         border:`1px solid ${BD}`, maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:36, textAlign:"center", marginBottom:12 }}>🔓</div>
-        <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", textAlign:"center", marginBottom:10 }}>
+        <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:10 }}>
           Sign out{userName ? `, ${userName.split(" ")[0]}` : ""}?
         </div>
-        <div style={{ fontSize:13, color:"#556050", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
+        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
           Signing out will remove local data.<br/>
           Your cloud data is safe and will restore on next login.
         </div>
@@ -659,10 +659,10 @@ function LapsedModal({ onRenew, onDismiss }) {
       <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
         border:"1px solid #ffb84b44", maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:40, textAlign:"center", marginBottom:12 }}>⌛</div>
-        <div style={{ fontSize:16, fontWeight:900, color:"#d8e8d0", textAlign:"center", marginBottom:10 }}>
+        <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:10 }}>
           Your Premium subscription has ended
         </div>
-        <div style={{ fontSize:13, color:"#556050", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
+        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
           Your data is safe and still visible. Quick Add and logging still work.
           Renew to unlock AI features and cloud sync.
         </div>
@@ -673,7 +673,7 @@ function LapsedModal({ onRenew, onDismiss }) {
         </button>
         <button onClick={onDismiss}
           style={{ width:"100%", padding:"11px", background:"none",
-            color:"#445040", border:"none", fontSize:13, cursor:"pointer" }}>
+            color:"#9b958b", border:"none", fontSize:13, cursor:"pointer" }}>
           Continue for Free
         </button>
       </div>
@@ -687,7 +687,7 @@ const INP = {
   width:"100%", boxSizing:"border-box",
   background:"#0b0d0b", border:`1px solid ${BD}`,
   borderRadius:10, padding:"12px 14px",
-  color:"#d8e8d0", fontSize:14,
+  color:"#e6e1d7", fontSize:14,
   fontFamily:"inherit", outline:"none",
 };
 
@@ -696,8 +696,8 @@ function BackHdr({ title, onBack, right }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:22,
       position:"sticky", top:0, background:BG, zIndex:10, paddingTop:12, paddingBottom:12, marginTop:-12 }}>
-      <button onClick={onBack} style={{ background:"#161a16", border:`1px solid ${BD}`,
-        borderRadius:10, width:36, height:36, color:"#7a9a70", fontSize:18,
+      <button onClick={onBack} style={{ background:"#1c1a15", border:`1px solid ${BD}`,
+        borderRadius:10, width:36, height:36, color:"#a7a197", fontSize:18,
         display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>←</button>
       <h2 style={{ margin:0, fontSize:18, fontWeight:900, color:A, letterSpacing:"0.06em", flex:1 }}>{title}</h2>
       {right}
@@ -709,7 +709,7 @@ function Chip({ label, value, color }) {
   return (
     <div style={{ textAlign:"center", background:"#0b0d0b", borderRadius:12, padding:"10px 6px" }}>
       <div style={{ fontSize:17, fontWeight:900, color }}>{value}</div>
-      <div style={{ fontSize:10, color:"#3d4a38", marginTop:2, letterSpacing:"0.05em" }}>{label}</div>
+      <div style={{ fontSize:10, color:"#8b857c", marginTop:2, letterSpacing:"0.05em" }}>{label}</div>
     </div>
   );
 }
@@ -721,8 +721,8 @@ function MBar({ label, value, target, color }) {
   return (
     <div style={{ marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4 }}>
-        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: accent || "#8aaa80" }}>{label}</span>
-        <span style={{ color: accent || "#6a8a60" }}>{Math.round(value)}g / {target}g</span>
+        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: accent || "#b6b0a4" }}>{label}</span>
+        <span style={{ color: accent || "#948e84" }}>{Math.round(value)}g / {target}g</span>
       </div>
       <div style={{ height:7, background:"#1a1a1a", borderRadius:99, overflow:"hidden" }}>
         <div style={{ height:"100%", width:`${pct}%`, background: accent || color,
@@ -882,13 +882,13 @@ function CoachCard({ mode, totals, targets, streak, water }) {
         <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800 }}>🤖 DAILY COACH</div>
         {refreshes < 3 && (
           <button onClick={gen} disabled={loading}
-            style={{ background:"none", border:"none", color:"#556050", cursor:"pointer", fontSize:13, padding:"2px 6px" }}>
-            {loading ? "..." : "↺"} <span style={{ fontSize:10, color:"#334a30" }}>{3 - refreshes}</span>
+            style={{ background:"none", border:"none", color:"#aea79c", cursor:"pointer", fontSize:13, padding:"2px 6px" }}>
+            {loading ? "..." : "↺"} <span style={{ fontSize:10, color:"#827c73" }}>{3 - refreshes}</span>
           </button>
         )}
       </div>
-      {loading && !tip && <div style={{ fontSize:12, color:"#445040", marginTop:4 }}>Generating your tip...</div>}
-      {tip && <div style={{ fontSize:14.5, color:"#b8d4a8", lineHeight:1.7 }}>{tip}</div>}
+      {loading && !tip && <div style={{ fontSize:12, color:"#9b958b", marginTop:4 }}>Generating your tip...</div>}
+      {tip && <div style={{ fontSize:14.5, color:"#c2bcb0", lineHeight:1.7 }}>{tip}</div>}
     </div>
   );
 }
@@ -919,11 +919,11 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
     return () => clearTimeout(t);
   }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
 
-  const row = (label, val, unit, color = "#d8e8d0") => (
+  const row = (label, val, unit, color = "#e6e1d7") => (
     <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
-      <span style={{ fontSize:12, color:"#556050" }}>{label}</span>
+      <span style={{ fontSize:12, color:"#aea79c" }}>{label}</span>
       <span style={{ fontSize:13, fontWeight:700, color }}>{val}
-        <span style={{ fontSize:11, color:"#445040", marginLeft:3 }}>{unit}</span>
+        <span style={{ fontSize:11, color:"#9b958b", marginLeft:3 }}>{unit}</span>
       </span>
     </div>
   );
@@ -932,16 +932,16 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="MY PROFILE" onBack={onBack}
         right={saved && <span style={{ fontSize:11, color:A, fontWeight:700 }}>✓ SAVED</span>}/>
-      <p style={{ color:"#556050", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
-        Targets use <strong style={{ color:"#7a9a70" }}>Katch-McArdle</strong>. Changes save automatically.
+      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
+        Targets use <strong style={{ color:"#a7a197" }}>Katch-McArdle</strong>. Changes save automatically.
       </p>
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
-        <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>BODY STATS</div>
+        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>BODY STATS</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
           {[{ k:"weight", l:"WEIGHT", u:"kg" }, { k:"height", l:"HEIGHT", u:"cm" }].map(fl => (
             <div key={fl.k}>
               <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
-                {fl.l} <span style={{ color:"#445040" }}>({fl.u})</span>
+                {fl.l} <span style={{ color:"#9b958b" }}>({fl.u})</span>
               </div>
               <input type="number" min="0" value={f[fl.k]}
                 onChange={e => set(fl.k, e.target.value)} style={INP}/>
@@ -949,14 +949,14 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
           ))}
         </div>
         <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
-          BODY FAT <span style={{ color:"#445040" }}>(%)</span>
+          BODY FAT <span style={{ color:"#9b958b" }}>(%)</span>
         </div>
         <input type="number" min="0" max="99" value={f.bodyFat}
           onChange={e => set("bodyFat", e.target.value)}
           onFocus={() => setBfFocused(true)} onBlur={() => setBfFocused(false)}
           style={{ ...INP, marginBottom:4 }}/>
         {bfFocused && !bfImplausible && (
-          <div style={{ fontSize:11, color:"#7a9a70", marginBottom:6, lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"#a7a197", marginBottom:6, lineHeight:1.5 }}>
             Not sure? Use 25% for men or 30% for women as a starting estimate. A more accurate figure improves your calorie and macro targets.
           </div>
         )}
@@ -966,7 +966,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
           </div>
         )}
         <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
-          SEX <span style={{ color:"#445040", fontSize:10, fontWeight:400 }}>— used to calculate your calorie and macro targets</span>
+          SEX <span style={{ color:"#9b958b", fontSize:10, fontWeight:400 }}>— used to calculate your calorie and macro targets</span>
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:6 }}>
           {["male","female"].map(s => (
@@ -974,7 +974,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
               style={{ flex:1, padding:"10px 0", borderRadius:10, fontWeight:900, fontSize:12,
                 letterSpacing:"0.06em", border:`1px solid ${f.sex === s ? A + "88" : BD}`,
                 background: f.sex === s ? A + "18" : "#0b0d0b",
-                color: f.sex === s ? A : "#445040" }}>
+                color: f.sex === s ? A : "#9b958b" }}>
               {s === "male" ? "MALE" : "FEMALE"}
             </button>
           ))}
@@ -985,44 +985,44 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
           </div>
         )}
         {f.sex === "female" && (
-          <div style={{ fontSize:11, color:"#7a9a70", marginBottom:10, lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"#a7a197", marginBottom:10, lineHeight:1.5 }}>
             Targets may need adjusting around your cycle — override anytime.
           </div>
         )}
-        <div style={{ fontSize:11, color:"#334a30", marginBottom:14, lineHeight:1.5 }}>
+        <div style={{ fontSize:11, color:"#827c73", marginBottom:14, lineHeight:1.5 }}>
           Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
         </div>
       </div>
       {valid && (
         <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px" }}>
-          <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
             CALCULATED STATS
           </div>
           {row("Lean Body Mass", prev.lbm, "kg", "#4b9fff")}
           {row("BMR",           prev.bmr, "kcal/day", "#ffb84b")}
-          {row("Formula TDEE",  formulaTDEE, "kcal/day", "#8aaa80")}
+          {row("Formula TDEE",  formulaTDEE, "kcal/day", "#b6b0a4")}
           {tdeeAdj !== 0 && (
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
-              <span style={{ fontSize:12, color:"#556050" }}>Adaptive adjustment</span>
+              <span style={{ fontSize:12, color:"#aea79c" }}>Adaptive adjustment</span>
               <span style={{ fontSize:13, fontWeight:700, color: tdeeAdj > 0 ? A : "#ff7b4b" }}>
-                {tdeeAdj > 0 ? "+" : ""}{tdeeAdj} <span style={{ fontSize:11, color:"#445040" }}>kcal/day</span>
+                {tdeeAdj > 0 ? "+" : ""}{tdeeAdj} <span style={{ fontSize:11, color:"#9b958b" }}>kcal/day</span>
               </span>
             </div>
           )}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
-            <span style={{ fontSize:12, color:"#556050" }}>
-              Effective TDEE {confidence && <span style={{ fontSize:10, color: tdeeAdj !== 0 ? A : "#445040" }}>· {confidence}</span>}
+            <span style={{ fontSize:12, color:"#aea79c" }}>
+              Effective TDEE {confidence && <span style={{ fontSize:10, color: tdeeAdj !== 0 ? A : "#9b958b" }}>· {confidence}</span>}
             </span>
             <span style={{ fontSize:13, fontWeight:700, color:A }}>
-              {adjTDEE} <span style={{ fontSize:11, color:"#445040" }}>kcal/day</span>
+              {adjTDEE} <span style={{ fontSize:11, color:"#9b958b" }}>kcal/day</span>
             </span>
           </div>
           {!confidence && (
-            <div style={{ fontSize:11, color:"#334a30", marginTop:6, lineHeight:1.5 }}>
+            <div style={{ fontSize:11, color:"#827c73", marginTop:6, lineHeight:1.5 }}>
               Log your weight daily from the dashboard to enable adaptive calibration.
             </div>
           )}
-          <div style={{ marginTop:14, fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:10 }}>
+          <div style={{ marginTop:14, fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:10 }}>
             TARGETS BY MODE
           </div>
           {[
@@ -1038,14 +1038,14 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
                   {[["KCAL","kcal",""],["P","protein","g"],["C","carbs","g"],["F","fat","g"]].map(([k, key, u]) => (
                     <div key={k} style={{ flex:1, textAlign:"center" }}>
                       <div style={{ fontSize:14, fontWeight:900, color }}>{t[key]}{u}</div>
-                      <div style={{ fontSize:9, color:"#334a30", marginTop:1 }}>{k}</div>
+                      <div style={{ fontSize:9, color:"#827c73", marginTop:1 }}>{k}</div>
                     </div>
                   ))}
                 </div>
               </div>
             );
           })}
-          <div style={{ fontSize:11, color:"#334a30", marginTop:8 }}>
+          <div style={{ fontSize:11, color:"#827c73", marginTop:8 }}>
             Workout kcal are added when you log sessions on the dashboard.
           </div>
         </div>
@@ -1082,9 +1082,9 @@ function MealForm({ meal, onSave, onCancel }) {
         width:"100%", maxWidth:500, border:`1px solid ${BD}`, borderBottom:"none" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
           <h3 style={{ margin:0, color:A, fontSize:16, fontWeight:900 }}>{meal ? "EDIT MEAL" : "ADD MEAL"}</h3>
-          <button onClick={onCancel} style={{ background:"none", border:"none", color:"#556050", fontSize:24 }}>×</button>
+          <button onClick={onCancel} style={{ background:"none", border:"none", color:"#aea79c", fontSize:24 }}>×</button>
         </div>
-        <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.1em", fontWeight:800, marginBottom:6 }}>MEAL NAME</div>
+        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800, marginBottom:6 }}>MEAL NAME</div>
         <input value={f.name} onChange={e => set("name", e.target.value)}
           placeholder="e.g. Chicken breast (150g)" style={{ ...INP, marginBottom:16 }}/>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
@@ -1106,7 +1106,7 @@ function MealForm({ meal, onSave, onCancel }) {
           protein: Number(f.protein) || 0, carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
         })} disabled={!ok}
           style={{ width:"100%", padding:"15px",
-            background: ok ? A : "#161a16", color: ok ? "#0b0d0b" : "#2e3a2c",
+            background: ok ? A : "#1c1a15", color: ok ? "#0b0d0b" : "#2c2820",
             border:"none", borderRadius:13, fontSize:14, fontWeight:900, letterSpacing:"0.08em" }}>
           {meal ? "SAVE CHANGES" : "ADD MEAL"}
         </button>
@@ -1132,20 +1132,20 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
   })();
 
   const confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
-  const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "#ffb84b" : "#556050";
+  const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "#ffb84b" : "#aea79c";
 
   return (
     <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:4 }}>BODY WEIGHT</div>
+          <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:4 }}>BODY WEIGHT</div>
           {todayEntry
-            ? <div style={{ fontSize:22, fontWeight:900, color:"#d8e8d0" }}>{todayEntry.weight}<span style={{ fontSize:12, color:"#445040", marginLeft:4 }}>kg</span>
-                {trend7 !== null && <span style={{ fontSize:12, color: trend7 <= 0 ? "#a3ff4b" : "#ff7b4b", marginLeft:10 }}>
+            ? <div style={{ fontSize:22, fontWeight:900, color:"#e6e1d7" }}>{todayEntry.weight}<span style={{ fontSize:12, color:"#9b958b", marginLeft:4 }}>kg</span>
+                {trend7 !== null && <span style={{ fontSize:12, color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b", marginLeft:10 }}>
                   {trend7 > 0 ? "+" : ""}{trend7}kg/wk
                 </span>}
               </div>
-            : <div style={{ fontSize:13, color:"#334a30", marginTop:2 }}>Not logged today</div>
+            : <div style={{ fontSize:13, color:"#827c73", marginTop:2 }}>Not logged today</div>
           }
         </div>
         <div style={{ textAlign:"right" }}>
@@ -1153,9 +1153,9 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
           {weeks >= 1
             ? <>
                 <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{(baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
-                <div style={{ fontSize:10, color:"#445040", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "#ff7b4b" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
+                <div style={{ fontSize:10, color:"#9b958b", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "#ff7b4b" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
               </>
-            : <div style={{ fontSize:11, color:"#334a30", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
+            : <div style={{ fontSize:11, color:"#827c73", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
           }
         </div>
       </div>
@@ -1168,15 +1168,15 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
             onKeyDown={e => e.key === "Enter" && Number(val) > 0 && (onWeighIn(Number(val)), setVal(""))}/>
           <button onClick={() => { if (Number(val) > 0) { onWeighIn(Number(val)); setVal(""); }}}
             disabled={!Number(val)}
-            style={{ padding:"10px 18px", background: Number(val) > 0 ? A : "#161a16",
-              color: Number(val) > 0 ? "#0b0d0b" : "#2e3a2c",
+            style={{ padding:"10px 18px", background: Number(val) > 0 ? A : "#1c1a15",
+              color: Number(val) > 0 ? "#0b0d0b" : "#2c2820",
               border:"none", borderRadius:10, fontWeight:900, fontSize:13 }}>
             LOG
           </button>
         </div>
       )}
 
-      <div style={{ fontSize:11, color:"#334a30", lineHeight:1.5 }}>
+      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.5 }}>
         {weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism."}
         {weeks >= 1 && weeks < 2 && `🔄 ${confidence} — ${weighIns.length} weigh-ins so far. 2+ weeks unlocks calibration.`}
         {weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet."}
@@ -1230,7 +1230,7 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
   return (
     <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"12px 14px", marginBottom:12 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-        <div style={{ fontSize:10, color:"#445040", letterSpacing:"0.1em", fontWeight:800 }}>
+        <div style={{ fontSize:10, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800 }}>
           WORKOUTS {workouts.length > 0 && <span style={{ color:A }}>· ⚡{workouts.length}</span>}
         </div>
         {workouts.length > 0 && (
@@ -1244,11 +1244,11 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
             <div key={w.id} style={{ display:"flex", alignItems:"center", gap:8,
               background:"#0b0d0b", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
               <span style={{ fontSize:12, color:A, fontWeight:900, flexShrink:0 }}>{w.kcal} kcal</span>
-              <span style={{ fontSize:11, color:"#6a9a60", flex:1, overflow:"hidden",
+              <span style={{ fontSize:11, color:"#9f998e", flex:1, overflow:"hidden",
                 textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                 {w.notes || `${w.type} · ${w.duration}min · ${w.intensity}`}
               </span>
-              <span style={{ fontSize:10, color:"#334a30", flexShrink:0 }}>{w.time}</span>
+              <span style={{ fontSize:10, color:"#827c73", flexShrink:0 }}>{w.time}</span>
               <button onClick={() => onRemove(w.id)}
                 style={{ background:"none", border:"none", color:"#443030", fontSize:16,
                   cursor:"pointer", padding:"0 4px", flexShrink:0 }}>×</button>
@@ -1267,7 +1267,7 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
             <input type="number" min="10" max="180" value={dur}
               onChange={e => setDur(parseInt(e.target.value)||45)}
               style={{ ...INP, width:56, padding:"7px 8px", textAlign:"center", fontSize:12 }}/>
-            <span style={{ fontSize:11, color:"#445040" }}>min ·</span>
+            <span style={{ fontSize:11, color:"#9b958b" }}>min ·</span>
             <select value={intensity} onChange={e => setIntensity(e.target.value)}
               style={{ ...INP, flex:"none", width:"auto", padding:"7px 10px", fontSize:12 }}>
               {SESS_INT.map(i => <option key={i} value={i}>{i.charAt(0).toUpperCase()+i.slice(1)}</option>)}
@@ -1283,7 +1283,7 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
             <button onClick={() => isPremium ? setHevyMode(true) : onPremiumGate && onPremiumGate({ emoji:"🏋️", name:"Workout AI Parser" })}
               style={{ padding:"10px 14px", background:"#0b0d0b",
                 border:`1px solid ${isPremium ? A + "33" : BD}`,
-                borderRadius:10, color: isPremium ? A : "#445040", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                borderRadius:10, color: isPremium ? A : "#9b958b", fontSize:12, fontWeight:700, cursor:"pointer" }}>
               📋 {isPremium ? "Paste log" : "Paste log ⭐"}
             </button>
           </div>
@@ -1294,28 +1294,28 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
             placeholder={"Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg"}
             style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
               border:`1px solid ${BD}`, borderRadius:10, padding:"10px 12px",
-              color:"#d8e8d0", fontSize:12, resize:"none", fontFamily:"inherit",
+              color:"#e6e1d7", fontSize:12, resize:"none", fontFamily:"inherit",
               outline:"none", lineHeight:1.6, marginBottom:8 }}/>
           <div style={{ display:"flex", gap:8, marginBottom:6 }}>
             <button onClick={parseWorkout} disabled={hevyLoading || !hevyText.trim()}
               style={{ flex:1, padding:"10px",
-                background: hevyText.trim() && !hevyLoading ? A : "#161a16",
-                color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2e3a2c",
+                background: hevyText.trim() && !hevyLoading ? A : "#1c1a15",
+                color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2c2820",
                 border:"none", borderRadius:10, fontSize:12, fontWeight:900,
                 cursor: hevyText.trim() && !hevyLoading ? "pointer" : "not-allowed", letterSpacing:"0.07em" }}>
               {hevyLoading ? "PARSING..." : "🤖 PARSE WORKOUT"}
             </button>
             <button onClick={() => { setHevyMode(false); setHevyText(""); setHevyResult(null); }}
               style={{ padding:"10px 14px", background:"none", border:`1px solid ${BD}`,
-                borderRadius:10, color:"#445040", fontSize:12, cursor:"pointer" }}>
+                borderRadius:10, color:"#9b958b", fontSize:12, cursor:"pointer" }}>
               ← Back
             </button>
           </div>
           {hevyResult && !hevyResult.error && (
             <>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                background:"#0a1a0a", borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
-                <span style={{ fontSize:12, color:"#6a9a60", flex:1 }}>{hevyResult.summary}</span>
+                background:"#141210", borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
+                <span style={{ fontSize:12, color:"#9f998e", flex:1 }}>{hevyResult.summary}</span>
                 <span style={{ fontSize:15, fontWeight:900, color:A, marginLeft:10 }}>{hevyResult.estimatedKcal} kcal</span>
               </div>
               <button onClick={logParsed}
@@ -1332,6 +1332,21 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
       )}
     </div>
   );
+}
+
+// ── Avatar ────────────────────────────────────────────────────
+// Google profile pic with graceful fallback to the user's initial.
+// referrerPolicy="no-referrer" stops googleusercontent from rejecting
+// the request (403/429) when a cross-origin referrer is sent.
+function Avatar({ user, size = 34 }) {
+  const [failed, setFailed] = useState(false);
+  const letter = (user?.name || "P")[0].toUpperCase();
+  if (user?.picture && !failed) {
+    return <img src={user.picture} width={size} height={size}
+      referrerPolicy="no-referrer" onError={() => setFailed(true)}
+      style={{ display:"block", borderRadius:10 }} alt=""/>;
+  }
+  return <span style={{ fontSize:13, fontWeight:900, color:A }}>{letter}</span>;
 }
 
 // ── Dashboard ─────────────────────────────────────────────────
@@ -1358,7 +1373,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   const kcalAccent  = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
   const kcalLabel   = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mc}88,${mc})`;
-  const kcalBorder  = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#1c241c";
+  const kcalBorder  = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
 
   const [savedIds,      setSavedIds]      = useState({});
   const [editingTarget, setEditingTarget] = useState(false);
@@ -1399,25 +1414,25 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
         <div>
           <h1 style={{ margin:0, fontSize:26, fontWeight:900, color:A, letterSpacing:"-0.02em", lineHeight:1 }}>FUEL LOG</h1>
-          <p style={{ margin:"4px 0 0", fontSize:12, color:"#445040", letterSpacing:"0.06em" }}>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:"#9b958b", letterSpacing:"0.06em" }}>
             {new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"short" }).toUpperCase()}
           </p>
           {!isOnline && <div style={{ marginTop:4, fontSize:10, color:"#ffb84b", fontWeight:700, letterSpacing:"0.06em" }}>OFFLINE</div>}
-          {syncMsg   && <div style={{ marginTop:2,  fontSize:10, color:"#445040" }}>{syncMsg}</div>}
+          {syncMsg   && <div style={{ marginTop:2,  fontSize:10, color:"#9b958b" }}>{syncMsg}</div>}
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && (
-            <div style={{ padding:"7px 10px", background:"#131a11", border:`1px solid ${BD}`,
+            <div style={{ padding:"7px 10px", background:"#1c1a15", border:`1px solid ${BD}`,
               borderRadius:10, fontSize:13, fontWeight:900, color:A }}>🔥{streak}</div>
           )}
-          <button onClick={() => setView("profile")} style={{ width:34, height:34, background:"#131a11",
-            border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:14,
+          <button onClick={() => setView("profile")} style={{ width:34, height:34, background:"#1c1a15",
+            border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:14,
             display:"flex", alignItems:"center", justifyContent:"center" }}>⚙️</button>
-          <button onClick={() => setView("history")} style={{ width:34, height:34, background:"#131a11",
-            border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:15,
+          <button onClick={() => setView("history")} style={{ width:34, height:34, background:"#1c1a15",
+            border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:15,
             display:"flex", alignItems:"center", justifyContent:"center" }}>📊</button>
-          <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"#131a11",
-            border:`1px solid ${BD}`, borderRadius:10, color:"#556050", fontSize:14,
+          <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"#1c1a15",
+            border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:14,
             display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</button>
           {isPremium && (
             <button onClick={onSignOut}
@@ -1425,11 +1440,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
                 border:`1px solid ${A}44`, borderRadius:10,
                 display:"flex", alignItems:"center", justifyContent:"center",
                 overflow:"hidden", padding:0 }}>
-              {authUser?.picture
-                ? <img src={authUser.picture} width={34} height={34} style={{ display:"block", borderRadius:10 }} alt=""/>
-                : <span style={{ fontSize:13, fontWeight:900, color:A }}>
-                    {(authUser?.name || "P")[0].toUpperCase()}
-                  </span>}
+              <Avatar user={authUser}/>
             </button>
           )}
         </div>
@@ -1442,8 +1453,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           return (
             <button key={k} onClick={() => setMode(k)}
               style={{ flex:1, padding:"9px 4px",
-                background: active ? v.color + "22" : "#131a11",
-                color:      active ? v.color : "#445040",
+                background: active ? v.color + "22" : "#1c1a15",
+                color:      active ? v.color : "#9b958b",
                 border:    `1px solid ${active ? v.color + "55" : BD}`,
                 borderRadius:10, fontSize:11, fontWeight:900, letterSpacing:"0.06em" }}>
               {v.label}
@@ -1458,7 +1469,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {!hasProfile && (
         <button onClick={() => setView("profile")}
-          style={{ width:"100%", padding:"11px", background:"#131a11",
+          style={{ width:"100%", padding:"11px", background:"#1c1a15",
             border:`1px solid ${A}33`, borderRadius:12, color:A,
             fontSize:12, fontWeight:700, marginBottom:12, letterSpacing:"0.06em" }}>
           👤 Set body stats for personalised targets →
@@ -1488,8 +1499,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
               ⚠️ {targetWarning.text}
             </div>
           ) : (
-            <div style={{ background:"#101510", border:"1px solid #3a5030", borderRadius:12,
-              padding:"10px 14px", fontSize:11, color:"#556050", lineHeight:1.5 }}>
+            <div style={{ background:"#141210", border:"1px solid #3a352a", borderRadius:12,
+              padding:"10px 14px", fontSize:11, color:"#aea79c", lineHeight:1.5 }}>
               ℹ {targetWarning.text}
             </div>
           )}
@@ -1544,38 +1555,38 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           ) : (
             <div onClick={() => { setTargetInputVal(String(targets.kcal)); setEditingTarget(true); }}
               style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:4,
-                background: isCustomMode ? mc + "12" : "#161a14",
-                border: `1px solid ${isCustomMode ? mc + "44" : "#2a3828"}`,
+                background: isCustomMode ? mc + "12" : "#1c1a15",
+                border: `1px solid ${isCustomMode ? mc + "44" : "#2a2620"}`,
                 borderRadius:8, padding:"5px 10px" }}>
-              <span style={{ fontSize:12, color: isCustomMode ? mc : "#6a9060", fontWeight:700 }}>
+              <span style={{ fontSize:12, color: isCustomMode ? mc : "#9a948a", fontWeight:700 }}>
                 {targets.kcal.toLocaleString()} kcal
               </span>
-              <span style={{ fontSize:10, color: isCustomMode ? mc + "99" : "#4a6a44" }}>✎</span>
+              <span style={{ fontSize:10, color: isCustomMode ? mc + "99" : "#7a746a" }}>✎</span>
             </div>
           )}
         </div>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:14 }}>
           <div>
-            <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", marginBottom:4 }}>CONSUMED</div>
+            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", marginBottom:4 }}>CONSUMED</div>
             <div style={{ fontSize:42, fontWeight:900,
-              color: overAmt > 100 ? kcalAccent : "#e8f0e0",
+              color: overAmt > 100 ? kcalAccent : "#efeae0",
               lineHeight:1, letterSpacing:"-0.03em" }}>
               {Math.round(totals.kcal).toLocaleString()}
-              <span style={{ fontSize:14, color:"#445040", fontWeight:400, marginLeft:5 }}>kcal</span>
+              <span style={{ fontSize:14, color:"#9b958b", fontWeight:400, marginLeft:5 }}>kcal</span>
             </div>
           </div>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", marginBottom:4 }}>
+            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", marginBottom:4 }}>
               {kcalLabel}
             </div>
             <div style={{ fontSize:30, fontWeight:900, color: kcalAccent, lineHeight:1 }}>
               {Math.abs(Math.round(remaining)).toLocaleString()}
-              <span style={{ fontSize:12, color: overAmt > 100 ? kcalAccent + "99" : "#6a9a30",
+              <span style={{ fontSize:12, color: overAmt > 100 ? kcalAccent + "99" : "#a7a197",
                 fontWeight:400, marginLeft:4 }}>kcal</span>
             </div>
           </div>
         </div>
-        <div style={{ height:10, background:"#161a16", borderRadius:99, overflow:"hidden" }}>
+        <div style={{ height:10, background:"#1c1a15", borderRadius:99, overflow:"hidden" }}>
           <div style={{ height:"100%", width:`${pct}%`,
             background: kcalBarBg,
             borderRadius:99, transition:"width 0.5s" }}/>
@@ -1584,7 +1595,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Macros */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"18px 20px", marginBottom:14 }}>
-        <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>MACROS</div>
+        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>MACROS</div>
         <MBar label="PROTEIN" value={totals.protein} target={targets.protein} color="#4b9fff"/>
         <MBar label="CARBS"   value={totals.carbs}   target={targets.carbs}   color="#ffb84b"/>
         <MBar label="FAT"     value={totals.fat}      target={targets.fat}     color="#ff7b4b"/>
@@ -1597,7 +1608,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div>
-            <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:3 }}>WATER</div>
+            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:3 }}>WATER</div>
             <div style={{ fontSize:22, fontWeight:900, color:"#4b9fff" }}>
               {water}<span style={{ fontSize:13, color:"#2a4060", fontWeight:400, marginLeft:5 }}>/ 8 glasses</span>
             </div>
@@ -1641,9 +1652,9 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
               borderRadius:16, padding:"16px 8px", textAlign:"center" }}>
             <div style={{ fontSize:22, marginBottom:5 }}>{b.e}</div>
             <div style={{ fontSize:11, fontWeight:900,
-              color: b.premium && !isPremium ? "#445040" : A,
+              color: b.premium && !isPremium ? "#9b958b" : A,
               letterSpacing:"0.07em" }}>{b.l}</div>
-            <div style={{ fontSize:10, color:"#334030", marginTop:3 }}>{b.s}</div>
+            <div style={{ fontSize:10, color:"#6e6960", marginTop:3 }}>{b.s}</div>
           </button>
         ))}
       </div>
@@ -1651,7 +1662,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       {/* Log list */}
       {logs.length > 0 ? (
         <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, overflow:"hidden" }}>
-          <div style={{ padding:"13px 20px 11px", fontSize:11, color:"#445040",
+          <div style={{ padding:"13px 20px 11px", fontSize:11, color:"#9b958b",
             letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}` }}>
             TODAY'S LOG · {logs.length} ITEM{logs.length !== 1 ? "S" : ""}
           </div>
@@ -1659,18 +1670,18 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             <div key={log.id} style={{ display:"flex", alignItems:"center", padding:"13px 16px",
               borderBottom: i < logs.length - 1 ? `1px solid ${BD}` : "none", gap:10 }}>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:14, fontWeight:600, color:"#d8e8d0",
+                <div style={{ fontSize:14, fontWeight:600, color:"#e6e1d7",
                   overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
-                <div style={{ fontSize:11, color:"#3d4a38", marginTop:3 }}>
+                <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
                   {log.time} · P:{log.protein}g C:{log.carbs}g F:{log.fat}g
                 </div>
               </div>
               <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
               <button onClick={() => handleAddToQA(log)}
                 style={{ flexShrink:0, padding:"7px 12px",
-                  background: savedIds[log.id] ? A + "22" : "#131a11",
-                  border: `1px solid ${savedIds[log.id] ? A + "66" : "#2a4a28"}`,
-                  borderRadius:10, color: savedIds[log.id] ? A : "#4a8a40",
+                  background: savedIds[log.id] ? A + "22" : "#1c1a15",
+                  border: `1px solid ${savedIds[log.id] ? A + "66" : "#2a2620"}`,
+                  borderRadius:10, color: savedIds[log.id] ? A : "#827c73",
                   fontSize:12, fontWeight:700, cursor:"pointer" }}>
                 {savedIds[log.id] ? "✓" : "⚡"}
               </button>
@@ -1682,7 +1693,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           ))}
         </div>
       ) : (
-        <div style={{ textAlign:"center", padding:"30px 20px", color:"#2a3228", fontSize:14 }}>
+        <div style={{ textAlign:"center", padding:"30px 20px", color:"#6e6960", fontSize:14 }}>
           <div style={{ fontSize:36, marginBottom:8 }}>🍽️</div>Nothing logged yet today.
         </div>
       )}
@@ -1784,9 +1795,9 @@ function ItemRow({ item, onReestimate, reestimating }) {
               </button>
             </div>
           ) : (
-            <div style={{ fontSize:13, fontWeight:600, color:"#d8e8d0", cursor:"pointer" }}
+            <div style={{ fontSize:13, fontWeight:600, color:"#e6e1d7", cursor:"pointer" }}
               onClick={() => setEditing(true)}>
-              {item.name} <span style={{ fontSize:11, color:"#334a30" }}>✏️</span>
+              {item.name} <span style={{ fontSize:11, color:"#827c73" }}>✏️</span>
             </div>
           )}
           {item.source === "oft" && (
@@ -1800,11 +1811,11 @@ function ItemRow({ item, onReestimate, reestimating }) {
           </div>
         </div>
       </div>
-      <div style={{ fontSize:11, color:"#3d4a38" }}>
+      <div style={{ fontSize:11, color:"#8b857c" }}>
         P:{item.protein}g · C:{item.carbs}g · F:{item.fat}g
       </div>
       {item.reasoning && !editing && (
-        <div style={{ fontSize:11, color:"#334a30", marginTop:5, lineHeight:1.5, fontStyle:"italic" }}>
+        <div style={{ fontSize:11, color:"#827c73", marginTop:5, lineHeight:1.5, fontStyle:"italic" }}>
           {item.reasoning}
         </div>
       )}
@@ -1888,7 +1899,7 @@ function AILog({ onAdd, onBack }) {
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="AI MEAL LOG" onBack={onBack}/>
-      <p style={{ color:"#556050", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
+      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
         Describe your meal — I'll break it down item by item with confidence scores.
         Tap any item to correct it and re-estimate.
       </p>
@@ -1897,13 +1908,13 @@ function AILog({ onAdd, onBack }) {
         placeholder={"e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
         style={{ width:"100%", boxSizing:"border-box", background:CARD,
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
-          color:"#d8e8d0", fontSize:14, resize:"none", fontFamily:"inherit",
+          color:"#e6e1d7", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
 
       <button onClick={estimate} disabled={loading || !desc.trim()}
         style={{ width:"100%", marginTop:12, padding:"15px",
-          background: loading || !desc.trim() ? "#161a16" : A,
-          color:      loading || !desc.trim() ? "#2e3a2c" : "#0b0d0b",
+          background: loading || !desc.trim() ? "#1c1a15" : A,
+          color:      loading || !desc.trim() ? "#2c2820" : "#0b0d0b",
           border:"none", borderRadius:14, fontSize:14, fontWeight:900,
           letterSpacing:"0.08em", cursor: loading || !desc.trim() ? "not-allowed" : "pointer" }}>
         {loading ? "⚡ ANALYSING..." : "🤖 ANALYSE MEAL"}
@@ -1923,7 +1934,7 @@ function AILog({ onAdd, onBack }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             background:CARD, border:`1px solid ${BD}`, borderRadius:14,
             padding:"12px 16px", marginBottom:12 }}>
-            <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.1em", fontWeight:800 }}>
+            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800 }}>
               OVERALL CONFIDENCE
             </div>
             <div style={{ fontSize:18, fontWeight:900, color: confColor(avgConf) }}>
@@ -1960,14 +1971,14 @@ function AILog({ onAdd, onBack }) {
             + LOG ALL AS ONE ENTRY
           </button>
 
-          <div style={{ fontSize:11, color:"#334a30", textAlign:"center", marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"#827c73", textAlign:"center", marginBottom:12 }}>
             or tap individual items to log them separately ↑
           </div>
 
           {items.map((item, i) => (
             <button key={i} onClick={() => logItem(item)}
-              style={{ width:"100%", padding:"10px 14px", background:"#131a11",
-                border:`1px solid ${BD}`, borderRadius:10, color:"#8aaa80",
+              style={{ width:"100%", padding:"10px 14px", background:"#1c1a15",
+                border:`1px solid ${BD}`, borderRadius:10, color:"#b6b0a4",
                 fontSize:12, fontWeight:600, cursor:"pointer", marginBottom:6,
                 textAlign:"left", display:"flex", justifyContent:"space-between" }}>
               <span>+ {item.name}</span>
@@ -2003,7 +2014,7 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search meals..." style={{ ...INP, flex:1, padding:"12px 16px" }}/>
         <button onClick={() => setModal({ meal:null, index:null })}
-          style={{ padding:"12px 18px", background:"#131a11", border:`1px solid ${A}44`,
+          style={{ padding:"12px 18px", background:"#1c1a15", border:`1px solid ${A}44`,
             borderRadius:12, color:A, fontWeight:900, fontSize:16, flexShrink:0 }}>＋</button>
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -2012,9 +2023,9 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
             padding:"13px 14px", display:"flex", alignItems:"center", gap:8 }}>
             <button onClick={() => { onAdd(m); onBack(); }}
               style={{ flex:1, background:"none", border:"none", textAlign:"left", padding:0, minWidth:0 }}>
-              <div style={{ fontSize:14, fontWeight:600, color:"#d8e8d0",
+              <div style={{ fontSize:14, fontWeight:600, color:"#e6e1d7",
                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.name}</div>
-              <div style={{ fontSize:11, color:"#3d4a38", marginTop:3 }}>
+              <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
                 P:{m.protein}g · C:{m.carbs}g · F:{m.fat}g
               </div>
             </button>
@@ -2026,12 +2037,12 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
           </div>
         ))}
         {filtered.length === 0 && (
-          <div style={{ textAlign:"center", color:"#2a3228", padding:"30px 0", fontSize:14 }}>No meals found</div>
+          <div style={{ textAlign:"center", color:"#6e6960", padding:"30px 0", fontSize:14 }}>No meals found</div>
         )}
       </div>
       <button onClick={() => save([...DEF_MEALS])}
         style={{ marginTop:16, width:"100%", padding:"11px", background:"none",
-          border:`1px dashed #1a2a18`, borderRadius:12, color:"#2a3a28", fontSize:12, fontFamily:"inherit" }}>
+          border:`1px dashed #24211b`, borderRadius:12, color:"#6e6960", fontSize:12, fontFamily:"inherit" }}>
         ↩ Reset to defaults
       </button>
     </div>
@@ -2087,7 +2098,7 @@ function FoodSearch({ onAdd, onBack }) {
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="FOOD SEARCH" onBack={onBack}/>
-      <p style={{ color:"#556050", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
+      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
         Search millions of products via Open Food Facts.
       </p>
       <div style={{ display:"flex", gap:10, marginBottom:20 }}>
@@ -2097,14 +2108,14 @@ function FoodSearch({ onAdd, onBack }) {
           style={{ ...INP, flex:1, padding:"13px 16px" }}/>
         <button onClick={search} disabled={loading || !q.trim()}
           style={{ padding:"13px 16px",
-            background: q.trim() && !loading ? A : "#161a16",
-            color:      q.trim() && !loading ? "#0b0d0b" : "#2e3a2c",
+            background: q.trim() && !loading ? A : "#1c1a15",
+            color:      q.trim() && !loading ? "#0b0d0b" : "#2c2820",
             border:"none", borderRadius:12, fontWeight:900, fontSize:13,
             flexShrink:0, letterSpacing:"0.06em" }}>
           {loading ? "..." : "SEARCH"}
         </button>
       </div>
-      {loading && <div style={{ textAlign:"center", color:"#445040", padding:24, fontSize:14 }}>🔍 Searching...</div>}
+      {loading && <div style={{ textAlign:"center", color:"#9b958b", padding:24, fontSize:14 }}>🔍 Searching...</div>}
       {error   && <p style={{ color:"#ff5555", fontSize:13, textAlign:"center", marginBottom:10 }}>{error}</p>}
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {results.map((r, i) => (
@@ -2112,9 +2123,9 @@ function FoodSearch({ onAdd, onBack }) {
             style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
               textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%" }}>
             <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:"#d8e8d0",
+              <div style={{ fontSize:13, fontWeight:600, color:"#e6e1d7",
                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name}</div>
-              <div style={{ fontSize:11, color:"#3d4a38", marginTop:3 }}>
+              <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
                 {r.notes} · P:{r.protein}g · C:{r.carbs}g · F:{r.fat}g
               </div>
             </div>
@@ -2123,7 +2134,7 @@ function FoodSearch({ onAdd, onBack }) {
         ))}
       </div>
       {done && !results.length && !loading && !error && (
-        <div style={{ textAlign:"center", color:"#2a3228", padding:"30px 0" }}>No results</div>
+        <div style={{ textAlign:"center", color:"#6e6960", padding:"30px 0" }}>No results</div>
       )}
     </div>
   );
@@ -2137,7 +2148,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
-    KCAL:    { key:"kcal",    label:"Kcal",    color:"#a3ff4b", unit:"" },
+    KCAL:    { key:"kcal",    label:"Kcal",    color:"#e8e2d4", unit:"" },
     PROTEIN: { key:"protein", label:"Protein", color:"#4b9fff", unit:"g" },
     CARBS:   { key:"carbs",   label:"Carbs",   color:"#ffb84b", unit:"g" },
     FAT:     { key:"fat",     label:"Fat",     color:"#ff7b4b", unit:"g" },
@@ -2229,7 +2240,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
       <BackHdr title="HISTORY" onBack={onBack} right={
         history.length > 0 && (
           <button onClick={exportCSV}
-            style={{ padding:"8px 14px", background:"#131a11", border:`1px solid ${A}44`,
+            style={{ padding:"8px 14px", background:"#1c1a15", border:`1px solid ${A}44`,
               borderRadius:10, color:A, fontSize:11, fontWeight:900, cursor:"pointer", letterSpacing:"0.07em" }}>
             📥 CSV
           </button>
@@ -2237,7 +2248,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
       }/>
 
       {history.length === 0 && (
-        <div style={{ textAlign:"center", padding:"60px 20px", color:"#2a3228" }}>
+        <div style={{ textAlign:"center", padding:"60px 20px", color:"#6e6960" }}>
           <div style={{ fontSize:36, marginBottom:10 }}>📊</div>
           <div style={{ fontSize:14 }}>No history yet — days auto-save as you log.</div>
         </div>
@@ -2249,8 +2260,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
             {RANGES.map(r => (
               <button key={r} onClick={() => setRange(r)}
                 style={{ padding:"7px 14px",
-                  background: range === r ? A : "#131a11",
-                  color:      range === r ? "#0b0d0b" : "#556050",
+                  background: range === r ? A : "#1c1a15",
+                  color:      range === r ? "#0b0d0b" : "#aea79c",
                   border: `1px solid ${range === r ? A : BD}`,
                   borderRadius:99, fontSize:12, fontWeight:900, flexShrink:0 }}>
                 {RLBL[r]}
@@ -2264,9 +2275,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 marginBottom:18, background:CARD, border:`1px solid ${BD}`, borderRadius:16, padding:"12px 16px" }}>
                 <button onClick={() => setDayIdx(i => Math.max(0, i - 1))} disabled={dayIdx === 0}
                   style={{ background:"none", border:"none",
-                    color: dayIdx === 0 ? "#2a3028" : "#7a9a70", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</button>
+                    color: dayIdx === 0 ? "#524d46" : "#a7a197", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</button>
                 <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:13, fontWeight:800, color:"#d8e8d0" }}>{day ? fmtFull(day.date) : "—"}</div>
+                  <div style={{ fontSize:13, fontWeight:800, color:"#e6e1d7" }}>{day ? fmtFull(day.date) : "—"}</div>
                   {day && (
                     <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:5 }}>
                       {day.mode && (
@@ -2277,8 +2288,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                       )}
                       <button onClick={() => patch({ training: !day.training })}
                         style={{ fontSize:10, fontWeight:900, padding:"2px 8px",
-                          background: day.training ? A + "22" : "#131a11",
-                          color: day.training ? A : "#445040",
+                          background: day.training ? A + "22" : "#1c1a15",
+                          color: day.training ? A : "#9b958b",
                           border: `1px solid ${day.training ? A + "44" : BD}`, borderRadius:99 }}>
                         {day.training ? "⚡ TRAINING" : "💤 REST"}
                       </button>
@@ -2288,7 +2299,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 <button onClick={() => setDayIdx(i => Math.min(history.length - 1, i + 1))}
                   disabled={dayIdx === history.length - 1}
                   style={{ background:"none", border:"none",
-                    color: dayIdx === history.length - 1 ? "#2a3028" : "#7a9a70",
+                    color: dayIdx === history.length - 1 ? "#524d46" : "#a7a197",
                     fontSize:24, padding:"0 6px", lineHeight:1 }}>›</button>
               </div>
 
@@ -2298,14 +2309,14 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                     <div style={{ fontSize:56, fontWeight:900, color:A, lineHeight:1, letterSpacing:"-0.03em" }}>
                       {Math.round(dayTots.kcal).toLocaleString()}
                     </div>
-                    <div style={{ fontSize:14, color:"#445040", marginTop:4, letterSpacing:"0.12em" }}>CALORIES</div>
-                    <div style={{ fontSize:12, marginTop:6, color:"#445040" }}>
+                    <div style={{ fontSize:14, color:"#9b958b", marginTop:4, letterSpacing:"0.12em" }}>CALORIES</div>
+                    <div style={{ fontSize:12, marginTop:6, color:"#9b958b" }}>
                       P:{Math.round(dayTots.protein)}g · C:{Math.round(dayTots.carbs)}g · F:{Math.round(dayTots.fat)}g
                     </div>
                   </div>
 
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"20px", marginBottom:14 }}>
-                    <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>
+                    <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>
                       MACRO BREAKDOWN
                     </div>
                     {chartsAvailable ? (
@@ -2319,14 +2330,14 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                         </PieChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div style={{ fontSize:11, color:"#445040", padding:"8px 0" }}>Charts unavailable — Recharts CDN failed to load.</div>
+                      <div style={{ fontSize:11, color:"#9b958b", padding:"8px 0" }}>Charts unavailable — Recharts CDN failed to load.</div>
                     )}
                     <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:8 }}>
                       {pieData.map(p => (
                         <div key={p.name} style={{ display:"flex", alignItems:"center", gap:5 }}>
                           <div style={{ width:9, height:9, borderRadius:"50%", background:p.color }}/>
-                          <span style={{ fontSize:11, color:"#8aaa80" }}>
-                            {p.name}: <strong style={{ color:"#d8e8d0" }}>{p.value}g</strong>
+                          <span style={{ fontSize:11, color:"#b6b0a4" }}>
+                            {p.name}: <strong style={{ color:"#e6e1d7" }}>{p.value}g</strong>
                           </span>
                         </div>
                       ))}
@@ -2336,7 +2347,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:16,
                     padding:"14px 18px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <div>
-                      <span style={{ fontSize:12, color:"#445040", letterSpacing:"0.1em", fontWeight:800 }}>WATER </span>
+                      <span style={{ fontSize:12, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800 }}>WATER </span>
                       <span style={{ fontSize:14, color:"#4b9fff", fontWeight:900 }}>{day.water} / 8</span>
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
@@ -2352,46 +2363,46 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   </div>
 
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden", marginBottom:12 }}>
-                    <div style={{ padding:"12px 18px 10px", fontSize:11, color:"#445040",
+                    <div style={{ padding:"12px 18px 10px", fontSize:11, color:"#9b958b",
                       letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}`,
                       display:"flex", justifyContent:"space-between" }}>
                       <span>FOODS · {(day.logs || []).length} ITEMS</span>
-                      <span style={{ fontSize:10, color:"#334a30" }}>× to remove</span>
+                      <span style={{ fontSize:10, color:"#827c73" }}>× to remove</span>
                     </div>
                     {(day.logs || []).length === 0 && (
-                      <div style={{ padding:"18px", textAlign:"center", color:"#2a3228", fontSize:13 }}>No foods logged</div>
+                      <div style={{ padding:"18px", textAlign:"center", color:"#6e6960", fontSize:13 }}>No foods logged</div>
                     )}
                     {(day.logs || []).map((log, i) => (
                       <div key={log.id || i} style={{ display:"flex", justifyContent:"space-between",
                         alignItems:"center", padding:"11px 16px",
                         borderBottom: i < day.logs.length - 1 ? `1px solid ${BD}` : "none" }}>
                         <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-                          <div style={{ fontSize:13, color:"#d8e8d0", overflow:"hidden",
+                          <div style={{ fontSize:13, color:"#e6e1d7", overflow:"hidden",
                             textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
-                          <div style={{ fontSize:11, color:"#3d4a38", marginTop:2 }}>
+                          <div style={{ fontSize:11, color:"#8b857c", marginTop:2 }}>
                             P:{log.protein}g C:{log.carbs}g F:{log.fat}g
                           </div>
                         </div>
                         <span style={{ fontSize:15, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
                         <button onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
-                          style={{ background:"none", border:"none", color:"#2a3028", fontSize:18, padding:"2px 10px" }}>×</button>
+                          style={{ background:"none", border:"none", color:"#524d46", fontSize:18, padding:"2px 10px" }}>×</button>
                       </div>
                     ))}
                   </div>
 
                   <div style={{ display:"flex", gap:8 }}>
                     <button onClick={() => setAddCtx("quick")}
-                      style={{ flex:1, padding:"11px", background:"#131a11",
+                      style={{ flex:1, padding:"11px", background:"#1c1a15",
                         border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ⚡ QUICK ADD
                     </button>
                     <button onClick={() => setAddCtx("ai")}
-                      style={{ flex:1, padding:"11px", background:"#131a11",
+                      style={{ flex:1, padding:"11px", background:"#1c1a15",
                         border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       🤖 AI LOG
                     </button>
                     <button onClick={() => setAddCtx("manual")}
-                      style={{ flex:1, padding:"11px", background:"#131a11",
+                      style={{ flex:1, padding:"11px", background:"#1c1a15",
                         border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ＋ MANUAL
                     </button>
@@ -2407,8 +2418,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 {Object.entries(MM).map(([k, m]) => (
                   <button key={k} onClick={() => { setShowWeight(false); toggleM(k); }}
                     style={{ padding:"6px 13px",
-                      background: !showWeight && metrics.includes(k) ? m.color + "22" : "#131a11",
-                      color:      !showWeight && metrics.includes(k) ? m.color       : "#445040",
+                      background: !showWeight && metrics.includes(k) ? m.color + "22" : "#1c1a15",
+                      color:      !showWeight && metrics.includes(k) ? m.color       : "#9b958b",
                       border: `1px solid ${!showWeight && metrics.includes(k) ? m.color + "55" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     {m.label}
@@ -2417,8 +2428,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 {filteredWeighIns.length > 0 && (
                   <button onClick={() => setShowWeight(w => !w)}
                     style={{ padding:"6px 13px",
-                      background: showWeight ? "#4b9fff22" : "#131a11",
-                      color:      showWeight ? "#4b9fff"   : "#445040",
+                      background: showWeight ? "#4b9fff22" : "#1c1a15",
+                      color:      showWeight ? "#4b9fff"   : "#9b958b",
                       border: `1px solid ${showWeight ? "#4b9fff55" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     ⚖️ Weight
@@ -2428,9 +2439,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   {[["line","📈"],["bar","📊"]].map(([t, e]) => (
                     <button key={t} onClick={() => setChartType(t)}
                       style={{ padding:"6px 12px",
-                        background: chartType === t ? "#1e2a1e" : "#131a11",
-                        color:      chartType === t ? "#d8e8d0" : "#445040",
-                        border: `1px solid ${chartType === t ? "#334a33" : BD}`, borderRadius:8, fontSize:12 }}>
+                        background: chartType === t ? "#24211b" : "#1c1a15",
+                        color:      chartType === t ? "#e6e1d7" : "#9b958b",
+                        border: `1px solid ${chartType === t ? "#3a352a" : BD}`, borderRadius:8, fontSize:12 }}>
                       {e}
                     </button>
                   ))}
@@ -2442,35 +2453,35 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   <ResponsiveContainer width="100%" height={200}>
                     {showWeight ? (
                       <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                        <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
+                        <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
                         <Tooltip formatter={(v, n) => [v + " kg", n === "ROLLING" ? "7-day avg" : "Weight"]}/>
                         <Line type="monotone" dataKey="WEIGHT" stroke="#4b9fff" strokeWidth={1.5} dot={{ r:2.5, fill:"#4b9fff" }} name="Weight" connectNulls={false}/>
                         <Line type="monotone" dataKey="ROLLING" stroke={A} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
                       </LineChart>
                     ) : chartType === "line" ? (
                       <LineChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                        <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
                         <Tooltip/>
                         {metrics.map(m => <Line key={m} type="monotone" dataKey={m} stroke={MM[m].color} strokeWidth={2.5} dot={false} name={m}/>)}
                       </LineChart>
                     ) : (
                       <BarChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                        <XAxis dataKey="date" tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fill:"#3d4a38", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
                         <Tooltip/>
                         {metrics.map(m => <Bar key={m} dataKey={m} fill={MM[m].color} radius={[4,4,0,0]} name={m} maxBarSize={28}/>)}
                       </BarChart>
                     )}
                   </ResponsiveContainer>
                 ) : (
-                  <div style={{ fontSize:11, color:"#445040", padding:"12px 8px" }}>Charts unavailable — Recharts CDN failed to load.</div>
+                  <div style={{ fontSize:11, color:"#9b958b", padding:"12px 8px" }}>Charts unavailable — Recharts CDN failed to load.</div>
                 )}
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
-                <div style={{ fontSize:11, color:"#445040", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
+                <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
                   {RLBL[range].toUpperCase()} AVERAGES · {filtered.length} DAYS
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
@@ -2488,8 +2499,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                     <div style={{ marginTop:10, display:"flex", justifyContent:"space-between",
                       background:"#0b0d0b", borderRadius:10, padding:"10px 14px", alignItems:"center" }}>
                       <div>
-                        <div style={{ fontSize:10, color:"#445040", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
-                        <div style={{ fontSize:12, color:"#3d4a38", marginTop:2 }}>
+                        <div style={{ fontSize:10, color:"#9b958b", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
+                        <div style={{ fontSize:12, color:"#8b857c", marginTop:2 }}>
                           {filteredWeighIns[0].weight}kg → {last}kg
                         </div>
                       </div>
@@ -2502,7 +2513,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden" }}>
-                <div style={{ padding:"12px 18px 10px", fontSize:11, color:"#445040",
+                <div style={{ padding:"12px 18px 10px", fontSize:11, color:"#9b958b",
                   letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}` }}>
                   {filtered.length} DAYS LOGGED
                 </div>
@@ -2511,18 +2522,18 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                     padding:"12px 16px", borderBottom: i < filtered.length - 1 ? `1px solid ${BD}` : "none", cursor:"pointer" }}
                     onClick={() => { setRange("DAY"); setDayIdx(history.findIndex(h => h.date === d.date)); }}>
                     <div>
-                      <div style={{ fontSize:13, fontWeight:600, color:"#d8e8d0" }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:"#e6e1d7" }}>
                         {fmtFull(d.date)}
                         {d.mode && <span style={{ fontSize:10, fontWeight:900, color: MODES[d.mode]?.color || A, marginLeft:8 }}>{MODES[d.mode]?.label}</span>}
                         {d.training && <span style={{ fontSize:10, color:A, marginLeft:6 }}>⚡</span>}
                       </div>
-                      <div style={{ fontSize:11, color:"#3d4a38", marginTop:2 }}>
+                      <div style={{ fontSize:11, color:"#8b857c", marginTop:2 }}>
                         P:{Math.round(d.protein)}g · C:{Math.round(d.carbs)}g · F:{Math.round(d.fat)}g · 💧{d.water}
                       </div>
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <span style={{ fontSize:16, fontWeight:900, color:A }}>{Math.round(d.kcal)}</span>
-                      <span style={{ fontSize:12, color:"#334a30" }}>›</span>
+                      <span style={{ fontSize:12, color:"#827c73" }}>›</span>
                     </div>
                   </div>
                 ))}
@@ -2531,7 +2542,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
           )}
 
           {range !== "DAY" && filtered.length === 0 && (
-            <div style={{ textAlign:"center", padding:"40px 0", color:"#2a3228", fontSize:14 }}>
+            <div style={{ textAlign:"center", padding:"40px 0", color:"#6e6960", fontSize:14 }}>
               No data for this range yet.
             </div>
           )}
@@ -2547,7 +2558,7 @@ function Achievements({ earnedBdgs, onBack }) {
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="ACHIEVEMENTS 🏆" onBack={onBack}/>
-      <p style={{ color:"#556050", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
+      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
         ×2 progression: Bronze 3 → Silver 6 → Gold 12 → Platinum 24 → Diamond 48 → Elite 96
       </p>
       {BDGS.map(b => {
@@ -2559,8 +2570,8 @@ function Achievements({ earnedBdgs, onBack }) {
             <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:12 }}>
               <div style={{ fontSize:36 }}>{b.emoji}</div>
               <div>
-                <div style={{ fontSize:16, fontWeight:800, color:"#d8e8d0" }}>{b.name}</div>
-                <div style={{ fontSize:12, color:"#445040", marginTop:2 }}>
+                <div style={{ fontSize:16, fontWeight:800, color:"#e6e1d7" }}>{b.name}</div>
+                <div style={{ fontSize:12, color:"#9b958b", marginTop:2 }}>
                   {top >= 0
                     ? `${TIER_ICONS[top]} ${TIER_NAMES[top]} · ${TIERS[top]} ${b.desc}`
                     : `Not yet · first at ${TIERS[0]} ${b.desc}`}
@@ -2571,7 +2582,7 @@ function Achievements({ earnedBdgs, onBack }) {
               {TIERS.map((t, i) => (
                 <div key={i} style={{ flex:1, textAlign:"center", opacity: earned[i] ? 1 : 0.2 }}>
                   <div style={{ fontSize:16 }}>{TIER_ICONS[i]}</div>
-                  <div style={{ fontSize:9, color: earned[i] ? A : "#334a30", marginTop:2, fontWeight: earned[i] ? 700 : 400 }}>{t}</div>
+                  <div style={{ fontSize:9, color: earned[i] ? A : "#827c73", marginTop:2, fontWeight: earned[i] ? 700 : 400 }}>{t}</div>
                 </div>
               ))}
             </div>
@@ -2579,7 +2590,7 @@ function Achievements({ earnedBdgs, onBack }) {
         );
       })}
       {earnedBdgs.length === 0 && (
-        <div style={{ textAlign:"center", padding:"30px 0", color:"#2a3228", fontSize:13 }}>
+        <div style={{ textAlign:"center", padding:"30px 0", color:"#6e6960", fontSize:13 }}>
           <div style={{ fontSize:36, marginBottom:10 }}>🏆</div>
           No badges yet — keep logging!
         </div>
@@ -2626,6 +2637,12 @@ function App() {
     window.addEventListener("offline", down);
     return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
   }, []); // eslint-disable-line
+
+  // Top-align every page on first access — reset scroll whenever the view changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+  }, [view]);
 
   // Expose dev refresh hook for test harness
   useEffect(() => {
@@ -2982,9 +2999,9 @@ function App() {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <style>{`
         * { box-sizing: border-box; }
-        input::placeholder, textarea::placeholder { color: #2a3228; }
+        input::placeholder, textarea::placeholder { color: #6e6960; }
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-        select { background: #0b0d0b; color: #d8e8d0; }
+        select { background: #0b0d0b; color: #e6e1d7; }
         button { cursor: pointer; }
         button:disabled { cursor: not-allowed; }
       `}</style>
@@ -3026,8 +3043,8 @@ function App() {
             <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>
               {TIER_ICONS[newBadge.i]} {TIER_NAMES[newBadge.i].toUpperCase()} UNLOCKED
             </div>
-            <div style={{ fontSize:22, fontWeight:900, color:"#d8e8d0", marginBottom:6 }}>{newBadge.b.name}</div>
-            <div style={{ fontSize:13, color:"#445040", marginBottom:24 }}>{TIERS[newBadge.i]} {newBadge.b.desc}</div>
+            <div style={{ fontSize:22, fontWeight:900, color:"#e6e1d7", marginBottom:6 }}>{newBadge.b.name}</div>
+            <div style={{ fontSize:13, color:"#9b958b", marginBottom:24 }}>{TIERS[newBadge.i]} {newBadge.b.desc}</div>
             <button onClick={() => setNewBadge(null)}
               style={{ width:"100%", padding:"14px", background:A, color:"#0b0d0b",
                 border:"none", borderRadius:12, fontSize:14, fontWeight:900, cursor:"pointer" }}>
