@@ -2,7 +2,13 @@
 
 **Purpose:** Re-sequence the product roadmap so security and compliance precede taking money or shipping to the Play Store.
 **Date:** 2026-06-06
-**Companion docs:** `ARCHITECTURE_REVIEW.md` (findings & severities), `DOCS.md §23` (roadmap — being superseded by this).
+**Companion docs:** `LEGAL_ROADMAP.md` (the legal/compliance counterpart — owns Phase B in full + the pre-payment commercial prerequisites), `ARCHITECTURE_REVIEW.md` (findings & severities), `DOCS.md §23` (roadmap — being superseded by this).
+
+> **Division of labour:** this doc owns the **security** phases (0, A, C-tech, D-tech, E, F).
+> `LEGAL_ROADMAP.md` owns the **legal/compliance** track — **Phase B in full detail** and the
+> **pre-payment commercial prerequisites** (hosting, domain, business entity). Where the two
+> overlap (Phase B, and the go-live gate), this doc points there rather than duplicating, so they
+> can't drift.
 
 ---
 
@@ -48,11 +54,11 @@ Two reframings change the whole plan:
 ## 3. The re-sequenced roadmap
 
 ```
-NOW ─► Phase 0  Lock the live worker            (days — do independent of launch)
-       Phase A  Server-authoritative entitlement (the real paywall)
-       Phase B  Compliance & data rights         (legal prerequisite for store)
+       Phase 0  Lock the live worker            ✅ DEPLOYED (2026-06-07)
+       Phase A  Server-authoritative entitlement ✅ DEPLOYED (the real paywall)
+NOW ─► Phase B  Compliance & data rights         ➜ see LEGAL_ROADMAP.md (plan agreed)
        Phase C  Resilience & trust               (data you won't silently lose)
-       Phase D  Payments                         (now safe to take money)
+       Phase D  Payments                         (gated by LEGAL_ROADMAP §12 commercial prereqs)
        Phase E  Pre-launch hardening + go-live gate
        Phase F  Monitoring & incident readiness  (post-launch, ongoing)
 
@@ -66,7 +72,7 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 
 **Goal:** the AI endpoint can only be driven by an authenticated, entitled, rate-limited user — and even a worst case can't bankrupt you.
 
-**Status: code-complete (2026-06-06), pending deploy + KV/spend-cap setup.**
+**Status: ✅ DEPLOYED & validated end-to-end on localhost (2026-06-07).** Worker is live on Cloudflare with JWT auth, model allowlist, and token cap enforced. Remaining items are **optional backstops**: bind the `RATE_LIMIT` KV namespace (per-user quota) and set the Anthropic Console spend cap. See `DOCS.md §34`.
 
 - [x] **Require identity.** `callAI` attaches `Authorization: Bearer <supabase access token>` (via `getAccessToken()` → `sb().auth.getSession()`); worker validates it through Supabase `/auth/v1/user` and rejects anonymous/expired with `401`. *(Token validation via the auth endpoint handles both HS256 and asymmetric signing without needing the JWT secret.)*
 - [x] **Server-side `model` allowlist.** Only `claude-sonnet-4-6`; client value ignored/overridden.
@@ -86,7 +92,7 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 
 **Goal:** premium status is a server fact, not a browser flag. Closes T2.
 
-**Status: code-complete (2026-06-07), pending Supabase schema migration.**
+**Status: ✅ DEPLOYED & validated end-to-end on localhost (2026-06-07).** `entitlements` table live, `/redeem` works, AI gated on `tier=premium, status=active`, voucher removed from the bundle. ⚠️ **Known gap (tracked in `LEGAL_ROADMAP.md` R-prep):** the `entitlements` SELECT RLS policy did not actually get created when the schema ran — harmless today (worker reads via service role) but the table must be locked down before launch. Re-run: `ALTER TABLE entitlements ENABLE ROW LEVEL SECURITY;` + the `read own entitlement` policy.
 
 - [x] **`entitlements` table** in Supabase: `user_id, tier, status (trial|active|expired), expires_at, source (voucher|play|stripe), created_at, updated_at`.
   - RLS: user may **READ** their own row; **only the service role may WRITE** it. The client can never grant itself premium.
@@ -104,16 +110,22 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 
 ### Phase B — Compliance & data rights *(legal prerequisite, also a store requirement)*
 
+> **➜ Owned in full by `LEGAL_ROADMAP.md`.** That doc is the authoritative, detailed plan for
+> Phase B (risk register R1–R11, scope decisions, privacy-policy outline, consent plan,
+> sub-processor disclosure, RoPA). This section is a **summary + status only** — do not edit the
+> detail here; edit `LEGAL_ROADMAP.md` so the two can't drift.
+
 **Goal:** lawfully handle health data and satisfy Play Console's Data Safety review. Closes T5.
 
-- [ ] **Privacy policy** published at a stable URL (Play listing requires the URL anyway).
-- [ ] **Treat weight / body-fat / sex as special-category health data (UK GDPR Art. 9).** Add an explicit consent checkpoint before first cloud sync; record lawful basis.
-- [ ] **Disclose Anthropic as a sub-processor** — meal descriptions and coach context leave your system for AI processing.
-- [ ] **Data export** ("Download my data") and **account deletion** UI. Deletion removes the Supabase `auth.users` row (schema's `ON DELETE CASCADE` purges all tables) and any worker-side logs. *(Today, sign-out leaves all cloud rows in place — that gap must close.)*
-- [ ] **Minimise AI-path logging:** don't persist prompt contents containing PII; scrub or hash before any logging.
-- [ ] Complete the **Play Console Data Safety form** aligned to the above.
+**Status: plan agreed (2026-06-07).** Scope locked to **18+, UK/EEA only** → single regime
+(UK + EU GDPR). Key code-verified facts: health data is **pseudonymised, not anonymised** (still
+in scope); the AI path sends **no identifiers** to Anthropic (strong minimisation). Next:
+build export + delete, then publish policy + consent + disclosure.
 
-**Definition of done:** a user can export and delete everything; the privacy policy accurately names what's collected and that Anthropic processes meal data.
+Summary of the work (full detail in `LEGAL_ROADMAP.md`):
+- Privacy policy at a stable URL · Art. 9 explicit consent for health data · Anthropic sub-processor disclosure + transfer mechanism · data **export** + **account deletion** UI · minimise AI-path logging · Play Data Safety form · ICO fee · one-page RoPA.
+
+**Definition of done:** see `LEGAL_ROADMAP.md §11`.
 
 ---
 
@@ -133,11 +145,21 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 
 **Goal:** take money with verified, fraud-resistant entitlement. Closes T6.
 
+> **➜ Commercial prerequisites first (`LEGAL_ROADMAP.md §12`).** Before charging **any**
+> individual: (1) **fully on Cloudflare** — migrate the frontend off GitHub Pages onto **Cloudflare
+> Pages** (Pages' terms discourage primarily-commercial hosting); (2) a **custom domain**;
+> (3) a **business entity / trading name** decided. These are hard gates on this phase.
+>
+> **Synergy (security ↔ legal):** the Cloudflare Pages move is *also* a security win — serving the
+> frontend and worker under **one origin** lets you **drop CORS entirely** (today it's only
+> defence-in-depth) and shrinks the attack surface. Do the migration here and simplify Phase 0's
+> CORS handling at the same time.
+
 - [ ] **Google Play Billing:** verify purchase tokens **server-side** via the Play Developer API; subscribe to **Real-time Developer Notifications (RTDN)** for renew/cancel/refund/grace; write results into `entitlements` with the service role. Never trust a client claim of purchase.
 - [ ] **Stripe (web/Apple):** entitlement set **only** by a signature-verified webhook; client purchase UI grants nothing on its own.
 - [ ] Map both sources to the same `entitlements` model from Phase A.
 
-**Definition of done:** a forged or replayed receipt grants no access; a refund/cancel revokes premium automatically via webhook/RTDN.
+**Definition of done:** a forged or replayed receipt grants no access; a refund/cancel revokes premium automatically via webhook/RTDN; and the commercial prerequisites above are all met.
 
 ---
 
@@ -146,7 +168,9 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 **Ship to the Play Store only when every box is checked.** Closes T7 and verifies the rest.
 
 - [ ] Phase 0–D definitions-of-done all met.
+- [ ] **`LEGAL_ROADMAP.md` Phase B definition-of-done met** (privacy policy live, consent, export/delete, Data Safety form, ICO fee) **and its §12 commercial prerequisites done** (fully on Cloudflare Pages, domain, business entity).
 - [ ] **Penetration self-test:** confirm anonymous worker call, fake premium, over-quota, oversized `max_tokens`, and cross-user data read all fail.
+- [ ] **`entitlements` RLS verified** — the SELECT policy actually exists (the Phase A known gap is closed) and a cross-user read of `entitlements` fails.
 - [ ] **Auth hygiene:** session tokens never logged; sign-out clears local + revokes Supabase session; token refresh handled.
 - [ ] **Dependency review:** pin/verify vendored libs (`vendor/*.js`), confirm no secrets in any tracked file, rotate the Anthropic key once (it predates these controls).
 - [ ] **Secrets inventory:** `ANTHROPIC_KEY`, `SUPABASE_JWT_SECRET`, service-role key, Play/Stripe keys — all in Cloudflare/server secrets, none in the bundle.
