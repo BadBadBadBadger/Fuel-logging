@@ -86,13 +86,19 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 
 **Goal:** premium status is a server fact, not a browser flag. Closes T2.
 
-- [ ] **`entitlements` table** in Supabase: `user_id, tier, status (trial|active|expired), expires_at, source (voucher|play|stripe), updated_at`.
-  - RLS: user may **READ** their own row; **only the service role may WRITE** it. The client can never grant itself premium.
-- [ ] **Worker checks entitlement** before proxying AI: JWT `sub` → look up entitlement (service-role query or a short-lived signed claim). No active entitlement → `402/403`, no AI.
-- [ ] **Move the voucher server-side.** Add a worker `redeem` endpoint that checks the code and writes the entitlement with the service role. **Remove `VOUCHER_CODE` from the client bundle** — it's currently readable by anyone.
-- [ ] Client `authState` becomes **display-only**, derived from the server entitlement on load; never the source of truth.
+**Status: code-complete (2026-06-07), pending Supabase schema migration.**
 
-**Definition of done:** setting `auth_state=premium` in DevTools unlocks nothing server-side; the voucher string no longer appears anywhere in `app.js`.
+- [x] **`entitlements` table** in Supabase: `user_id, tier, status (trial|active|expired), expires_at, source (voucher|play|stripe), created_at, updated_at`.
+  - RLS: user may **READ** their own row; **only the service role may WRITE** it. The client can never grant itself premium.
+- [x] **Worker checks entitlement** before proxying AI: JWT `sub` → look up entitlement via Supabase REST API. No `tier=premium, status=active` → `403`, no AI.
+- [x] **`/redeem` endpoint in worker** — voucher validation server-side, writes entitlement with the service role. **Removed `VOUCHER_CODE` from app.jsx** — voucher no longer readable in the bundle.
+- [x] Client `authState` is **display-only**; server entitlement is the source of truth (checked on every AI call).
+- [ ] **Apply Supabase schema migration** — run the new `setup/supabase-schema.sql` in the Supabase SQL editor to create the `entitlements` table + RLS policy + index.
+- [ ] **Set `SUPABASE_SERVICE_ROLE` secret in Cloudflare** (required for the `/redeem` endpoint to write entitlements). Get it from Supabase Dashboard → Settings → API keys → Copy the "service_role" key.
+- [ ] **Deploy the updated worker** (with `/redeem` endpoint and entitlement checking).
+- [ ] **Deploy the updated app** (without the voucher code; uses `redeemVoucher()` instead).
+
+**Definition of done:** setting `auth_state=premium` in DevTools unlocks nothing server-side; the voucher string no longer appears anywhere in `app.js`; calling the `/redeem` endpoint successfully writes an `entitlements` row; AI calls without an active entitlement return `403`.
 
 ---
 

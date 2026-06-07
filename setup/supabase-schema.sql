@@ -125,6 +125,22 @@ CREATE TABLE IF NOT EXISTS coach_tips (
   UNIQUE(user_id, date)
 );
 
+-- ── Entitlements (Premium status) ──────────────────────────
+-- Source of truth for premium entitlement. Users cannot write this table;
+-- only the service role (webhooks, server-side voucher redeems) may.
+-- The worker checks this table before proxying AI.
+CREATE TABLE IF NOT EXISTS entitlements (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  tier        TEXT DEFAULT 'free' CHECK (tier IN ('free', 'premium')),
+  status      TEXT DEFAULT 'inactive' CHECK (status IN ('inactive', 'trial', 'active', 'expired')),
+  expires_at  TIMESTAMPTZ,
+  source      TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
 -- ─────────────────────────────────────────────────────────────
 -- Row Level Security (RLS)
 -- Users can only read/write their own rows.
@@ -140,9 +156,13 @@ ALTER TABLE meal_library     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE badges           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE history_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE coach_tips       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE entitlements     ENABLE ROW LEVEL SECURITY;
 
 -- profiles: id = auth.uid()
 CREATE POLICY "own profile" ON profiles FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+-- entitlements: users READ their own row only (service role writes via voucher / webhooks)
+CREATE POLICY "read own entitlement" ON entitlements FOR SELECT USING (auth.uid() = user_id);
 
 -- All other tables: user_id = auth.uid()
 CREATE POLICY "own food_logs"         ON food_logs         FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -167,3 +187,4 @@ CREATE INDEX IF NOT EXISTS history_user_date       ON history_snapshots(user_id,
 CREATE INDEX IF NOT EXISTS coach_tips_user_date    ON coach_tips(user_id, date);
 CREATE INDEX IF NOT EXISTS meal_library_user       ON meal_library(user_id);
 CREATE INDEX IF NOT EXISTS badges_user             ON badges(user_id);
+CREATE INDEX IF NOT EXISTS entitlements_user       ON entitlements(user_id);

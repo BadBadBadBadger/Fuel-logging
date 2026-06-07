@@ -12,7 +12,9 @@ const A = "#e8e2d4", BG = "#0b0d0b", CARD = "#141210", BD = "#24211b";
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
 // Leave empty ("") to skip Google Sign In and go straight to voucher entry (dev mode).
 const GOOGLE_CLIENT_ID = "922818167366-5nl6qfteipui307j1oi7asu7d3bkgvat.apps.googleusercontent.com";
-const VOUCHER_CODE     = "FreeFoodTips2026";
+
+// Voucher codes are no longer in the client bundle (Phase A).
+// Validation happens server-side in the Cloudflare Worker /redeem endpoint.
 
 const MODES = {
   cut:      { label:"CUT",      color:"#4b9fff", adj:-500 },
@@ -429,6 +431,22 @@ const getAccessToken = async () => {
   } catch (e) { return null; }
 };
 
+// Server-side voucher redemption (Phase A). Sends the code to the worker /redeem endpoint.
+const redeemVoucher = async (code) => {
+  const token = await getAccessToken();
+  if (!token) throw new Error("Please sign in to redeem a voucher.");
+  const res = await fetch(AI_ENDPOINT + "/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+    body: JSON.stringify({ code: code.trim() }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || "Voucher redemption failed.");
+  }
+  return await res.json();
+};
+
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 const callAI = async (prompt, maxTokens = 500) => {
@@ -564,11 +582,14 @@ function SignInModal({ onSuccess, onCancel }) {
     } catch(e) {}
   }, [step]); // eslint-disable-line
 
-  const handleVoucher = () => {
-    if (voucher.trim().toUpperCase() === VOUCHER_CODE.toUpperCase()) {
+  const handleVoucher = async () => {
+    if (!voucher.trim()) { setVError("Enter a voucher code."); return; }
+    setVError("");
+    try {
+      await redeemVoucher(voucher);
       onSuccess(gUser || { name:"Guest", email:"", picture:"" }, "voucher");
-    } else {
-      setVError("That code isn't right — check the spelling and try again.");
+    } catch(e) {
+      setVError(e.message || "Redemption failed. Try again.");
     }
   };
 
