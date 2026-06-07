@@ -94,13 +94,15 @@ async function withinRateLimit(env, userId) {
 }
 
 // Check user's entitlement status. Returns { tier, status } or null.
-async function getEntitlement(userId) {
+// Reads with the service role (bypasses RLS). Safe because `userId` comes from
+// the already-verified JWT — the client cannot influence which row is read.
+async function getEntitlement(env, userId) {
   try {
     const r = await fetch(
       SUPABASE_URL + "/rest/v1/entitlements?user_id=eq." + userId,
       {
         headers: {
-          Authorization: "Bearer " + SUPABASE_ANON,
+          Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE,
           apikey: SUPABASE_ANON,
         },
       }
@@ -119,20 +121,21 @@ async function getEntitlement(userId) {
   }
 }
 
-// Redeem a voucher (Phase A). Service role writes to entitlements (UPSERT).
-// If the user already has an entitlement, it updates; otherwise creates new.
+// Redeem a voucher (Phase A). Service role writes to entitlements.
+// If the user already has an entitlement, update it; otherwise create new.
 async function redeemVoucher(env, userId, code) {
   const v = VALID_VOUCHERS[code.toUpperCase()];
   if (!v) return { error: "Invalid voucher code" };
 
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/entitlements", {
+    // Try INSERT first
+    let r = await fetch(SUPABASE_URL + "/rest/v1/entitlements", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE,
         apikey: SUPABASE_ANON,
         "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates",  // UPSERT: update if exists, insert if not
+        Prefer: "return=minimal",
       },
       body: JSON.stringify({
         user_id: userId,
@@ -142,10 +145,38 @@ async function redeemVoucher(env, userId, code) {
         source: v.source,
       }),
     });
-    if (!r.ok) return { error: "Failed to redeem voucher (server error)" };
+
+    // If unique constraint error, UPDATE instead
+    if (!r.ok) {
+      const errData = await r.json();
+      if (errData.code === "23505") {  // PostgreSQL unique constraint violation
+        r = await fetch(SUPABASE_URL + "/rest/v1/entitlements?user_id=eq." + userId, {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE,
+            apikey: SUPABASE_ANON,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            tier: v.tier,
+            status: v.status,
+            expires_at: v.expiresAt,
+            source: v.source,
+          }),
+        });
+      }
+    }
+
+    if (!r.ok) {
+      const errData = await r.json();
+      console.error("Supabase error:", r.status, errData);
+      return { error: "Supabase error: " + (errData.message || r.statusText) };
+    }
     return { success: true, tier: v.tier };
   } catch (e) {
-    return { error: "Failed to redeem voucher" };
+    console.error("Redeem error:", e);
+    return { error: "Failed to redeem voucher: " + e.message };
   }
 }
 
@@ -206,7 +237,7 @@ export default {
     if (!user) return json({ error: "Unauthorized" }, 401, cors);
 
     // 2. Check entitlement (Phase A). Premium required for AI.
-    const ent = await getEntitlement(user.id);
+    const ent = await getEntitlement(env, user.id);
     if (!ent || ent.status !== "active" || ent.tier !== "premium") {
       return json(
         { error: "Premium account required" },
