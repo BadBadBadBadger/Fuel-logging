@@ -1117,13 +1117,61 @@ A record of every issue hit during Phase 1/2 testing and how each was resolved. 
 
 **Root cause of phone Google auth failure:** Google Cloud Console had `badbadbadbadbadger.github.io` (4 "bad"s) instead of `badbadbadbadger.github.io` (3 "bad"s + "badger" — matches GitHub username `BadBadBadBadger`). Fixed by correcting all authorized origins and redirect URIs.
 
+### Phase 0 & A Testing — Security Hardening (2026-06-06/07)
+
+Implemented worker auth gate (Phase 0) + server-authoritative entitlement (Phase A).
+
+**Issue 1 — Worker not redeployed with `/redeem` endpoint**
+**Symptom:** Voucher redemption returned "failed to fetch".  
+**Cause:** The hardened worker with `/redeem` endpoint was written to the repo but not deployed to Cloudflare. The old open worker was still live.  
+**Fix:** Cloudflare Dashboard → Worker → Edit code → paste entire new `cloudflare-worker.js` → Deploy.
+
+---
+
+**Issue 2 — `SUPABASE_SERVICE_ROLE` secret missing from Cloudflare**
+**Symptom:** Voucher redemption returned "failed to fetch", then 503 Service Unavailable.  
+**Cause:** The `/redeem` endpoint requires the service role key to write entitlements, but the secret was not added to Cloudflare. Worker code checks `if (!env.SUPABASE_SERVICE_ROLE)` and returns 503.  
+**Fix:** Supabase Dashboard → Settings → API → Copy "service_role secret" → Cloudflare Worker → Settings → Variables and Secrets → Add secret `SUPABASE_SERVICE_ROLE` → Save → Redeploy worker.
+
+---
+
+**Issue 3 — CORS error on localhost testing (403)**
+**Symptom:** Voucher redemption returned CORS error: `Access-Control-Allow-Origin` header was `https://badbadbadbadger.github.io`, not `http://localhost:3000`.  
+**Cause:** The worker's `ALLOWED_ORIGINS` list only included the production GitHub Pages origin. Local testing on `localhost:3000` was blocked.  
+**Fix:** Updated `cloudflare-worker.js` to add `http://localhost:3000` and `http://127.0.0.1:3000` to `ALLOWED_ORIGINS`. Redeployed worker.
+
+---
+
+**Issue 4 — Variable name typo in Cloudflare secret**
+**Symptom:** After fixing Issue 2, voucher still returned 503.  
+**Cause:** Secret was added with a slightly different variable name (user typo when typing into Cloudflare).  
+**Fix:** Verified exact variable name in Cloudflare: `SUPABASE_SERVICE_ROLE` (case-sensitive). Fixed the typo.
+
+---
+
+### Current status (as of 2026-06-07)
+
+| Item | Status |
+|---|---|
+| Phase 0: Worker auth gate (JWT + model allowlist + token cap + CORS) | ✅ Live |
+| Phase A: Server-authoritative entitlement (entitlements table + /redeem endpoint) | ✅ Live |
+| Voucher code removed from client bundle | ✅ Done |
+| Voucher redemption (server-side) | ✅ Working |
+| DevTools `auth_state` flip blocked server-side | ✅ Verified |
+| AI features require active entitlement (worker checks Supabase) | ✅ Verified |
+| Per-user rate limit (KV) | ⏳ Code ready; KV not bound yet (optional) |
+
+**Phase 0 + A fully validated on localhost (2026-06-07).** Voucher redemption working, server-side entitlement enforced.
+
 ### Before going live checklist
-- [x] Run cleanup SQL to wipe test data from Supabase (harness + desktop test sessions)
-- [x] Test sign-in on phone (Chrome browser, not installed PWA)
-- [x] Confirm data migrates from phone localStorage to Supabase on first sign-in
-- [x] Reinstall PWA on phone after confirming browser flow works
-- [ ] **Security go-live gate (`SECURITY_ROADMAP.md` Phase E) — all of Phase 0–D done & pen-self-tested**
-- [ ] Payments (Phase D) — only after the worker is locked and entitlement is server-authoritative
+- [x] Phase 0 (worker auth gate) deployed and verified
+- [x] Phase A (server-authoritative entitlement) deployed and verified
+- [ ] Bind RATE_LIMIT KV namespace to worker (per-user daily quota — optional but recommended)
+- [ ] Set Anthropic Console billing cap + alert
+- [ ] **Phase B (Compliance & data rights) — privacy policy, consent, export/delete**
+- [ ] **Phase C (Resilience) — single persistence layer, surface sync failures, CI gate**
+- [ ] **Phase D (Payments) — only after B & C are done**
+- [ ] **Phase E (Pre-launch gate) — pen self-test, secrets audit, key rotation**
 
 ---
 
