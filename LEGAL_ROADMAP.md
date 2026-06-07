@@ -1,13 +1,14 @@
-# Fuel Log — Privacy Policy & Data-Rights Plan (Phase B)
+# Fuel Log — Legal & Compliance Roadmap
 
-**Purpose:** A complete, build-ready plan for the privacy policy, consent, sub-processor
-disclosure, and data-subject-rights work required by **Phase B** of `SECURITY_ROADMAP.md`
-(closes threat **T5**). This is the *blueprint*; the next step is turning §6–§9 into published
-pages and app features.
+**Purpose:** The authoritative roadmap for Fuel Log's **legal and compliance** work — the legal
+counterpart to `SECURITY_ROADMAP.md`. It owns privacy, data-subject rights, lawful basis,
+sub-processors, ICO obligations, age/territory scope, and (later) terms of service and
+payment-legal items. Its first and current track is **Phase B** (privacy & data rights, closing
+threat **T5**); the immediate deliverables are §6–§9.
 
-**Date:** 2026-06-07
-**Status:** Plan agreed (drafted with the "privacy-counsel" persona — `personas/privacy-counsel.md`).
-**Companion docs:** `SECURITY_ROADMAP.md` (Phase B), `ARCHITECTURE_REVIEW.md`, `setup/supabase-schema.sql`.
+**Date:** 2026-06-07 (living document — update as legal scope grows)
+**Status:** Phase B plan agreed (drafted with the "privacy-counsel" persona — `personas/privacy-counsel.md`).
+**Companion docs:** `SECURITY_ROADMAP.md` (security phases & threat model), `ARCHITECTURE_REVIEW.md`, `setup/supabase-schema.sql`.
 
 > ⚠️ **Not legal advice.** This plan was prepared to a pragmatic, defensible standard for a
 > solo developer pre-launch. Two items are flagged **[HUMAN-REVIEW]** for a jurisdiction-admitted
