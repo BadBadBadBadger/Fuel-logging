@@ -27,6 +27,8 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // CORS: the app's own origins. The JWT is the real gate; this is defence-in-depth.
 const ALLOWED_ORIGINS = [
   "https://badbadbadbadger.github.io", // GitHub Pages (installed PWA / TWA share this origin)
+  "http://localhost:3000",              // Local dev server
+  "http://127.0.0.1:3000",              // Alternative localhost
 ];
 
 // Server-controlled AI params — never trust the client's values.
@@ -37,6 +39,13 @@ const MAX_TOKENS_CAP  = 2000;
 // Per-user daily rate limit (only enforced once a KV namespace `RATE_LIMIT`
 // is bound to the worker — until then, auth still applies and this is skipped).
 const DAILY_LIMIT = 100;
+
+// Voucher codes (Phase A): server-side validation + entitlement writing.
+// Only the /redeem endpoint uses this; the code never reaches the client.
+const VALID_VOUCHERS = {
+  "FREEFOODTIPS2026": { tier: "premium", status: "active", expiresAt: null, source: "voucher" },
+};
+const VOUCHER_SECRET = "voucher_redemption"; // Use a real secret in production (env var).
 
 function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -84,6 +93,61 @@ async function withinRateLimit(env, userId) {
   }
 }
 
+// Check user's entitlement status. Returns { tier, status } or null.
+async function getEntitlement(userId) {
+  try {
+    const r = await fetch(
+      SUPABASE_URL + "/rest/v1/entitlements?user_id=eq." + userId,
+      {
+        headers: {
+          Authorization: "Bearer " + SUPABASE_ANON,
+          apikey: SUPABASE_ANON,
+        },
+      }
+    );
+    const data = await r.json();
+    const ent = Array.isArray(data) ? data[0] : null;
+    if (!ent) return null;
+    const now = new Date();
+    const expired = ent.expires_at && new Date(ent.expires_at) < now;
+    return {
+      tier: ent.tier,
+      status: expired ? "expired" : ent.status,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Redeem a voucher (Phase A). Service role writes to entitlements.
+async function redeemVoucher(env, userId, code) {
+  const v = VALID_VOUCHERS[code.toUpperCase()];
+  if (!v) return { error: "Invalid voucher code" };
+
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/entitlements", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE,
+        apikey: SUPABASE_ANON,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        tier: v.tier,
+        status: v.status,
+        expires_at: v.expiresAt,
+        source: v.source,
+      }),
+    });
+    if (!r.ok) return { error: "Failed to redeem voucher (server error)" };
+    return { success: true, tier: v.tier };
+  } catch (e) {
+    return { error: "Failed to redeem voucher" };
+  }
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -92,6 +156,46 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method !== "POST")    return json({ error: "Method not allowed" }, 405, cors);
 
+    // ── Route: POST /redeem (voucher redemption, Phase A)
+    const url = new URL(request.url);
+    if (url.pathname === "/redeem") {
+      // 1. Require a valid Supabase session.
+      const authHeader = request.headers.get("Authorization") || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!token) return json({ error: "Unauthorized" }, 401, cors);
+
+      const user = await verifySupabaseUser(token);
+      if (!user) return json({ error: "Unauthorized" }, 401, cors);
+
+      // 2. Read voucher code from body.
+      let body;
+      try { body = await request.json(); }
+      catch (e) { return json({ error: "Bad request" }, 400, cors); }
+
+      const code = body.code ? String(body.code).trim() : "";
+      if (!code) return json({ error: "No voucher code provided" }, 400, cors);
+
+      // 3. Check if SUPABASE_SERVICE_ROLE is set (required for entitlement writes).
+      if (!env.SUPABASE_SERVICE_ROLE) {
+        return json(
+          { error: "Voucher service not configured" },
+          503,
+          cors
+        );
+      }
+
+      // 4. Redeem the voucher.
+      const result = await redeemVoucher(env, user.id, code);
+      return json(
+        result.success
+          ? { tier: result.tier, message: "Voucher redeemed!" }
+          : result,
+        result.success ? 200 : 400,
+        cors
+      );
+    }
+
+    // ── Route: POST / (AI proxy, Phase 0+A)
     // 1. Require a valid Supabase session.
     const authHeader = request.headers.get("Authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -100,13 +204,21 @@ export default {
     const user = await verifySupabaseUser(token);
     if (!user) return json({ error: "Unauthorized" }, 401, cors);
 
-    // (Phase A will add an entitlement lookup here: no active premium → 403.)
+    // 2. Check entitlement (Phase A). Premium required for AI.
+    const ent = await getEntitlement(user.id);
+    if (!ent || ent.status !== "active" || ent.tier !== "premium") {
+      return json(
+        { error: "Premium account required" },
+        403,
+        cors
+      );
+    }
 
-    // 2. Per-user rate limit (no-op until KV is bound).
+    // 3. Per-user rate limit (no-op until KV is bound).
     if (!(await withinRateLimit(env, user.id)))
       return json({ error: "Daily AI limit reached" }, 429, cors);
 
-    // 3. Sanitise the body — never trust client-supplied model / max_tokens.
+    // 4. Sanitise the body — never trust client-supplied model / max_tokens.
     let body;
     try { body = await request.json(); }
     catch (e) { return json({ error: "Bad request" }, 400, cors); }
@@ -116,7 +228,7 @@ export default {
     const messages  = Array.isArray(body.messages) ? body.messages : [];
     if (!messages.length) return json({ error: "Bad request" }, 400, cors);
 
-    // 4. Proxy to Anthropic with server-controlled params.
+    // 5. Proxy to Anthropic with server-controlled params.
     try {
       const upstream = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
