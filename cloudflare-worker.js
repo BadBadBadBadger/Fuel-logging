@@ -119,7 +119,8 @@ async function getEntitlement(userId) {
   }
 }
 
-// Redeem a voucher (Phase A). Service role writes to entitlements.
+// Redeem a voucher (Phase A). Service role writes to entitlements (UPSERT).
+// If the user already has an entitlement, it updates; otherwise creates new.
 async function redeemVoucher(env, userId, code) {
   const v = VALID_VOUCHERS[code.toUpperCase()];
   if (!v) return { error: "Invalid voucher code" };
@@ -131,7 +132,7 @@ async function redeemVoucher(env, userId, code) {
         Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE,
         apikey: SUPABASE_ANON,
         "Content-Type": "application/json",
-        Prefer: "return=minimal",
+        Prefer: "resolution=merge-duplicates",  // UPSERT: update if exists, insert if not
       },
       body: JSON.stringify({
         user_id: userId,
