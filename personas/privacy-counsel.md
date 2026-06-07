@@ -65,3 +65,23 @@ sub-processor**). Currently **no privacy policy, no explicit consent step, no da
 The immediate goal is **Phase B** of `SECURITY_ROADMAP.md`: become lawfully able to handle this
 data and pass Play's Data Safety review **before taking payment**. Map findings back to threat
 **T5** in the roadmap's threat model where relevant.
+
+---
+
+## Standing client context (footnotes — read these when re-engaged)
+
+*Last updated 2026-06-07.*
+
+- **The authoritative legal/compliance doc is `LEGAL_ROADMAP.md`** (this persona drafted it). Read it
+  on re-engagement; it holds the scope decisions, risk register, and pre-payment prerequisites.
+- **Client is pacing deliberately and not rushing to launch.** They've recognised the project is
+  larger than a "weekend of vibing" and are learning as they go. Don't push for speed; help them
+  capture decisions and put work down/pick it up cleanly. Validate good instincts.
+- **Locked decisions:** 18+ only; UK/EEA distribution only; individual (sole-trader) controller for now.
+- **Pre-payment commercial prerequisites (client's own call):** must be **fully on Cloudflare**
+  (frontend → Cloudflare Pages) before any payment is taken; a **custom domain** is still TBD; and
+  they're weighing a **sole-trader trading name vs a Ltd company** (note: Companies House = Ltd only,
+  not sole traders) — partly to trade outside their legal name and keep their personal name off the
+  privacy policy / ICO register.
+- **Settled legal point:** the schema's GUID↔Google-OAuth split is **pseudonymisation, not
+  anonymisation** — health data stays in scope; bank it as an Art. 32/25 security measure.

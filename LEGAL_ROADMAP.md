@@ -170,6 +170,7 @@ One page, kept internally (Art. 30). Minimum fields:
 - [ ] **Verify** Google Play's current account-deletion policy wording (R5).
 - [ ] **Confirm** no analytics/tracking SDKs ship in the bundle before the policy claims "none" (§6.2).
 - [ ] Retention period values (how long after last activity / after deletion request).
+- [ ] **Pre-payment commercial prerequisites** — Cloudflare hosting migration, domain, business entity (see §12).
 
 ---
 
@@ -179,3 +180,31 @@ A user can **export** and **delete** everything; the **privacy policy** is publi
 names what's collected, that **Anthropic** processes meal/workout data in the US (no identifiers),
 and that health data is held under **explicit consent**; the **Play Data Safety form** matches
 reality; the **ICO fee** is paid; an **18+ gate** and **UK/EEA distribution** are in place.
+
+---
+
+## 12. Pre-payment commercial prerequisites *(must clear before charging any individual)*
+
+Added 2026-06-07. These are **hard gates on Phase D (payments)** — no money is taken from anyone
+until all three are done. Cross-ref `SECURITY_ROADMAP.md` Phase D/E.
+
+- [ ] **Fully on Cloudflare.** Migrate the static frontend off **GitHub Pages** onto **Cloudflare
+  Pages** before any payment is taken. *Reason:* GitHub Pages' usage terms discourage hosting a
+  primarily-commercial / SaaS product; Cloudflare Pages has no such restriction and co-locates with
+  the existing worker. The frontend is static (`index.html` + `app.js`; build = `babel app.jsx
+  --out-file app.js`), so migration is low-risk. Bonus: serve the worker under the same domain
+  (`/api/*`) to drop the CORS handling. The backend (Worker) and DB (Supabase) are already hosted.
+- [ ] **Domain.** Choose + register a custom domain (replaces `badbadbadbadger.github.io`). Needed
+  for professional identity, a stable privacy-policy URL, Cloudflare Pages, and the Play Store TWA. *TBD.*
+- [ ] **Business entity / trading name.** Decide how to trade outside the personal legal name.
+  Affects controller identity in the privacy policy (§5) and ICO registration (R7).
+
+> **Note on UK business setup (verify with an accountant — not legal/tax advice):** A **sole
+> trader does NOT register with Companies House** — that's only for **limited companies**. A sole
+> trader registers for **Self Assessment with HMRC**; to trade under a non-legal name you simply
+> adopt a **business/trading name** (no Companies House filing), subject to Companies Act 2006
+> business-names rules (show real name + address on formal docs; avoid "sensitive" words; can't
+> imply Ltd). **Companies House registration = forming a limited company** — separate legal entity,
+> limited liability, keeps your personal name off the privacy policy / ICO register, but more admin,
+> corporation tax, and public director/registered-office records. Fork: *sole trader + trading name*
+> (simplest) vs *Ltd* (liability shield + name separation).
