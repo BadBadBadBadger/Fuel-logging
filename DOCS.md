@@ -556,14 +556,29 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 ## 23. Roadmap
 
-### In progress — Auth & Premium (candidate branch)
+> ⚠️ **Re-sequenced for security (2026-06-06).** The original plan put payments first and
+> the worker auth gate last — i.e. charging money through an open AI proxy. The authoritative
+> plan is now **`SECURITY_ROADMAP.md`**, which closes the security holes *before* taking money
+> or shipping to the Play Store. See also `ARCHITECTURE_REVIEW.md` for findings & severities.
+
+### Done
 | Phase | Description | Status |
 |---|---|---|
 | Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **Done** |
 | Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | **Done** |
-| Phase 3 | Real payments: Google Play Billing (Android TWA), Stripe (web/Apple) | Up next |
-| Phase 4 | AI Chef: AI-powered recipe suggestions and meal planning | Pending Phase 3 |
-| Phase 5 | Cloudflare Worker auth gate: verify Supabase JWT before proxying AI | Pending Phase 3 |
+
+### Security-aligned sequence (supersedes the old Phase 3–5 order) — see `SECURITY_ROADMAP.md`
+| Phase | Description | Status |
+|---|---|---|
+| 0 | **Lock the live worker** — JWT auth, model allowlist, max_tokens cap, per-user rate limit, CORS lock, Anthropic spend cap | **Up next (do now — worker is live & open today)** |
+| A | **Server-authoritative entitlement** — `entitlements` table, server-checked voucher, remove voucher from bundle (the real paywall) | Pending Phase 0 |
+| B | **Compliance & data rights** — privacy policy, health-data consent, Anthropic sub-processor disclosure, export + delete | Pending Phase A |
+| C | **Resilience & trust** — single persistence layer, surface sync failures, CI build/test gate | Parallel with A/B |
+| D | **Payments** — Play Billing + Stripe, server-side receipt verification (now safe) | Pending Phase A/B |
+| E | **Pre-launch hardening + go-live gate** — pen self-test, secrets inventory, key rotation | Pending Phase D |
+| F | **Monitoring & incident readiness** — cost/error observability, abuse alerting, kill-switch runbook | Post-launch |
+
+**Feature track (parallel, gated):** AI Chef, planned items, etc. may proceed *only behind the Phase 0 gate* — no feature ships a new unauthenticated AI path.
 
 ### Other backlog
 | Feature | Notes |
@@ -1107,7 +1122,8 @@ A record of every issue hit during Phase 1/2 testing and how each was resolved. 
 - [x] Test sign-in on phone (Chrome browser, not installed PWA)
 - [x] Confirm data migrates from phone localStorage to Supabase on first sign-in
 - [x] Reinstall PWA on phone after confirming browser flow works
-- [ ] Phase 3 (real payments) before public launch
+- [ ] **Security go-live gate (`SECURITY_ROADMAP.md` Phase E) — all of Phase 0–D done & pen-self-tested**
+- [ ] Payments (Phase D) — only after the worker is locked and entitlement is server-authoritative
 
 ---
 

@@ -419,12 +419,31 @@ const runMigrations = async () => {
   await ss("fuel_schema_v", String(SCHEMA_VERSION));
 };
 
-// Shared AI fetch — returns the text content string, throws on failure
+// Current Supabase access token (JWT) — the worker requires it to authorise AI calls.
+const getAccessToken = async () => {
+  try {
+    const client = sb();
+    if (!client) return null;
+    const { data } = await client.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch (e) { return null; }
+};
+
+// Shared AI fetch — returns the text content string, throws on failure.
+// Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 const callAI = async (prompt, maxTokens = 500) => {
-  const res  = await fetch(AI_ENDPOINT, { method:"POST",
-    headers: { "Content-Type":"application/json" },
+  const token = await getAccessToken();
+  if (!token) throw new Error("Please sign in to use AI features.");
+  const res = await fetch(AI_ENDPOINT, { method:"POST",
+    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
     body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens,
       messages:[{ role:"user", content:prompt }] }) });
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Your session expired — please sign in again.");
+    if (res.status === 429) throw new Error("Daily AI limit reached — try again tomorrow.");
+    if (res.status === 402 || res.status === 403) throw new Error("AI features require an active Premium account.");
+    throw new Error("AI service is unavailable right now (" + res.status + ").");
+  }
   const data = await res.json();
   return (data.content || []).map(b => b.text || "").join("").trim();
 };
