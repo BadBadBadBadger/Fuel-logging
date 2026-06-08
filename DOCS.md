@@ -584,6 +584,7 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 ### Other backlog
 | Feature | Notes |
 |---|---|
+| **Bug: AI coach ignores goals already met/exceeded** | Coach tells you to "drink 2 more glasses" after 10/8, or "eat 25g more protein" after 200/175g. **Cause:** the prompt at `app.jsx` `CoachCard` (~L1180) sends raw `X/Y` ratios but never states over/under, so the model assumes a deficit. **Fix:** compute surplus/deficit per metric and put it in the prompt explicitly (e.g. "protein 200/175g — 25g OVER, goal met ✅"; "water 10/8 — exceeded"), and instruct it not to suggest more of a metric that's already met. Cheap, high-trust win. |
 | Multi-user login | Per-device named users with PIN, namespaced storage |
 | More badge categories | Protein King, Cut Champion, Bulk Mode, Balanced |
 | Serving size multiplier on Food Search | Currently uses product's default serving size |
