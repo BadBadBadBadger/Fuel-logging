@@ -70,10 +70,17 @@ data and pass Play's Data Safety review **before taking payment**. Map findings 
 
 ## Standing client context (footnotes — read these when re-engaged)
 
-*Last updated 2026-06-07.*
+*Last updated 2026-06-08.*
 
 - **The authoritative legal/compliance doc is `LEGAL_ROADMAP.md`** (this persona drafted it). Read it
   on re-engagement; it holds the scope decisions, risk register, and pre-payment prerequisites.
+- **2026-06-08 — all Phase B policy documents drafted** into `legal/` (privacy, terms, sub-processors,
+  delete-account HTML; ropa.md, play-data-safety.md, in-app-copy.md). See `LEGAL_ROADMAP.md §13`.
+  Two **[HUMAN-REVIEW]** placeholders remain inline. The drafts assert features not yet built —
+  consent gate, 18+ gate, export/delete, **retention job** — these are the remaining engineering.
+- **Controller decided:** **Adrian Richards, trading as Fuel Log** (sole trader); public contact
+  **fuellogadmin@gmail.com**. Client is "going for it" as a sole trader and will revisit a Ltd if
+  earnings exceed ~£5k. Verified no analytics/tracking SDKs ship (policy may claim "none").
 - **Client is pacing deliberately and not rushing to launch.** They've recognised the project is
   larger than a "weekend of vibing" and are learning as they go. Don't push for speed; help them
   capture decisions and put work down/pick it up cleanly. Validate good instincts.

@@ -46,6 +46,17 @@ const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null };
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
+// ── Legal / compliance (LEGAL_ROADMAP Phase B) ────────────────
+// Bump POLICY_VERSION whenever the privacy policy changes materially; the value
+// is stored against each consent so we know which version a user agreed to.
+const POLICY_VERSION = "1.0";
+const LEGAL = {
+  privacy:       "legal/privacy.html",
+  terms:         "legal/terms.html",
+  subprocessors: "legal/subprocessors.html",
+  deleteInfo:    "legal/delete-account.html",
+};
+
 const DEF_MEALS = [
   { name:"Chicken breast (150g)",    kcal:248, protein:47, carbs:0,  fat:5  },
   { name:"Brown rice (200g cooked)", kcal:218, protein:5,  carbs:46, fat:2  },
@@ -234,6 +245,32 @@ const syncProfile = async (uid, p) => {
       id:uid, weight:p.weight, height:p.height,
       body_fat:p.bodyFat, sex:p.sex||null, updated_at:new Date().toISOString()
     });
+  } catch(e) {}
+};
+
+// Persist the compliance consent record onto the profiles row (R2/R6). Upsert
+// touches only the consent columns, leaving body metrics untouched on conflict.
+const syncConsent = async (uid, meta) => {
+  if (!uid || !navigator.onLine || !meta) return;
+  try {
+    await sb().from("profiles").upsert({
+      id: uid,
+      age_confirmed_at:       meta.ageConfirmedAt  ? new Date(meta.ageConfirmedAt).toISOString()  : null,
+      health_consent_at:      meta.healthConsentAt ? new Date(meta.healthConsentAt).toISOString() : null,
+      consent_policy_version: meta.policyVersion || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+  } catch(e) {}
+};
+
+// Record consent withdrawal (R2 — withdrawal must be as easy as giving it).
+const syncConsentWithdrawn = async (uid) => {
+  if (!uid || !navigator.onLine) return;
+  try {
+    await sb().from("profiles").upsert({
+      id: uid, health_consent_withdrawn_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
   } catch(e) {}
 };
 
@@ -447,6 +484,23 @@ const redeemVoucher = async (code) => {
   return await res.json();
 };
 
+// Account deletion (R5). The worker deletes the auth.users row with the service
+// role, which cascades to every table. The client cannot do this itself.
+const deleteAccountRequest = async () => {
+  const token = await getAccessToken();
+  if (!token) throw new Error("Please sign in again, then retry.");
+  const res = await fetch(AI_ENDPOINT + "/delete-account", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+  });
+  if (!res.ok) {
+    let msg = "Account deletion failed. Please try again or email fuellogadmin@gmail.com.";
+    try { msg = (await res.json()).error || msg; } catch(e) {}
+    throw new Error(msg);
+  }
+  return true;
+};
+
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 const callAI = async (prompt, maxTokens = 500) => {
@@ -555,9 +609,14 @@ function SignInModal({ onSuccess, onCancel }) {
   const [gUser,  setGUser]  = useState(devMode ? { name:"Guest", email:"", picture:"" } : null);
   const [voucher, setVoucher] = useState("");
   const [vError,  setVError]  = useState("");
+  // Compliance gates (LEGAL_ROADMAP R6 + R2)
+  const [ageOK,     setAgeOK]     = useState(false); // 18+ affirmation (before sign-in)
+  const [consentOK, setConsentOK] = useState(false); // explicit health-data consent (before first sync)
+  const [ageAt,     setAgeAt]     = useState(null);  // timestamp of the 18+ affirmation
 
   useEffect(() => {
-    if (step !== "google" || devMode || typeof google === "undefined") return;
+    // Only render the Google button once the user has affirmed they are 18+.
+    if (step !== "google" || devMode || typeof google === "undefined" || !ageOK) return;
     try {
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
@@ -580,14 +639,22 @@ function SignInModal({ onSuccess, onCancel }) {
       const el = document.getElementById("gsi-btn");
       if (el) google.accounts.id.renderButton(el, { theme:"outline", size:"large", width:252, text:"continue_with" });
     } catch(e) {}
-  }, [step]); // eslint-disable-line
+  }, [step, ageOK]); // eslint-disable-line
+
+  // Consent record passed up to handleSignInSuccess and persisted to the profiles row.
+  const consentMeta = () => ({
+    ageConfirmedAt:  ageAt || Date.now(),
+    healthConsentAt: Date.now(),
+    policyVersion:   POLICY_VERSION,
+  });
 
   const handleVoucher = async () => {
+    if (!consentOK) { setVError("Please consent to health-data storage to continue."); return; }
     if (!voucher.trim()) { setVError("Enter a voucher code."); return; }
     setVError("");
     try {
       await redeemVoucher(voucher);
-      onSuccess(gUser || { name:"Guest", email:"", picture:"" }, "voucher");
+      onSuccess(gUser || { name:"Guest", email:"", picture:"" }, "voucher", consentMeta());
     } catch(e) {
       setVError(e.message || "Redemption failed. Try again.");
     }
@@ -605,10 +672,30 @@ function SignInModal({ onSuccess, onCancel }) {
             <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:6 }}>
               Sign in to continue
             </div>
-            <div style={{ fontSize:13, color:"#9b958b", textAlign:"center", lineHeight:1.6, marginBottom:24 }}>
+            <div style={{ fontSize:13, color:"#9b958b", textAlign:"center", lineHeight:1.6, marginBottom:18 }}>
               We use Google Sign In to protect your account. No separate password needed.
             </div>
-            <div id="gsi-btn" style={{ display:"flex", justifyContent:"center", marginBottom:14 }}></div>
+
+            {/* 18+ affirmation — must be ticked before the Google button appears (R6) */}
+            <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
+              background:"#0b0d0b", border:`1px solid ${ageOK ? A + "55" : BD}`, borderRadius:10,
+              padding:"11px 12px", marginBottom:14 }}>
+              <input type="checkbox" checked={ageOK}
+                onChange={e => { setAgeOK(e.target.checked); if (e.target.checked && !ageAt) setAgeAt(Date.now()); }}
+                style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
+              <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
+                I confirm I am <strong>18 or over</strong>. Fuel Log is for adults in the UK&nbsp;and&nbsp;EEA.
+                I agree to the <a href={LEGAL.terms} target="_blank" rel="noopener" style={{ color:A }}>Terms</a> and{" "}
+                <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
+              </span>
+            </label>
+
+            {ageOK
+              ? <div id="gsi-btn" style={{ display:"flex", justifyContent:"center", marginBottom:14 }}></div>
+              : <div style={{ textAlign:"center", fontSize:12, color:"#827c73", padding:"12px 0", marginBottom:14 }}>
+                  Tick the box above to continue with Google.
+                </div>}
+
             <button onClick={onCancel}
               style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
                 border:"none", fontSize:13, cursor:"pointer" }}>
@@ -636,6 +723,22 @@ function SignInModal({ onSuccess, onCancel }) {
                 fontSize:13, fontWeight:700, marginBottom:16, cursor:"not-allowed" }}>
               Subscribe — Coming Soon
             </button>
+
+            {/* Explicit Art. 9 health-data consent — required before the first cloud sync (R2) */}
+            <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
+              background:"#0b0d0b", border:`1px solid ${consentOK ? A + "55" : BD}`, borderRadius:10,
+              padding:"11px 12px", marginBottom:14 }}>
+              <input type="checkbox" checked={consentOK}
+                onChange={e => { setConsentOK(e.target.checked); setVError(""); }}
+                style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
+              <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
+                I explicitly consent to Fuel Log storing my <strong>health data</strong> (weight, body&nbsp;fat,
+                sex) in the cloud to provide the service. Meal/workout text and body metrics are sent to our
+                AI provider <strong>without anything that identifies me</strong>. See the{" "}
+                <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
+              </span>
+            </label>
+
             <div style={{ fontSize:11, color:"#aea79c", textAlign:"center", marginBottom:8 }}>Have an access code?</div>
             <input value={voucher} onChange={e => { setVoucher(e.target.value); setVError(""); }}
               placeholder="Enter code..." onKeyDown={e => e.key === "Enter" && handleVoucher()}
@@ -644,10 +747,12 @@ function SignInModal({ onSuccess, onCancel }) {
                 padding:"12px 14px", color:"#e6e1d7", fontSize:14,
                 fontFamily:"inherit", outline:"none", marginBottom: vError ? 6 : 10 }}/>
             {vError && <div style={{ fontSize:12, color:"#ff5555", marginBottom:10 }}>{vError}</div>}
-            <button onClick={handleVoucher}
+            <button onClick={handleVoucher} disabled={!consentOK}
               style={{ width:"100%", padding:"12px", background:"#1c1a15",
-                border:`1px solid ${BD}`, borderRadius:12, color:"#b6b0a4",
-                fontSize:13, fontWeight:700, marginBottom:10 }}>
+                border:`1px solid ${BD}`, borderRadius:12,
+                color: consentOK ? "#b6b0a4" : "#6e6960",
+                fontSize:13, fontWeight:700, marginBottom:10,
+                opacity: consentOK ? 1 : 0.6 }}>
               Redeem Code
             </button>
             <button onClick={onCancel}
@@ -687,6 +792,172 @@ function SignOutModal({ userName, onConfirm, onCancel }) {
             border:"none", borderRadius:12, fontSize:14, fontWeight:900 }}>
           Stay Signed In
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Retroactive / re-consent prompt (R2). Shown when a signed-in user has not yet
+// agreed to the current privacy-policy version. Blocking — they consent or sign out.
+function ConsentModal({ onConsent, onSignOut }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1001, padding:24 }}>
+      <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
+        border:`1px solid ${A}33`, maxWidth:320, width:"100%" }}>
+        <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>🔏</div>
+        <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:8 }}>
+          A quick consent check
+        </div>
+        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.6, marginBottom:16, textAlign:"center" }}>
+          We've updated how we describe your data. To keep syncing your health data we need your
+          explicit consent.
+        </div>
+        <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
+          background:"#0b0d0b", border:`1px solid ${ok ? A + "55" : BD}`, borderRadius:10,
+          padding:"11px 12px", marginBottom:16 }}>
+          <input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)}
+            style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
+          <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
+            I explicitly consent to Fuel Log storing my <strong>health data</strong> (weight, body&nbsp;fat,
+            sex) to provide the service. See the{" "}
+            <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
+          </span>
+        </label>
+        <button onClick={onConsent} disabled={!ok}
+          style={{ width:"100%", padding:"13px", background: ok ? A : "#24211b",
+            color: ok ? "#0b0d0b" : "#6e6960", border:"none", borderRadius:12,
+            fontSize:14, fontWeight:900, marginBottom:10, opacity: ok ? 1 : 0.7 }}>
+          Agree &amp; continue
+        </button>
+        <button onClick={onSignOut}
+          style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
+            border:"none", fontSize:13, cursor:"pointer" }}>
+          Sign out instead
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Account & Privacy screen ──────────────────────────────────
+// Reached by tapping the avatar. Home for data export (R4), account deletion
+// (R5), policy links, consent status, and sign out (LEGAL_ROADMAP Phase B).
+function AccountScreen({ user, consentInfo, onBack, onExport, onSignOut, onDelete }) {
+  const [confirm, setConfirm] = useState(false);
+  const [typed,   setTyped]   = useState("");
+  const [busy,    setBusy]    = useState(false);
+  const [err,     setErr]     = useState("");
+
+  const runDelete = async () => {
+    setBusy(true); setErr("");
+    try { await onDelete(); }
+    catch (e) { setErr(e.message || "Deletion failed."); setBusy(false); }
+  };
+
+  const linkRow = (label, href) => (
+    <a href={href} target="_blank" rel="noopener"
+      style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+        padding:"13px 14px", background:"#1c1a15", border:`1px solid ${BD}`, borderRadius:12,
+        color:"#cfc9bd", fontSize:14, textDecoration:"none", marginBottom:8 }}>
+      <span>{label}</span><span style={{ color:"#827c73" }}>↗</span>
+    </a>
+  );
+
+  const consentDate = consentInfo?.healthConsentAt
+    ? new Date(consentInfo.healthConsentAt).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })
+    : null;
+
+  return (
+    <div style={{ minHeight:"100vh", background:BG, padding:"18px 16px 60px", maxWidth:480, margin:"0 auto" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+        <button onClick={onBack}
+          style={{ width:36, height:36, background:"#1c1a15", border:`1px solid ${BD}`,
+            borderRadius:10, color:"#aea79c", fontSize:18 }}>←</button>
+        <h1 style={{ margin:0, fontSize:20, fontWeight:900, color:A }}>Account &amp; Privacy</h1>
+      </div>
+
+      {/* Account identity */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, background:CARD,
+        border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px", marginBottom:20 }}>
+        <Avatar user={user} size={40}/>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:"#e6e1d7", whiteSpace:"nowrap",
+            overflow:"hidden", textOverflow:"ellipsis" }}>{user?.name || "Signed in"}</div>
+          {user?.email && <div style={{ fontSize:12, color:"#9b958b", whiteSpace:"nowrap",
+            overflow:"hidden", textOverflow:"ellipsis" }}>{user.email}</div>}
+        </div>
+      </div>
+
+      {/* Your data */}
+      <div style={{ fontSize:11, color:"#827c73", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>YOUR DATA</div>
+      <button onClick={onExport}
+        style={{ width:"100%", padding:"13px 14px", background:"#1c1a15", border:`1px solid ${BD}`,
+          borderRadius:12, color:"#cfc9bd", fontSize:14, fontWeight:700, textAlign:"left",
+          display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <span>⬇️ Download my data</span><span style={{ color:"#827c73", fontSize:12 }}>JSON</span>
+      </button>
+      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.6, marginBottom:20 }}>
+        A copy of everything stored against your account, in a portable file (GDPR access &amp; portability).
+      </div>
+
+      {/* Legal */}
+      <div style={{ fontSize:11, color:"#827c73", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>LEGAL</div>
+      {linkRow("Privacy Policy", LEGAL.privacy)}
+      {linkRow("Terms of Service", LEGAL.terms)}
+      {linkRow("Who processes your data", LEGAL.subprocessors)}
+      {consentDate && (
+        <div style={{ fontSize:11, color:"#827c73", lineHeight:1.6, margin:"8px 0 20px" }}>
+          Health-data consent given {consentDate} (policy v{consentInfo.version || POLICY_VERSION}).
+          To withdraw consent, delete your data below.
+        </div>
+      )}
+
+      {/* Session */}
+      <div style={{ fontSize:11, color:"#827c73", letterSpacing:"0.1em", fontWeight:800, margin:"4px 0 8px" }}>SESSION</div>
+      <button onClick={onSignOut}
+        style={{ width:"100%", padding:"13px 14px", background:"#1c1a15", border:`1px solid ${BD}`,
+          borderRadius:12, color:"#cfc9bd", fontSize:14, fontWeight:700, textAlign:"left", marginBottom:24 }}>
+        🔓 Sign out
+      </button>
+
+      {/* Danger zone */}
+      <div style={{ fontSize:11, color:"#ff7a7a", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>DANGER ZONE</div>
+      {!confirm ? (
+        <button onClick={() => { setConfirm(true); setErr(""); }}
+          style={{ width:"100%", padding:"13px 14px", background:"#1a0d0d", border:"1px solid #3a1a1a",
+            borderRadius:12, color:"#ff5555", fontSize:14, fontWeight:800, textAlign:"left" }}>
+          🗑️ Delete my account &amp; all data
+        </button>
+      ) : (
+        <div style={{ background:"#1a0d0d", border:"1px solid #3a1a1a", borderRadius:14, padding:"16px" }}>
+          <div style={{ fontSize:13, color:"#ffb4b4", lineHeight:1.6, marginBottom:12 }}>
+            This permanently deletes your account and <strong>all</strong> your data (profile, weigh-ins,
+            logs, history, badges). This cannot be undone. Type <strong>DELETE</strong> to confirm.
+          </div>
+          <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="DELETE"
+            disabled={busy}
+            style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b", border:`1px solid #3a1a1a`,
+              borderRadius:10, padding:"11px 13px", color:"#e6e1d7", fontSize:14, fontFamily:"inherit",
+              outline:"none", marginBottom:12 }}/>
+          {err && <div style={{ fontSize:12, color:"#ff7a7a", marginBottom:10 }}>{err}</div>}
+          <button onClick={runDelete} disabled={busy || typed.trim().toUpperCase() !== "DELETE"}
+            style={{ width:"100%", padding:"13px", background:"#3a0f0f", border:"1px solid #5a1a1a",
+              borderRadius:12, color: (typed.trim().toUpperCase() === "DELETE" && !busy) ? "#ff5555" : "#7a5555",
+              fontSize:14, fontWeight:900, marginBottom:8,
+              opacity: (typed.trim().toUpperCase() === "DELETE" && !busy) ? 1 : 0.6 }}>
+            {busy ? "Deleting…" : "Permanently delete everything"}
+          </button>
+          <button onClick={() => { setConfirm(false); setTyped(""); setErr(""); }} disabled={busy}
+            style={{ width:"100%", padding:"11px", background:"none", color:"#9b958b",
+              border:"none", fontSize:13 }}>
+            Cancel
+          </button>
+        </div>
+      )}
+      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.6, marginTop:14 }}>
+        Prefer email? Contact <a href={"mailto:fuellogadmin@gmail.com"} style={{ color:"#9b958b" }}>fuellogadmin@gmail.com</a>.
       </div>
     </div>
   );
@@ -1475,7 +1746,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:14,
             display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</button>
           {isPremium && (
-            <button onClick={onSignOut}
+            <button onClick={() => setView("account")} aria-label="Account & Privacy"
               style={{ width:34, height:34, background:`${A}18`,
                 border:`1px solid ${A}44`, borderRadius:10,
                 display:"flex", alignItems:"center", justifyContent:"center",
@@ -1950,6 +2221,9 @@ function AILog({ onAdd, onBack }) {
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"#e6e1d7", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
+      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.5, marginTop:6 }}>
+        Just describe the food — no personal details needed. This text is sent to our AI to estimate nutrition.
+      </div>
 
       <button onClick={estimate} disabled={loading || !desc.trim()}
         style={{ width:"100%", marginTop:12, padding:"15px",
@@ -2667,6 +2941,8 @@ function App() {
   const [showSignIn,  setShowSignIn]  = useState(false);
   const [showSignOut, setShowSignOut] = useState(false);
   const [showLapsed,  setShowLapsed]  = useState(false);
+  const [needsConsent, setNeedsConsent] = useState(false); // retroactive Art. 9 consent (R2)
+  const [consentInfo,  setConsentInfo]  = useState(null);  // parsed local health_consent for display
   const [isOnline,    setIsOnline]    = useState(navigator.onLine);
   const [syncMsg,     setSyncMsg]     = useState("");
 
@@ -2721,6 +2997,12 @@ function App() {
         } else {
           setAuthState("premium");
           setAuthUser(u);
+          // Retroactive consent guard (R2): premium users from before consent existed,
+          // or who haven't agreed to the current policy version, must consent before continuing.
+          const hc = await sg("health_consent");
+          let hcParsed = null; try { hcParsed = hc ? JSON.parse(hc) : null; } catch(e) {}
+          if (hcParsed) setConsentInfo(hcParsed);
+          if (!hcParsed || hcParsed.version !== POLICY_VERSION) setNeedsConsent(true);
           // Background pull — app shows immediately from local, Supabase data merges in
           if (u.id && navigator.onLine) {
             pullFromSupabase(u.id).then(pulled => {
@@ -2879,7 +3161,7 @@ function App() {
 
   // ── Auth handlers ─────────────────────────────────────────────
 
-  const handleSignInSuccess = async (googleUser, grantedBy) => {
+  const handleSignInSuccess = async (googleUser, grantedBy, consentMeta) => {
     const user = {
       id:        googleUser.id      || null,
       name:      googleUser.name    || "User",
@@ -2893,12 +3175,20 @@ function App() {
     setAuthState("premium");
     await ss("auth_state", "premium");
     await ss("auth_user",  JSON.stringify(user));
+    // Record consent locally so we don't re-prompt, and what version was agreed (R2/R6).
+    if (consentMeta) {
+      const rec = { ...consentMeta, version: consentMeta.policyVersion };
+      await ss("health_consent", JSON.stringify(rec));
+      setConsentInfo(rec);
+    }
     setShowSignIn(false);
     setPremiumGate(null);
 
     if (user.id && navigator.onLine) {
       setSyncMsg("Syncing your data…");
       try {
+        // Persist the explicit consent record before the first health-data sync.
+        if (consentMeta) await syncConsent(user.id, consentMeta);
         await migrateLocalToSupabase(user.id);
         const pulled = await pullFromSupabase(user.id);
         if (pulled.profile)  setProf(pulled.profile);
@@ -2923,10 +3213,20 @@ function App() {
     }
   };
 
+  // Agree to the current policy version (retroactive / re-consent flow, R2).
+  const handleConsent = async () => {
+    const meta = { ageConfirmedAt: null, healthConsentAt: Date.now(), policyVersion: POLICY_VERSION };
+    const rec = { ...meta, version: POLICY_VERSION };
+    await ss("health_consent", JSON.stringify(rec));
+    setConsentInfo(rec);
+    if (authUser?.id) await syncConsent(authUser.id, meta);
+    setNeedsConsent(false);
+  };
+
   const handleSignOut = async () => {
     if (sb()) { try { await sb().auth.signOut(); } catch(e) {} }
     const clearKeys = ["auth_state","auth_user","profile","meals","history","badges",
-      "weighins","tdee_adj","target_kcal","aggressive_cut_acked"];
+      "weighins","tdee_adj","target_kcal","aggressive_cut_acked","health_consent"];
     for (const k of clearKeys) await ss(k, "");
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -2943,7 +3243,52 @@ function App() {
     setLogs([]); setWater(0); setMode("cut"); setProf(null);
     setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
     setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setCustomKcal(null);
+    setConsentInfo(null); setNeedsConsent(false);
     setShowSignOut(false);
+    setView("dashboard");
+  };
+
+  // Assemble a portable copy of everything stored for this user (R4 — access/portability).
+  const handleExport = () => {
+    const workoutsByDate = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("workouts__")) {
+          const v = localStorage.getItem(key);
+          if (v) workoutsByDate[key.replace("workouts__", "")] = JSON.parse(v);
+        }
+      }
+    } catch(e) {}
+    const data = {
+      app: "Fuel Log",
+      exportedAt: new Date().toISOString(),
+      policyVersion: POLICY_VERSION,
+      account: { name: authUser?.name || null, email: authUser?.email || null },
+      consent: consentInfo || null,
+      profile: prof || null,
+      settings: { mode, tdeeAdj, customKcal, aggressiveCutAcked },
+      weighIns,
+      meals,
+      badges: earnedBdgs,
+      history: hist,
+      workoutsByDate,
+    };
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url;
+      a.download = "fuel-log-export-" + todayKey() + ".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch(e) {}
+  };
+
+  // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
+  const handleDeleteAccount = async () => {
+    await deleteAccountRequest();   // throws on failure → AccountScreen shows the error
+    await handleSignOut();          // clears local data, session, and returns to dashboard
   };
 
   useEffect(() => {
@@ -3072,6 +3417,9 @@ function App() {
           onRenew={() => { setShowLapsed(false); setShowSignIn(true); }}
           onDismiss={() => setShowLapsed(false)}/>
       )}
+      {needsConsent && authState === "premium" && (
+        <ConsentModal onConsent={handleConsent} onSignOut={handleSignOut}/>
+      )}
 
       {/* Badge celebration */}
       {newBadge && (
@@ -3113,6 +3461,9 @@ function App() {
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
+      {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
+          onBack={() => setView("dashboard")} onExport={handleExport}
+          onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}/>}
     </div>
   );
 }

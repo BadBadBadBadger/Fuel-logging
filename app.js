@@ -122,6 +122,17 @@ var DEF_PROFILE = {
   sex: null
 };
 var AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
+
+// ── Legal / compliance (LEGAL_ROADMAP Phase B) ────────────────
+// Bump POLICY_VERSION whenever the privacy policy changes materially; the value
+// is stored against each consent so we know which version a user agreed to.
+var POLICY_VERSION = "1.0";
+var LEGAL = {
+  privacy: "legal/privacy.html",
+  terms: "legal/terms.html",
+  subprocessors: "legal/subprocessors.html",
+  deleteInfo: "legal/delete-account.html"
+};
 var DEF_MEALS = [{
   name: "Chicken breast (150g)",
   kcal: 248,
@@ -656,40 +667,52 @@ var syncProfile = /*#__PURE__*/function () {
     return _ref7.apply(this, arguments);
   };
 }();
-var syncWeighIns = /*#__PURE__*/function () {
-  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, wis) {
-    var now;
+
+// Persist the compliance consent record onto the profiles row (R2/R6). Upsert
+// touches only the consent columns, leaving body metrics untouched on conflict.
+var syncConsent = /*#__PURE__*/function () {
+  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, meta) {
+    var _t7;
     return _regenerator().w(function (_context8) {
-      while (1) switch (_context8.n) {
+      while (1) switch (_context8.p = _context8.n) {
         case 0:
-          if (!(!uid || !navigator.onLine || !(wis !== null && wis !== void 0 && wis.length))) {
+          if (!(!uid || !navigator.onLine || !meta)) {
             _context8.n = 1;
             break;
           }
           return _context8.a(2);
         case 1:
-          now = new Date().toISOString();
+          _context8.p = 1;
           _context8.n = 2;
-          return syncUpsert("weigh_ins", wis.map(function (w) {
-            return {
-              user_id: uid,
-              date: w.date,
-              weight: w.weight,
-              updated_at: now
-            };
-          }), "user_id,date");
+          return sb().from("profiles").upsert({
+            id: uid,
+            age_confirmed_at: meta.ageConfirmedAt ? new Date(meta.ageConfirmedAt).toISOString() : null,
+            health_consent_at: meta.healthConsentAt ? new Date(meta.healthConsentAt).toISOString() : null,
+            consent_policy_version: meta.policyVersion || null,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: "id"
+          });
         case 2:
+          _context8.n = 4;
+          break;
+        case 3:
+          _context8.p = 3;
+          _t7 = _context8.v;
+        case 4:
           return _context8.a(2);
       }
-    }, _callee8);
+    }, _callee8, null, [[1, 3]]);
   }));
-  return function syncWeighIns(_x16, _x17) {
+  return function syncConsent(_x16, _x17) {
     return _ref8.apply(this, arguments);
   };
 }();
-var syncSettings = /*#__PURE__*/function () {
-  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, mode, tdeeAdj, customKcal, acked) {
-    var _t7;
+
+// Record consent withdrawal (R2 — withdrawal must be as easy as giving it).
+var syncConsentWithdrawn = /*#__PURE__*/function () {
+  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid) {
+    var _t8;
     return _regenerator().w(function (_context9) {
       while (1) switch (_context9.p = _context9.n) {
         case 0:
@@ -701,6 +724,73 @@ var syncSettings = /*#__PURE__*/function () {
         case 1:
           _context9.p = 1;
           _context9.n = 2;
+          return sb().from("profiles").upsert({
+            id: uid,
+            health_consent_withdrawn_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: "id"
+          });
+        case 2:
+          _context9.n = 4;
+          break;
+        case 3:
+          _context9.p = 3;
+          _t8 = _context9.v;
+        case 4:
+          return _context9.a(2);
+      }
+    }, _callee9, null, [[1, 3]]);
+  }));
+  return function syncConsentWithdrawn(_x18) {
+    return _ref9.apply(this, arguments);
+  };
+}();
+var syncWeighIns = /*#__PURE__*/function () {
+  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid, wis) {
+    var now;
+    return _regenerator().w(function (_context0) {
+      while (1) switch (_context0.n) {
+        case 0:
+          if (!(!uid || !navigator.onLine || !(wis !== null && wis !== void 0 && wis.length))) {
+            _context0.n = 1;
+            break;
+          }
+          return _context0.a(2);
+        case 1:
+          now = new Date().toISOString();
+          _context0.n = 2;
+          return syncUpsert("weigh_ins", wis.map(function (w) {
+            return {
+              user_id: uid,
+              date: w.date,
+              weight: w.weight,
+              updated_at: now
+            };
+          }), "user_id,date");
+        case 2:
+          return _context0.a(2);
+      }
+    }, _callee0);
+  }));
+  return function syncWeighIns(_x19, _x20) {
+    return _ref0.apply(this, arguments);
+  };
+}();
+var syncSettings = /*#__PURE__*/function () {
+  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, mode, tdeeAdj, customKcal, acked) {
+    var _t9;
+    return _regenerator().w(function (_context1) {
+      while (1) switch (_context1.p = _context1.n) {
+        case 0:
+          if (!(!uid || !navigator.onLine)) {
+            _context1.n = 1;
+            break;
+          }
+          return _context1.a(2);
+        case 1:
+          _context1.p = 1;
+          _context1.n = 2;
           return sb().from("settings").upsert({
             id: uid,
             mode: mode || "cut",
@@ -710,34 +800,34 @@ var syncSettings = /*#__PURE__*/function () {
             updated_at: new Date().toISOString()
           });
         case 2:
-          _context9.n = 4;
+          _context1.n = 4;
           break;
         case 3:
-          _context9.p = 3;
-          _t7 = _context9.v;
+          _context1.p = 3;
+          _t9 = _context1.v;
         case 4:
-          return _context9.a(2);
+          return _context1.a(2);
       }
-    }, _callee9, null, [[1, 3]]);
+    }, _callee1, null, [[1, 3]]);
   }));
-  return function syncSettings(_x18, _x19, _x20, _x21, _x22) {
-    return _ref9.apply(this, arguments);
+  return function syncSettings(_x21, _x22, _x23, _x24, _x25) {
+    return _ref1.apply(this, arguments);
   };
 }();
 var syncMeals = /*#__PURE__*/function () {
-  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid, meals) {
+  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, meals) {
     var now;
-    return _regenerator().w(function (_context0) {
-      while (1) switch (_context0.n) {
+    return _regenerator().w(function (_context10) {
+      while (1) switch (_context10.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
-            _context0.n = 1;
+            _context10.n = 1;
             break;
           }
-          return _context0.a(2);
+          return _context10.a(2);
         case 1:
           now = new Date().toISOString();
-          _context0.n = 2;
+          _context10.n = 2;
           return syncUpsert("meal_library", meals.map(function (m) {
             return {
               user_id: uid,
@@ -750,28 +840,28 @@ var syncMeals = /*#__PURE__*/function () {
             };
           }), "user_id,name");
         case 2:
-          return _context0.a(2);
+          return _context10.a(2);
       }
-    }, _callee0);
+    }, _callee10);
   }));
-  return function syncMeals(_x23, _x24) {
-    return _ref0.apply(this, arguments);
+  return function syncMeals(_x26, _x27) {
+    return _ref10.apply(this, arguments);
   };
 }();
 var syncBadges = /*#__PURE__*/function () {
-  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, keys) {
+  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, keys) {
     var now;
-    return _regenerator().w(function (_context1) {
-      while (1) switch (_context1.n) {
+    return _regenerator().w(function (_context11) {
+      while (1) switch (_context11.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !(keys !== null && keys !== void 0 && keys.length))) {
-            _context1.n = 1;
+            _context11.n = 1;
             break;
           }
-          return _context1.a(2);
+          return _context11.a(2);
         case 1:
           now = new Date().toISOString();
-          _context1.n = 2;
+          _context11.n = 2;
           return syncUpsert("badges", keys.map(function (badge_key) {
             return {
               user_id: uid,
@@ -780,28 +870,28 @@ var syncBadges = /*#__PURE__*/function () {
             };
           }), "user_id,badge_key");
         case 2:
-          return _context1.a(2);
+          return _context11.a(2);
       }
-    }, _callee1);
+    }, _callee11);
   }));
-  return function syncBadges(_x25, _x26) {
-    return _ref1.apply(this, arguments);
+  return function syncBadges(_x28, _x29) {
+    return _ref11.apply(this, arguments);
   };
 }();
 var syncHistory = /*#__PURE__*/function () {
-  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, hist) {
+  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, hist) {
     var now;
-    return _regenerator().w(function (_context10) {
-      while (1) switch (_context10.n) {
+    return _regenerator().w(function (_context12) {
+      while (1) switch (_context12.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !(hist !== null && hist !== void 0 && hist.length))) {
-            _context10.n = 1;
+            _context12.n = 1;
             break;
           }
-          return _context10.a(2);
+          return _context12.a(2);
         case 1:
           now = new Date().toISOString();
-          _context10.n = 2;
+          _context12.n = 2;
           return syncUpsert("history_snapshots", hist.map(function (h) {
             return {
               user_id: uid,
@@ -817,217 +907,217 @@ var syncHistory = /*#__PURE__*/function () {
             };
           }), "user_id,date");
         case 2:
-          return _context10.a(2);
+          return _context12.a(2);
       }
-    }, _callee10);
+    }, _callee12);
   }));
-  return function syncHistory(_x27, _x28) {
-    return _ref10.apply(this, arguments);
+  return function syncHistory(_x30, _x31) {
+    return _ref12.apply(this, arguments);
   };
 }();
 var migrateLocalToSupabase = /*#__PURE__*/function () {
-  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid) {
-    var migKey, pv, wiv, m, ta, ck, ak, mv, bv, hv, hist, _iterator, _step, _snap$logs, snap, i, key, v, _t8, _t9, _t0, _t1, _t10, _t11;
-    return _regenerator().w(function (_context11) {
-      while (1) switch (_context11.p = _context11.n) {
+  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid) {
+    var migKey, pv, wiv, m, ta, ck, ak, mv, bv, hv, hist, _iterator, _step, _snap$logs, snap, i, key, v, _t0, _t1, _t10, _t11, _t12, _t13;
+    return _regenerator().w(function (_context13) {
+      while (1) switch (_context13.p = _context13.n) {
         case 0:
           migKey = "sync_migrated__" + uid;
           if (!localStorage.getItem(migKey)) {
-            _context11.n = 1;
+            _context13.n = 1;
             break;
           }
-          return _context11.a(2);
+          return _context13.a(2);
         case 1:
-          _context11.p = 1;
-          _context11.n = 2;
+          _context13.p = 1;
+          _context13.n = 2;
           return sg("profile");
         case 2:
-          pv = _context11.v;
+          pv = _context13.v;
           if (!pv) {
-            _context11.n = 3;
+            _context13.n = 3;
             break;
           }
-          _context11.n = 3;
+          _context13.n = 3;
           return syncProfile(uid, JSON.parse(pv));
         case 3:
-          _context11.n = 4;
+          _context13.n = 4;
           return sg("weighins");
         case 4:
-          wiv = _context11.v;
+          wiv = _context13.v;
           if (!wiv) {
-            _context11.n = 5;
+            _context13.n = 5;
             break;
           }
-          _context11.n = 5;
+          _context13.n = 5;
           return syncWeighIns(uid, JSON.parse(wiv));
         case 5:
-          _context11.n = 6;
+          _context13.n = 6;
           return sg("mode__" + todayKey());
         case 6:
-          _t8 = _context11.v;
-          if (_t8) {
-            _context11.n = 7;
+          _t0 = _context13.v;
+          if (_t0) {
+            _context13.n = 7;
             break;
           }
-          _t8 = "cut";
+          _t0 = "cut";
         case 7:
-          m = _t8;
-          _t0 = parseInt;
-          _context11.n = 8;
+          m = _t0;
+          _t10 = parseInt;
+          _context13.n = 8;
           return sg("tdee_adj");
         case 8:
-          _t1 = _context11.v;
-          if (_t1) {
-            _context11.n = 9;
+          _t11 = _context13.v;
+          if (_t11) {
+            _context13.n = 9;
             break;
           }
-          _t1 = "0";
+          _t11 = "0";
         case 9:
-          _t9 = _t0(_t1);
-          if (_t9) {
-            _context11.n = 10;
+          _t1 = _t10(_t11);
+          if (_t1) {
+            _context13.n = 10;
             break;
           }
-          _t9 = 0;
+          _t1 = 0;
         case 10:
-          ta = _t9;
-          _context11.n = 11;
+          ta = _t1;
+          _context13.n = 11;
           return sg("target_kcal");
         case 11:
-          ck = _context11.v;
-          _context11.n = 12;
+          ck = _context13.v;
+          _context13.n = 12;
           return sg("aggressive_cut_acked");
         case 12:
-          ak = _context11.v;
-          _context11.n = 13;
+          ak = _context13.v;
+          _context13.n = 13;
           return syncSettings(uid, m, ta, ck ? parseInt(ck) : null, !!ak);
         case 13:
-          _context11.n = 14;
+          _context13.n = 14;
           return sg("meals");
         case 14:
-          mv = _context11.v;
+          mv = _context13.v;
           if (!mv) {
-            _context11.n = 15;
+            _context13.n = 15;
             break;
           }
-          _context11.n = 15;
+          _context13.n = 15;
           return syncMeals(uid, JSON.parse(mv));
         case 15:
-          _context11.n = 16;
+          _context13.n = 16;
           return sg("badges");
         case 16:
-          bv = _context11.v;
+          bv = _context13.v;
           if (!bv) {
-            _context11.n = 17;
+            _context13.n = 17;
             break;
           }
-          _context11.n = 17;
+          _context13.n = 17;
           return syncBadges(uid, JSON.parse(bv));
         case 17:
-          _context11.n = 18;
+          _context13.n = 18;
           return sg("history");
         case 18:
-          hv = _context11.v;
+          hv = _context13.v;
           if (!hv) {
-            _context11.n = 27;
+            _context13.n = 27;
             break;
           }
           hist = JSON.parse(hv);
-          _context11.n = 19;
+          _context13.n = 19;
           return syncHistory(uid, hist);
         case 19:
           _iterator = _createForOfIteratorHelper(hist);
-          _context11.p = 20;
+          _context13.p = 20;
           _iterator.s();
         case 21:
           if ((_step = _iterator.n()).done) {
-            _context11.n = 24;
+            _context13.n = 24;
             break;
           }
           snap = _step.value;
           if (!((_snap$logs = snap.logs) !== null && _snap$logs !== void 0 && _snap$logs.length)) {
-            _context11.n = 22;
+            _context13.n = 22;
             break;
           }
-          _context11.n = 22;
+          _context13.n = 22;
           return syncFoodLogs(uid, snap.date, snap.logs);
         case 22:
           if (!snap.water) {
-            _context11.n = 23;
+            _context13.n = 23;
             break;
           }
-          _context11.n = 23;
+          _context13.n = 23;
           return syncWater(uid, snap.date, snap.water);
         case 23:
-          _context11.n = 21;
+          _context13.n = 21;
           break;
         case 24:
-          _context11.n = 26;
+          _context13.n = 26;
           break;
         case 25:
-          _context11.p = 25;
-          _t10 = _context11.v;
-          _iterator.e(_t10);
+          _context13.p = 25;
+          _t12 = _context13.v;
+          _iterator.e(_t12);
         case 26:
-          _context11.p = 26;
+          _context13.p = 26;
           _iterator.f();
-          return _context11.f(26);
+          return _context13.f(26);
         case 27:
           i = 0;
         case 28:
           if (!(i < localStorage.length)) {
-            _context11.n = 30;
+            _context13.n = 30;
             break;
           }
           key = localStorage.key(i);
           if (!(key !== null && key !== void 0 && key.startsWith("workouts__"))) {
-            _context11.n = 29;
+            _context13.n = 29;
             break;
           }
           v = localStorage.getItem(key);
           if (!v) {
-            _context11.n = 29;
+            _context13.n = 29;
             break;
           }
-          _context11.n = 29;
+          _context13.n = 29;
           return syncWorkouts(uid, key.replace("workouts__", ""), JSON.parse(v));
         case 29:
           i++;
-          _context11.n = 28;
+          _context13.n = 28;
           break;
         case 30:
           localStorage.setItem(migKey, "1");
-          _context11.n = 32;
+          _context13.n = 32;
           break;
         case 31:
-          _context11.p = 31;
-          _t11 = _context11.v;
+          _context13.p = 31;
+          _t13 = _context13.v;
         case 32:
-          return _context11.a(2);
+          return _context13.a(2);
       }
-    }, _callee11, null, [[20, 25, 26, 27], [1, 31]]);
+    }, _callee13, null, [[20, 25, 26, 27], [1, 31]]);
   }));
-  return function migrateLocalToSupabase(_x29) {
-    return _ref11.apply(this, arguments);
+  return function migrateLocalToSupabase(_x32) {
+    return _ref13.apply(this, arguments);
   };
 }();
 var pullFromSupabase = /*#__PURE__*/function () {
-  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid) {
-    var _weighR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, p, wi, s, meals, keys, foodByDate, _iterator2, _step2, f, waterByDate, _iterator3, _step3, w, fullHist, _iterator4, _step4, snap, byDate, _iterator5, _step5, _w, _i, _Object$entries, _Object$entries$_i, d, ws, _t12, _t13;
-    return _regenerator().w(function (_context12) {
-      while (1) switch (_context12.p = _context12.n) {
+  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid) {
+    var _weighR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, p, wi, s, meals, keys, foodByDate, _iterator2, _step2, f, waterByDate, _iterator3, _step3, w, fullHist, _iterator4, _step4, snap, byDate, _iterator5, _step5, _w, _i, _Object$entries, _Object$entries$_i, d, ws, _t14, _t15;
+    return _regenerator().w(function (_context14) {
+      while (1) switch (_context14.p = _context14.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
-            _context12.n = 1;
+            _context14.n = 1;
             break;
           }
-          return _context12.a(2, {});
+          return _context14.a(2, {});
         case 1:
-          _context12.p = 1;
-          _context12.n = 2;
+          _context14.p = 1;
+          _context14.n = 2;
           return Promise.all([sb().from("profiles").select("*").eq("id", uid).maybeSingle(), sb().from("weigh_ins").select("*").eq("user_id", uid).order("date"), sb().from("settings").select("*").eq("id", uid).maybeSingle(), sb().from("meal_library").select("*").eq("user_id", uid), sb().from("badges").select("badge_key").eq("user_id", uid), sb().from("history_snapshots").select("*").eq("user_id", uid).order("date"), sb().from("food_logs").select("*").eq("user_id", uid).order("date"), sb().from("water_logs").select("*").eq("user_id", uid).order("date"), sb().from("workouts").select("*").eq("user_id", uid).order("date")]);
         case 2:
-          _yield$Promise$all = _context12.v;
+          _yield$Promise$all = _context14.v;
           _yield$Promise$all2 = _slicedToArray(_yield$Promise$all, 9);
           profR = _yield$Promise$all2[0];
           weighR = _yield$Promise$all2[1];
@@ -1040,7 +1130,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
           workR = _yield$Promise$all2[8];
           result = {};
           if (!profR.data) {
-            _context12.n = 4;
+            _context14.n = 4;
             break;
           }
           p = {
@@ -1049,13 +1139,13 @@ var pullFromSupabase = /*#__PURE__*/function () {
             bodyFat: profR.data.body_fat,
             sex: profR.data.sex
           };
-          _context12.n = 3;
+          _context14.n = 3;
           return ss("profile", JSON.stringify(p));
         case 3:
           result.profile = p;
         case 4:
           if (!((_weighR$data = weighR.data) !== null && _weighR$data !== void 0 && _weighR$data.length)) {
-            _context12.n = 6;
+            _context14.n = 6;
             break;
           }
           wi = weighR.data.map(function (r) {
@@ -1064,48 +1154,48 @@ var pullFromSupabase = /*#__PURE__*/function () {
               weight: Number(r.weight)
             };
           });
-          _context12.n = 5;
+          _context14.n = 5;
           return ss("weighins", JSON.stringify(wi));
         case 5:
           result.weighIns = wi;
         case 6:
           if (!settR.data) {
-            _context12.n = 11;
+            _context14.n = 11;
             break;
           }
           s = settR.data;
           if (!s.mode) {
-            _context12.n = 7;
+            _context14.n = 7;
             break;
           }
-          _context12.n = 7;
+          _context14.n = 7;
           return ss("mode__" + todayKey(), s.mode);
         case 7:
           if (!(s.tdee_adj != null)) {
-            _context12.n = 8;
+            _context14.n = 8;
             break;
           }
-          _context12.n = 8;
+          _context14.n = 8;
           return ss("tdee_adj", String(s.tdee_adj));
         case 8:
           if (!(s.custom_kcal != null)) {
-            _context12.n = 9;
+            _context14.n = 9;
             break;
           }
-          _context12.n = 9;
+          _context14.n = 9;
           return ss("target_kcal", String(s.custom_kcal));
         case 9:
           if (!s.aggressive_cut_acked) {
-            _context12.n = 10;
+            _context14.n = 10;
             break;
           }
-          _context12.n = 10;
+          _context14.n = 10;
           return ss("aggressive_cut_acked", "1");
         case 10:
           result.settings = s;
         case 11:
           if (!((_mealsR$data = mealsR.data) !== null && _mealsR$data !== void 0 && _mealsR$data.length)) {
-            _context12.n = 13;
+            _context14.n = 13;
             break;
           }
           meals = mealsR.data.map(function (m) {
@@ -1117,19 +1207,19 @@ var pullFromSupabase = /*#__PURE__*/function () {
               fat: Number(m.fat)
             };
           });
-          _context12.n = 12;
+          _context14.n = 12;
           return ss("meals", JSON.stringify(meals));
         case 12:
           result.meals = meals;
         case 13:
           if (!((_badgesR$data = badgesR.data) !== null && _badgesR$data !== void 0 && _badgesR$data.length)) {
-            _context12.n = 15;
+            _context14.n = 15;
             break;
           }
           keys = badgesR.data.map(function (b) {
             return b.badge_key;
           });
-          _context12.n = 14;
+          _context14.n = 14;
           return ss("badges", JSON.stringify(keys));
         case 14:
           result.badges = keys;
@@ -1172,11 +1262,11 @@ var pullFromSupabase = /*#__PURE__*/function () {
             }
           }
           if (!((_histR$data = histR.data) !== null && _histR$data !== void 0 && _histR$data.length)) {
-            _context12.n = 25;
+            _context14.n = 25;
             break;
           }
           fullHist = histR.data.map(function (h) {
-            var _ref13, _waterByDate$h$date;
+            var _ref15, _waterByDate$h$date;
             return {
               date: h.date,
               mode: h.mode,
@@ -1185,46 +1275,46 @@ var pullFromSupabase = /*#__PURE__*/function () {
               carbs: h.carbs,
               fat: h.fat,
               training: h.training,
-              water: (_ref13 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref13 !== void 0 ? _ref13 : 0,
+              water: (_ref15 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref15 !== void 0 ? _ref15 : 0,
               logs: foodByDate[h.date] || []
             };
           });
-          _context12.n = 16;
+          _context14.n = 16;
           return ss("history", JSON.stringify(fullHist));
         case 16:
           _iterator4 = _createForOfIteratorHelper(fullHist);
-          _context12.p = 17;
+          _context14.p = 17;
           _iterator4.s();
         case 18:
           if ((_step4 = _iterator4.n()).done) {
-            _context12.n = 21;
+            _context14.n = 21;
             break;
           }
           snap = _step4.value;
-          _context12.n = 19;
+          _context14.n = 19;
           return ss("logs__" + snap.date, JSON.stringify(snap.logs || []));
         case 19:
-          _context12.n = 20;
+          _context14.n = 20;
           return ss("water__" + snap.date, String(snap.water || 0));
         case 20:
-          _context12.n = 18;
+          _context14.n = 18;
           break;
         case 21:
-          _context12.n = 23;
+          _context14.n = 23;
           break;
         case 22:
-          _context12.p = 22;
-          _t12 = _context12.v;
-          _iterator4.e(_t12);
+          _context14.p = 22;
+          _t14 = _context14.v;
+          _iterator4.e(_t14);
         case 23:
-          _context12.p = 23;
+          _context14.p = 23;
           _iterator4.f();
-          return _context12.f(23);
+          return _context14.f(23);
         case 24:
           result.history = fullHist;
         case 25:
           if (!((_workR$data = workR.data) !== null && _workR$data !== void 0 && _workR$data.length)) {
-            _context12.n = 29;
+            _context14.n = 29;
             break;
           }
           byDate = {};
@@ -1251,29 +1341,29 @@ var pullFromSupabase = /*#__PURE__*/function () {
           _i = 0, _Object$entries = Object.entries(byDate);
         case 26:
           if (!(_i < _Object$entries.length)) {
-            _context12.n = 28;
+            _context14.n = 28;
             break;
           }
           _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2), d = _Object$entries$_i[0], ws = _Object$entries$_i[1];
-          _context12.n = 27;
+          _context14.n = 27;
           return ss("workouts__" + d, JSON.stringify(ws));
         case 27:
           _i++;
-          _context12.n = 26;
+          _context14.n = 26;
           break;
         case 28:
           result.workouts = byDate;
         case 29:
-          return _context12.a(2, result);
+          return _context14.a(2, result);
         case 30:
-          _context12.p = 30;
-          _t13 = _context12.v;
-          return _context12.a(2, {});
+          _context14.p = 30;
+          _t15 = _context14.v;
+          return _context14.a(2, {});
       }
-    }, _callee12, null, [[17, 22, 23, 24], [1, 30]]);
+    }, _callee14, null, [[17, 22, 23, 24], [1, 30]]);
   }));
-  return function pullFromSupabase(_x30) {
-    return _ref12.apply(this, arguments);
+  return function pullFromSupabase(_x33) {
+    return _ref14.apply(this, arguments);
   };
 }();
 
@@ -1283,85 +1373,85 @@ var pullFromSupabase = /*#__PURE__*/function () {
 
 var SCHEMA_VERSION = 1;
 var runMigrations = /*#__PURE__*/function () {
-  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
+  var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15() {
     var stored, v;
-    return _regenerator().w(function (_context13) {
-      while (1) switch (_context13.n) {
+    return _regenerator().w(function (_context15) {
+      while (1) switch (_context15.n) {
         case 0:
-          _context13.n = 1;
+          _context15.n = 1;
           return sg("fuel_schema_v");
         case 1:
-          stored = _context13.v;
+          stored = _context15.v;
           v = stored ? parseInt(stored) : 0;
           if (!(v >= SCHEMA_VERSION)) {
-            _context13.n = 2;
+            _context15.n = 2;
             break;
           }
-          return _context13.a(2);
+          return _context15.a(2);
         case 2:
-          _context13.n = 3;
+          _context15.n = 3;
           return ss("fuel_schema_v", String(SCHEMA_VERSION));
         case 3:
-          return _context13.a(2);
+          return _context15.a(2);
       }
-    }, _callee13);
+    }, _callee15);
   }));
   return function runMigrations() {
-    return _ref14.apply(this, arguments);
+    return _ref16.apply(this, arguments);
   };
 }();
 
 // Current Supabase access token (JWT) — the worker requires it to authorise AI calls.
 var getAccessToken = /*#__PURE__*/function () {
-  var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14() {
-    var _data$session, client, _yield$client$auth$ge, data, _t14;
-    return _regenerator().w(function (_context14) {
-      while (1) switch (_context14.p = _context14.n) {
+  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16() {
+    var _data$session, client, _yield$client$auth$ge, data, _t16;
+    return _regenerator().w(function (_context16) {
+      while (1) switch (_context16.p = _context16.n) {
         case 0:
-          _context14.p = 0;
+          _context16.p = 0;
           client = sb();
           if (client) {
-            _context14.n = 1;
+            _context16.n = 1;
             break;
           }
-          return _context14.a(2, null);
+          return _context16.a(2, null);
         case 1:
-          _context14.n = 2;
+          _context16.n = 2;
           return client.auth.getSession();
         case 2:
-          _yield$client$auth$ge = _context14.v;
+          _yield$client$auth$ge = _context16.v;
           data = _yield$client$auth$ge.data;
-          return _context14.a(2, (data === null || data === void 0 || (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) || null);
+          return _context16.a(2, (data === null || data === void 0 || (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) || null);
         case 3:
-          _context14.p = 3;
-          _t14 = _context14.v;
-          return _context14.a(2, null);
+          _context16.p = 3;
+          _t16 = _context16.v;
+          return _context16.a(2, null);
       }
-    }, _callee14, null, [[0, 3]]);
+    }, _callee16, null, [[0, 3]]);
   }));
   return function getAccessToken() {
-    return _ref15.apply(this, arguments);
+    return _ref17.apply(this, arguments);
   };
 }();
 
 // Server-side voucher redemption (Phase A). Sends the code to the worker /redeem endpoint.
 var redeemVoucher = /*#__PURE__*/function () {
-  var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(code) {
+  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(code) {
     var token, res, data;
-    return _regenerator().w(function (_context15) {
-      while (1) switch (_context15.n) {
+    return _regenerator().w(function (_context17) {
+      while (1) switch (_context17.n) {
         case 0:
-          _context15.n = 1;
+          _context17.n = 1;
           return getAccessToken();
         case 1:
-          token = _context15.v;
+          token = _context17.v;
           if (token) {
-            _context15.n = 2;
+            _context17.n = 2;
             break;
           }
           throw new Error("Please sign in to redeem a voucher.");
         case 2:
-          _context15.n = 3;
+          _context17.n = 3;
           return fetch(AI_ENDPOINT + "/redeem", {
             method: "POST",
             headers: {
@@ -1373,53 +1463,115 @@ var redeemVoucher = /*#__PURE__*/function () {
             })
           });
         case 3:
-          res = _context15.v;
+          res = _context17.v;
           if (res.ok) {
-            _context15.n = 5;
+            _context17.n = 5;
             break;
           }
-          _context15.n = 4;
+          _context17.n = 4;
           return res.json();
         case 4:
-          data = _context15.v;
+          data = _context17.v;
           throw new Error(data.error || "Voucher redemption failed.");
         case 5:
-          _context15.n = 6;
+          _context17.n = 6;
           return res.json();
         case 6:
-          return _context15.a(2, _context15.v);
+          return _context17.a(2, _context17.v);
       }
-    }, _callee15);
+    }, _callee17);
   }));
-  return function redeemVoucher(_x31) {
-    return _ref16.apply(this, arguments);
+  return function redeemVoucher(_x34) {
+    return _ref18.apply(this, arguments);
+  };
+}();
+
+// Account deletion (R5). The worker deletes the auth.users row with the service
+// role, which cascades to every table. The client cannot do this itself.
+var deleteAccountRequest = /*#__PURE__*/function () {
+  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18() {
+    var token, res, msg, _t17, _t18;
+    return _regenerator().w(function (_context18) {
+      while (1) switch (_context18.p = _context18.n) {
+        case 0:
+          _context18.n = 1;
+          return getAccessToken();
+        case 1:
+          token = _context18.v;
+          if (token) {
+            _context18.n = 2;
+            break;
+          }
+          throw new Error("Please sign in again, then retry.");
+        case 2:
+          _context18.n = 3;
+          return fetch(AI_ENDPOINT + "/delete-account", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + token
+            }
+          });
+        case 3:
+          res = _context18.v;
+          if (res.ok) {
+            _context18.n = 9;
+            break;
+          }
+          msg = "Account deletion failed. Please try again or email fuellogadmin@gmail.com.";
+          _context18.p = 4;
+          _context18.n = 5;
+          return res.json();
+        case 5:
+          _t17 = _context18.v.error;
+          if (_t17) {
+            _context18.n = 6;
+            break;
+          }
+          _t17 = msg;
+        case 6:
+          msg = _t17;
+          _context18.n = 8;
+          break;
+        case 7:
+          _context18.p = 7;
+          _t18 = _context18.v;
+        case 8:
+          throw new Error(msg);
+        case 9:
+          return _context18.a(2, true);
+      }
+    }, _callee18, null, [[4, 7]]);
+  }));
+  return function deleteAccountRequest() {
+    return _ref19.apply(this, arguments);
   };
 }();
 
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 var callAI = /*#__PURE__*/function () {
-  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(prompt) {
+  var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(prompt) {
     var maxTokens,
       token,
       res,
       data,
-      _args16 = arguments;
-    return _regenerator().w(function (_context16) {
-      while (1) switch (_context16.n) {
+      _args19 = arguments;
+    return _regenerator().w(function (_context19) {
+      while (1) switch (_context19.n) {
         case 0:
-          maxTokens = _args16.length > 1 && _args16[1] !== undefined ? _args16[1] : 500;
-          _context16.n = 1;
+          maxTokens = _args19.length > 1 && _args19[1] !== undefined ? _args19[1] : 500;
+          _context19.n = 1;
           return getAccessToken();
         case 1:
-          token = _context16.v;
+          token = _context19.v;
           if (token) {
-            _context16.n = 2;
+            _context19.n = 2;
             break;
           }
           throw new Error("Please sign in to use AI features.");
         case 2:
-          _context16.n = 3;
+          _context19.n = 3;
           return fetch(AI_ENDPOINT, {
             method: "POST",
             headers: {
@@ -1436,43 +1588,43 @@ var callAI = /*#__PURE__*/function () {
             })
           });
         case 3:
-          res = _context16.v;
+          res = _context19.v;
           if (res.ok) {
-            _context16.n = 7;
+            _context19.n = 7;
             break;
           }
           if (!(res.status === 401)) {
-            _context16.n = 4;
+            _context19.n = 4;
             break;
           }
           throw new Error("Your session expired — please sign in again.");
         case 4:
           if (!(res.status === 429)) {
-            _context16.n = 5;
+            _context19.n = 5;
             break;
           }
           throw new Error("Daily AI limit reached — try again tomorrow.");
         case 5:
           if (!(res.status === 402 || res.status === 403)) {
-            _context16.n = 6;
+            _context19.n = 6;
             break;
           }
           throw new Error("AI features require an active Premium account.");
         case 6:
           throw new Error("AI service is unavailable right now (" + res.status + ").");
         case 7:
-          _context16.n = 8;
+          _context19.n = 8;
           return res.json();
         case 8:
-          data = _context16.v;
-          return _context16.a(2, (data.content || []).map(function (b) {
+          data = _context19.v;
+          return _context19.a(2, (data.content || []).map(function (b) {
             return b.text || "";
           }).join("").trim());
       }
-    }, _callee16);
+    }, _callee19);
   }));
-  return function callAI(_x32) {
-    return _ref17.apply(this, arguments);
+  return function callAI(_x35) {
+    return _ref20.apply(this, arguments);
   };
 }();
 var repairJson = function repairJson(text) {
@@ -1490,24 +1642,24 @@ var repairJson = function repairJson(text) {
   return JSON.parse(s);
 };
 var callAIJson = /*#__PURE__*/function () {
-  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(prompt) {
+  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(prompt) {
     var maxTokens,
       text,
-      _args17 = arguments;
-    return _regenerator().w(function (_context17) {
-      while (1) switch (_context17.n) {
+      _args20 = arguments;
+    return _regenerator().w(function (_context20) {
+      while (1) switch (_context20.n) {
         case 0:
-          maxTokens = _args17.length > 1 && _args17[1] !== undefined ? _args17[1] : 500;
-          _context17.n = 1;
+          maxTokens = _args20.length > 1 && _args20[1] !== undefined ? _args20[1] : 500;
+          _context20.n = 1;
           return callAI(prompt, maxTokens);
         case 1:
-          text = _context17.v;
-          return _context17.a(2, repairJson(text));
+          text = _context20.v;
+          return _context20.a(2, repairJson(text));
       }
-    }, _callee17);
+    }, _callee20);
   }));
-  return function callAIJson(_x33) {
-    return _ref18.apply(this, arguments);
+  return function callAIJson(_x36) {
+    return _ref21.apply(this, arguments);
   };
 }();
 
@@ -1559,10 +1711,10 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
     }
   }]);
 }(React.Component); // ── Premium Modals ────────────────────────────────────────────
-function PremiumModal(_ref19) {
-  var feature = _ref19.feature,
-    onUpgrade = _ref19.onUpgrade,
-    onDismiss = _ref19.onDismiss;
+function PremiumModal(_ref22) {
+  var feature = _ref22.feature,
+    onUpgrade = _ref22.onUpgrade,
+    onDismiss = _ref22.onDismiss;
   var emoji = feature ? feature.emoji : "⭐";
   var name = feature ? feature.name : "This feature";
   return /*#__PURE__*/React.createElement("div", {
@@ -1629,10 +1781,10 @@ function PremiumModal(_ref19) {
       letterSpacing: "0.1em",
       marginBottom: 10
     }
-  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref20, i) {
-    var _ref21 = _slicedToArray(_ref20, 2),
-      e = _ref21[0],
-      t = _ref21[1];
+  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref23, i) {
+    var _ref24 = _slicedToArray(_ref23, 2),
+      e = _ref24[0],
+      t = _ref24[1];
     return /*#__PURE__*/React.createElement("div", {
       key: i,
       style: {
@@ -1687,9 +1839,9 @@ function PremiumModal(_ref19) {
     }
   }, "Maybe Later")));
 }
-function SignInModal(_ref22) {
-  var onSuccess = _ref22.onSuccess,
-    onCancel = _ref22.onCancel;
+function SignInModal(_ref25) {
+  var onSuccess = _ref25.onSuccess,
+    onCancel = _ref25.onCancel;
   var devMode = !GOOGLE_CLIENT_ID;
   var _useState = useState(devMode ? "payment" : "google"),
     _useState2 = _slicedToArray(_useState, 2),
@@ -1711,29 +1863,44 @@ function SignInModal(_ref22) {
     _useState8 = _slicedToArray(_useState7, 2),
     vError = _useState8[0],
     setVError = _useState8[1];
+  // Compliance gates (LEGAL_ROADMAP R6 + R2)
+  var _useState9 = useState(false),
+    _useState0 = _slicedToArray(_useState9, 2),
+    ageOK = _useState0[0],
+    setAgeOK = _useState0[1]; // 18+ affirmation (before sign-in)
+  var _useState1 = useState(false),
+    _useState10 = _slicedToArray(_useState1, 2),
+    consentOK = _useState10[0],
+    setConsentOK = _useState10[1]; // explicit health-data consent (before first sync)
+  var _useState11 = useState(null),
+    _useState12 = _slicedToArray(_useState11, 2),
+    ageAt = _useState12[0],
+    setAgeAt = _useState12[1]; // timestamp of the 18+ affirmation
+
   useEffect(function () {
-    if (step !== "google" || devMode || typeof google === "undefined") return;
+    // Only render the Google button once the user has affirmed they are 18+.
+    if (step !== "google" || devMode || typeof google === "undefined" || !ageOK) return;
     try {
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: function () {
-          var _callback = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(resp) {
-            var _yield$sb$auth$signIn, data, error, u, p, _t15;
-            return _regenerator().w(function (_context18) {
-              while (1) switch (_context18.p = _context18.n) {
+          var _callback = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(resp) {
+            var _yield$sb$auth$signIn, data, error, u, p, _t19;
+            return _regenerator().w(function (_context21) {
+              while (1) switch (_context21.p = _context21.n) {
                 case 0:
-                  _context18.p = 0;
-                  _context18.n = 1;
+                  _context21.p = 0;
+                  _context21.n = 1;
                   return sb().auth.signInWithIdToken({
                     provider: "google",
                     token: resp.credential
                   });
                 case 1:
-                  _yield$sb$auth$signIn = _context18.v;
+                  _yield$sb$auth$signIn = _context21.v;
                   data = _yield$sb$auth$signIn.data;
                   error = _yield$sb$auth$signIn.error;
                   if (!error) {
-                    _context18.n = 2;
+                    _context21.n = 2;
                     break;
                   }
                   throw error;
@@ -1745,11 +1912,11 @@ function SignInModal(_ref22) {
                     email: u.email || "",
                     picture: u.user_metadata.avatar_url || ""
                   });
-                  _context18.n = 4;
+                  _context21.n = 4;
                   break;
                 case 3:
-                  _context18.p = 3;
-                  _t15 = _context18.v;
+                  _context21.p = 3;
+                  _t19 = _context21.v;
                   p = parseJwt(resp.credential);
                   setGUser({
                     name: p.name || "User",
@@ -1759,11 +1926,11 @@ function SignInModal(_ref22) {
                 case 4:
                   setStep("payment");
                 case 5:
-                  return _context18.a(2);
+                  return _context21.a(2);
               }
-            }, _callee18, null, [[0, 3]]);
+            }, _callee21, null, [[0, 3]]);
           }));
-          function callback(_x34) {
+          function callback(_x37) {
             return _callback.apply(this, arguments);
           }
           return callback;
@@ -1779,44 +1946,59 @@ function SignInModal(_ref22) {
         text: "continue_with"
       });
     } catch (e) {}
-  }, [step]); // eslint-disable-line
+  }, [step, ageOK]); // eslint-disable-line
 
+  // Consent record passed up to handleSignInSuccess and persisted to the profiles row.
+  var consentMeta = function consentMeta() {
+    return {
+      ageConfirmedAt: ageAt || Date.now(),
+      healthConsentAt: Date.now(),
+      policyVersion: POLICY_VERSION
+    };
+  };
   var handleVoucher = /*#__PURE__*/function () {
-    var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19() {
-      var _t16;
-      return _regenerator().w(function (_context19) {
-        while (1) switch (_context19.p = _context19.n) {
+    var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
+      var _t20;
+      return _regenerator().w(function (_context22) {
+        while (1) switch (_context22.p = _context22.n) {
           case 0:
+            if (consentOK) {
+              _context22.n = 1;
+              break;
+            }
+            setVError("Please consent to health-data storage to continue.");
+            return _context22.a(2);
+          case 1:
             if (voucher.trim()) {
-              _context19.n = 1;
+              _context22.n = 2;
               break;
             }
             setVError("Enter a voucher code.");
-            return _context19.a(2);
-          case 1:
+            return _context22.a(2);
+          case 2:
             setVError("");
-            _context19.p = 2;
-            _context19.n = 3;
+            _context22.p = 3;
+            _context22.n = 4;
             return redeemVoucher(voucher);
-          case 3:
+          case 4:
             onSuccess(gUser || {
               name: "Guest",
               email: "",
               picture: ""
-            }, "voucher");
-            _context19.n = 5;
+            }, "voucher", consentMeta());
+            _context22.n = 6;
             break;
-          case 4:
-            _context19.p = 4;
-            _t16 = _context19.v;
-            setVError(_t16.message || "Redemption failed. Try again.");
           case 5:
-            return _context19.a(2);
+            _context22.p = 5;
+            _t20 = _context22.v;
+            setVError(_t20.message || "Redemption failed. Try again.");
+          case 6:
+            return _context22.a(2);
         }
-      }, _callee19, null, [[2, 4]]);
+      }, _callee22, null, [[3, 5]]);
     }));
     return function handleVoucher() {
-      return _ref23.apply(this, arguments);
+      return _ref26.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1859,16 +2041,70 @@ function SignInModal(_ref22) {
       color: "#9b958b",
       textAlign: "center",
       lineHeight: 1.6,
-      marginBottom: 24
+      marginBottom: 18
     }
-  }, "We use Google Sign In to protect your account. No separate password needed."), /*#__PURE__*/React.createElement("div", {
+  }, "We use Google Sign In to protect your account. No separate password needed."), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start",
+      cursor: "pointer",
+      background: "#0b0d0b",
+      border: "1px solid ".concat(ageOK ? A + "55" : BD),
+      borderRadius: 10,
+      padding: "11px 12px",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: ageOK,
+    onChange: function onChange(e) {
+      setAgeOK(e.target.checked);
+      if (e.target.checked && !ageAt) setAgeAt(Date.now());
+    },
+    style: {
+      marginTop: 2,
+      width: 16,
+      height: 16,
+      accentColor: A,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#cfc9bd",
+      lineHeight: 1.5
+    }
+  }, "I confirm I am ", /*#__PURE__*/React.createElement("strong", null, "18 or over"), ". Fuel Log is for adults in the UK\xA0and\xA0EEA. I agree to the ", /*#__PURE__*/React.createElement("a", {
+    href: LEGAL.terms,
+    target: "_blank",
+    rel: "noopener",
+    style: {
+      color: A
+    }
+  }, "Terms"), " and", " ", /*#__PURE__*/React.createElement("a", {
+    href: LEGAL.privacy,
+    target: "_blank",
+    rel: "noopener",
+    style: {
+      color: A
+    }
+  }, "Privacy\xA0Policy"), ".")), ageOK ? /*#__PURE__*/React.createElement("div", {
     id: "gsi-btn",
     style: {
       display: "flex",
       justifyContent: "center",
       marginBottom: 14
     }
-  }), /*#__PURE__*/React.createElement("button", {
+  }) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      fontSize: 12,
+      color: "#827c73",
+      padding: "12px 0",
+      marginBottom: 14
+    }
+  }, "Tick the box above to continue with Google."), /*#__PURE__*/React.createElement("button", {
     onClick: onCancel,
     style: {
       width: "100%",
@@ -1933,7 +2169,46 @@ function SignInModal(_ref22) {
       marginBottom: 16,
       cursor: "not-allowed"
     }
-  }, "Subscribe \u2014 Coming Soon"), /*#__PURE__*/React.createElement("div", {
+  }, "Subscribe \u2014 Coming Soon"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start",
+      cursor: "pointer",
+      background: "#0b0d0b",
+      border: "1px solid ".concat(consentOK ? A + "55" : BD),
+      borderRadius: 10,
+      padding: "11px 12px",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: consentOK,
+    onChange: function onChange(e) {
+      setConsentOK(e.target.checked);
+      setVError("");
+    },
+    style: {
+      marginTop: 2,
+      width: 16,
+      height: 16,
+      accentColor: A,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#cfc9bd",
+      lineHeight: 1.5
+    }
+  }, "I explicitly consent to Fuel Log storing my ", /*#__PURE__*/React.createElement("strong", null, "health data"), " (weight, body\xA0fat, sex) in the cloud to provide the service. Meal/workout text and body metrics are sent to our AI provider ", /*#__PURE__*/React.createElement("strong", null, "without anything that identifies me"), ". See the", " ", /*#__PURE__*/React.createElement("a", {
+    href: LEGAL.privacy,
+    target: "_blank",
+    rel: "noopener",
+    style: {
+      color: A
+    }
+  }, "Privacy\xA0Policy"), ".")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "#aea79c",
@@ -1971,16 +2246,18 @@ function SignInModal(_ref22) {
     }
   }, vError), /*#__PURE__*/React.createElement("button", {
     onClick: handleVoucher,
+    disabled: !consentOK,
     style: {
       width: "100%",
       padding: "12px",
       background: "#1c1a15",
       border: "1px solid ".concat(BD),
       borderRadius: 12,
-      color: "#b6b0a4",
+      color: consentOK ? "#b6b0a4" : "#6e6960",
       fontSize: 13,
       fontWeight: 700,
-      marginBottom: 10
+      marginBottom: 10,
+      opacity: consentOK ? 1 : 0.6
     }
   }, "Redeem Code"), /*#__PURE__*/React.createElement("button", {
     onClick: onCancel,
@@ -1995,10 +2272,10 @@ function SignInModal(_ref22) {
     }
   }, "Cancel"))));
 }
-function SignOutModal(_ref24) {
-  var userName = _ref24.userName,
-    onConfirm = _ref24.onConfirm,
-    onCancel = _ref24.onCancel;
+function SignOutModal(_ref27) {
+  var userName = _ref27.userName,
+    onConfirm = _ref27.onConfirm,
+    onCancel = _ref27.onCancel;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -2068,9 +2345,461 @@ function SignOutModal(_ref24) {
     }
   }, "Stay Signed In")));
 }
-function LapsedModal(_ref25) {
-  var onRenew = _ref25.onRenew,
-    onDismiss = _ref25.onDismiss;
+
+// Retroactive / re-consent prompt (R2). Shown when a signed-in user has not yet
+// agreed to the current privacy-policy version. Blocking — they consent or sign out.
+function ConsentModal(_ref28) {
+  var onConsent = _ref28.onConsent,
+    onSignOut = _ref28.onSignOut;
+  var _useState13 = useState(false),
+    _useState14 = _slicedToArray(_useState13, 2),
+    ok = _useState14[0],
+    setOk = _useState14[1];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.92)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1001,
+      padding: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      borderRadius: 24,
+      padding: "28px 24px",
+      border: "1px solid ".concat(A, "33"),
+      maxWidth: 320,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 32,
+      textAlign: "center",
+      marginBottom: 12
+    }
+  }, "\uD83D\uDD0F"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 900,
+      color: "#e6e1d7",
+      textAlign: "center",
+      marginBottom: 8
+    }
+  }, "A quick consent check"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#aea79c",
+      lineHeight: 1.6,
+      marginBottom: 16,
+      textAlign: "center"
+    }
+  }, "We've updated how we describe your data. To keep syncing your health data we need your explicit consent."), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start",
+      cursor: "pointer",
+      background: "#0b0d0b",
+      border: "1px solid ".concat(ok ? A + "55" : BD),
+      borderRadius: 10,
+      padding: "11px 12px",
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: ok,
+    onChange: function onChange(e) {
+      return setOk(e.target.checked);
+    },
+    style: {
+      marginTop: 2,
+      width: 16,
+      height: 16,
+      accentColor: A,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#cfc9bd",
+      lineHeight: 1.5
+    }
+  }, "I explicitly consent to Fuel Log storing my ", /*#__PURE__*/React.createElement("strong", null, "health data"), " (weight, body\xA0fat, sex) to provide the service. See the", " ", /*#__PURE__*/React.createElement("a", {
+    href: LEGAL.privacy,
+    target: "_blank",
+    rel: "noopener",
+    style: {
+      color: A
+    }
+  }, "Privacy\xA0Policy"), ".")), /*#__PURE__*/React.createElement("button", {
+    onClick: onConsent,
+    disabled: !ok,
+    style: {
+      width: "100%",
+      padding: "13px",
+      background: ok ? A : "#24211b",
+      color: ok ? "#0b0d0b" : "#6e6960",
+      border: "none",
+      borderRadius: 12,
+      fontSize: 14,
+      fontWeight: 900,
+      marginBottom: 10,
+      opacity: ok ? 1 : 0.7
+    }
+  }, "Agree & continue"), /*#__PURE__*/React.createElement("button", {
+    onClick: onSignOut,
+    style: {
+      width: "100%",
+      padding: "10px",
+      background: "none",
+      color: "#9b958b",
+      border: "none",
+      fontSize: 13,
+      cursor: "pointer"
+    }
+  }, "Sign out instead")));
+}
+
+// ── Account & Privacy screen ──────────────────────────────────
+// Reached by tapping the avatar. Home for data export (R4), account deletion
+// (R5), policy links, consent status, and sign out (LEGAL_ROADMAP Phase B).
+function AccountScreen(_ref29) {
+  var user = _ref29.user,
+    consentInfo = _ref29.consentInfo,
+    onBack = _ref29.onBack,
+    onExport = _ref29.onExport,
+    onSignOut = _ref29.onSignOut,
+    onDelete = _ref29.onDelete;
+  var _useState15 = useState(false),
+    _useState16 = _slicedToArray(_useState15, 2),
+    confirm = _useState16[0],
+    setConfirm = _useState16[1];
+  var _useState17 = useState(""),
+    _useState18 = _slicedToArray(_useState17, 2),
+    typed = _useState18[0],
+    setTyped = _useState18[1];
+  var _useState19 = useState(false),
+    _useState20 = _slicedToArray(_useState19, 2),
+    busy = _useState20[0],
+    setBusy = _useState20[1];
+  var _useState21 = useState(""),
+    _useState22 = _slicedToArray(_useState21, 2),
+    err = _useState22[0],
+    setErr = _useState22[1];
+  var runDelete = /*#__PURE__*/function () {
+    var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
+      var _t21;
+      return _regenerator().w(function (_context23) {
+        while (1) switch (_context23.p = _context23.n) {
+          case 0:
+            setBusy(true);
+            setErr("");
+            _context23.p = 1;
+            _context23.n = 2;
+            return onDelete();
+          case 2:
+            _context23.n = 4;
+            break;
+          case 3:
+            _context23.p = 3;
+            _t21 = _context23.v;
+            setErr(_t21.message || "Deletion failed.");
+            setBusy(false);
+          case 4:
+            return _context23.a(2);
+        }
+      }, _callee23, null, [[1, 3]]);
+    }));
+    return function runDelete() {
+      return _ref30.apply(this, arguments);
+    };
+  }();
+  var linkRow = function linkRow(label, href) {
+    return /*#__PURE__*/React.createElement("a", {
+      href: href,
+      target: "_blank",
+      rel: "noopener",
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "13px 14px",
+        background: "#1c1a15",
+        border: "1px solid ".concat(BD),
+        borderRadius: 12,
+        color: "#cfc9bd",
+        fontSize: 14,
+        textDecoration: "none",
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#827c73"
+      }
+    }, "\u2197"));
+  };
+  var consentDate = consentInfo !== null && consentInfo !== void 0 && consentInfo.healthConsentAt ? new Date(consentInfo.healthConsentAt).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }) : null;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: BG,
+      padding: "18px 16px 60px",
+      maxWidth: 480,
+      margin: "0 auto"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onBack,
+    style: {
+      width: 36,
+      height: 36,
+      background: "#1c1a15",
+      border: "1px solid ".concat(BD),
+      borderRadius: 10,
+      color: "#aea79c",
+      fontSize: 18
+    }
+  }, "\u2190"), /*#__PURE__*/React.createElement("h1", {
+    style: {
+      margin: 0,
+      fontSize: 20,
+      fontWeight: 900,
+      color: A
+    }
+  }, "Account & Privacy")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      background: CARD,
+      border: "1px solid ".concat(BD),
+      borderRadius: 14,
+      padding: "14px 16px",
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement(Avatar, {
+    user: user,
+    size: 40
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 800,
+      color: "#e6e1d7",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis"
+    }
+  }, (user === null || user === void 0 ? void 0 : user.name) || "Signed in"), (user === null || user === void 0 ? void 0 : user.email) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#9b958b",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis"
+    }
+  }, user.email))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      marginBottom: 8
+    }
+  }, "YOUR DATA"), /*#__PURE__*/React.createElement("button", {
+    onClick: onExport,
+    style: {
+      width: "100%",
+      padding: "13px 14px",
+      background: "#1c1a15",
+      border: "1px solid ".concat(BD),
+      borderRadius: 12,
+      color: "#cfc9bd",
+      fontSize: 14,
+      fontWeight: 700,
+      textAlign: "left",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\u2B07\uFE0F Download my data"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#827c73",
+      fontSize: 12
+    }
+  }, "JSON")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      lineHeight: 1.6,
+      marginBottom: 20
+    }
+  }, "A copy of everything stored against your account, in a portable file (GDPR access & portability)."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      marginBottom: 8
+    }
+  }, "LEGAL"), linkRow("Privacy Policy", LEGAL.privacy), linkRow("Terms of Service", LEGAL.terms), linkRow("Who processes your data", LEGAL.subprocessors), consentDate && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      lineHeight: 1.6,
+      margin: "8px 0 20px"
+    }
+  }, "Health-data consent given ", consentDate, " (policy v", consentInfo.version || POLICY_VERSION, "). To withdraw consent, delete your data below."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      margin: "4px 0 8px"
+    }
+  }, "SESSION"), /*#__PURE__*/React.createElement("button", {
+    onClick: onSignOut,
+    style: {
+      width: "100%",
+      padding: "13px 14px",
+      background: "#1c1a15",
+      border: "1px solid ".concat(BD),
+      borderRadius: 12,
+      color: "#cfc9bd",
+      fontSize: 14,
+      fontWeight: 700,
+      textAlign: "left",
+      marginBottom: 24
+    }
+  }, "\uD83D\uDD13 Sign out"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#ff7a7a",
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      marginBottom: 8
+    }
+  }, "DANGER ZONE"), !confirm ? /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      setConfirm(true);
+      setErr("");
+    },
+    style: {
+      width: "100%",
+      padding: "13px 14px",
+      background: "#1a0d0d",
+      border: "1px solid #3a1a1a",
+      borderRadius: 12,
+      color: "#ff5555",
+      fontSize: 14,
+      fontWeight: 800,
+      textAlign: "left"
+    }
+  }, "\uD83D\uDDD1\uFE0F Delete my account & all data") : /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#1a0d0d",
+      border: "1px solid #3a1a1a",
+      borderRadius: 14,
+      padding: "16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#ffb4b4",
+      lineHeight: 1.6,
+      marginBottom: 12
+    }
+  }, "This permanently deletes your account and ", /*#__PURE__*/React.createElement("strong", null, "all"), " your data (profile, weigh-ins, logs, history, badges). This cannot be undone. Type ", /*#__PURE__*/React.createElement("strong", null, "DELETE"), " to confirm."), /*#__PURE__*/React.createElement("input", {
+    value: typed,
+    onChange: function onChange(e) {
+      return setTyped(e.target.value);
+    },
+    placeholder: "DELETE",
+    disabled: busy,
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      background: "#0b0d0b",
+      border: "1px solid #3a1a1a",
+      borderRadius: 10,
+      padding: "11px 13px",
+      color: "#e6e1d7",
+      fontSize: 14,
+      fontFamily: "inherit",
+      outline: "none",
+      marginBottom: 12
+    }
+  }), err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#ff7a7a",
+      marginBottom: 10
+    }
+  }, err), /*#__PURE__*/React.createElement("button", {
+    onClick: runDelete,
+    disabled: busy || typed.trim().toUpperCase() !== "DELETE",
+    style: {
+      width: "100%",
+      padding: "13px",
+      background: "#3a0f0f",
+      border: "1px solid #5a1a1a",
+      borderRadius: 12,
+      color: typed.trim().toUpperCase() === "DELETE" && !busy ? "#ff5555" : "#7a5555",
+      fontSize: 14,
+      fontWeight: 900,
+      marginBottom: 8,
+      opacity: typed.trim().toUpperCase() === "DELETE" && !busy ? 1 : 0.6
+    }
+  }, busy ? "Deleting…" : "Permanently delete everything"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      setConfirm(false);
+      setTyped("");
+      setErr("");
+    },
+    disabled: busy,
+    style: {
+      width: "100%",
+      padding: "11px",
+      background: "none",
+      color: "#9b958b",
+      border: "none",
+      fontSize: 13
+    }
+  }, "Cancel")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      lineHeight: 1.6,
+      marginTop: 14
+    }
+  }, "Prefer email? Contact ", /*#__PURE__*/React.createElement("a", {
+    href: "mailto:fuellogadmin@gmail.com",
+    style: {
+      color: "#9b958b"
+    }
+  }, "fuellogadmin@gmail.com"), "."));
+}
+function LapsedModal(_ref31) {
+  var onRenew = _ref31.onRenew,
+    onDismiss = _ref31.onDismiss;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -2154,10 +2883,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref26) {
-  var title = _ref26.title,
-    onBack = _ref26.onBack,
-    right = _ref26.right;
+function BackHdr(_ref32) {
+  var title = _ref32.title,
+    onBack = _ref32.onBack,
+    right = _ref32.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -2198,10 +2927,10 @@ function BackHdr(_ref26) {
     }
   }, title), right);
 }
-function Chip(_ref27) {
-  var label = _ref27.label,
-    value = _ref27.value,
-    color = _ref27.color;
+function Chip(_ref33) {
+  var label = _ref33.label,
+    value = _ref33.value,
+    color = _ref33.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -2224,11 +2953,11 @@ function Chip(_ref27) {
     }
   }, label));
 }
-function MBar(_ref28) {
-  var label = _ref28.label,
-    value = _ref28.value,
-    target = _ref28.target,
-    color = _ref28.color;
+function MBar(_ref34) {
+  var label = _ref34.label,
+    value = _ref34.value,
+    target = _ref34.target,
+    color = _ref34.color;
   var pct = Math.min(100, value / target * 100);
   var overG = value - target;
   var accent = overG > 15 ? "#ff5555" : overG > 5 ? "#ffb84b" : null;
@@ -2273,19 +3002,19 @@ function MBar(_ref28) {
 
 // ── Streak Celebration ────────────────────────────────────────
 
-function StreakCelebration(_ref29) {
-  var anim = _ref29.anim,
-    onDone = _ref29.onDone;
+function StreakCelebration(_ref35) {
+  var anim = _ref35.anim,
+    onDone = _ref35.onDone;
   var prevStreak = anim.prevStreak,
     newStreak = anim.newStreak,
     isMilestone = anim.isMilestone;
-  var _useState9 = useState(prevStreak),
-    _useState0 = _slicedToArray(_useState9, 2),
-    count = _useState0[0],
-    setCount = _useState0[1];
+  var _useState23 = useState(prevStreak),
+    _useState24 = _slicedToArray(_useState23, 2),
+    count = _useState24[0],
+    setCount = _useState24[1];
 
   // Pre-computed floaters — stable across re-renders via useState initializer
-  var _useState1 = useState(function () {
+  var _useState25 = useState(function () {
       var n = isMilestone ? 26 : 14;
       return Array.from({
         length: n
@@ -2300,8 +3029,8 @@ function StreakCelebration(_ref29) {
         };
       });
     }),
-    _useState10 = _slicedToArray(_useState1, 1),
-    floaters = _useState10[0];
+    _useState26 = _slicedToArray(_useState25, 1),
+    floaters = _useState26[0];
   useEffect(function () {
     // ── Web Audio: whoosh then heavy thud ──────────────────────
     try {
@@ -2417,24 +3146,24 @@ function StreakCelebration(_ref29) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref30) {
-  var mode = _ref30.mode,
-    totals = _ref30.totals,
-    targets = _ref30.targets,
-    streak = _ref30.streak,
-    water = _ref30.water;
-  var _useState11 = useState(""),
-    _useState12 = _slicedToArray(_useState11, 2),
-    tip = _useState12[0],
-    setTip = _useState12[1];
-  var _useState13 = useState(0),
-    _useState14 = _slicedToArray(_useState13, 2),
-    refreshes = _useState14[0],
-    setRefreshes = _useState14[1];
-  var _useState15 = useState(false),
-    _useState16 = _slicedToArray(_useState15, 2),
-    loading = _useState16[0],
-    setLoading = _useState16[1];
+function CoachCard(_ref36) {
+  var mode = _ref36.mode,
+    totals = _ref36.totals,
+    targets = _ref36.targets,
+    streak = _ref36.streak,
+    water = _ref36.water;
+  var _useState27 = useState(""),
+    _useState28 = _slicedToArray(_useState27, 2),
+    tip = _useState28[0],
+    setTip = _useState28[1];
+  var _useState29 = useState(0),
+    _useState30 = _slicedToArray(_useState29, 2),
+    refreshes = _useState30[0],
+    setRefreshes = _useState30[1];
+  var _useState31 = useState(false),
+    _useState32 = _slicedToArray(_useState31, 2),
+    loading = _useState32[0],
+    setLoading = _useState32[1];
   useEffect(function () {
     sg("coach__" + todayKey()).then(function (v) {
       if (v) {
@@ -2449,49 +3178,49 @@ function CoachCard(_ref30) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
-      var h, timeLabel, prompt, t, r, _t17;
-      return _regenerator().w(function (_context20) {
-        while (1) switch (_context20.p = _context20.n) {
+    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
+      var h, timeLabel, prompt, t, r, _t22;
+      return _regenerator().w(function (_context24) {
+        while (1) switch (_context24.p = _context24.n) {
           case 0:
             if (!(loading || refreshes >= 3)) {
-              _context20.n = 1;
+              _context24.n = 1;
               break;
             }
-            return _context20.a(2);
+            return _context24.a(2);
           case 1:
             setLoading(true);
-            _context20.p = 2;
+            _context24.p = 2;
             h = getCurrentHour();
             timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
             prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today: ").concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
-            _context20.n = 3;
+            _context24.n = 3;
             return callAI(prompt, 200);
           case 3:
-            t = _context20.v;
+            t = _context24.v;
             r = refreshes + 1;
             setTip(t);
             setRefreshes(r);
-            _context20.n = 4;
+            _context24.n = 4;
             return ss("coach__" + todayKey(), JSON.stringify({
               tip: t,
               r: r
             }));
           case 4:
-            _context20.n = 6;
+            _context24.n = 6;
             break;
           case 5:
-            _context20.p = 5;
-            _t17 = _context20.v;
+            _context24.p = 5;
+            _t22 = _context24.v;
           case 6:
             setLoading(false);
           case 7:
-            return _context20.a(2);
+            return _context24.a(2);
         }
-      }, _callee20, null, [[2, 5]]);
+      }, _callee24, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref31.apply(this, arguments);
+      return _ref37.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -2550,28 +3279,28 @@ function CoachCard(_ref30) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen(_ref32) {
-  var profile = _ref32.profile,
-    onSave = _ref32.onSave,
-    onBack = _ref32.onBack,
-    _ref32$tdeeAdj = _ref32.tdeeAdj,
-    tdeeAdj = _ref32$tdeeAdj === void 0 ? 0 : _ref32$tdeeAdj,
-    _ref32$weighIns = _ref32.weighIns,
-    weighIns = _ref32$weighIns === void 0 ? [] : _ref32$weighIns,
-    _ref32$aggressiveCutA = _ref32.aggressiveCutAcked,
-    aggressiveCutAcked = _ref32$aggressiveCutA === void 0 ? false : _ref32$aggressiveCutA;
-  var _useState17 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
-    _useState18 = _slicedToArray(_useState17, 2),
-    f = _useState18[0],
-    setF = _useState18[1];
-  var _useState19 = useState(false),
-    _useState20 = _slicedToArray(_useState19, 2),
-    saved = _useState20[0],
-    setSaved = _useState20[1];
-  var _useState21 = useState(false),
-    _useState22 = _slicedToArray(_useState21, 2),
-    bfFocused = _useState22[0],
-    setBfFocused = _useState22[1];
+function ProfileScreen(_ref38) {
+  var profile = _ref38.profile,
+    onSave = _ref38.onSave,
+    onBack = _ref38.onBack,
+    _ref38$tdeeAdj = _ref38.tdeeAdj,
+    tdeeAdj = _ref38$tdeeAdj === void 0 ? 0 : _ref38$tdeeAdj,
+    _ref38$weighIns = _ref38.weighIns,
+    weighIns = _ref38$weighIns === void 0 ? [] : _ref38$weighIns,
+    _ref38$aggressiveCutA = _ref38.aggressiveCutAcked,
+    aggressiveCutAcked = _ref38$aggressiveCutA === void 0 ? false : _ref38$aggressiveCutA;
+  var _useState33 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
+    _useState34 = _slicedToArray(_useState33, 2),
+    f = _useState34[0],
+    setF = _useState34[1];
+  var _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    saved = _useState36[0],
+    setSaved = _useState36[1];
+  var _useState37 = useState(false),
+    _useState38 = _slicedToArray(_useState37, 2),
+    bfFocused = _useState38[0],
+    setBfFocused = _useState38[1];
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -2904,10 +3633,10 @@ function ProfileScreen(_ref32) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref33) {
-    var mode = _ref33.mode,
-      label = _ref33.label,
-      color = _ref33.color;
+  }].map(function (_ref39) {
+    var mode = _ref39.mode,
+      label = _ref39.label,
+      color = _ref39.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -2930,11 +3659,11 @@ function ProfileScreen(_ref32) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref34) {
-      var _ref35 = _slicedToArray(_ref34, 3),
-        k = _ref35[0],
-        key = _ref35[1],
-        u = _ref35[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref40) {
+      var _ref41 = _slicedToArray(_ref40, 3),
+        k = _ref41[0],
+        key = _ref41[1],
+        u = _ref41[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -2987,10 +3716,10 @@ function ProfileScreen(_ref32) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref36) {
-  var meal = _ref36.meal,
-    onSave = _ref36.onSave,
-    onCancel = _ref36.onCancel;
+function MealForm(_ref42) {
+  var meal = _ref42.meal,
+    onSave = _ref42.onSave,
+    onCancel = _ref42.onCancel;
   var blank = {
     name: "",
     kcal: "",
@@ -2998,16 +3727,16 @@ function MealForm(_ref36) {
     carbs: "",
     fat: ""
   };
-  var _useState23 = useState(meal ? {
+  var _useState39 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
-    _useState24 = _slicedToArray(_useState23, 2),
-    f = _useState24[0],
-    setF = _useState24[1];
+    _useState40 = _slicedToArray(_useState39, 2),
+    f = _useState40[0],
+    setF = _useState40[1];
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -3147,15 +3876,15 @@ function MealForm(_ref36) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref37) {
-  var weighIns = _ref37.weighIns,
-    onWeighIn = _ref37.onWeighIn,
-    tdeeAdj = _ref37.tdeeAdj,
-    baseTDEE = _ref37.baseTDEE;
-  var _useState25 = useState(""),
-    _useState26 = _slicedToArray(_useState25, 2),
-    val = _useState26[0],
-    setVal = _useState26[1];
+function WeighInWidget(_ref43) {
+  var weighIns = _ref43.weighIns,
+    onWeighIn = _ref43.onWeighIn,
+    tdeeAdj = _ref43.tdeeAdj,
+    baseTDEE = _ref43.baseTDEE;
+  var _useState41 = useState(""),
+    _useState42 = _slicedToArray(_useState41, 2),
+    val = _useState42[0],
+    setVal = _useState42[1];
   var today = todayKey();
   var todayEntry = weighIns.find(function (w) {
     return w.date === today;
@@ -3306,41 +4035,41 @@ function WeighInWidget(_ref37) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref38) {
-  var workouts = _ref38.workouts,
-    onAdd = _ref38.onAdd,
-    onRemove = _ref38.onRemove,
-    prof = _ref38.prof,
-    isPremium = _ref38.isPremium,
-    onPremiumGate = _ref38.onPremiumGate;
-  var _useState27 = useState("legs"),
-    _useState28 = _slicedToArray(_useState27, 2),
-    type = _useState28[0],
-    setType = _useState28[1];
-  var _useState29 = useState(45),
-    _useState30 = _slicedToArray(_useState29, 2),
-    dur = _useState30[0],
-    setDur = _useState30[1];
-  var _useState31 = useState("moderate"),
-    _useState32 = _slicedToArray(_useState31, 2),
-    intensity = _useState32[0],
-    setIntensity = _useState32[1];
-  var _useState33 = useState(false),
-    _useState34 = _slicedToArray(_useState33, 2),
-    hevyMode = _useState34[0],
-    setHevyMode = _useState34[1];
-  var _useState35 = useState(""),
-    _useState36 = _slicedToArray(_useState35, 2),
-    hevyText = _useState36[0],
-    setHevyText = _useState36[1];
-  var _useState37 = useState(false),
-    _useState38 = _slicedToArray(_useState37, 2),
-    hevyLoading = _useState38[0],
-    setHevyLoading = _useState38[1];
-  var _useState39 = useState(null),
-    _useState40 = _slicedToArray(_useState39, 2),
-    hevyResult = _useState40[0],
-    setHevyResult = _useState40[1];
+function WorkoutLogger(_ref44) {
+  var workouts = _ref44.workouts,
+    onAdd = _ref44.onAdd,
+    onRemove = _ref44.onRemove,
+    prof = _ref44.prof,
+    isPremium = _ref44.isPremium,
+    onPremiumGate = _ref44.onPremiumGate;
+  var _useState43 = useState("legs"),
+    _useState44 = _slicedToArray(_useState43, 2),
+    type = _useState44[0],
+    setType = _useState44[1];
+  var _useState45 = useState(45),
+    _useState46 = _slicedToArray(_useState45, 2),
+    dur = _useState46[0],
+    setDur = _useState46[1];
+  var _useState47 = useState("moderate"),
+    _useState48 = _slicedToArray(_useState47, 2),
+    intensity = _useState48[0],
+    setIntensity = _useState48[1];
+  var _useState49 = useState(false),
+    _useState50 = _slicedToArray(_useState49, 2),
+    hevyMode = _useState50[0],
+    setHevyMode = _useState50[1];
+  var _useState51 = useState(""),
+    _useState52 = _slicedToArray(_useState51, 2),
+    hevyText = _useState52[0],
+    setHevyText = _useState52[1];
+  var _useState53 = useState(false),
+    _useState54 = _slicedToArray(_useState53, 2),
+    hevyLoading = _useState54[0],
+    setHevyLoading = _useState54[1];
+  var _useState55 = useState(null),
+    _useState56 = _slicedToArray(_useState55, 2),
+    hevyResult = _useState56[0],
+    setHevyResult = _useState56[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -3360,43 +4089,43 @@ function WorkoutLogger(_ref38) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
-      var prompt, _t18, _t19;
-      return _regenerator().w(function (_context21) {
-        while (1) switch (_context21.p = _context21.n) {
+    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
+      var prompt, _t23, _t24;
+      return _regenerator().w(function (_context25) {
+        while (1) switch (_context25.p = _context25.n) {
           case 0:
             if (!(!hevyText.trim() || hevyLoading)) {
-              _context21.n = 1;
+              _context25.n = 1;
               break;
             }
-            return _context21.a(2);
+            return _context25.a(2);
           case 1:
             setHevyLoading(true);
             setHevyResult(null);
-            _context21.p = 2;
+            _context25.p = 2;
             prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
-            _t18 = setHevyResult;
-            _context21.n = 3;
+            _t23 = setHevyResult;
+            _context25.n = 3;
             return callAIJson(prompt, 200);
           case 3:
-            _t18(_context21.v);
-            _context21.n = 5;
+            _t23(_context25.v);
+            _context25.n = 5;
             break;
           case 4:
-            _context21.p = 4;
-            _t19 = _context21.v;
+            _context25.p = 4;
+            _t24 = _context25.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
           case 5:
             setHevyLoading(false);
           case 6:
-            return _context21.a(2);
+            return _context25.a(2);
         }
-      }, _callee21, null, [[2, 4]]);
+      }, _callee25, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref39.apply(this, arguments);
+      return _ref45.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -3711,14 +4440,14 @@ function WorkoutLogger(_ref38) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref40) {
-  var user = _ref40.user,
-    _ref40$size = _ref40.size,
-    size = _ref40$size === void 0 ? 34 : _ref40$size;
-  var _useState41 = useState(false),
-    _useState42 = _slicedToArray(_useState41, 2),
-    failed = _useState42[0],
-    setFailed = _useState42[1];
+function Avatar(_ref46) {
+  var user = _ref46.user,
+    _ref46$size = _ref46.size,
+    size = _ref46$size === void 0 ? 34 : _ref46$size;
+  var _useState57 = useState(false),
+    _useState58 = _slicedToArray(_useState57, 2),
+    failed = _useState58[0],
+    setFailed = _useState58[1];
   var letter = ((user === null || user === void 0 ? void 0 : user.name) || "P")[0].toUpperCase();
   if (user !== null && user !== void 0 && user.picture && !failed) {
     return /*#__PURE__*/React.createElement("img", {
@@ -3747,40 +4476,40 @@ function Avatar(_ref40) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-function Dashboard(_ref41) {
-  var logs = _ref41.logs,
-    totals = _ref41.totals,
-    targets = _ref41.targets,
-    remaining = _ref41.remaining,
-    water = _ref41.water,
-    setWater = _ref41.setWater,
-    mode = _ref41.mode,
-    setMode = _ref41.setMode,
-    setView = _ref41.setView,
-    removeLog = _ref41.removeLog,
-    addToQA = _ref41.addToQA,
-    hasProfile = _ref41.hasProfile,
-    streak = _ref41.streak,
-    prof = _ref41.prof,
-    weighIns = _ref41.weighIns,
-    onWeighIn = _ref41.onWeighIn,
-    tdeeAdj = _ref41.tdeeAdj,
-    baseTDEE = _ref41.baseTDEE,
-    coachKey = _ref41.coachKey,
-    workouts = _ref41.workouts,
-    onAddWorkout = _ref41.onAddWorkout,
-    onRemoveWorkout = _ref41.onRemoveWorkout,
-    customKcal = _ref41.customKcal,
-    onSetCustomKcal = _ref41.onSetCustomKcal,
-    isCustomMode = _ref41.isCustomMode,
-    aggressiveCutAcked = _ref41.aggressiveCutAcked,
-    onAckAggressiveCut = _ref41.onAckAggressiveCut,
-    authState = _ref41.authState,
-    authUser = _ref41.authUser,
-    onPremiumGate = _ref41.onPremiumGate,
-    onSignOut = _ref41.onSignOut,
-    isOnline = _ref41.isOnline,
-    syncMsg = _ref41.syncMsg;
+function Dashboard(_ref47) {
+  var logs = _ref47.logs,
+    totals = _ref47.totals,
+    targets = _ref47.targets,
+    remaining = _ref47.remaining,
+    water = _ref47.water,
+    setWater = _ref47.setWater,
+    mode = _ref47.mode,
+    setMode = _ref47.setMode,
+    setView = _ref47.setView,
+    removeLog = _ref47.removeLog,
+    addToQA = _ref47.addToQA,
+    hasProfile = _ref47.hasProfile,
+    streak = _ref47.streak,
+    prof = _ref47.prof,
+    weighIns = _ref47.weighIns,
+    onWeighIn = _ref47.onWeighIn,
+    tdeeAdj = _ref47.tdeeAdj,
+    baseTDEE = _ref47.baseTDEE,
+    coachKey = _ref47.coachKey,
+    workouts = _ref47.workouts,
+    onAddWorkout = _ref47.onAddWorkout,
+    onRemoveWorkout = _ref47.onRemoveWorkout,
+    customKcal = _ref47.customKcal,
+    onSetCustomKcal = _ref47.onSetCustomKcal,
+    isCustomMode = _ref47.isCustomMode,
+    aggressiveCutAcked = _ref47.aggressiveCutAcked,
+    onAckAggressiveCut = _ref47.onAckAggressiveCut,
+    authState = _ref47.authState,
+    authUser = _ref47.authUser,
+    onPremiumGate = _ref47.onPremiumGate,
+    onSignOut = _ref47.onSignOut,
+    isOnline = _ref47.isOnline,
+    syncMsg = _ref47.syncMsg;
   var isPremium = authState === "premium";
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
@@ -3793,18 +4522,18 @@ function Dashboard(_ref41) {
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
-  var _useState43 = useState({}),
-    _useState44 = _slicedToArray(_useState43, 2),
-    savedIds = _useState44[0],
-    setSavedIds = _useState44[1];
-  var _useState45 = useState(false),
-    _useState46 = _slicedToArray(_useState45, 2),
-    editingTarget = _useState46[0],
-    setEditingTarget = _useState46[1];
-  var _useState47 = useState(""),
-    _useState48 = _slicedToArray(_useState47, 2),
-    targetInputVal = _useState48[0],
-    setTargetInputVal = _useState48[1];
+  var _useState59 = useState({}),
+    _useState60 = _slicedToArray(_useState59, 2),
+    savedIds = _useState60[0],
+    setSavedIds = _useState60[1];
+  var _useState61 = useState(false),
+    _useState62 = _slicedToArray(_useState61, 2),
+    editingTarget = _useState62[0],
+    setEditingTarget = _useState62[1];
+  var _useState63 = useState(""),
+    _useState64 = _slicedToArray(_useState63, 2),
+    targetInputVal = _useState64[0],
+    setTargetInputVal = _useState64[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) onSetCustomKcal(v);
@@ -3835,11 +4564,11 @@ function Dashboard(_ref41) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(log) {
-      return _regenerator().w(function (_context22) {
-        while (1) switch (_context22.n) {
+    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(log) {
+      return _regenerator().w(function (_context26) {
+        while (1) switch (_context26.n) {
           case 0:
-            _context22.n = 1;
+            _context26.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -3851,12 +4580,12 @@ function Dashboard(_ref41) {
               });
             }, 1800);
           case 2:
-            return _context22.a(2);
+            return _context26.a(2);
         }
-      }, _callee22);
+      }, _callee26);
     }));
-    return function handleAddToQA(_x35) {
-      return _ref42.apply(this, arguments);
+    return function handleAddToQA(_x38) {
+      return _ref48.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3971,7 +4700,10 @@ function Dashboard(_ref41) {
       justifyContent: "center"
     }
   }, "\uD83C\uDFC6"), isPremium && /*#__PURE__*/React.createElement("button", {
-    onClick: onSignOut,
+    onClick: function onClick() {
+      return setView("account");
+    },
+    "aria-label": "Account & Privacy",
     style: {
       width: 34,
       height: 34,
@@ -3992,10 +4724,10 @@ function Dashboard(_ref41) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref43) {
-    var _ref44 = _slicedToArray(_ref43, 2),
-      k = _ref44[0],
-      v = _ref44[1];
+  }, Object.entries(MODES).map(function (_ref49) {
+    var _ref50 = _slicedToArray(_ref49, 2),
+      k = _ref50[0],
+      v = _ref50[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -4610,36 +5342,36 @@ var confColor = function confColor(c) {
 var confLabel = function confLabel(c) {
   return c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 };
-function searchOFT(_x36) {
+function searchOFT(_x39) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(query) {
-    var _p$product_name2, res, data, p, sg2, f, n, _t25;
-    return _regenerator().w(function (_context43) {
-      while (1) switch (_context43.p = _context43.n) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(query) {
+    var _p$product_name2, res, data, p, sg2, f, n, _t30;
+    return _regenerator().w(function (_context49) {
+      while (1) switch (_context49.p = _context49.n) {
         case 0:
-          _context43.p = 0;
-          _context43.n = 1;
+          _context49.p = 0;
+          _context49.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context43.v;
-          _context43.n = 2;
+          res = _context49.v;
+          _context49.n = 2;
           return res.json();
         case 2:
-          data = _context43.v;
+          data = _context49.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context43.n = 3;
+            _context49.n = 3;
             break;
           }
-          return _context43.a(2, null);
+          return _context49.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context43.a(2, {
+          return _context49.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -4650,26 +5382,26 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context43.p = 4;
-          _t25 = _context43.v;
-          return _context43.a(2, null);
+          _context49.p = 4;
+          _t30 = _context49.v;
+          return _context49.a(2, null);
       }
-    }, _callee43, null, [[0, 4]]);
+    }, _callee49, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref45) {
-  var item = _ref45.item,
-    onReestimate = _ref45.onReestimate,
-    reestimating = _ref45.reestimating;
-  var _useState49 = useState(false),
-    _useState50 = _slicedToArray(_useState49, 2),
-    editing = _useState50[0],
-    setEditing = _useState50[1];
-  var _useState51 = useState(item.name),
-    _useState52 = _slicedToArray(_useState51, 2),
-    draft = _useState52[0],
-    setDraft = _useState52[1];
+function ItemRow(_ref51) {
+  var item = _ref51.item,
+    onReestimate = _ref51.onReestimate,
+    reestimating = _ref51.reestimating;
+  var _useState65 = useState(false),
+    _useState66 = _slicedToArray(_useState65, 2),
+    editing = _useState66[0],
+    setEditing = _useState66[1];
+  var _useState67 = useState(item.name),
+    _useState68 = _slicedToArray(_useState67, 2),
+    draft = _useState68[0],
+    setDraft = _useState68[1];
   var cc = confColor(item.confidence);
   var submit = function submit() {
     setEditing(false);
@@ -4781,33 +5513,33 @@ function ItemRow(_ref45) {
     }
   }, item.reasoning));
 }
-function AILog(_ref46) {
-  var onAdd = _ref46.onAdd,
-    onBack = _ref46.onBack;
-  var _useState53 = useState(""),
-    _useState54 = _slicedToArray(_useState53, 2),
-    desc = _useState54[0],
-    setDesc = _useState54[1];
-  var _useState55 = useState(false),
-    _useState56 = _slicedToArray(_useState55, 2),
-    loading = _useState56[0],
-    setLoading = _useState56[1];
-  var _useState57 = useState(null),
-    _useState58 = _slicedToArray(_useState57, 2),
-    items = _useState58[0],
-    setItems = _useState58[1];
-  var _useState59 = useState(null),
-    _useState60 = _slicedToArray(_useState59, 2),
-    reestIdx = _useState60[0],
-    setReestIdx = _useState60[1];
-  var _useState61 = useState(""),
-    _useState62 = _slicedToArray(_useState61, 2),
-    error = _useState62[0],
-    setError = _useState62[1];
-  var _useState63 = useState(false),
-    _useState64 = _slicedToArray(_useState63, 2),
-    loggedAll = _useState64[0],
-    setLoggedAll = _useState64[1];
+function AILog(_ref52) {
+  var onAdd = _ref52.onAdd,
+    onBack = _ref52.onBack;
+  var _useState69 = useState(""),
+    _useState70 = _slicedToArray(_useState69, 2),
+    desc = _useState70[0],
+    setDesc = _useState70[1];
+  var _useState71 = useState(false),
+    _useState72 = _slicedToArray(_useState71, 2),
+    loading = _useState72[0],
+    setLoading = _useState72[1];
+  var _useState73 = useState(null),
+    _useState74 = _slicedToArray(_useState73, 2),
+    items = _useState74[0],
+    setItems = _useState74[1];
+  var _useState75 = useState(null),
+    _useState76 = _slicedToArray(_useState75, 2),
+    reestIdx = _useState76[0],
+    setReestIdx = _useState76[1];
+  var _useState77 = useState(""),
+    _useState78 = _slicedToArray(_useState77, 2),
+    error = _useState78[0],
+    setError = _useState78[1];
+  var _useState79 = useState(false),
+    _useState80 = _slicedToArray(_useState79, 2),
+    loggedAll = _useState80[0],
+    setLoggedAll = _useState80[1];
   var totals = items ? items.reduce(function (a, it) {
     return {
       kcal: a.kcal + it.kcal,
@@ -4825,33 +5557,33 @@ function AILog(_ref46) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
-      var parsed, aiItems, oftResults, merged, _t20;
-      return _regenerator().w(function (_context23) {
-        while (1) switch (_context23.p = _context23.n) {
+    var _ref53 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
+      var parsed, aiItems, oftResults, merged, _t25;
+      return _regenerator().w(function (_context27) {
+        while (1) switch (_context27.p = _context27.n) {
           case 0:
             if (desc.trim()) {
-              _context23.n = 1;
+              _context27.n = 1;
               break;
             }
-            return _context23.a(2);
+            return _context27.a(2);
           case 1:
             setLoading(true);
             setError("");
             setItems(null);
             setLoggedAll(false);
-            _context23.p = 2;
-            _context23.n = 3;
+            _context27.p = 2;
+            _context27.n = 3;
             return callAIJson(AI_PROMPT(desc), 2000);
           case 3:
-            parsed = _context23.v;
+            parsed = _context27.v;
             aiItems = parsed.items || []; // OFT parallel lookup for each item
-            _context23.n = 4;
+            _context27.n = 4;
             return Promise.all(aiItems.map(function (it) {
               return searchOFT(it.name);
             }));
           case 4:
-            oftResults = _context23.v;
+            oftResults = _context27.v;
             merged = aiItems.map(function (it, i) {
               var oft = oftResults[i];
               // Use OFT data if found AND it has higher confidence than AI estimate
@@ -4861,39 +5593,39 @@ function AILog(_ref46) {
               return it;
             });
             setItems(merged);
-            _context23.n = 6;
+            _context27.n = 6;
             break;
           case 5:
-            _context23.p = 5;
-            _t20 = _context23.v;
-            setError("Estimation failed: " + _t20.message);
+            _context27.p = 5;
+            _t25 = _context27.v;
+            setError("Estimation failed: " + _t25.message);
           case 6:
             setLoading(false);
           case 7:
-            return _context23.a(2);
+            return _context27.a(2);
         }
-      }, _callee23, null, [[2, 5]]);
+      }, _callee27, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref47.apply(this, arguments);
+      return _ref53.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(idx, newName) {
-      var updated, oft, _final, _t21;
-      return _regenerator().w(function (_context24) {
-        while (1) switch (_context24.p = _context24.n) {
+    var _ref54 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(idx, newName) {
+      var updated, oft, _final, _t26;
+      return _regenerator().w(function (_context28) {
+        while (1) switch (_context28.p = _context28.n) {
           case 0:
             setReestIdx(idx);
-            _context24.p = 1;
-            _context24.n = 2;
+            _context28.p = 1;
+            _context28.n = 2;
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            updated = _context24.v;
-            _context24.n = 3;
+            updated = _context28.v;
+            _context28.n = 3;
             return searchOFT(newName);
           case 3:
-            oft = _context24.v;
+            oft = _context28.v;
             _final = oft && oft.confidence > updated.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
               name: newName
             }) : _objectSpread(_objectSpread({}, updated), {}, {
@@ -4904,20 +5636,20 @@ function AILog(_ref46) {
                 return i === idx ? _final : it;
               });
             });
-            _context24.n = 5;
+            _context28.n = 5;
             break;
           case 4:
-            _context24.p = 4;
-            _t21 = _context24.v;
+            _context28.p = 4;
+            _t26 = _context28.v;
           case 5:
             setReestIdx(null);
           case 6:
-            return _context24.a(2);
+            return _context28.a(2);
         }
-      }, _callee24, null, [[1, 4]]);
+      }, _callee28, null, [[1, 4]]);
     }));
-    return function reestimate(_x37, _x38) {
-      return _ref48.apply(this, arguments);
+    return function reestimate(_x40, _x41) {
+      return _ref54.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -4978,7 +5710,14 @@ function AILog(_ref46) {
       outline: "none",
       lineHeight: 1.6
     }
-  }), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#827c73",
+      lineHeight: 1.5,
+      marginTop: 6
+    }
+  }, "Just describe the food \u2014 no personal details needed. This text is sent to our AI to estimate nutrition."), /*#__PURE__*/React.createElement("button", {
     onClick: estimate,
     disabled: loading || !desc.trim(),
     style: {
@@ -5137,34 +5876,34 @@ function AILog(_ref46) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref49) {
-  var onAdd = _ref49.onAdd,
-    onBack = _ref49.onBack,
-    meals = _ref49.meals,
-    setMeals = _ref49.setMeals;
-  var _useState65 = useState(""),
-    _useState66 = _slicedToArray(_useState65, 2),
-    search = _useState66[0],
-    setSearch = _useState66[1];
-  var _useState67 = useState(null),
-    _useState68 = _slicedToArray(_useState67, 2),
-    modal = _useState68[0],
-    setModal = _useState68[1];
+function QuickAdd(_ref55) {
+  var onAdd = _ref55.onAdd,
+    onBack = _ref55.onBack,
+    meals = _ref55.meals,
+    setMeals = _ref55.setMeals;
+  var _useState81 = useState(""),
+    _useState82 = _slicedToArray(_useState81, 2),
+    search = _useState82[0],
+    setSearch = _useState82[1];
+  var _useState83 = useState(null),
+    _useState84 = _slicedToArray(_useState83, 2),
+    modal = _useState84[0],
+    setModal = _useState84[1];
   var save = /*#__PURE__*/function () {
-    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(m) {
-      return _regenerator().w(function (_context25) {
-        while (1) switch (_context25.n) {
+    var _ref56 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(m) {
+      return _regenerator().w(function (_context29) {
+        while (1) switch (_context29.n) {
           case 0:
             setMeals(m);
-            _context25.n = 1;
+            _context29.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context25.a(2);
+            return _context29.a(2);
         }
-      }, _callee25);
+      }, _callee29);
     }));
-    return function save(_x39) {
-      return _ref50.apply(this, arguments);
+    return function save(_x42) {
+      return _ref56.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -5339,60 +6078,60 @@ function QuickAdd(_ref49) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref51) {
-  var onAdd = _ref51.onAdd,
-    onBack = _ref51.onBack;
-  var _useState69 = useState(""),
-    _useState70 = _slicedToArray(_useState69, 2),
-    q = _useState70[0],
-    setQ = _useState70[1];
-  var _useState71 = useState([]),
-    _useState72 = _slicedToArray(_useState71, 2),
-    results = _useState72[0],
-    setResults = _useState72[1];
-  var _useState73 = useState(false),
-    _useState74 = _slicedToArray(_useState73, 2),
-    loading = _useState74[0],
-    setLoading = _useState74[1];
-  var _useState75 = useState(""),
-    _useState76 = _slicedToArray(_useState75, 2),
-    error = _useState76[0],
-    setError = _useState76[1];
-  var _useState77 = useState(false),
-    _useState78 = _slicedToArray(_useState77, 2),
-    done = _useState78[0],
-    setDone = _useState78[1];
+function FoodSearch(_ref57) {
+  var onAdd = _ref57.onAdd,
+    onBack = _ref57.onBack;
+  var _useState85 = useState(""),
+    _useState86 = _slicedToArray(_useState85, 2),
+    q = _useState86[0],
+    setQ = _useState86[1];
+  var _useState87 = useState([]),
+    _useState88 = _slicedToArray(_useState87, 2),
+    results = _useState88[0],
+    setResults = _useState88[1];
+  var _useState89 = useState(false),
+    _useState90 = _slicedToArray(_useState89, 2),
+    loading = _useState90[0],
+    setLoading = _useState90[1];
+  var _useState91 = useState(""),
+    _useState92 = _slicedToArray(_useState91, 2),
+    error = _useState92[0],
+    setError = _useState92[1];
+  var _useState93 = useState(false),
+    _useState94 = _slicedToArray(_useState93, 2),
+    done = _useState94[0],
+    setDone = _useState94[1];
   var search = /*#__PURE__*/function () {
-    var _ref52 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
-      var res, data, parseServing, parseKcal, valid, _t22;
-      return _regenerator().w(function (_context26) {
-        while (1) switch (_context26.p = _context26.n) {
+    var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
+      var res, data, parseServing, parseKcal, valid, _t27;
+      return _regenerator().w(function (_context30) {
+        while (1) switch (_context30.p = _context30.n) {
           case 0:
             if (q.trim()) {
-              _context26.n = 1;
+              _context30.n = 1;
               break;
             }
-            return _context26.a(2);
+            return _context30.a(2);
           case 1:
             setLoading(true);
             setError("");
             setResults([]);
             setDone(true);
-            _context26.p = 2;
-            _context26.n = 3;
+            _context30.p = 2;
+            _context30.n = 3;
             return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
           case 3:
-            res = _context26.v;
+            res = _context30.v;
             if (res.ok) {
-              _context26.n = 4;
+              _context30.n = 4;
               break;
             }
             throw new Error("Network error");
           case 4:
-            _context26.n = 5;
+            _context30.n = 5;
             return res.json();
           case 5:
-            data = _context26.v;
+            data = _context30.v;
             parseServing = function parseServing(raw) {
               if (!raw) return 100;
               var n = parseFloat(raw);
@@ -5408,12 +6147,12 @@ function FoodSearch(_ref51) {
               return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
             });
             if (valid.length) {
-              _context26.n = 6;
+              _context30.n = 6;
               break;
             }
             setError("No results — try a brand name or simpler search term.");
             setLoading(false);
-            return _context26.a(2);
+            return _context30.a(2);
           case 6:
             setResults(valid.slice(0, 12).map(function (p) {
               var _p$brands;
@@ -5431,21 +6170,21 @@ function FoodSearch(_ref51) {
                 notes: "Per serving (~".concat(Math.round(sg2), "g)")
               };
             }));
-            _context26.n = 8;
+            _context30.n = 8;
             break;
           case 7:
-            _context26.p = 7;
-            _t22 = _context26.v;
+            _context30.p = 7;
+            _t27 = _context30.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
           case 9:
-            return _context26.a(2);
+            return _context30.a(2);
         }
-      }, _callee26, null, [[2, 7]]);
+      }, _callee30, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref52.apply(this, arguments);
+      return _ref58.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5576,17 +6315,17 @@ function FoodSearch(_ref51) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref53) {
+function History(_ref59) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref53.history,
-    onBack = _ref53.onBack,
-    onUpdateDay = _ref53.onUpdateDay,
-    _ref53$weighIns = _ref53.weighIns,
-    weighIns = _ref53$weighIns === void 0 ? [] : _ref53$weighIns,
-    _ref53$meals = _ref53.meals,
-    meals = _ref53$meals === void 0 ? DEF_MEALS : _ref53$meals,
-    _ref53$setMeals = _ref53.setMeals,
-    setMeals = _ref53$setMeals === void 0 ? function () {} : _ref53$setMeals;
+  var history = _ref59.history,
+    onBack = _ref59.onBack,
+    onUpdateDay = _ref59.onUpdateDay,
+    _ref59$weighIns = _ref59.weighIns,
+    weighIns = _ref59$weighIns === void 0 ? [] : _ref59$weighIns,
+    _ref59$meals = _ref59.meals,
+    meals = _ref59$meals === void 0 ? DEF_MEALS : _ref59$meals,
+    _ref59$setMeals = _ref59.setMeals,
+    setMeals = _ref59$setMeals === void 0 ? function () {} : _ref59$setMeals;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -5622,30 +6361,30 @@ function History(_ref53) {
       unit: "g"
     }
   };
-  var _useState79 = useState("30D"),
-    _useState80 = _slicedToArray(_useState79, 2),
-    range = _useState80[0],
-    setRange = _useState80[1];
-  var _useState81 = useState(["KCAL"]),
-    _useState82 = _slicedToArray(_useState81, 2),
-    metrics = _useState82[0],
-    setMetrics = _useState82[1];
-  var _useState83 = useState(false),
-    _useState84 = _slicedToArray(_useState83, 2),
-    showWeight = _useState84[0],
-    setShowWeight = _useState84[1];
-  var _useState85 = useState("line"),
-    _useState86 = _slicedToArray(_useState85, 2),
-    chartType = _useState86[0],
-    setChartType = _useState86[1];
-  var _useState87 = useState(Math.max(0, history.length - 1)),
-    _useState88 = _slicedToArray(_useState87, 2),
-    dayIdx = _useState88[0],
-    setDayIdx = _useState88[1];
-  var _useState89 = useState(null),
-    _useState90 = _slicedToArray(_useState89, 2),
-    addCtx = _useState90[0],
-    setAddCtx = _useState90[1];
+  var _useState95 = useState("30D"),
+    _useState96 = _slicedToArray(_useState95, 2),
+    range = _useState96[0],
+    setRange = _useState96[1];
+  var _useState97 = useState(["KCAL"]),
+    _useState98 = _slicedToArray(_useState97, 2),
+    metrics = _useState98[0],
+    setMetrics = _useState98[1];
+  var _useState99 = useState(false),
+    _useState100 = _slicedToArray(_useState99, 2),
+    showWeight = _useState100[0],
+    setShowWeight = _useState100[1];
+  var _useState101 = useState("line"),
+    _useState102 = _slicedToArray(_useState101, 2),
+    chartType = _useState102[0],
+    setChartType = _useState102[1];
+  var _useState103 = useState(Math.max(0, history.length - 1)),
+    _useState104 = _slicedToArray(_useState103, 2),
+    dayIdx = _useState104[0],
+    setDayIdx = _useState104[1];
+  var _useState105 = useState(null),
+    _useState106 = _slicedToArray(_useState105, 2),
+    addCtx = _useState106[0],
+    setAddCtx = _useState106[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -6232,10 +6971,10 @@ function History(_ref53) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref54) {
-    var _ref55 = _slicedToArray(_ref54, 2),
-      k = _ref55[0],
-      m = _ref55[1];
+  }, Object.entries(MM).map(function (_ref60) {
+    var _ref61 = _slicedToArray(_ref60, 2),
+      k = _ref61[0],
+      m = _ref61[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -6273,10 +7012,10 @@ function History(_ref53) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref56) {
-    var _ref57 = _slicedToArray(_ref56, 2),
-      t = _ref57[0],
-      e = _ref57[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref62) {
+    var _ref63 = _slicedToArray(_ref62, 2),
+      t = _ref63[0],
+      e = _ref63[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -6442,10 +7181,10 @@ function History(_ref53) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref58) {
-    var _ref59 = _slicedToArray(_ref58, 2),
-      k = _ref59[0],
-      m = _ref59[1];
+  }, Object.entries(MM).map(function (_ref64) {
+    var _ref65 = _slicedToArray(_ref64, 2),
+      k = _ref65[0],
+      m = _ref65[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -6578,9 +7317,9 @@ function History(_ref53) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref60) {
-  var earnedBdgs = _ref60.earnedBdgs,
-    onBack = _ref60.onBack;
+function Achievements(_ref66) {
+  var earnedBdgs = _ref66.earnedBdgs,
+    onBack = _ref66.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -6678,108 +7417,116 @@ function Achievements(_ref60) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState91 = useState("dashboard"),
-    _useState92 = _slicedToArray(_useState91, 2),
-    view = _useState92[0],
-    setView = _useState92[1];
-  var _useState93 = useState([]),
-    _useState94 = _slicedToArray(_useState93, 2),
-    logs = _useState94[0],
-    setLogs = _useState94[1];
-  var _useState95 = useState(0),
-    _useState96 = _slicedToArray(_useState95, 2),
-    water = _useState96[0],
-    setWater = _useState96[1];
-  var _useState97 = useState("cut"),
-    _useState98 = _slicedToArray(_useState97, 2),
-    mode = _useState98[0],
-    setMode = _useState98[1];
-  var _useState99 = useState(null),
-    _useState100 = _slicedToArray(_useState99, 2),
-    prof = _useState100[0],
-    setProf = _useState100[1];
-  var _useState101 = useState([]),
-    _useState102 = _slicedToArray(_useState101, 2),
-    hist = _useState102[0],
-    setHist = _useState102[1];
-  var _useState103 = useState([].concat(DEF_MEALS)),
-    _useState104 = _slicedToArray(_useState103, 2),
-    meals = _useState104[0],
-    setMeals = _useState104[1];
-  var _useState105 = useState([]),
-    _useState106 = _slicedToArray(_useState105, 2),
-    workouts = _useState106[0],
-    setWorkouts = _useState106[1];
-  var _useState107 = useState([]),
+  var _useState107 = useState("dashboard"),
     _useState108 = _slicedToArray(_useState107, 2),
-    earnedBdgs = _useState108[0],
-    setEarnedBdgs = _useState108[1];
-  var _useState109 = useState(null),
+    view = _useState108[0],
+    setView = _useState108[1];
+  var _useState109 = useState([]),
     _useState110 = _slicedToArray(_useState109, 2),
-    newBadge = _useState110[0],
-    setNewBadge = _useState110[1];
-  var _useState111 = useState(false),
+    logs = _useState110[0],
+    setLogs = _useState110[1];
+  var _useState111 = useState(0),
     _useState112 = _slicedToArray(_useState111, 2),
-    ready = _useState112[0],
-    setReady = _useState112[1];
-  var _useState113 = useState([]),
+    water = _useState112[0],
+    setWater = _useState112[1];
+  var _useState113 = useState("cut"),
     _useState114 = _slicedToArray(_useState113, 2),
-    weighIns = _useState114[0],
-    setWeighIns = _useState114[1];
-  var _useState115 = useState(0),
+    mode = _useState114[0],
+    setMode = _useState114[1];
+  var _useState115 = useState(null),
     _useState116 = _slicedToArray(_useState115, 2),
-    tdeeAdj = _useState116[0],
-    setTdeeAdj = _useState116[1];
-  var _useState117 = useState(0),
+    prof = _useState116[0],
+    setProf = _useState116[1];
+  var _useState117 = useState([]),
     _useState118 = _slicedToArray(_useState117, 2),
-    coachKey = _useState118[0],
-    setCoachKey = _useState118[1];
-  var _useState119 = useState(null),
+    hist = _useState118[0],
+    setHist = _useState118[1];
+  var _useState119 = useState([].concat(DEF_MEALS)),
     _useState120 = _slicedToArray(_useState119, 2),
-    streakAnim = _useState120[0],
-    setStreakAnim = _useState120[1];
-  var _useState121 = useState(null),
+    meals = _useState120[0],
+    setMeals = _useState120[1];
+  var _useState121 = useState([]),
     _useState122 = _slicedToArray(_useState121, 2),
-    customKcal = _useState122[0],
-    setCustomKcal = _useState122[1];
-  var _useState123 = useState(false),
+    workouts = _useState122[0],
+    setWorkouts = _useState122[1];
+  var _useState123 = useState([]),
     _useState124 = _slicedToArray(_useState123, 2),
-    aggressiveCutAcked = _useState124[0],
-    setAggressiveCutAcked = _useState124[1];
+    earnedBdgs = _useState124[0],
+    setEarnedBdgs = _useState124[1];
+  var _useState125 = useState(null),
+    _useState126 = _slicedToArray(_useState125, 2),
+    newBadge = _useState126[0],
+    setNewBadge = _useState126[1];
+  var _useState127 = useState(false),
+    _useState128 = _slicedToArray(_useState127, 2),
+    ready = _useState128[0],
+    setReady = _useState128[1];
+  var _useState129 = useState([]),
+    _useState130 = _slicedToArray(_useState129, 2),
+    weighIns = _useState130[0],
+    setWeighIns = _useState130[1];
+  var _useState131 = useState(0),
+    _useState132 = _slicedToArray(_useState131, 2),
+    tdeeAdj = _useState132[0],
+    setTdeeAdj = _useState132[1];
+  var _useState133 = useState(0),
+    _useState134 = _slicedToArray(_useState133, 2),
+    coachKey = _useState134[0],
+    setCoachKey = _useState134[1];
+  var _useState135 = useState(null),
+    _useState136 = _slicedToArray(_useState135, 2),
+    streakAnim = _useState136[0],
+    setStreakAnim = _useState136[1];
+  var _useState137 = useState(null),
+    _useState138 = _slicedToArray(_useState137, 2),
+    customKcal = _useState138[0],
+    setCustomKcal = _useState138[1];
+  var _useState139 = useState(false),
+    _useState140 = _slicedToArray(_useState139, 2),
+    aggressiveCutAcked = _useState140[0],
+    setAggressiveCutAcked = _useState140[1];
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState125 = useState("anonymous"),
-    _useState126 = _slicedToArray(_useState125, 2),
-    authState = _useState126[0],
-    setAuthState = _useState126[1];
-  var _useState127 = useState(null),
-    _useState128 = _slicedToArray(_useState127, 2),
-    authUser = _useState128[0],
-    setAuthUser = _useState128[1];
-  var _useState129 = useState(null),
-    _useState130 = _slicedToArray(_useState129, 2),
-    premiumGate = _useState130[0],
-    setPremiumGate = _useState130[1]; // {emoji, name} | null
-  var _useState131 = useState(false),
-    _useState132 = _slicedToArray(_useState131, 2),
-    showSignIn = _useState132[0],
-    setShowSignIn = _useState132[1];
-  var _useState133 = useState(false),
-    _useState134 = _slicedToArray(_useState133, 2),
-    showSignOut = _useState134[0],
-    setShowSignOut = _useState134[1];
-  var _useState135 = useState(false),
-    _useState136 = _slicedToArray(_useState135, 2),
-    showLapsed = _useState136[0],
-    setShowLapsed = _useState136[1];
-  var _useState137 = useState(navigator.onLine),
-    _useState138 = _slicedToArray(_useState137, 2),
-    isOnline = _useState138[0],
-    setIsOnline = _useState138[1];
-  var _useState139 = useState(""),
-    _useState140 = _slicedToArray(_useState139, 2),
-    syncMsg = _useState140[0],
-    setSyncMsg = _useState140[1];
+  var _useState141 = useState("anonymous"),
+    _useState142 = _slicedToArray(_useState141, 2),
+    authState = _useState142[0],
+    setAuthState = _useState142[1];
+  var _useState143 = useState(null),
+    _useState144 = _slicedToArray(_useState143, 2),
+    authUser = _useState144[0],
+    setAuthUser = _useState144[1];
+  var _useState145 = useState(null),
+    _useState146 = _slicedToArray(_useState145, 2),
+    premiumGate = _useState146[0],
+    setPremiumGate = _useState146[1]; // {emoji, name} | null
+  var _useState147 = useState(false),
+    _useState148 = _slicedToArray(_useState147, 2),
+    showSignIn = _useState148[0],
+    setShowSignIn = _useState148[1];
+  var _useState149 = useState(false),
+    _useState150 = _slicedToArray(_useState149, 2),
+    showSignOut = _useState150[0],
+    setShowSignOut = _useState150[1];
+  var _useState151 = useState(false),
+    _useState152 = _slicedToArray(_useState151, 2),
+    showLapsed = _useState152[0],
+    setShowLapsed = _useState152[1];
+  var _useState153 = useState(false),
+    _useState154 = _slicedToArray(_useState153, 2),
+    needsConsent = _useState154[0],
+    setNeedsConsent = _useState154[1]; // retroactive Art. 9 consent (R2)
+  var _useState155 = useState(null),
+    _useState156 = _slicedToArray(_useState155, 2),
+    consentInfo = _useState156[0],
+    setConsentInfo = _useState156[1]; // parsed local health_consent for display
+  var _useState157 = useState(navigator.onLine),
+    _useState158 = _slicedToArray(_useState157, 2),
+    isOnline = _useState158[0],
+    setIsOnline = _useState158[1];
+  var _useState159 = useState(""),
+    _useState160 = _slicedToArray(_useState159, 2),
+    syncMsg = _useState160[0],
+    setSyncMsg = _useState160[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -6819,106 +7566,118 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref61 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
-        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u;
-        return _regenerator().w(function (_context27) {
-          while (1) switch (_context27.n) {
+      var _ref67 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
+        var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u, hc, hcParsed;
+        return _regenerator().w(function (_context31) {
+          while (1) switch (_context31.n) {
             case 0:
-              _context27.n = 1;
+              _context31.n = 1;
               return runMigrations();
             case 1:
               k = todayKey();
-              _context27.n = 2;
+              _context31.n = 2;
               return sg("logs__" + k);
             case 2:
-              lv = _context27.v;
+              lv = _context31.v;
               if (lv) setLogs(JSON.parse(lv));
-              _context27.n = 3;
+              _context31.n = 3;
               return sg("water__" + k);
             case 3:
-              wv = _context27.v;
+              wv = _context31.v;
               if (wv) setWater(parseInt(wv) || 0);
-              _context27.n = 4;
+              _context31.n = 4;
               return sg("mode__" + k);
             case 4:
-              mv = _context27.v;
+              mv = _context31.v;
               if (mv) setMode(mv);
-              _context27.n = 5;
+              _context31.n = 5;
               return sg("profile");
             case 5:
-              pv = _context27.v;
+              pv = _context31.v;
               if (pv) setProf(JSON.parse(pv));
-              _context27.n = 6;
+              _context31.n = 6;
               return sg("meals");
             case 6:
-              mv2 = _context27.v;
+              mv2 = _context31.v;
               if (mv2) setMeals(JSON.parse(mv2));
-              _context27.n = 7;
+              _context31.n = 7;
               return sg("workouts__" + k);
             case 7:
-              wkv = _context27.v;
+              wkv = _context31.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
-              _context27.n = 8;
+              _context31.n = 8;
               return sg("badges");
             case 8:
-              bv = _context27.v;
+              bv = _context31.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context27.n = 9;
+              _context31.n = 9;
               return sg("history");
             case 9:
-              hv = _context27.v;
+              hv = _context31.v;
               if (hv) setHist(JSON.parse(hv));
-              _context27.n = 10;
+              _context31.n = 10;
               return sg("weighins");
             case 10:
-              wiv = _context27.v;
+              wiv = _context31.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context27.n = 11;
+              _context31.n = 11;
               return sg("tdee_adj");
             case 11:
-              tav = _context27.v;
+              tav = _context31.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context27.n = 12;
+              _context31.n = 12;
               return sg("target_kcal");
             case 12:
-              ckv = _context27.v;
+              ckv = _context31.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context27.n = 13;
+              _context31.n = 13;
               return sg("aggressive_cut_acked");
             case 13:
-              acv = _context27.v;
+              acv = _context31.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context27.n = 14;
+              _context31.n = 14;
               return sg("auth_state");
             case 14:
-              asv = _context27.v;
-              _context27.n = 15;
+              asv = _context31.v;
+              _context31.n = 15;
               return sg("auth_user");
             case 15:
-              auv = _context27.v;
+              auv = _context31.v;
               if (!(asv === "premium" && auv)) {
-                _context27.n = 18;
+                _context31.n = 19;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context27.n = 17;
+                _context31.n = 17;
                 break;
               }
-              _context27.n = 16;
+              _context31.n = 16;
               return ss("auth_state", "anonymous");
             case 16:
               setShowLapsed(true);
-              _context27.n = 18;
+              _context31.n = 19;
               break;
             case 17:
               setAuthState("premium");
               setAuthUser(u);
+              // Retroactive consent guard (R2): premium users from before consent existed,
+              // or who haven't agreed to the current policy version, must consent before continuing.
+              _context31.n = 18;
+              return sg("health_consent");
+            case 18:
+              hc = _context31.v;
+              hcParsed = null;
+              try {
+                hcParsed = hc ? JSON.parse(hc) : null;
+              } catch (e) {}
+              if (hcParsed) setConsentInfo(hcParsed);
+              if (!hcParsed || hcParsed.version !== POLICY_VERSION) setNeedsConsent(true);
               // Background pull — app shows immediately from local, Supabase data merges in
               if (u.id && navigator.onLine) {
                 pullFromSupabase(u.id).then(function (pulled) {
@@ -6946,15 +7705,15 @@ function App() {
                   if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
                 })["catch"](function () {});
               }
-            case 18:
-              setReady(true);
             case 19:
-              return _context27.a(2);
+              setReady(true);
+            case 20:
+              return _context31.a(2);
           }
-        }, _callee27);
+        }, _callee31);
       }));
       return function load() {
-        return _ref61.apply(this, arguments);
+        return _ref67.apply(this, arguments);
       };
     }();
     load();
@@ -6997,108 +7756,108 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref62 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(l) {
-      return _regenerator().w(function (_context28) {
-        while (1) switch (_context28.n) {
-          case 0:
-            setLogs(l);
-            _context28.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogs(authUser.id, todayKey(), l)["catch"](function () {});
-          case 2:
-            return _context28.a(2);
-        }
-      }, _callee28);
-    }));
-    return function saveLogs(_x40) {
-      return _ref62.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref63 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(w) {
-      return _regenerator().w(function (_context29) {
-        while (1) switch (_context29.n) {
-          case 0:
-            setWater(w);
-            _context29.n = 1;
-            return ss("water__" + todayKey(), String(w));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
-          case 2:
-            return _context29.a(2);
-        }
-      }, _callee29);
-    }));
-    return function saveWater(_x41) {
-      return _ref63.apply(this, arguments);
-    };
-  }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref64 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(m) {
-      return _regenerator().w(function (_context30) {
-        while (1) switch (_context30.n) {
-          case 0:
-            setMode(m);
-            _context30.n = 1;
-            return ss("mode__" + todayKey(), m);
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
-          case 2:
-            return _context30.a(2);
-        }
-      }, _callee30);
-    }));
-    return function saveMode(_x42) {
-      return _ref64.apply(this, arguments);
-    };
-  }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref65 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(p) {
-      return _regenerator().w(function (_context31) {
-        while (1) switch (_context31.n) {
-          case 0:
-            setProf(p);
-            _context31.n = 1;
-            return ss("profile", JSON.stringify(p));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
-          case 2:
-            return _context31.a(2);
-        }
-      }, _callee31);
-    }));
-    return function saveProf(_x43) {
-      return _ref65.apply(this, arguments);
-    };
-  }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref66 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(w) {
+    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(l) {
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.n) {
           case 0:
-            setWorkouts(w);
+            setLogs(l);
             _context32.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogs(authUser.id, todayKey(), l)["catch"](function () {});
           case 2:
             return _context32.a(2);
         }
       }, _callee32);
     }));
-    return function saveWorkouts(_x44) {
-      return _ref66.apply(this, arguments);
+    return function saveLogs(_x43) {
+      return _ref68.apply(this, arguments);
     };
   }();
-  var addLog = /*#__PURE__*/function () {
-    var _ref67 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(e) {
-      var isFirstToday, animKey, today, simulatedHist, newStreak;
+  var saveWater = /*#__PURE__*/function () {
+    var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(w) {
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.n) {
           case 0:
-            isFirstToday = logs.length === 0;
+            setWater(w);
             _context33.n = 1;
+            return ss("water__" + todayKey(), String(w));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
+          case 2:
+            return _context33.a(2);
+        }
+      }, _callee33);
+    }));
+    return function saveWater(_x44) {
+      return _ref69.apply(this, arguments);
+    };
+  }();
+  var saveMode = /*#__PURE__*/function () {
+    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(m) {
+      return _regenerator().w(function (_context34) {
+        while (1) switch (_context34.n) {
+          case 0:
+            setMode(m);
+            _context34.n = 1;
+            return ss("mode__" + todayKey(), m);
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
+          case 2:
+            return _context34.a(2);
+        }
+      }, _callee34);
+    }));
+    return function saveMode(_x45) {
+      return _ref70.apply(this, arguments);
+    };
+  }();
+  var saveProf = /*#__PURE__*/function () {
+    var _ref71 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(p) {
+      return _regenerator().w(function (_context35) {
+        while (1) switch (_context35.n) {
+          case 0:
+            setProf(p);
+            _context35.n = 1;
+            return ss("profile", JSON.stringify(p));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
+          case 2:
+            return _context35.a(2);
+        }
+      }, _callee35);
+    }));
+    return function saveProf(_x46) {
+      return _ref71.apply(this, arguments);
+    };
+  }();
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(w) {
+      return _regenerator().w(function (_context36) {
+        while (1) switch (_context36.n) {
+          case 0:
+            setWorkouts(w);
+            _context36.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+          case 2:
+            return _context36.a(2);
+        }
+      }, _callee36);
+    }));
+    return function saveWorkouts(_x47) {
+      return _ref72.apply(this, arguments);
+    };
+  }();
+  var addLog = /*#__PURE__*/function () {
+    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(e) {
+      var isFirstToday, animKey, today, simulatedHist, newStreak;
+      return _regenerator().w(function (_context37) {
+        while (1) switch (_context37.n) {
+          case 0:
+            isFirstToday = logs.length === 0;
+            _context37.n = 1;
             return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
               id: Date.now(),
               time: new Date().toLocaleTimeString([], {
@@ -7129,12 +7888,12 @@ function App() {
               }
             }
           case 2:
-            return _context33.a(2);
+            return _context37.a(2);
         }
-      }, _callee33);
+      }, _callee37);
     }));
-    return function addLog(_x45) {
-      return _ref67.apply(this, arguments);
+    return function addLog(_x48) {
+      return _ref73.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -7151,108 +7910,108 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(kcal) {
-      return _regenerator().w(function (_context34) {
-        while (1) switch (_context34.n) {
+    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(kcal) {
+      return _regenerator().w(function (_context38) {
+        while (1) switch (_context38.n) {
           case 0:
             setCustomKcal(kcal);
             if (!(kcal == null)) {
-              _context34.n = 2;
+              _context38.n = 2;
               break;
             }
-            _context34.n = 1;
+            _context38.n = 1;
             return ss("target_kcal", "");
           case 1:
-            _context34.n = 3;
+            _context38.n = 3;
             break;
           case 2:
-            _context34.n = 3;
+            _context38.n = 3;
             return ss("target_kcal", String(kcal));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context34.a(2);
+            return _context38.a(2);
         }
-      }, _callee34);
+      }, _callee38);
     }));
-    return function saveCustomKcal(_x46) {
-      return _ref68.apply(this, arguments);
+    return function saveCustomKcal(_x49) {
+      return _ref74.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(m) {
-      return _regenerator().w(function (_context35) {
-        while (1) switch (_context35.n) {
+    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
+      return _regenerator().w(function (_context39) {
+        while (1) switch (_context39.n) {
           case 0:
-            _context35.n = 1;
+            _context39.n = 1;
             return saveMode(m);
           case 1:
-            _context35.n = 2;
+            _context39.n = 2;
             return saveCustomKcal(null);
           case 2:
             // Sync once more with correct (m, null) pair to resolve any stale-closure race
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked)["catch"](function () {});
           case 3:
-            return _context35.a(2);
+            return _context39.a(2);
         }
-      }, _callee35);
+      }, _callee39);
     }));
-    return function handleSetMode(_x47) {
-      return _ref69.apply(this, arguments);
+    return function handleSetMode(_x50) {
+      return _ref75.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36() {
-      return _regenerator().w(function (_context36) {
-        while (1) switch (_context36.n) {
+    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
+      return _regenerator().w(function (_context40) {
+        while (1) switch (_context40.n) {
           case 0:
             setAggressiveCutAcked(true);
-            _context36.n = 1;
+            _context40.n = 1;
             return ss("aggressive_cut_acked", "1");
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
           case 2:
-            return _context36.a(2);
+            return _context40.a(2);
         }
-      }, _callee36);
+      }, _callee40);
     }));
     return function handleAckAggressiveCut() {
-      return _ref70.apply(this, arguments);
+      return _ref76.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref71 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(updated) {
-      return _regenerator().w(function (_context37) {
-        while (1) switch (_context37.n) {
+    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(updated) {
+      return _regenerator().w(function (_context41) {
+        while (1) switch (_context41.n) {
           case 0:
             setMeals(updated);
-            _context37.n = 1;
+            _context41.n = 1;
             return ss("meals", JSON.stringify(updated));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
           case 2:
-            return _context37.a(2);
+            return _context41.a(2);
         }
-      }, _callee37);
+      }, _callee41);
     }));
-    return function saveMeals(_x48) {
-      return _ref71.apply(this, arguments);
+    return function saveMeals(_x51) {
+      return _ref77.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(entry) {
+    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(entry) {
       var name, clean;
-      return _regenerator().w(function (_context38) {
-        while (1) switch (_context38.n) {
+      return _regenerator().w(function (_context42) {
+        while (1) switch (_context42.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context38.n = 1;
+              _context42.n = 1;
               break;
             }
-            return _context38.a(2);
+            return _context42.a(2);
           case 1:
             clean = {
               name: name,
@@ -7261,25 +8020,25 @@ function App() {
               carbs: Math.round(entry.carbs * 10) / 10,
               fat: Math.round(entry.fat * 10) / 10
             };
-            _context38.n = 2;
+            _context42.n = 2;
             return saveMeals([].concat(_toConsumableArray(meals), [clean]));
           case 2:
-            return _context38.a(2);
+            return _context42.a(2);
         }
-      }, _callee38);
+      }, _callee42);
     }));
-    return function addToQA(_x49) {
-      return _ref72.apply(this, arguments);
+    return function addToQA(_x52) {
+      return _ref78.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(googleUser, grantedBy) {
-      var user, pulled, tod, snap, _t23;
-      return _regenerator().w(function (_context39) {
-        while (1) switch (_context39.p = _context39.n) {
+    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(googleUser, grantedBy, consentMeta) {
+      var user, rec, pulled, tod, snap, _t28;
+      return _regenerator().w(function (_context43) {
+        while (1) switch (_context43.p = _context43.n) {
           case 0:
             user = {
               id: googleUser.id || null,
@@ -7293,27 +8052,46 @@ function App() {
             };
             setAuthUser(user);
             setAuthState("premium");
-            _context39.n = 1;
+            _context43.n = 1;
             return ss("auth_state", "premium");
           case 1:
-            _context39.n = 2;
+            _context43.n = 2;
             return ss("auth_user", JSON.stringify(user));
           case 2:
+            if (!consentMeta) {
+              _context43.n = 4;
+              break;
+            }
+            rec = _objectSpread(_objectSpread({}, consentMeta), {}, {
+              version: consentMeta.policyVersion
+            });
+            _context43.n = 3;
+            return ss("health_consent", JSON.stringify(rec));
+          case 3:
+            setConsentInfo(rec);
+          case 4:
             setShowSignIn(false);
             setPremiumGate(null);
             if (!(user.id && navigator.onLine)) {
-              _context39.n = 8;
+              _context43.n = 11;
               break;
             }
             setSyncMsg("Syncing your data…");
-            _context39.p = 3;
-            _context39.n = 4;
+            _context43.p = 5;
+            if (!consentMeta) {
+              _context43.n = 6;
+              break;
+            }
+            _context43.n = 6;
+            return syncConsent(user.id, consentMeta);
+          case 6:
+            _context43.n = 7;
             return migrateLocalToSupabase(user.id);
-          case 4:
-            _context39.n = 5;
+          case 7:
+            _context43.n = 8;
             return pullFromSupabase(user.id);
-          case 5:
-            pulled = _context39.v;
+          case 8:
+            pulled = _context43.v;
             if (pulled.profile) setProf(pulled.profile);
             if (pulled.weighIns) setWeighIns(pulled.weighIns);
             if (pulled.meals) setMeals(pulled.meals);
@@ -7336,55 +8114,92 @@ function App() {
               }
             }
             if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
-            _context39.n = 7;
+            _context43.n = 10;
             break;
-          case 6:
-            _context39.p = 6;
-            _t23 = _context39.v;
-          case 7:
+          case 9:
+            _context43.p = 9;
+            _t28 = _context43.v;
+          case 10:
             setSyncMsg("");
-          case 8:
-            return _context39.a(2);
+          case 11:
+            return _context43.a(2);
         }
-      }, _callee39, null, [[3, 6]]);
+      }, _callee43, null, [[5, 9]]);
     }));
-    return function handleSignInSuccess(_x50, _x51) {
-      return _ref73.apply(this, arguments);
+    return function handleSignInSuccess(_x53, _x54, _x55) {
+      return _ref79.apply(this, arguments);
+    };
+  }();
+
+  // Agree to the current policy version (retroactive / re-consent flow, R2).
+  var handleConsent = /*#__PURE__*/function () {
+    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44() {
+      var meta, rec;
+      return _regenerator().w(function (_context44) {
+        while (1) switch (_context44.n) {
+          case 0:
+            meta = {
+              ageConfirmedAt: null,
+              healthConsentAt: Date.now(),
+              policyVersion: POLICY_VERSION
+            };
+            rec = _objectSpread(_objectSpread({}, meta), {}, {
+              version: POLICY_VERSION
+            });
+            _context44.n = 1;
+            return ss("health_consent", JSON.stringify(rec));
+          case 1:
+            setConsentInfo(rec);
+            if (!(authUser !== null && authUser !== void 0 && authUser.id)) {
+              _context44.n = 2;
+              break;
+            }
+            _context44.n = 2;
+            return syncConsent(authUser.id, meta);
+          case 2:
+            setNeedsConsent(false);
+          case 3:
+            return _context44.a(2);
+        }
+      }, _callee44);
+    }));
+    return function handleConsent() {
+      return _ref80.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
-      var clearKeys, _i2, _clearKeys, k, i, key, _t24;
-      return _regenerator().w(function (_context40) {
-        while (1) switch (_context40.p = _context40.n) {
+    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
+      var clearKeys, _i2, _clearKeys, k, i, key, _t29;
+      return _regenerator().w(function (_context45) {
+        while (1) switch (_context45.p = _context45.n) {
           case 0:
             if (!sb()) {
-              _context40.n = 4;
+              _context45.n = 4;
               break;
             }
-            _context40.p = 1;
-            _context40.n = 2;
+            _context45.p = 1;
+            _context45.n = 2;
             return sb().auth.signOut();
           case 2:
-            _context40.n = 4;
+            _context45.n = 4;
             break;
           case 3:
-            _context40.p = 3;
-            _t24 = _context40.v;
+            _context45.p = 3;
+            _t29 = _context45.v;
           case 4:
-            clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "target_kcal", "aggressive_cut_acked"];
+            clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i2 = 0, _clearKeys = clearKeys;
           case 5:
             if (!(_i2 < _clearKeys.length)) {
-              _context40.n = 7;
+              _context45.n = 7;
               break;
             }
             k = _clearKeys[_i2];
-            _context40.n = 6;
+            _context45.n = 6;
             return ss(k, "");
           case 6:
             _i2++;
-            _context40.n = 5;
+            _context45.n = 5;
             break;
           case 7:
             try {
@@ -7408,14 +8223,89 @@ function App() {
             setWeighIns([]);
             setTdeeAdj(0);
             setCustomKcal(null);
+            setConsentInfo(null);
+            setNeedsConsent(false);
             setShowSignOut(false);
+            setView("dashboard");
           case 8:
-            return _context40.a(2);
+            return _context45.a(2);
         }
-      }, _callee40, null, [[1, 3]]);
+      }, _callee45, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref74.apply(this, arguments);
+      return _ref81.apply(this, arguments);
+    };
+  }();
+
+  // Assemble a portable copy of everything stored for this user (R4 — access/portability).
+  var handleExport = function handleExport() {
+    var workoutsByDate = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.startsWith("workouts__")) {
+          var v = localStorage.getItem(key);
+          if (v) workoutsByDate[key.replace("workouts__", "")] = JSON.parse(v);
+        }
+      }
+    } catch (e) {}
+    var data = {
+      app: "Fuel Log",
+      exportedAt: new Date().toISOString(),
+      policyVersion: POLICY_VERSION,
+      account: {
+        name: (authUser === null || authUser === void 0 ? void 0 : authUser.name) || null,
+        email: (authUser === null || authUser === void 0 ? void 0 : authUser.email) || null
+      },
+      consent: consentInfo || null,
+      profile: prof || null,
+      settings: {
+        mode: mode,
+        tdeeAdj: tdeeAdj,
+        customKcal: customKcal,
+        aggressiveCutAcked: aggressiveCutAcked
+      },
+      weighIns: weighIns,
+      meals: meals,
+      badges: earnedBdgs,
+      history: hist,
+      workoutsByDate: workoutsByDate
+    };
+    try {
+      var blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json"
+      });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "fuel-log-export-" + todayKey() + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () {
+        return URL.revokeObjectURL(url);
+      }, 2000);
+    } catch (e) {}
+  };
+
+  // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
+  var handleDeleteAccount = /*#__PURE__*/function () {
+    var _ref82 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
+      return _regenerator().w(function (_context46) {
+        while (1) switch (_context46.n) {
+          case 0:
+            _context46.n = 1;
+            return deleteAccountRequest();
+          case 1:
+            _context46.n = 2;
+            return handleSignOut();
+          case 2:
+            return _context46.a(2);
+        }
+      }, _callee46);
+    }));
+    return function handleDeleteAccount() {
+      return _ref82.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -7444,10 +8334,10 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(upd) {
+    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(upd) {
       var nh;
-      return _regenerator().w(function (_context41) {
-        while (1) switch (_context41.n) {
+      return _regenerator().w(function (_context47) {
+        while (1) switch (_context47.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -7455,7 +8345,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context41.n = 1;
+            _context47.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) {
@@ -7463,19 +8353,19 @@ function App() {
               if (upd.logs) syncFoodLogs(authUser.id, upd.date, upd.logs)["catch"](function () {});
             }
           case 2:
-            return _context41.a(2);
+            return _context47.a(2);
         }
-      }, _callee41);
+      }, _callee47);
     }));
-    return function updateDay(_x52) {
-      return _ref75.apply(this, arguments);
+    return function updateDay(_x56) {
+      return _ref83.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(weight) {
+    var _ref84 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(weight) {
       var entry, updated, updatedProf, base, result, newAdj;
-      return _regenerator().w(function (_context42) {
-        while (1) switch (_context42.n) {
+      return _regenerator().w(function (_context48) {
+        while (1) switch (_context48.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -7487,7 +8377,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context42.n = 1;
+            _context48.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWeighIns(authUser.id, updated)["catch"](function () {});
@@ -7496,29 +8386,29 @@ function App() {
             updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
               weight: weight
             });
-            _context42.n = 2;
+            _context48.n = 2;
             return saveProf(updatedProf);
           case 2:
             // Run calibration whenever a new weigh-in arrives
             base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context42.n = 4;
+              _context48.n = 4;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context42.n = 3;
+            _context48.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context42.a(2);
+            return _context48.a(2);
         }
-      }, _callee42);
+      }, _callee48);
     }));
-    return function onWeighIn(_x53) {
-      return _ref76.apply(this, arguments);
+    return function onWeighIn(_x57) {
+      return _ref84.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -7602,6 +8492,9 @@ function App() {
     onDismiss: function onDismiss() {
       return setShowLapsed(false);
     }
+  }), needsConsent && authState === "premium" && /*#__PURE__*/React.createElement(ConsentModal, {
+    onConsent: handleConsent,
+    onSignOut: handleSignOut
   }), newBadge && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -7742,6 +8635,17 @@ function App() {
     onBack: function onBack() {
       return setView("dashboard");
     }
+  }), view === "account" && /*#__PURE__*/React.createElement(AccountScreen, {
+    user: authUser,
+    consentInfo: consentInfo,
+    onBack: function onBack() {
+      return setView("dashboard");
+    },
+    onExport: handleExport,
+    onSignOut: function onSignOut() {
+      return setShowSignOut(true);
+    },
+    onDelete: handleDeleteAccount
   }));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));

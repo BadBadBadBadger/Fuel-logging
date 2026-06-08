@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sub-processors — Fuel Log</title>
+<style>
+  :root { --ink:#3a3530; --muted:#6b6258; --bg:#f5f1ea; --card:#fffdf8; --line:#e3dccf; --accent:#7a6f5d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 20px 80px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:28px 26px; }
+  h1 { font-size:1.7rem; margin:0 0 4px; }
+  h2 { font-size:1.15rem; margin:28px 0 8px; }
+  .meta { color:var(--muted); font-size:0.9rem; margin-bottom:8px; }
+  a { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:0.95rem; }
+  th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#efe9df; }
+  .nav { font-size:0.9rem; margin-bottom:18px; }
+  .footer { color:var(--muted); font-size:0.85rem; margin-top:36px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="nav">
+    <a href="./privacy.html">Privacy Policy</a> ·
+    <a href="./terms.html">Terms</a> ·
+    <a href="./delete-account.html">Delete my account</a>
+  </div>
+  <div class="card">
+    <h1>Sub-processors</h1>
+    <p class="meta">Fuel Log · Version 1.0 · Last updated 8 June 2026</p>
+    <p>These are the service providers that process personal data on our behalf to run Fuel Log.
+       This page is referenced by our <a href="./privacy.html">Privacy Policy</a>.</p>
+
+    <table>
+      <tr><th>Provider</th><th>Role</th><th>Location</th><th>Data processed</th></tr>
+      <tr><td>Supabase</td><td>Database &amp; authentication hosting</td><td>EU</td><td>Account identity, health data, activity &amp; app data</td></tr>
+      <tr><td>Cloudflare</td><td>App delivery &amp; API worker</td><td>Global edge (UK/EEA serving)</td><td>Requests in transit; no persistent storage of your records</td></tr>
+      <tr><td>Google</td><td>Sign-in (Google OAuth)</td><td>Global</td><td>Authentication; email &amp; account identifier</td></tr>
+      <tr><td>Anthropic, PBC</td><td>AI nutrition/calorie estimation (Claude)</td><td>United States</td><td>See "AI processing" below</td></tr>
+    </table>
+
+    <h2>AI processing — Anthropic (United States)</h2>
+    <p><strong>What is sent:</strong> the meal description or workout description you enter, and — for
+       workout calorie estimates — your weight and body-fat&nbsp;%. This is used solely to estimate
+       nutrition and calories.</p>
+    <p><strong>What is NOT sent:</strong> we do not send your name, email address, account identifier,
+       or any other identifier. The information is transmitted unlinked to your identity.</p>
+    <p><strong>Purpose &amp; lawful basis:</strong> to provide the app's nutrition/calorie estimation
+       feature, covered by your explicit consent to health-data processing (UK/EU GDPR Art.&nbsp;9(2)(a)).</p>
+    <p><strong>International transfer:</strong> this involves a transfer to the United States. We rely on
+       appropriate safeguards under Anthropic's data processing agreement, including Standard
+       Contractual Clauses and the UK International Data Transfer Addendum where applicable.</p>
+    <!-- [HUMAN-REVIEW] Verify Anthropic's current DPA and the specific transfer mechanism before publishing.
+         Do not state DPF certification unless confirmed on Anthropic's official documentation. -->
+
+    <p class="footer">Questions? <a href="mailto:fuellogadmin@gmail.com">fuellogadmin@gmail.com</a>.
+       We will update this page if our sub-processors change.</p>
+  </div>
+</main>
+</body>
+</html>

@@ -23,7 +23,7 @@ threat **T5**); the immediate deliverables are §6–§9.
 |---|---|---|
 | **Audience** | **18+ only** | Removes UK Children's Code, GDPR Art. 8, US COPPA work. |
 | **Distribution** | **UK + EEA only** (via Play Console country selection) | One regime: **UK GDPR + EU GDPR** (near-identical; one policy covers both). |
-| **Controller** | **Individual (sole trader)** — Adrian Richards | Controller name + contact must appear in policy & ICO register. |
+| **Controller** | **Individual (sole trader)** — Adrian Richards, **trading as Fuel Log** | Published name + contact (`fuellogadmin@gmail.com`) appear in policy & must appear on ICO register. |
 | **Out of scope while this holds** | US state law (CCPA/CPRA), COPPA, Children's Code | Re-engage only if scope expands. |
 
 **Enforcement of scope:**
@@ -74,7 +74,7 @@ Sev = legal/commercial exposure · **Req** = legally required · **BP** = best p
 | R4 | No data export (Art. 15/20) | Med-High | Req | "Download my data" → JSON | App feature |
 | R5 | No account deletion (Art. 17) | High | Req | In-app delete → `ON DELETE CASCADE`; web instructions page | App + GitHub Pages |
 | R6 | No 18+ age gate | High | Req | Sign-up affirmation + Terms line | App |
-| R7 | ICO data-protection fee unpaid | Med | Req | Register + pay (~£40/yr, *verify*) | Admin |
+| R7 | ICO data-protection fee unpaid | Med | Req | Register + pay (Tier 1 ~£40/yr, *verify*). **Register with a non-home correspondence address** (PO box / virtual) — the ICO fee-payer register is **public** (name + address). Sole-trader status gives **no exemption** (commercial + special-category data). | Admin |
 | R8 | No Records of Processing (RoPA) | Med | Req | One-page internal record (Art. 30) | Internal doc (§9) |
 | R9 | Play Data Safety form | High | Req | Complete accurately once R1–R5 exist | Play Console |
 | R10 | PII in AI prompts / over-logging | Med | BP+Req | UI hint on meal field; no PII logging | App |
@@ -164,13 +164,57 @@ One page, kept internally (Art. 30). Minimum fields:
 
 ## 10. Open items / decisions still needed
 
-- [ ] **Controller contact address** — home / PO box / future Ltd? (§5)
+- [x] **Controller identity** — decided: **Adrian Richards, trading as Fuel Log**; public contact
+  **fuellogadmin@gmail.com** — *inbox created 2026-06-08, ready to receive rights requests.*
+  *Postal address still required for the ICO register only (not the policy) — PO box / virtual
+  address recommended.*
 - [ ] **[HUMAN-REVIEW]** Art. 9 consent wording (§7) and Anthropic transfer mechanism (§6.6/§8).
 - [ ] **Verify** ICO fee amount and that no exemption applies (R7).
 - [ ] **Verify** Google Play's current account-deletion policy wording (R5).
-- [ ] **Confirm** no analytics/tracking SDKs ship in the bundle before the policy claims "none" (§6.2).
-- [ ] Retention period values (how long after last activity / after deletion request).
+- [x] **Confirm** no analytics/tracking SDKs ship in the bundle (§6.2) — **verified 2026-06-08**: only
+  Babel `regenerator-runtime` + vendored recharts/supabase; no analytics/ads/tracking SDKs. Policy may state "none".
+- [x] **Retention period values** — decided: keep while active; delete within **30 days** of request;
+  flag + delete accounts **inactive 24 months**. *Engineering: needs a scheduled job — see §13.*
 - [ ] **Pre-payment commercial prerequisites** — Cloudflare hosting migration, domain, business entity (see §12).
+
+---
+
+## 13. Drafted work product & remaining engineering (added 2026-06-08)
+
+**Policy documents drafted** (in `legal/`, ready to host on GitHub Pages; verify final URL base):
+- `legal/privacy.html` (R1, R3, R11) · `legal/terms.html` (R6) · `legal/subprocessors.html` (R3, §8)
+- `legal/delete-account.html` (R5 instructions) · `legal/ropa.md` (R8, **internal — do not publish**)
+- `legal/play-data-safety.md` (R9 crib sheet) · `legal/in-app-copy.md` (R2/R6/R10 strings + schema)
+
+Two **[HUMAN-REVIEW]** placeholders are marked inline (HTML comments): the Anthropic transfer
+mechanism and the Art. 9 consent wording. ~~Set up the `fuellogadmin@gmail.com` inbox before
+publishing.~~ **Inbox created 2026-06-08.**
+
+**Admin — do next (R7, cheap, ~½ hour):**
+- [ ] **Get a non-home correspondence address** — PO box or virtual business address (~£10–30/yr).
+  Needed because the ICO fee-payer register and (later) any formal docs are public; keeps your home
+  address private. Decide this *before* registering with the ICO so the right address goes on record.
+- [ ] **Register + pay the ICO data-protection fee** (Tier 1 ~£40/yr — verify on ico.org.uk) using
+  that correspondence address. No sole-trader exemption applies (commercial + special-category data).
+  Run the ICO self-assessment and keep the result.
+
+**Engineering — built 2026-06-08** (code complete; `npm run build` + 44 tests green; deploy/manual-test pending):
+- [x] In-app **18+ affirmation** at sign-up (R6) — checkbox gates the Google button; stores `age_confirmed_at`.
+- [x] In-app **Art. 9 consent gate before first cloud sync** (R2) — checkbox in sign-in flow + retroactive
+  `ConsentModal` for existing users / policy-version bumps; stores `health_consent_at` + `consent_policy_version`.
+- [x] **Export** ("Download my data" → JSON) (R4) and **Delete my account** (R5) — new **Account & Privacy**
+  screen (tap avatar); delete calls worker `/delete-account` (service-role admin delete → cascade).
+- [x] **Retention job:** worker `scheduled()` **24-month dormant sweep** (immediate delete already satisfies
+  the 30-day promise, so no soft-delete logic needed). **Cron Trigger still to be configured** in Cloudflare.
+- [x] Meal-field **PII hint** added; confirmed worker never logs meal/workout text (R10).
+- [x] Policy links surfaced in the Account & Privacy screen.
+
+**Deploy checklist (before this counts as live):**
+- [ ] Run the schema migration (`setup/supabase-schema.sql` — adds consent columns to `profiles`).
+- [ ] Set `SUPABASE_SERVICE_ROLE` secret on the worker (if not already) + deploy worker (adds `/delete-account` + cron).
+- [ ] Add the Cloudflare **Cron Trigger** (e.g. `0 3 * * 0`) so the dormant sweep runs.
+- [ ] Publish `legal/` pages on GitHub Pages; confirm the in-app `LEGAL.*` paths resolve.
+- [ ] Manual test: 18+ gate → consent → sign-in → export downloads → delete removes account.
 
 ---
 

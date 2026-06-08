@@ -10,8 +10,19 @@ CREATE TABLE IF NOT EXISTS profiles (
   height      NUMERIC,
   body_fat    NUMERIC,
   sex         TEXT CHECK (sex IN ('male', 'female')),
+  -- Compliance (LEGAL_ROADMAP Phase B): 18+ affirmation (R6) + Art. 9 explicit consent (R2).
+  age_confirmed_at            TIMESTAMPTZ,   -- when the user affirmed they are 18+
+  health_consent_at           TIMESTAMPTZ,   -- when explicit health-data consent was given
+  consent_policy_version      TEXT,          -- privacy-policy version consented to (e.g. '1.0')
+  health_consent_withdrawn_at TIMESTAMPTZ,   -- set if consent is later withdrawn
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- For existing installs: add the consent columns if the table predates them (safe to re-run).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS age_confirmed_at            TIMESTAMPTZ;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_at           TIMESTAMPTZ;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS consent_policy_version      TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_withdrawn_at TIMESTAMPTZ;
 
 -- ── Daily food log entries ─────────────────────────────────────
 -- entry_id is the client-side timestamp used as the log entry id

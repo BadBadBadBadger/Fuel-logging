@@ -180,7 +180,59 @@ async function redeemVoucher(env, userId, code) {
   }
 }
 
+// Delete a Supabase auth user with the service role. The ON DELETE CASCADE
+// foreign keys purge every health/app table row for that user (R5). `userId`
+// always comes from a verified JWT (route) or the admin list (cron) — never
+// from raw client input.
+async function deleteAuthUser(env, userId) {
+  const r = await fetch(SUPABASE_URL + "/auth/v1/admin/users/" + userId, {
+    method: "DELETE",
+    headers: {
+      Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE,
+      apikey: SUPABASE_ANON,
+    },
+  });
+  return r.ok;
+}
+
+// 24-month inactivity sweep (LEGAL_ROADMAP retention). Pages through auth users
+// and deletes any whose last sign-in (or creation, if never signed in) is older
+// than the cutoff. Runs from the scheduled() cron handler.
+async function sweepDormantAccounts(env) {
+  const CUTOFF_MS = 1000 * 60 * 60 * 24 * 365 * 2; // ~24 months
+  const cutoff = Date.now() - CUTOFF_MS;
+  let page = 1, deleted = 0, scanned = 0;
+  for (;;) {
+    const r = await fetch(
+      SUPABASE_URL + "/auth/v1/admin/users?page=" + page + "&per_page=200",
+      { headers: { Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE, apikey: SUPABASE_ANON } }
+    );
+    if (!r.ok) break;
+    const data = await r.json();
+    const users = Array.isArray(data?.users) ? data.users : [];
+    if (!users.length) break;
+    for (const u of users) {
+      scanned++;
+      const last = u.last_sign_in_at || u.created_at;
+      if (last && new Date(last).getTime() < cutoff) {
+        if (await deleteAuthUser(env, u.id)) deleted++;
+      }
+    }
+    if (users.length < 200) break; // last page
+    page++;
+    if (page > 1000) break;        // safety stop
+  }
+  console.log("Dormant sweep: scanned " + scanned + ", deleted " + deleted);
+  return { scanned, deleted };
+}
+
 export default {
+  // Cron Trigger entrypoint (configure schedule in wrangler / dashboard — see SETUP).
+  async scheduled(event, env, ctx) {
+    if (!env.SUPABASE_SERVICE_ROLE) return;
+    ctx.waitUntil(sweepDormantAccounts(env));
+  },
+
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
     const cors   = corsHeaders(origin);
@@ -225,6 +277,25 @@ export default {
         result.success ? 200 : 400,
         cors
       );
+    }
+
+    // ── Route: POST /delete-account (GDPR erasure, R5)
+    if (url.pathname === "/delete-account") {
+      const authHeader = request.headers.get("Authorization") || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!token) return json({ error: "Unauthorized" }, 401, cors);
+
+      const user = await verifySupabaseUser(token);
+      if (!user) return json({ error: "Unauthorized" }, 401, cors);
+
+      if (!env.SUPABASE_SERVICE_ROLE)
+        return json({ error: "Deletion service not configured" }, 503, cors);
+
+      // Delete only the caller's own account (id from the verified JWT). Cascades.
+      const ok = await deleteAuthUser(env, user.id);
+      return ok
+        ? json({ message: "Account deleted" }, 200, cors)
+        : json({ error: "Deletion failed" }, 502, cors);
     }
 
     // ── Route: POST / (AI proxy, Phase 0+A)
@@ -291,4 +362,22 @@ export default {
 //
 // BACKSTOP — set a hard spend cap in the Anthropic Console (Billing → Limits)
 // so even a novel abuse path can't run an unbounded bill.
+// ─────────────────────────────────────────────────────────────
+//
+// SETUP — account deletion + retention sweep (LEGAL_ROADMAP Phase B)
+//   Both reuse the SERVICE_ROLE secret already needed by /redeem:
+//     Workers & Pages → worker → Settings → Variables and Secrets →
+//     add secret SUPABASE_SERVICE_ROLE = <your Supabase service_role key>.
+//
+//   /delete-account : POST with a valid Bearer JWT → deletes the caller's
+//   own account (cascades to all tables). No extra setup beyond the secret.
+//
+//   Retention cron (24-month dormant sweep) : add a Cron Trigger so scheduled()
+//   runs. In the dashboard: worker → Settings → Triggers → Cron Triggers → Add,
+//   e.g. weekly "0 3 * * 0". Or in wrangler.toml:
+//       [triggers]
+//       crons = ["0 3 * * 0"]
+//   Until a trigger exists, scheduled() simply never fires (no harm); deletion
+//   on request still works. Test manually with: npx wrangler dev --test-scheduled
+//   then curl "http://localhost:8787/__scheduled".
 // ─────────────────────────────────────────────────────────────
