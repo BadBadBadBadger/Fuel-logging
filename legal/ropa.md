@@ -37,8 +37,10 @@
 
 ## International transfers
 - US transfer to **Anthropic** for AI estimation. Data sent **without identifiers**.
-- Safeguard: appropriate safeguards under Anthropic's DPA (SCCs / UK IDTA where applicable).
-  **[HUMAN-REVIEW]** — verify the exact mechanism and cite it.
+- Safeguard: Anthropic DPA (effective 24 Feb 2025), auto-incorporated into the Commercial Terms.
+  **EU SCCs Module Two** (Commission Implementing Decision (EU) 2021/914) **+ UK Addendum** (ICO Approved
+  Addendum, template B.1.0). Anthropic does not train on customer content. *Verified 2026-06-10 against
+  the live DPA (anthropic.com/legal/data-processing-addendum).*
 
 ## Retention
 - Kept while the account is active.

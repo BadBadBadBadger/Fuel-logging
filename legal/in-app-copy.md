@@ -4,7 +4,9 @@
 > Maps to risks **R2** (consent), **R6** (18+ gate), **R10** (PII hint), and supports **R4/R5**.
 > Version 1.0 · 8 June 2026. Wire these into `app.jsx`; bump `sw.js` cache version on build.
 >
-> ⚠️ **[HUMAN-REVIEW]** the Art. 9 consent wording (below) with a solicitor before launch.
+> ⚠️ **[HUMAN-REVIEW — narrow]** the Art. 9 consent wording (§2 below) before **Play submission** —
+> see `LEGAL_ROADMAP §7` tier 7g. Conditionality is de-risked (local-only use needs no consent), so this
+> is a ~1 hr review or a documented self-assessment + free ICO SME-helpline steer, not open-ended drafting.
 
 ---
 
@@ -22,7 +24,7 @@ Shown once, before/at first sign-in. Must be an **affirmative, unticked** action
 
 ---
 
-## 2. Explicit health-data consent (R2) — before first cloud sync  **[HUMAN-REVIEW]**
+## 2. Explicit health-data consent (R2) — before first cloud sync  **[HUMAN-REVIEW — narrow, see header]**
 
 **Trigger:** before the *first* time any health data (weight / body-fat % / sex) is synced to the
 cloud. Today sign-in syncs silently — that must change. Local-only use needs no consent; the consent

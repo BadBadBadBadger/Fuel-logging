@@ -12,9 +12,10 @@ threat **T5**); the immediate deliverables are §6–§9.
 **Companion docs:** `SECURITY_ROADMAP.md` (security phases & threat model), `ARCHITECTURE_REVIEW.md`, `setup/supabase-schema.sql`.
 
 > ⚠️ **Not legal advice.** This plan was prepared to a pragmatic, defensible standard for a
-> solo developer pre-launch. Two items are flagged **[HUMAN-REVIEW]** for a jurisdiction-admitted
-> solicitor before publishing: the **Art. 9 explicit-consent wording** and the **Anthropic
-> international-transfer mechanism**.
+> solo developer pre-launch. The **Anthropic international-transfer mechanism is now RESOLVED**
+> (2026-06-10 — DPA already in force; see §8). One narrow item remains for optional paid review
+> before Play Store submission: the **Art. 9 explicit-consent wording** (§7 tier 7g) — and even that
+> is downgradeable to a documented self-assessment + free ICO SME-helpline steer.
 
 ---
 
@@ -70,8 +71,8 @@ Sev = legal/commercial exposure · **Req** = legally required · **BP** = best p
 | # | Issue | Sev | Class | Fix | Where it lives |
 |---|-------|-----|-------|-----|----------------|
 | R1 | No privacy policy | High | Req | Publish policy at stable URL | GitHub Pages (§6) |
-| R2 | No Art. 9 explicit consent for health data | High | Req | Consent checkpoint before first cloud sync | App + policy (§7) **[HUMAN-REVIEW]** |
-| R3 | Anthropic sub-processor undisclosed + transfer mechanism | High | Req | Name in policy; accept Anthropic DPA; confirm US transfer safeguard | Policy (§8) **[HUMAN-REVIEW]** for transfer |
+| R2 | No Art. 9 explicit consent for health data | High | Req | Consent checkpoint before first cloud sync | App + policy (§7); narrow consent-string review before Play (§7 tier 7g) |
+| R3 | Anthropic sub-processor undisclosed + transfer mechanism | High | Req | Name in policy; DPA auto-incorporated (in force); cite SCCs Mod 2 + UK Addendum | Policy (§8) — **transfer RESOLVED 2026-06-10** |
 | R4 | No data export (Art. 15/20) | Med-High | Req | "Download my data" → JSON | App feature |
 | R5 | No account deletion (Art. 17) | High | Req | In-app delete → `ON DELETE CASCADE`; web instructions page | App + GitHub Pages |
 | R6 | No 18+ age gate | High | Req | Sign-up affirmation + Terms line | App |
@@ -119,7 +120,7 @@ Plain English, UK/EEA, 18+. Each section maps to a GDPR transparency requirement
    - Account/app function → **performance of a contract (Art. 6(1)(b))** / **consent**.
 4. **AI processing & Anthropic** — meal/workout text and body metrics are processed by **Anthropic (US)** to estimate nutrition/calories; **no identifiers are sent**; link to §8.
 5. **Who we share with (processors)** — Supabase (hosting/DB), Cloudflare (worker), Google (auth), Anthropic (AI). Link to disclosure (§8).
-6. **International transfers** — data processed in the US by Anthropic under [mechanism — **[HUMAN-REVIEW]**: Anthropic DPA SCCs / UK IDTA / DPF].
+6. **International transfers** — data processed in the US by Anthropic under its DPA: **EU SCCs Module Two + UK Addendum** (ICO Approved Addendum B.1.0); see §8.
 7. **Retention** (R11) — how long data is kept; deletion purges all rows via `ON DELETE CASCADE`.
 8. **Your rights** — access, rectification, erasure, portability/export, withdraw consent, complain to the **ICO** (UK) / lead DPA (EEA). How to exercise each (link to in-app export/delete).
 9. **Security** — pseudonymisation (§2.1), RLS, JWT auth, no AI identifiers (Art. 32 measures).
@@ -128,13 +129,33 @@ Plain English, UK/EEA, 18+. Each section maps to a GDPR transparency requirement
 
 ---
 
-## 7. Consent plan (R2) — Art. 9 explicit consent **[HUMAN-REVIEW]**
+## 7. Consent plan (R2) — Art. 9 explicit consent
+
+> **Review status (updated 2026-06-10):** decomposed below into free vs paid tasks. The only residual
+> paid item is a narrow ~1 hr solicitor review of the consent string + the "genuine local-only
+> alternative" argument, scheduled **before Play Store submission** — downgradeable to a documented
+> self-assessment + free ICO SME-helpline steer if cash isn't there.
 
 - **Trigger:** before the **first cloud sync** of any health data (weight/body-fat/sex). Today sign-in syncs silently — that must change.
 - **Mechanism:** an explicit, unticked, affirmative action (not pre-checked) — e.g. a checkbox + "I consent to Fuel Log storing my health data (weight, body fat, sex) to provide the service" with a link to the policy.
 - **Record:** store consent timestamp + policy version (new column/table, service-role or user-owned with RLS).
 - **Withdrawable:** withdrawing consent = stop cloud sync and offer deletion (ties to R5).
 - **Separate from** the 18+ affirmation (R6) and any marketing consent (none currently).
+
+**Conditionality note (Art. 7(4) / Recital 43):** consent gates *cloud sync only* — the app runs locally
+from cache without it — so consent is **not** a condition of using the product. This materially
+strengthens "freely given". *Caveat:* keep local-only a **genuine** alternative (real on-device
+persistence / export), or the choice looks illusory. The local/cloud split removes the conditionality
+problem but **not** the need for explicit Art. 9(2)(a) consent on the sync path ("necessary for the
+contract" is an Art. 6 basis, not an Art. 9 gateway).
+
+**Decomposition — free vs paid:**
+
+| # | Sub-task | Who / cost | Status |
+|---|---|---|---|
+| 7a–7e | Basis reasoning; consent mechanics (unticked/affirmative/granular/withdrawable); consent record; withdrawal path; screen microcopy | Claude + you · free | Mostly built (§13) |
+| 7f | Conditionality steer (Art. 7(4)) | Free — de-risked by local/cloud split; optional ICO SME-helpline confirmation | Much reduced |
+| 7g | Narrow sign-off: consent string + local-only "genuine alternative" argument — **before Play submission** | Paid · ~1 hr · or documented self-assessment | The only residual £ |
 
 ---
 
@@ -145,7 +166,15 @@ A short public page (linked from the policy) stating:
 - **What is sent:** meal/workout descriptions and body metrics (weight, body-fat %) for nutrition/calorie estimation.
 - **What is NOT sent:** no name, email, account ID, or other identifier (verified — §2.3).
 - **Purpose & basis:** service functionality; covered by the Art. 9 consent (§7).
-- **Transfer mechanism:** **[HUMAN-REVIEW]** — accept Anthropic's DPA; confirm the US transfer safeguard (SCCs / UK IDTA / EU-US DPF) and cite it. *Do not assert Anthropic's certification status without verifying their current DPA.*
+- **Transfer mechanism — RESOLVED 2026-06-10 (free, no solicitor):** Anthropic's **Data Processing Addendum** (effective 24 Feb 2025) is **auto-incorporated by reference** into the Commercial Terms — accepted when API access was purchased — so it is already in force. Customer = controller, Anthropic = processor. It applies the **EU SCCs Module Two (controller-to-processor)** under Commission Implementing Decision (EU) 2021/914, and for UK transfers the **UK Addendum** built on the ICO's Approved Addendum (template B.1.0, s.119A DPA 2018). Anthropic **does not train on Customer Content** (Commercial Terms §B). *Cited verbatim from the live DPA (`anthropic.com/legal/data-processing-addendum`) in `legal/subprocessors.html`; do not assert EU-US DPF certification — the DPA relies on SCCs + UK Addendum, not DPF.*
+
+**Remaining §8 tasks — all free:**
+
+| # | Sub-task | Who / cost | Status |
+|---|---|---|---|
+| 8c | Quote live DPA's UK-mechanism wording into `subprocessors.html` | Claude · free | ✅ done 2026-06-10 |
+| 8d | Transfer Risk Assessment via ICO free TRA tool (belt-and-braces; low-risk — pseudonymised, no identifiers, no training) | Claude + you · free | Recommended before Play |
+| 8e | Fetch **countersigned DPA copy** from Anthropic Privacy Center for the compliance file | You · free · ~5 min | To do |
 
 ---
 
@@ -169,7 +198,8 @@ One page, kept internally (Art. 30). Minimum fields:
   **fuellogadmin@gmail.com** — *inbox created 2026-06-08, ready to receive rights requests.*
   *Postal address still required for the ICO register only (not the policy) — PO box / virtual
   address recommended.*
-- [ ] **[HUMAN-REVIEW]** Art. 9 consent wording (§7) and Anthropic transfer mechanism (§6.6/§8).
+- [x] **Anthropic transfer mechanism** — RESOLVED 2026-06-10 (DPA in force; SCCs Mod 2 + UK Addendum; §6.6/§8).
+- [ ] **Art. 9 consent wording** — narrow review (§7 tier 7g) before Play; conditionality de-risked by local/cloud split.
 - [ ] **Verify** ICO fee amount and that no exemption applies (R7).
 - [ ] **Verify** Google Play's current account-deletion policy wording (R5).
 - [x] **Confirm** no analytics/tracking SDKs ship in the bundle (§6.2) — **verified 2026-06-08**: only
@@ -187,9 +217,11 @@ One page, kept internally (Art. 30). Minimum fields:
 - `legal/delete-account.html` (R5 instructions) · `legal/ropa.md` (R8, **internal — do not publish**)
 - `legal/play-data-safety.md` (R9 crib sheet) · `legal/in-app-copy.md` (R2/R6/R10 strings + schema)
 
-Two **[HUMAN-REVIEW]** placeholders are marked inline (HTML comments): the Anthropic transfer
-mechanism and the Art. 9 consent wording. ~~Set up the `fuellogadmin@gmail.com` inbox before
-publishing.~~ **Inbox created 2026-06-08.**
+~~Two **[HUMAN-REVIEW]** placeholders are marked inline (HTML comments): the Anthropic transfer
+mechanism and the Art. 9 consent wording.~~ **Transfer mechanism RESOLVED 2026-06-10** (§8;
+`subprocessors.html` updated, placeholder removed). The remaining consent-wording review (§7 tier 7g)
+is narrow and pre-Play. ~~Set up the `fuellogadmin@gmail.com` inbox before publishing.~~ **Inbox
+created 2026-06-08.**
 
 **Admin — do next (R7, cheap, ~½ hour):**
 - [ ] **Get a non-home correspondence address** — PO box or virtual business address (~£10–30/yr).

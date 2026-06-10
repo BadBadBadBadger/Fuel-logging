@@ -19,8 +19,9 @@ Read this first. It never duplicates roadmap detail — it points to it.
 1. **Deploy & test Phase B engineering** — checklist in `LEGAL_ROADMAP.md §13`
    (run schema migration → set worker `SUPABASE_SERVICE_ROLE` + deploy → add Cloudflare Cron Trigger
    → publish `legal/` pages → manual test the consent→export→delete flow).
-2. **Solicitor review** of the two `[HUMAN-REVIEW]` items — Art. 9 consent wording (`LEGAL_ROADMAP §7`)
-   and the Anthropic international-transfer mechanism (`LEGAL_ROADMAP §8`).
+2. **Narrow legal review** — *one* item left: the Art. 9 consent wording (`LEGAL_ROADMAP §7` tier 7g),
+   before Play submission; downgradeable to a self-assessment + free ICO steer. *The Anthropic transfer
+   mechanism is **resolved** (2026-06-10 — DPA already in force; `§8`).*
 3. **ICO fee + correspondence address** — `LEGAL_ROADMAP.md §13` / risk **R7** (get a PO box / virtual
    address *before* registering so your home address stays off the public register).
 

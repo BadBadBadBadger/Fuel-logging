@@ -70,7 +70,7 @@ data and pass Play's Data Safety review **before taking payment**. Map findings 
 
 ## Standing client context (footnotes — read these when re-engaged)
 
-*Last updated 2026-06-08.*
+*Last updated 2026-06-10.*
 
 - **The authoritative legal/compliance doc is `LEGAL_ROADMAP.md`** (this persona drafted it). Read it
   on re-engagement; it holds the scope decisions, risk register, and pre-payment prerequisites.
@@ -78,6 +78,13 @@ data and pass Play's Data Safety review **before taking payment**. Map findings 
   delete-account HTML; ropa.md, play-data-safety.md, in-app-copy.md). See `LEGAL_ROADMAP.md §13`.
   Two **[HUMAN-REVIEW]** placeholders remain inline. The drafts assert features not yet built —
   consent gate, 18+ gate, export/delete, **retention job** — these are the remaining engineering.
+- **2026-06-10 — Anthropic transfer mechanism RESOLVED (free, no solicitor).** Verified against the live
+  DPA: it is **auto-incorporated by reference** into Anthropic's Commercial Terms (already in force from
+  buying API tokens); customer = controller, Anthropic = processor; **EU SCCs Module Two + UK Addendum**
+  (ICO Approved Addendum B.1.0); no training on customer content. Cited in `privacy.html §6`,
+  `subprocessors.html`, `ropa.md`. **Only one [HUMAN-REVIEW] item now remains:** the Art. 9 **consent
+  wording** (§7 tier 7g) — narrow, pre-Play, and de-risked because the app runs **local-only without
+  consent** (consent gates cloud sync only → strengthens "freely given", Art. 7(4)).
 - **Controller decided:** **Adrian Richards, trading as Fuel Log** (sole trader); public contact
   **fuellogadmin@gmail.com**. Client is "going for it" as a sole trader and will revisit a Ltd if
   earnings exceed ~£5k. Verified no analytics/tracking SDKs ship (policy may claim "none").
