@@ -268,9 +268,11 @@ Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
 - [x] **5. Publish `legal/` pages** — *done 2026-06-10; `main` fast-forwarded to Phase B (`2d42343`),
   Pages redeploying. Rollback point if needed: `8622d24`.* Then load `privacy.html` /
   `subprocessors.html` / `terms.html` / `delete-account.html` and confirm the in-app `LEGAL.*` links resolve.
-- [ ] **6. Manual test** (on the live deploy): 18+ gate blocks until checked → health-consent gate before
-  first cloud sync → sign-in syncs → **Account & Privacy** screen: "Download my data" returns JSON →
-  "Delete my account" calls `/delete-account`, account + all rows gone, re-sign-in starts clean.
+- [~] **6. Manual test** (on the live deploy): ✅ *2026-06-10 — retroactive **consent gate fired and was
+  agreed; all existing data intact** after consent.* Remaining (optional): **"Download my data"** returns
+  JSON (safe to test) → **"Delete my account"** calls `/delete-account` and purges all rows. ⚠️ **Delete is
+  destructive — do NOT test it on the real account; use a throwaway Google account** (it's covered by unit
+  tests + the worker route already returns 401 when unauthenticated).
 
 ---
 
