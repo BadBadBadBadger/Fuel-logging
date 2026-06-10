@@ -24,8 +24,10 @@ Read this first. It never duplicates roadmap detail — it points to it.
 3. **ICO fee + correspondence address** — `LEGAL_ROADMAP.md §13` / risk **R7** (get a PO box / virtual
    address *before* registering so your home address stays off the public register).
 
-> **Housekeeping:** work sits on branch `phase-b-compliance` (not pushed). Before pushing, **rotate the
-> GitHub PAT** that's currently in plaintext in the `git remote` URL.
+> **Housekeeping:** work sits on branch `phase-b-compliance` (not pushed). The exposed PAT has been
+> **deleted on GitHub** and stripped from the `git remote` URL (now credential-free). When you first
+> push, generate a fresh fine-grained token scoped to this repo and let Windows Credential Manager
+> store it — **don't embed it in the remote URL**.
 
 ## Which doc, when
 
