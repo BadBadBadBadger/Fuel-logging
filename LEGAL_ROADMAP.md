@@ -242,12 +242,31 @@ created 2026-06-08.**
 - [x] Meal-field **PII hint** added; confirmed worker never logs meal/workout text (R10).
 - [x] Policy links surfaced in the Account & Privacy screen.
 
-**Deploy checklist (before this counts as live):**
-- [ ] Run the schema migration (`setup/supabase-schema.sql` — adds consent columns to `profiles`).
-- [ ] Set `SUPABASE_SERVICE_ROLE` secret on the worker (if not already) + deploy worker (adds `/delete-account` + cron).
-- [ ] Add the Cloudflare **Cron Trigger** (e.g. `0 3 * * 0`) so the dormant sweep runs.
-- [ ] Publish `legal/` pages on GitHub Pages; confirm the in-app `LEGAL.*` paths resolve.
-- [ ] Manual test: 18+ gate → consent → sign-in → export downloads → delete removes account.
+**Deploy runbook (before this counts as live).** *Pre-flight verified 2026-06-10: `npm test` = 44/44
+green; `npm run build` produces no diff (committed `app.js` matches `app.jsx`); `sw.js` cache = `v30`.
+Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
+
+- [ ] **0. Push the branch** — needs a fresh GitHub token (old PAT deleted). `git push -u origin phase-b-compliance`,
+  paste token when prompted. *Note:* GitHub Pages serves from **`main`** (SETUP.md §"Every Deploy"), so the
+  `legal/` pages won't publish until this branch is merged to `main` — see step 5.
+- [ ] **1. Schema migration** — Supabase Dashboard → SQL Editor → New Query → paste **all** of
+  `setup/supabase-schema.sql` → Run. Idempotent (`ADD COLUMN IF NOT EXISTS`); adds the four consent
+  columns to `profiles` (`age_confirmed_at`, `health_consent_at`, `consent_policy_version`,
+  `health_consent_withdrawn_at`).
+- [ ] **2. Worker secret** — Cloudflare → Workers & Pages → your worker → Settings → Variables and Secrets →
+  add secret **`SUPABASE_SERVICE_ROLE`** = Supabase `service_role` key. Powers `/delete-account` *and* the
+  retention sweep (`cloudflare-worker.js:291`, `:232`). If `/redeem` already works, this is likely set.
+- [ ] **3. Deploy the worker** — paste `cloudflare-worker.js` into the dashboard editor → Deploy (or
+  `npx wrangler deploy` if you wire a `wrangler.toml`). Ships the `/delete-account` route + `scheduled()` sweep.
+- [ ] **4. Cron Trigger** — worker → Settings → Triggers → Cron Triggers → Add → **`0 3 * * 0`** (weekly,
+  Sun 03:00). Without it `scheduled()` never fires (no harm; on-request deletion still works —
+  `cloudflare-worker.js:375-382`).
+- [ ] **5. Publish `legal/` pages** — merge `phase-b-compliance` → `main`; Pages auto-deploys in ~1 min.
+  Then load `privacy.html` / `subprocessors.html` / `terms.html` / `delete-account.html` and confirm the
+  in-app `LEGAL.*` links resolve.
+- [ ] **6. Manual test** (on the live deploy): 18+ gate blocks until checked → health-consent gate before
+  first cloud sync → sign-in syncs → **Account & Privacy** screen: "Download my data" returns JSON →
+  "Delete my account" calls `/delete-account`, account + all rows gone, re-sign-in starts clean.
 
 ---
 
