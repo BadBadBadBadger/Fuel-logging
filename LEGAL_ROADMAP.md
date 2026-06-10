@@ -249,7 +249,8 @@ Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
 - [ ] **0. Push the branch** — needs a fresh GitHub token (old PAT deleted). `git push -u origin phase-b-compliance`,
   paste token when prompted. *Note:* GitHub Pages serves from **`main`** (SETUP.md §"Every Deploy"), so the
   `legal/` pages won't publish until this branch is merged to `main` — see step 5.
-- [ ] **1. Schema migration** — Supabase Dashboard → SQL Editor → New Query. **On the existing
+- [x] **1. Schema migration** — *done 2026-06-10; 4 consent columns verified on live `profiles`.*
+  Supabase Dashboard → SQL Editor → New Query. **On the existing
   (Phase 0/A) DB, run ONLY the four `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS …` lines** from
   `setup/supabase-schema.sql` (lines 22–25: `age_confirmed_at`, `health_consent_at`,
   `consent_policy_version`, `health_consent_withdrawn_at`). **Do NOT paste the whole file** — its

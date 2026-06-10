@@ -27,7 +27,8 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 > **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` (2026-06-10) and tracking it;
 > the remote URL is credential-free (auth via Windows Credential Manager) and the exposed PAT was
-> **deleted on GitHub**. Next deploy step is the schema migration (`LEGAL_ROADMAP §13`, step 1).
+> **deleted on GitHub**. Schema migration is **done** (consent columns live); next deploy step is the
+> worker `SUPABASE_SERVICE_ROLE` secret + deploy (`LEGAL_ROADMAP §13`, steps 2–3).
 
 ## Which doc, when
 
