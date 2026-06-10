@@ -27,8 +27,9 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 > **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` (2026-06-10) and tracking it;
 > the remote URL is credential-free (auth via Windows Credential Manager) and the exposed PAT was
-> **deleted on GitHub**. Schema migration is **done** (consent columns live); next deploy step is the
-> worker `SUPABASE_SERVICE_ROLE` secret + deploy (`LEGAL_ROADMAP §13`, steps 2–3).
+> **deleted on GitHub**. **DB migration + worker deploy are DONE** (consent columns live; worker serves
+> `/delete-account` + sweep). Next: publish `legal/` pages (merge → `main`). **⏳ TODO later (optional):**
+> add the Cloudflare cron trigger `0 3 * * 0` (`§13` step 4) — deferred, nothing depends on it yet.
 
 ## Which doc, when
 

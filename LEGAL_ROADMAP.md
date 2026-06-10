@@ -261,9 +261,10 @@ Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
 - [x] **2. Worker secret** — *done 2026-06-10; `SUPABASE_SERVICE_ROLE` confirmed present in Cloudflare.*
 - [x] **3. Deploy the worker** — *done 2026-06-10; latest `cloudflare-worker.js` deployed via dashboard
   editor (adds `/delete-account` route + `scheduled()` sweep).*
-- [ ] **4. Cron Trigger** — worker → Settings → Triggers → Cron Triggers → Add → **`0 3 * * 0`** (weekly,
-  Sun 03:00). Without it `scheduled()` never fires (no harm; on-request deletion still works —
-  `cloudflare-worker.js:375-382`).
+- [ ] **4. Cron Trigger** — ⏳ **DEFERRED 2026-06-10 (optional, not blocking — come back to this).**
+  worker → Settings → Triggers → Cron Triggers → Add → **`0 3 * * 0`** (weekly, Sun 03:00). Without it
+  `scheduled()` never fires (no harm; on-request deletion still works; nothing is near the 24-month
+  cutoff yet — `cloudflare-worker.js:375-382`).
 - [ ] **5. Publish `legal/` pages** — merge `phase-b-compliance` → `main`; Pages auto-deploys in ~1 min.
   Then load `privacy.html` / `subprocessors.html` / `terms.html` / `delete-account.html` and confirm the
   in-app `LEGAL.*` links resolve.
