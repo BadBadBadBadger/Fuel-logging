@@ -249,10 +249,14 @@ Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
 - [ ] **0. Push the branch** — needs a fresh GitHub token (old PAT deleted). `git push -u origin phase-b-compliance`,
   paste token when prompted. *Note:* GitHub Pages serves from **`main`** (SETUP.md §"Every Deploy"), so the
   `legal/` pages won't publish until this branch is merged to `main` — see step 5.
-- [ ] **1. Schema migration** — Supabase Dashboard → SQL Editor → New Query → paste **all** of
-  `setup/supabase-schema.sql` → Run. Idempotent (`ADD COLUMN IF NOT EXISTS`); adds the four consent
-  columns to `profiles` (`age_confirmed_at`, `health_consent_at`, `consent_policy_version`,
-  `health_consent_withdrawn_at`).
+- [ ] **1. Schema migration** — Supabase Dashboard → SQL Editor → New Query. **On the existing
+  (Phase 0/A) DB, run ONLY the four `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS …` lines** from
+  `setup/supabase-schema.sql` (lines 22–25: `age_confirmed_at`, `health_consent_at`,
+  `consent_policy_version`, `health_consent_withdrawn_at`). **Do NOT paste the whole file** — its
+  trailing `CREATE POLICY` statements have no `IF NOT EXISTS` and will error on policies that already
+  exist (the full file is for a *fresh* DB only). Verify with
+  `SELECT column_name FROM information_schema.columns WHERE table_name='profiles' AND column_name IN (…)`
+  → expect 4 rows.
 - [ ] **2. Worker secret** — Cloudflare → Workers & Pages → your worker → Settings → Variables and Secrets →
   add secret **`SUPABASE_SERVICE_ROLE`** = Supabase `service_role` key. Powers `/delete-account` *and* the
   retention sweep (`cloudflare-worker.js:291`, `:232`). If `/redeem` already works, this is likely set.
