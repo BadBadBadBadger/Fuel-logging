@@ -32,7 +32,9 @@
       "Skill(update-config)",
       "Skill(update-config:*)",
       "PowerShell($cmd = \"if \\(Test-Path './START-HERE.md'\\) { Write-Output '=== START-HERE.md - current project status ==='; Get-Content './START-HERE.md' -Raw }\"; echo '{}' | powershell -NoProfile -Command $cmd | Select-Object -First 6)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebSearch"
     ]
   }
 }
