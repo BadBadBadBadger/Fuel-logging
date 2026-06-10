@@ -2,7 +2,8 @@
 
 **Purpose:** Re-sequence the product roadmap so security and compliance precede taking money or shipping to the Play Store.
 **Date:** 2026-06-06
-**Companion docs:** `LEGAL_ROADMAP.md` (the legal/compliance counterpart — owns Phase B in full + the pre-payment commercial prerequisites), `ARCHITECTURE_REVIEW.md` (findings & severities), `DOCS.md §23` (roadmap — being superseded by this).
+**Start here:** `START-HERE.md` is the one-screen "where are we / what's next" front door; read it first, then this for the security phase detail.
+**Companion docs:** `LEGAL_ROADMAP.md` (the legal/compliance counterpart — owns Phase B in full + the pre-payment commercial prerequisites), `ARCHITECTURE_REVIEW.md` (findings & severities). *(The old `DOCS.md §23` roadmap table is retired — this doc is authoritative for phases.)*
 
 > **Division of labour:** this doc owns the **security** phases (0, A, C-tech, D-tech, E, F).
 > `LEGAL_ROADMAP.md` owns the **legal/compliance** track — **Phase B in full detail** and the

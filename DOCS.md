@@ -556,30 +556,16 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 ## 23. Roadmap
 
-> ⚠️ **Re-sequenced for security (2026-06-06).** The original plan put payments first and
-> the worker auth gate last — i.e. charging money through an open AI proxy. The authoritative
-> plans are now **`SECURITY_ROADMAP.md`** (security phases) and **`LEGAL_ROADMAP.md`** (legal/
-> compliance — Phase B + pre-payment commercial prerequisites), which close the holes *before*
-> taking money or shipping to the Play Store. See also `ARCHITECTURE_REVIEW.md` for findings & severities.
-
-### Done
-| Phase | Description | Status |
-|---|---|---|
-| Phase 1 | Auth skeleton: anonymous/premium states, PremiumModal, Google Sign In, voucher code | **Done** |
-| Phase 2 | Supabase cloud sync, data migration, offline queue, conflict resolution | **Done** |
-
-### Security-aligned sequence (supersedes the old Phase 3–5 order) — see `SECURITY_ROADMAP.md`
-| Phase | Description | Status |
-|---|---|---|
-| 0 | **Lock the live worker** — JWT auth, model allowlist, max_tokens cap, per-user rate limit, CORS lock, Anthropic spend cap | **✅ Deployed (2026-06-07)** — optional KV quota + spend cap remain |
-| A | **Server-authoritative entitlement** — `entitlements` table, server-checked voucher, remove voucher from bundle (the real paywall) | **✅ Deployed (2026-06-07)** — RLS SELECT-policy gap to close |
-| B | **Compliance & data rights** — privacy policy, health-data consent, Anthropic sub-processor disclosure, export + delete | **➜ Plan agreed — see `LEGAL_ROADMAP.md`** (18+/UK-EEA) |
-| C | **Resilience & trust** — single persistence layer, surface sync failures, CI build/test gate | Parallel with A/B |
-| D | **Payments** — Play Billing + Stripe, server-side receipt verification (now safe) | Pending B + `LEGAL_ROADMAP §12` (Cloudflare/domain/entity) |
-| E | **Pre-launch hardening + go-live gate** — pen self-test, secrets inventory, key rotation | Pending Phase D |
-| F | **Monitoring & incident readiness** — cost/error observability, abuse alerting, kill-switch runbook | Post-launch |
-
-**Feature track (parallel, gated):** AI Chef, planned items, etc. may proceed *only behind the Phase 0 gate* — no feature ships a new unauthenticated AI path.
+> ⚠️ **The phase roadmap moved (2026-06-06) — don't track status here.** This section is no longer
+> the roadmap; it would only drift. The authoritative sources are:
+> - **`START-HERE.md`** — where we are now + the single next action (read this first).
+> - **`SECURITY_ROADMAP.md`** — the master phase plan (0 → F) + threat model.
+> - **`LEGAL_ROADMAP.md`** — Phase B (privacy/compliance) detail + deploy checklist.
+> - **`ARCHITECTURE_REVIEW.md`** — findings & severities.
+>
+> *History, for context:* Phases 1–2 (auth skeleton; Supabase cloud sync) are **Done**. The original
+> "payments-first, security-last" Phase 3–5 order was re-sequenced for security — see the docs above.
+> Only the product **backlog** below is still maintained in this file.
 
 ### Other backlog
 | Feature | Notes |

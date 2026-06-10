@@ -8,6 +8,7 @@ threat **T5**); the immediate deliverables are §6–§9.
 
 **Date:** 2026-06-07 (living document — update as legal scope grows)
 **Status:** Phase B plan agreed (drafted with the "privacy-counsel" persona — `personas/privacy-counsel.md`).
+**Start here:** `START-HERE.md` is the one-screen "where are we / what's next" front door; read it first, then this for the legal/compliance detail.
 **Companion docs:** `SECURITY_ROADMAP.md` (security phases & threat model), `ARCHITECTURE_REVIEW.md`, `setup/supabase-schema.sql`.
 
 > ⚠️ **Not legal advice.** This plan was prepared to a pragmatic, defensible standard for a
