@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-10 · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-10 (deploy session: DB + worker live; publish/test remain) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -8,17 +8,20 @@ Read this first. It never duplicates roadmap detail — it points to it.
 ## Right now
 
 - **Phase:** B — Compliance & data rights (privacy, consent, export/delete). *Phases 0 & A are deployed.*
-- **State:** Phase B engineering is **built in code** (18+ gate, Art. 9 consent, Account & Privacy
-  screen with export + delete, worker delete route + 24-month retention sweep, meal PII hint) and
-  **committed to branch `phase-b-compliance`** — but **NOT yet deployed or manually tested**.
-  All `legal/` policy documents are drafted.
-- **Single next blocking step:** deploy + manually test the Phase B engineering.
+- **State (2026-06-10):** Phase B engineering built, committed, and **branch pushed to `origin`**.
+  **Deploy is part-done on live infra:** ✅ Supabase consent-column migration run & verified;
+  ✅ worker deployed (`/delete-account` + retention sweep live, `SUPABASE_SERVICE_ROLE` set).
+  **Not yet done:** publishing `legal/` pages (= merge `phase-b-compliance` → `main`, which also takes
+  the new app live) and the manual end-to-end test. Cron trigger deferred (optional). All `legal/`
+  docs drafted; Anthropic transfer mechanism **resolved**.
+- **Single next blocking step:** merge → `main` to publish (goes fully live), then manual-test
+  consent → export → delete.
 
 ## Next up (in order)
 
-1. **Deploy & test Phase B engineering** — checklist in `LEGAL_ROADMAP.md §13`
-   (run schema migration → set worker `SUPABASE_SERVICE_ROLE` + deploy → add Cloudflare Cron Trigger
-   → publish `legal/` pages → manual test the consent→export→delete flow).
+1. **Publish + test Phase B** — `LEGAL_ROADMAP.md §13` steps 5–6: merge `phase-b-compliance` → `main`
+   (GitHub Pages auto-deploys legal pages + the new app), then manual-test the consent→export→delete
+   flow on the live site. *(Optional, deferred: cron trigger, §13 step 4.)*
 2. **Narrow legal review** — *one* item left: the Art. 9 consent wording (`LEGAL_ROADMAP §7` tier 7g),
    before Play submission; downgradeable to a self-assessment + free ICO steer. *The Anthropic transfer
    mechanism is **resolved** (2026-06-10 — DPA already in force; `§8`).*
