@@ -265,9 +265,9 @@ Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
   worker → Settings → Triggers → Cron Triggers → Add → **`0 3 * * 0`** (weekly, Sun 03:00). Without it
   `scheduled()` never fires (no harm; on-request deletion still works; nothing is near the 24-month
   cutoff yet — `cloudflare-worker.js:375-382`).
-- [ ] **5. Publish `legal/` pages** — merge `phase-b-compliance` → `main`; Pages auto-deploys in ~1 min.
-  Then load `privacy.html` / `subprocessors.html` / `terms.html` / `delete-account.html` and confirm the
-  in-app `LEGAL.*` links resolve.
+- [x] **5. Publish `legal/` pages** — *done 2026-06-10; `main` fast-forwarded to Phase B (`2d42343`),
+  Pages redeploying. Rollback point if needed: `8622d24`.* Then load `privacy.html` /
+  `subprocessors.html` / `terms.html` / `delete-account.html` and confirm the in-app `LEGAL.*` links resolve.
 - [ ] **6. Manual test** (on the live deploy): 18+ gate blocks until checked → health-consent gate before
   first cloud sync → sign-in syncs → **Account & Privacy** screen: "Download my data" returns JSON →
   "Delete my account" calls `/delete-account`, account + all rows gone, re-sign-in starts clean.

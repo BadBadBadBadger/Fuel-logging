@@ -14,14 +14,15 @@ Read this first. It never duplicates roadmap detail — it points to it.
   **Not yet done:** publishing `legal/` pages (= merge `phase-b-compliance` → `main`, which also takes
   the new app live) and the manual end-to-end test. Cron trigger deferred (optional). All `legal/`
   docs drafted; Anthropic transfer mechanism **resolved**.
-- **Single next blocking step:** merge → `main` to publish (goes fully live), then manual-test
-  consent → export → delete.
+- **Single next blocking step:** manual-test the live site — open the app, **tick the consent pop-up
+  (don't sign out)**, then check export + delete. Phase B is **PUBLISHED** (`main` @ `2d42343`,
+  2026-06-10; rollback point `8622d24`).
 
 ## Next up (in order)
 
-1. **Publish + test Phase B** — `LEGAL_ROADMAP.md §13` steps 5–6: merge `phase-b-compliance` → `main`
-   (GitHub Pages auto-deploys legal pages + the new app), then manual-test the consent→export→delete
-   flow on the live site. *(Optional, deferred: cron trigger, §13 step 4.)*
+1. **Manual-test Phase B on the live site** — `LEGAL_ROADMAP.md §13` step 6: open the app → tick the
+   retroactive consent modal → confirm data intact → test "Download my data" + "Delete my account".
+   *(Optional, deferred: cron trigger, §13 step 4.)*
 2. **Narrow legal review** — *one* item left: the Art. 9 consent wording (`LEGAL_ROADMAP §7` tier 7g),
    before Play submission; downgradeable to a self-assessment + free ICO steer. *The Anthropic transfer
    mechanism is **resolved** (2026-06-10 — DPA already in force; `§8`).*
