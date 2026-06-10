@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "if (Test-Path './START-HERE.md') { Write-Output '=== START-HERE.md - current project status (read first) ==='; Get-Content './START-HERE.md' -Raw -Encoding utf8 }",
+            "timeout": 10,
+            "statusMessage": "Loading project status from START-HERE.md..."
+          }
+        ]
+      }
+    ]
+  }
+}
