@@ -258,11 +258,9 @@ Only re-build + bump `sw.js` if you touch `app.jsx` again before deploying.*
   exist (the full file is for a *fresh* DB only). Verify with
   `SELECT column_name FROM information_schema.columns WHERE table_name='profiles' AND column_name IN (…)`
   → expect 4 rows.
-- [ ] **2. Worker secret** — Cloudflare → Workers & Pages → your worker → Settings → Variables and Secrets →
-  add secret **`SUPABASE_SERVICE_ROLE`** = Supabase `service_role` key. Powers `/delete-account` *and* the
-  retention sweep (`cloudflare-worker.js:291`, `:232`). If `/redeem` already works, this is likely set.
-- [ ] **3. Deploy the worker** — paste `cloudflare-worker.js` into the dashboard editor → Deploy (or
-  `npx wrangler deploy` if you wire a `wrangler.toml`). Ships the `/delete-account` route + `scheduled()` sweep.
+- [x] **2. Worker secret** — *done 2026-06-10; `SUPABASE_SERVICE_ROLE` confirmed present in Cloudflare.*
+- [x] **3. Deploy the worker** — *done 2026-06-10; latest `cloudflare-worker.js` deployed via dashboard
+  editor (adds `/delete-account` route + `scheduled()` sweep).*
 - [ ] **4. Cron Trigger** — worker → Settings → Triggers → Cron Triggers → Add → **`0 3 * * 0`** (weekly,
   Sun 03:00). Without it `scheduled()` never fires (no harm; on-request deletion still works —
   `cloudflare-worker.js:375-382`).
