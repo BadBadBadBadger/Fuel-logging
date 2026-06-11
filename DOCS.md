@@ -581,6 +581,15 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 | **More badge categories** | Feature | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above. |
 | **Notification engine (context-aware)** | Feature · needs-a-plan | Merges the old "weekly weigh-in summary" + "meal/water reminders" into one push system. **Context-aware from the start:** reminders read the day (kcal remaining, last-logged time, water progress, weigh-in done?) and stay quiet once a goal is met. ⚠️ Platform reality: works on installed Android PWA/TWA; iOS Safari push is restricted — degrade gracefully. |
 
+**Unrefined — 2026-06-11 feature bucket (need breakdown/decisions before build):**
+
+| Feature | Type | Notes (raw) |
+|---|---|---|
+| **Coach: state-aware + varied suggestions** | Bug · unrefined | Coach repeats eggs/Greek yogurt every time and re-suggests food already logged today (it's stateless). Feed it today's logged item *names* so it varies suggestions and never re-recommends what you just ate. Variety also matters for gut health/fibre, not just macros. (Track A — "give the coach context".) |
+| **Coach: time-of-day pacing** | Bug · unrefined | Coach calls you "behind pace" early in the day — e.g. 62g protein by 7am still nagged about an 85g gap; 79/146g at 10am flagged "behind" when 2 meals + snacks remain (actually *ahead* of pace). Compute % of eating-window elapsed vs % of each goal hit and hand that to the prompt — don't let the LLM judge pace. (Track A.) |
+| **Macro model: protein-priority / fat-floor / carb-flex** | Calc change · unrefined · needs-a-plan | Replace proportional macro scaling (§9), which currently scales fat *below* its hormonal floor on a cut. New model: protein = muscle-preservation floor (2.2 g/kg **lean mass**); fat = a **minimum floor**, never below (can go above); carbs absorb the entire deficit/surplus. **OPEN:** (1) fat-floor value (~0.6–0.8 g/kg bodyweight?); (2) does 2.2 g/kg LBM apply to all modes or just cut/maintain?; (3) edge case — what gives when carbs hit their own floor *before* the deficit is met? Needs `calcTargets` rework + test rewrite. (Track B.) |
+| **Dietary requirements + allergies (config)** | Feature · unrefined · pre-go-live | Allergies, diet type (omnivore/veg/vegan/pescatarian) and dislikes live in the profile/config screen and feed **all** AI food prompts. Allergies must be a **hard filter** — the coach/AI must *never* suggest an allergen (safety, not just UX). **OPEN:** structured toggles + allergen checkboxes vs free-text. (Track C; also feeds Track A coach context.) |
+
 **Cut 2026-06-11 (do not re-spec):**
 - ~~Multi-user login (per-device PIN, namespaced storage)~~ — cloud sync already does multi-user the correct way (each Google account → its own Supabase rows). On-device PIN users would be a competing, worse identity system.
 - ~~Serving-size multiplier on Food Search~~ — if free users later report wrong portions, this is the shelved fix (a portion/quantity adjust is their only non-AI portion control). Until then, not worth the surface area.
