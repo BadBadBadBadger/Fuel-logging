@@ -1554,11 +1554,14 @@ var callAI = /*#__PURE__*/function () {
   var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(prompt) {
     var maxTokens,
       token,
+      ctrl,
+      timer,
       res,
       data,
-      _args19 = arguments;
+      _args19 = arguments,
+      _t19;
     return _regenerator().w(function (_context19) {
-      while (1) switch (_context19.n) {
+      while (1) switch (_context19.p = _context19.n) {
         case 0:
           maxTokens = _args19.length > 1 && _args19[1] !== undefined ? _args19[1] : 500;
           _context19.n = 1;
@@ -1571,9 +1574,17 @@ var callAI = /*#__PURE__*/function () {
           }
           throw new Error("Please sign in to use AI features.");
         case 2:
-          _context19.n = 3;
+          // Hard timeout so a stalled request (e.g. flaky mobile signal) can never hang
+          // the UI forever — it aborts and surfaces as a clear, retryable error.
+          ctrl = new AbortController();
+          timer = setTimeout(function () {
+            return ctrl.abort();
+          }, 30000);
+          _context19.p = 3;
+          _context19.n = 4;
           return fetch(AI_ENDPOINT, {
             method: "POST",
+            signal: ctrl.signal,
             headers: {
               "Content-Type": "application/json",
               "Authorization": "Bearer " + token
@@ -1587,41 +1598,52 @@ var callAI = /*#__PURE__*/function () {
               }]
             })
           });
-        case 3:
+        case 4:
           res = _context19.v;
+          _context19.n = 6;
+          break;
+        case 5:
+          _context19.p = 5;
+          _t19 = _context19.v;
+          throw new Error(_t19.name === "AbortError" ? "AI request timed out — check your connection and try again." : "Couldn't reach the AI — check your connection.");
+        case 6:
+          _context19.p = 6;
+          clearTimeout(timer);
+          return _context19.f(6);
+        case 7:
           if (res.ok) {
-            _context19.n = 7;
+            _context19.n = 11;
             break;
           }
           if (!(res.status === 401)) {
-            _context19.n = 4;
+            _context19.n = 8;
             break;
           }
           throw new Error("Your session expired — please sign in again.");
-        case 4:
+        case 8:
           if (!(res.status === 429)) {
-            _context19.n = 5;
+            _context19.n = 9;
             break;
           }
           throw new Error("Daily AI limit reached — try again tomorrow.");
-        case 5:
+        case 9:
           if (!(res.status === 402 || res.status === 403)) {
-            _context19.n = 6;
+            _context19.n = 10;
             break;
           }
           throw new Error("AI features require an active Premium account.");
-        case 6:
+        case 10:
           throw new Error("AI service is unavailable right now (" + res.status + ").");
-        case 7:
-          _context19.n = 8;
+        case 11:
+          _context19.n = 12;
           return res.json();
-        case 8:
+        case 12:
           data = _context19.v;
           return _context19.a(2, (data.content || []).map(function (b) {
             return b.text || "";
           }).join("").trim());
       }
-    }, _callee19);
+    }, _callee19, null, [[3, 5, 6, 7]]);
   }));
   return function callAI(_x35) {
     return _ref20.apply(this, arguments);
@@ -1885,7 +1907,7 @@ function SignInModal(_ref25) {
         client_id: GOOGLE_CLIENT_ID,
         callback: function () {
           var _callback = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(resp) {
-            var _yield$sb$auth$signIn, data, error, u, p, _t19;
+            var _yield$sb$auth$signIn, data, error, u, p, _t20;
             return _regenerator().w(function (_context21) {
               while (1) switch (_context21.p = _context21.n) {
                 case 0:
@@ -1916,7 +1938,7 @@ function SignInModal(_ref25) {
                   break;
                 case 3:
                   _context21.p = 3;
-                  _t19 = _context21.v;
+                  _t20 = _context21.v;
                   p = parseJwt(resp.credential);
                   setGUser({
                     name: p.name || "User",
@@ -1958,7 +1980,7 @@ function SignInModal(_ref25) {
   };
   var handleVoucher = /*#__PURE__*/function () {
     var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
-      var _t20;
+      var _t21;
       return _regenerator().w(function (_context22) {
         while (1) switch (_context22.p = _context22.n) {
           case 0:
@@ -1990,8 +2012,8 @@ function SignInModal(_ref25) {
             break;
           case 5:
             _context22.p = 5;
-            _t20 = _context22.v;
-            setVError(_t20.message || "Redemption failed. Try again.");
+            _t21 = _context22.v;
+            setVError(_t21.message || "Redemption failed. Try again.");
           case 6:
             return _context22.a(2);
         }
@@ -2492,7 +2514,7 @@ function AccountScreen(_ref29) {
     setErr = _useState22[1];
   var runDelete = /*#__PURE__*/function () {
     var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
-      var _t21;
+      var _t22;
       return _regenerator().w(function (_context23) {
         while (1) switch (_context23.p = _context23.n) {
           case 0:
@@ -2506,8 +2528,8 @@ function AccountScreen(_ref29) {
             break;
           case 3:
             _context23.p = 3;
-            _t21 = _context23.v;
-            setErr(_t21.message || "Deletion failed.");
+            _t22 = _context23.v;
+            setErr(_t22.message || "Deletion failed.");
             setBusy(false);
           case 4:
             return _context23.a(2);
@@ -3179,7 +3201,7 @@ function CoachCard(_ref36) {
 
   var gen = /*#__PURE__*/function () {
     var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
-      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, prompt, t, r, _t22;
+      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, prompt, t, r, _t23;
       return _regenerator().w(function (_context24) {
         while (1) switch (_context24.p = _context24.n) {
           case 0:
@@ -3201,7 +3223,7 @@ function CoachCard(_ref36) {
             protDelta = protNum - targets.protein;
             protLine = protDelta >= 0 ? "protein ".concat(protNum, "/").concat(targets.protein, "g \u2014 ").concat(protDelta, "g OVER, goal met \u2705 (do NOT suggest more protein)") : "protein ".concat(protNum, "/").concat(targets.protein, "g \u2014 ").concat(Math.abs(protDelta), "g under");
             waterLine = water >= 8 ? "water ".concat(water, "/8 glasses \u2014 goal met \u2705 (do NOT suggest more water)") : "water ".concat(water, "/8 glasses \u2014 ").concat(8 - water, " under");
-            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today (").concat(mode, " mode):\n- ").concat(kcalLine, "\n- ").concat(protLine, "\n- ").concat(waterLine, "\n- ").concat(streak, " day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " \u2014 never suggest more of a metric already marked \"goal met \u2705\" 3) genuine praise. Brief, personal, max one emoji per sentence.");
+            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today (").concat(mode, " mode):\n- ").concat(kcalLine, "\n- ").concat(protLine, "\n- ").concat(waterLine, "\n- ").concat(streak, " day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " \u2014 never suggest more of a metric already marked \"goal met \u2705\"; if a goal is already met, give it a quick celebratory nod instead of ignoring it 3) genuine praise. Brief, personal, max one emoji per sentence.");
             _context24.n = 3;
             return callAI(prompt, 200);
           case 3:
@@ -3219,7 +3241,7 @@ function CoachCard(_ref36) {
             break;
           case 5:
             _context24.p = 5;
-            _t22 = _context24.v;
+            _t23 = _context24.v;
           case 6:
             setLoading(false);
           case 7:
@@ -4098,7 +4120,7 @@ function WorkoutLogger(_ref44) {
   };
   var parseWorkout = /*#__PURE__*/function () {
     var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
-      var prompt, _t23, _t24;
+      var prompt, _t24, _t25;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
           case 0:
@@ -4112,16 +4134,16 @@ function WorkoutLogger(_ref44) {
             setHevyResult(null);
             _context25.p = 2;
             prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
-            _t23 = setHevyResult;
+            _t24 = setHevyResult;
             _context25.n = 3;
             return callAIJson(prompt, 200);
           case 3:
-            _t23(_context25.v);
+            _t24(_context25.v);
             _context25.n = 5;
             break;
           case 4:
             _context25.p = 4;
-            _t24 = _context25.v;
+            _t25 = _context25.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
@@ -4508,14 +4530,19 @@ function EntryEditor(_ref47) {
     _useState62 = _slicedToArray(_useState61, 2),
     reest = _useState62[0],
     setReest = _useState62[1];
+  var _useState63 = useState(""),
+    _useState64 = _slicedToArray(_useState63, 2),
+    reestMsg = _useState64[0],
+    setReestMsg = _useState64[1]; // "" | "done" | error text
   var set = function set(k, v) {
-    return setF(function (p) {
+    setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
     });
+    setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
     var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
-      var upd, oft, r, _t25;
+      var fill, upd, oft, _t26, _t27;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
           case 0:
@@ -4536,35 +4563,52 @@ function EntryEditor(_ref47) {
             return _context26.a(2);
           case 2:
             setReest(true);
+            setReestMsg("");
+            fill = function fill(r) {
+              return setF(function (p) {
+                return _objectSpread(_objectSpread({}, p), {}, {
+                  kcal: String(Math.round(r.kcal)),
+                  protein: String(Math.round(r.protein * 10) / 10),
+                  carbs: String(Math.round(r.carbs * 10) / 10),
+                  fat: String(Math.round(r.fat * 10) / 10)
+                });
+              });
+            };
             _context26.p = 3;
             _context26.n = 4;
             return callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
           case 4:
             upd = _context26.v;
-            _context26.n = 5;
-            return searchOFT(f.name.trim());
-          case 5:
-            oft = _context26.v;
-            r = oft && oft.confidence > upd.confidence ? oft : upd;
-            setF(function (p) {
-              return _objectSpread(_objectSpread({}, p), {}, {
-                kcal: String(Math.round(r.kcal)),
-                protein: String(Math.round(r.protein * 10) / 10),
-                carbs: String(Math.round(r.carbs * 10) / 10),
-                fat: String(Math.round(r.fat * 10) / 10)
-              });
-            });
-            _context26.n = 7;
+            _context26.n = 6;
             break;
-          case 6:
-            _context26.p = 6;
-            _t25 = _context26.v;
-          case 7:
+          case 5:
+            _context26.p = 5;
+            _t26 = _context26.v;
+            setReestMsg("Couldn't reach the AI — check your connection and try again.");
             setReest(false);
+            return _context26.a(2);
+          case 6:
+            // Show the AI answer immediately — the user never waits on Open Food Facts.
+            fill(upd);
+            setReestMsg("done");
+            setReest(false);
+            // OFF is a best-effort background refinement: bounded (6s) and may not return
+            // at all on a poor connection. Only upgrades the figures if it beats the AI.
+            _context26.p = 7;
+            _context26.n = 8;
+            return searchOFT(f.name.trim());
           case 8:
+            oft = _context26.v;
+            if (oft && oft.confidence > upd.confidence) fill(oft);
+            _context26.n = 10;
+            break;
+          case 9:
+            _context26.p = 9;
+            _t27 = _context26.v;
+          case 10:
             return _context26.a(2);
         }
-      }, _callee26, null, [[3, 6]]);
+      }, _callee26, null, [[7, 9], [3, 5]]);
     }));
     return function reestimate() {
       return _ref48.apply(this, arguments);
@@ -4682,7 +4726,7 @@ function EntryEditor(_ref47) {
     style: {
       width: "100%",
       padding: "10px",
-      marginBottom: 8,
+      marginBottom: reestMsg ? 6 : 8,
       background: "#1c1a15",
       border: "1px solid ".concat(A, "44"),
       borderRadius: 10,
@@ -4692,7 +4736,14 @@ function EntryEditor(_ref47) {
       cursor: "pointer",
       opacity: reest ? 0.6 : 1
     }
-  }, reest ? "Re-estimating…" : "✨ AI re-estimate from name"), /*#__PURE__*/React.createElement("div", {
+  }, reest ? "Re-estimating…" : reestMsg === "done" ? "✓ Updated — re-estimate again" : "✨ AI re-estimate from name"), reestMsg && reestMsg !== "done" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#ff7b6b",
+      marginBottom: 8,
+      lineHeight: 1.4
+    }
+  }, reestMsg), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8
@@ -4761,10 +4812,10 @@ function Dashboard(_ref49) {
     isOnline = _ref49.isOnline,
     syncMsg = _ref49.syncMsg;
   var isPremium = authState === "premium";
-  var _useState63 = useState(null),
-    _useState64 = _slicedToArray(_useState63, 2),
-    editingId = _useState64[0],
-    setEditingId = _useState64[1];
+  var _useState65 = useState(null),
+    _useState66 = _slicedToArray(_useState65, 2),
+    editingId = _useState66[0],
+    setEditingId = _useState66[1];
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -4776,18 +4827,18 @@ function Dashboard(_ref49) {
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
-  var _useState65 = useState({}),
-    _useState66 = _slicedToArray(_useState65, 2),
-    savedIds = _useState66[0],
-    setSavedIds = _useState66[1];
-  var _useState67 = useState(false),
+  var _useState67 = useState({}),
     _useState68 = _slicedToArray(_useState67, 2),
-    editingTarget = _useState68[0],
-    setEditingTarget = _useState68[1];
-  var _useState69 = useState(""),
+    savedIds = _useState68[0],
+    setSavedIds = _useState68[1];
+  var _useState69 = useState(false),
     _useState70 = _slicedToArray(_useState69, 2),
-    targetInputVal = _useState70[0],
-    setTargetInputVal = _useState70[1];
+    editingTarget = _useState70[0],
+    setEditingTarget = _useState70[1];
+  var _useState71 = useState(""),
+    _useState72 = _slicedToArray(_useState71, 2),
+    targetInputVal = _useState72[0],
+    setTargetInputVal = _useState72[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) onSetCustomKcal(v);
@@ -5623,29 +5674,43 @@ function searchOFT(_x39) {
 }
 function _searchOFT() {
   _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(query) {
-    var _p$product_name2, res, data, p, sg2, f, n, _t31;
+    var _p$product_name2, ctrl, timer, res, data, p, sg2, f, n, _t33;
     return _regenerator().w(function (_context50) {
       while (1) switch (_context50.p = _context50.n) {
         case 0:
           _context50.p = 0;
-          _context50.n = 1;
-          return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
-        case 1:
-          res = _context50.v;
+          // Bound this optional cross-check — OFF is flaky; never let it add a long
+          // tail to an AI result. Abort after 6s and fall back to the AI estimate.
+          ctrl = new AbortController();
+          timer = setTimeout(function () {
+            return ctrl.abort();
+          }, 6000);
+          _context50.p = 1;
           _context50.n = 2;
-          return res.json();
+          return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"), {
+            signal: ctrl.signal
+          });
         case 2:
+          res = _context50.v;
+        case 3:
+          _context50.p = 3;
+          clearTimeout(timer);
+          return _context50.f(3);
+        case 4:
+          _context50.n = 5;
+          return res.json();
+        case 5:
           data = _context50.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context50.n = 3;
+            _context50.n = 6;
             break;
           }
           return _context50.a(2, null);
-        case 3:
+        case 6:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
           return _context50.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
@@ -5657,12 +5722,12 @@ function _searchOFT() {
             reasoning: "Open Food Facts label data \u2014 ".concat(p.product_name, " per serving (~").concat(Math.round(sg2), "g)"),
             source: "oft"
           });
-        case 4:
-          _context50.p = 4;
-          _t31 = _context50.v;
+        case 7:
+          _context50.p = 7;
+          _t33 = _context50.v;
           return _context50.a(2, null);
       }
-    }, _callee50, null, [[0, 4]]);
+    }, _callee50, null, [[1,, 3, 4], [0, 7]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
@@ -5670,14 +5735,14 @@ function ItemRow(_ref53) {
   var item = _ref53.item,
     onReestimate = _ref53.onReestimate,
     reestimating = _ref53.reestimating;
-  var _useState71 = useState(false),
-    _useState72 = _slicedToArray(_useState71, 2),
-    editing = _useState72[0],
-    setEditing = _useState72[1];
-  var _useState73 = useState(item.name),
+  var _useState73 = useState(false),
     _useState74 = _slicedToArray(_useState73, 2),
-    draft = _useState74[0],
-    setDraft = _useState74[1];
+    editing = _useState74[0],
+    setEditing = _useState74[1];
+  var _useState75 = useState(item.name),
+    _useState76 = _slicedToArray(_useState75, 2),
+    draft = _useState76[0],
+    setDraft = _useState76[1];
   var cc = confColor(item.confidence);
   var submit = function submit() {
     setEditing(false);
@@ -5792,30 +5857,34 @@ function ItemRow(_ref53) {
 function AILog(_ref54) {
   var onAdd = _ref54.onAdd,
     onBack = _ref54.onBack;
-  var _useState75 = useState(""),
-    _useState76 = _slicedToArray(_useState75, 2),
-    desc = _useState76[0],
-    setDesc = _useState76[1];
-  var _useState77 = useState(false),
+  var _useState77 = useState(""),
     _useState78 = _slicedToArray(_useState77, 2),
-    loading = _useState78[0],
-    setLoading = _useState78[1];
-  var _useState79 = useState(null),
+    desc = _useState78[0],
+    setDesc = _useState78[1];
+  var _useState79 = useState(false),
     _useState80 = _slicedToArray(_useState79, 2),
-    items = _useState80[0],
-    setItems = _useState80[1];
+    loading = _useState80[0],
+    setLoading = _useState80[1];
   var _useState81 = useState(null),
     _useState82 = _slicedToArray(_useState81, 2),
-    reestIdx = _useState82[0],
-    setReestIdx = _useState82[1];
-  var _useState83 = useState(""),
+    items = _useState82[0],
+    setItems = _useState82[1];
+  var _useState83 = useState(null),
     _useState84 = _slicedToArray(_useState83, 2),
-    error = _useState84[0],
-    setError = _useState84[1];
-  var _useState85 = useState(false),
+    reestIdx = _useState84[0],
+    setReestIdx = _useState84[1];
+  var _useState85 = useState(""),
     _useState86 = _slicedToArray(_useState85, 2),
-    loggedAll = _useState86[0],
-    setLoggedAll = _useState86[1];
+    error = _useState86[0],
+    setError = _useState86[1];
+  var _useState87 = useState(false),
+    _useState88 = _slicedToArray(_useState87, 2),
+    loggedAll = _useState88[0],
+    setLoggedAll = _useState88[1];
+  var _useState89 = useState([]),
+    _useState90 = _slicedToArray(_useState89, 2),
+    loggedIdx = _useState90[0],
+    setLoggedIdx = _useState90[1];
   var totals = items ? items.reduce(function (a, it) {
     return {
       kcal: a.kcal + it.kcal,
@@ -5834,7 +5903,7 @@ function AILog(_ref54) {
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
     var _ref55 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
-      var parsed, aiItems, oftResults, merged, _t26;
+      var parsed, aiItems, oftResults, merged, _t28;
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.p = _context28.n) {
           case 0:
@@ -5873,8 +5942,8 @@ function AILog(_ref54) {
             break;
           case 5:
             _context28.p = 5;
-            _t26 = _context28.v;
-            setError("Estimation failed: " + _t26.message);
+            _t28 = _context28.v;
+            setError("Estimation failed: " + _t28.message);
           case 6:
             setLoading(false);
           case 7:
@@ -5888,7 +5957,7 @@ function AILog(_ref54) {
   }();
   var reestimate = /*#__PURE__*/function () {
     var _ref56 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(idx, newName) {
-      var updated, oft, _final, _t27;
+      var updated, oft, _final, _t29;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
           case 0:
@@ -5916,7 +5985,7 @@ function AILog(_ref54) {
             break;
           case 4:
             _context29.p = 4;
-            _t27 = _context29.v;
+            _t29 = _context29.v;
           case 5:
             setReestIdx(null);
           case 6:
@@ -5940,13 +6009,16 @@ function AILog(_ref54) {
     });
     onBack();
   };
-  var logItem = function logItem(item) {
+  var logItem = function logItem(item, idx) {
     onAdd({
       name: item.name,
       kcal: Math.round(item.kcal),
       protein: Math.round(item.protein * 10) / 10,
       carbs: Math.round(item.carbs * 10) / 10,
       fat: Math.round(item.fat * 10) / 10
+    });
+    setLoggedIdx(function (prev) {
+      return prev.includes(idx) ? prev : [].concat(_toConsumableArray(prev), [idx]);
     });
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -6121,18 +6193,19 @@ function AILog(_ref54) {
       marginBottom: 12
     }
   }, "or tap individual items to log them separately \u2191"), items.map(function (item, i) {
+    var added = loggedIdx.includes(i);
     return /*#__PURE__*/React.createElement("button", {
       key: i,
       onClick: function onClick() {
-        return logItem(item);
+        return logItem(item, i);
       },
       style: {
         width: "100%",
         padding: "10px 14px",
-        background: "#1c1a15",
-        border: "1px solid ".concat(BD),
+        background: added ? A + "1e" : "#1c1a15",
+        border: "1px solid ".concat(added ? A + "66" : BD),
         borderRadius: 10,
-        color: "#b6b0a4",
+        color: added ? A : "#b6b0a4",
         fontSize: 12,
         fontWeight: 600,
         cursor: "pointer",
@@ -6141,7 +6214,7 @@ function AILog(_ref54) {
         display: "flex",
         justifyContent: "space-between"
       }
-    }, /*#__PURE__*/React.createElement("span", null, "+ ", item.name), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, added ? "✓ Added · " : "+ ", item.name), /*#__PURE__*/React.createElement("span", {
       style: {
         color: A,
         fontWeight: 900
@@ -6157,14 +6230,14 @@ function QuickAdd(_ref57) {
     onBack = _ref57.onBack,
     meals = _ref57.meals,
     setMeals = _ref57.setMeals;
-  var _useState87 = useState(""),
-    _useState88 = _slicedToArray(_useState87, 2),
-    search = _useState88[0],
-    setSearch = _useState88[1];
-  var _useState89 = useState(null),
-    _useState90 = _slicedToArray(_useState89, 2),
-    modal = _useState90[0],
-    setModal = _useState90[1];
+  var _useState91 = useState(""),
+    _useState92 = _slicedToArray(_useState91, 2),
+    search = _useState92[0],
+    setSearch = _useState92[1];
+  var _useState93 = useState(null),
+    _useState94 = _slicedToArray(_useState93, 2),
+    modal = _useState94[0],
+    setModal = _useState94[1];
   var save = /*#__PURE__*/function () {
     var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(m) {
       return _regenerator().w(function (_context30) {
@@ -6357,29 +6430,29 @@ function QuickAdd(_ref57) {
 function FoodSearch(_ref59) {
   var onAdd = _ref59.onAdd,
     onBack = _ref59.onBack;
-  var _useState91 = useState(""),
-    _useState92 = _slicedToArray(_useState91, 2),
-    q = _useState92[0],
-    setQ = _useState92[1];
-  var _useState93 = useState([]),
-    _useState94 = _slicedToArray(_useState93, 2),
-    results = _useState94[0],
-    setResults = _useState94[1];
-  var _useState95 = useState(false),
+  var _useState95 = useState(""),
     _useState96 = _slicedToArray(_useState95, 2),
-    loading = _useState96[0],
-    setLoading = _useState96[1];
-  var _useState97 = useState(""),
+    q = _useState96[0],
+    setQ = _useState96[1];
+  var _useState97 = useState([]),
     _useState98 = _slicedToArray(_useState97, 2),
-    error = _useState98[0],
-    setError = _useState98[1];
+    results = _useState98[0],
+    setResults = _useState98[1];
   var _useState99 = useState(false),
     _useState100 = _slicedToArray(_useState99, 2),
-    done = _useState100[0],
-    setDone = _useState100[1];
+    loading = _useState100[0],
+    setLoading = _useState100[1];
+  var _useState101 = useState(""),
+    _useState102 = _slicedToArray(_useState101, 2),
+    error = _useState102[0],
+    setError = _useState102[1];
+  var _useState103 = useState(false),
+    _useState104 = _slicedToArray(_useState103, 2),
+    done = _useState104[0],
+    setDone = _useState104[1];
   var search = /*#__PURE__*/function () {
     var _ref60 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
-      var res, data, parseServing, parseKcal, valid, _t28;
+      var res, data, parseServing, parseKcal, valid, _t30;
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.p = _context31.n) {
           case 0:
@@ -6450,7 +6523,7 @@ function FoodSearch(_ref59) {
             break;
           case 7:
             _context31.p = 7;
-            _t28 = _context31.v;
+            _t30 = _context31.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
@@ -6641,34 +6714,34 @@ function History(_ref61) {
       unit: "g"
     }
   };
-  var _useState101 = useState("30D"),
-    _useState102 = _slicedToArray(_useState101, 2),
-    range = _useState102[0],
-    setRange = _useState102[1];
-  var _useState103 = useState(["KCAL"]),
-    _useState104 = _slicedToArray(_useState103, 2),
-    metrics = _useState104[0],
-    setMetrics = _useState104[1];
-  var _useState105 = useState(false),
+  var _useState105 = useState("30D"),
     _useState106 = _slicedToArray(_useState105, 2),
-    showWeight = _useState106[0],
-    setShowWeight = _useState106[1];
-  var _useState107 = useState("line"),
+    range = _useState106[0],
+    setRange = _useState106[1];
+  var _useState107 = useState(["KCAL"]),
     _useState108 = _slicedToArray(_useState107, 2),
-    chartType = _useState108[0],
-    setChartType = _useState108[1];
-  var _useState109 = useState(Math.max(0, history.length - 1)),
+    metrics = _useState108[0],
+    setMetrics = _useState108[1];
+  var _useState109 = useState(false),
     _useState110 = _slicedToArray(_useState109, 2),
-    dayIdx = _useState110[0],
-    setDayIdx = _useState110[1];
-  var _useState111 = useState(null),
+    showWeight = _useState110[0],
+    setShowWeight = _useState110[1];
+  var _useState111 = useState("line"),
     _useState112 = _slicedToArray(_useState111, 2),
-    addCtx = _useState112[0],
-    setAddCtx = _useState112[1];
-  var _useState113 = useState(null),
+    chartType = _useState112[0],
+    setChartType = _useState112[1];
+  var _useState113 = useState(Math.max(0, history.length - 1)),
     _useState114 = _slicedToArray(_useState113, 2),
-    editId = _useState114[0],
-    setEditId = _useState114[1];
+    dayIdx = _useState114[0],
+    setDayIdx = _useState114[1];
+  var _useState115 = useState(null),
+    _useState116 = _slicedToArray(_useState115, 2),
+    addCtx = _useState116[0],
+    setAddCtx = _useState116[1];
+  var _useState117 = useState(null),
+    _useState118 = _slicedToArray(_useState117, 2),
+    editId = _useState118[0],
+    setEditId = _useState118[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -7727,116 +7800,116 @@ function Achievements(_ref68) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState115 = useState("dashboard"),
-    _useState116 = _slicedToArray(_useState115, 2),
-    view = _useState116[0],
-    setView = _useState116[1];
-  var _useState117 = useState([]),
-    _useState118 = _slicedToArray(_useState117, 2),
-    logs = _useState118[0],
-    setLogs = _useState118[1];
-  var _useState119 = useState(0),
+  var _useState119 = useState("dashboard"),
     _useState120 = _slicedToArray(_useState119, 2),
-    water = _useState120[0],
-    setWater = _useState120[1];
-  var _useState121 = useState("cut"),
+    view = _useState120[0],
+    setView = _useState120[1];
+  var _useState121 = useState([]),
     _useState122 = _slicedToArray(_useState121, 2),
-    mode = _useState122[0],
-    setMode = _useState122[1];
-  var _useState123 = useState(null),
+    logs = _useState122[0],
+    setLogs = _useState122[1];
+  var _useState123 = useState(0),
     _useState124 = _slicedToArray(_useState123, 2),
-    prof = _useState124[0],
-    setProf = _useState124[1];
-  var _useState125 = useState([]),
+    water = _useState124[0],
+    setWater = _useState124[1];
+  var _useState125 = useState("cut"),
     _useState126 = _slicedToArray(_useState125, 2),
-    hist = _useState126[0],
-    setHist = _useState126[1];
-  var _useState127 = useState([].concat(DEF_MEALS)),
+    mode = _useState126[0],
+    setMode = _useState126[1];
+  var _useState127 = useState(null),
     _useState128 = _slicedToArray(_useState127, 2),
-    meals = _useState128[0],
-    setMeals = _useState128[1];
+    prof = _useState128[0],
+    setProf = _useState128[1];
   var _useState129 = useState([]),
     _useState130 = _slicedToArray(_useState129, 2),
-    workouts = _useState130[0],
-    setWorkouts = _useState130[1];
-  var _useState131 = useState([]),
+    hist = _useState130[0],
+    setHist = _useState130[1];
+  var _useState131 = useState([].concat(DEF_MEALS)),
     _useState132 = _slicedToArray(_useState131, 2),
-    earnedBdgs = _useState132[0],
-    setEarnedBdgs = _useState132[1];
-  var _useState133 = useState(null),
+    meals = _useState132[0],
+    setMeals = _useState132[1];
+  var _useState133 = useState([]),
     _useState134 = _slicedToArray(_useState133, 2),
-    newBadge = _useState134[0],
-    setNewBadge = _useState134[1];
-  var _useState135 = useState(false),
+    workouts = _useState134[0],
+    setWorkouts = _useState134[1];
+  var _useState135 = useState([]),
     _useState136 = _slicedToArray(_useState135, 2),
-    ready = _useState136[0],
-    setReady = _useState136[1];
-  var _useState137 = useState([]),
+    earnedBdgs = _useState136[0],
+    setEarnedBdgs = _useState136[1];
+  var _useState137 = useState(null),
     _useState138 = _slicedToArray(_useState137, 2),
-    weighIns = _useState138[0],
-    setWeighIns = _useState138[1];
-  var _useState139 = useState(0),
+    newBadge = _useState138[0],
+    setNewBadge = _useState138[1];
+  var _useState139 = useState(false),
     _useState140 = _slicedToArray(_useState139, 2),
-    tdeeAdj = _useState140[0],
-    setTdeeAdj = _useState140[1];
-  var _useState141 = useState(0),
+    ready = _useState140[0],
+    setReady = _useState140[1];
+  var _useState141 = useState([]),
     _useState142 = _slicedToArray(_useState141, 2),
-    coachKey = _useState142[0],
-    setCoachKey = _useState142[1];
-  var _useState143 = useState(null),
+    weighIns = _useState142[0],
+    setWeighIns = _useState142[1];
+  var _useState143 = useState(0),
     _useState144 = _slicedToArray(_useState143, 2),
-    streakAnim = _useState144[0],
-    setStreakAnim = _useState144[1];
-  var _useState145 = useState(null),
+    tdeeAdj = _useState144[0],
+    setTdeeAdj = _useState144[1];
+  var _useState145 = useState(0),
     _useState146 = _slicedToArray(_useState145, 2),
-    customKcal = _useState146[0],
-    setCustomKcal = _useState146[1];
-  var _useState147 = useState(false),
+    coachKey = _useState146[0],
+    setCoachKey = _useState146[1];
+  var _useState147 = useState(null),
     _useState148 = _slicedToArray(_useState147, 2),
-    aggressiveCutAcked = _useState148[0],
-    setAggressiveCutAcked = _useState148[1];
+    streakAnim = _useState148[0],
+    setStreakAnim = _useState148[1];
+  var _useState149 = useState(null),
+    _useState150 = _slicedToArray(_useState149, 2),
+    customKcal = _useState150[0],
+    setCustomKcal = _useState150[1];
+  var _useState151 = useState(false),
+    _useState152 = _slicedToArray(_useState151, 2),
+    aggressiveCutAcked = _useState152[0],
+    setAggressiveCutAcked = _useState152[1];
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState149 = useState("anonymous"),
-    _useState150 = _slicedToArray(_useState149, 2),
-    authState = _useState150[0],
-    setAuthState = _useState150[1];
-  var _useState151 = useState(null),
-    _useState152 = _slicedToArray(_useState151, 2),
-    authUser = _useState152[0],
-    setAuthUser = _useState152[1];
-  var _useState153 = useState(null),
+  var _useState153 = useState("anonymous"),
     _useState154 = _slicedToArray(_useState153, 2),
-    premiumGate = _useState154[0],
-    setPremiumGate = _useState154[1]; // {emoji, name} | null
-  var _useState155 = useState(false),
+    authState = _useState154[0],
+    setAuthState = _useState154[1];
+  var _useState155 = useState(null),
     _useState156 = _slicedToArray(_useState155, 2),
-    showSignIn = _useState156[0],
-    setShowSignIn = _useState156[1];
-  var _useState157 = useState(false),
+    authUser = _useState156[0],
+    setAuthUser = _useState156[1];
+  var _useState157 = useState(null),
     _useState158 = _slicedToArray(_useState157, 2),
-    showSignOut = _useState158[0],
-    setShowSignOut = _useState158[1];
+    premiumGate = _useState158[0],
+    setPremiumGate = _useState158[1]; // {emoji, name} | null
   var _useState159 = useState(false),
     _useState160 = _slicedToArray(_useState159, 2),
-    showLapsed = _useState160[0],
-    setShowLapsed = _useState160[1];
+    showSignIn = _useState160[0],
+    setShowSignIn = _useState160[1];
   var _useState161 = useState(false),
     _useState162 = _slicedToArray(_useState161, 2),
-    needsConsent = _useState162[0],
-    setNeedsConsent = _useState162[1]; // retroactive Art. 9 consent (R2)
-  var _useState163 = useState(null),
+    showSignOut = _useState162[0],
+    setShowSignOut = _useState162[1];
+  var _useState163 = useState(false),
     _useState164 = _slicedToArray(_useState163, 2),
-    consentInfo = _useState164[0],
-    setConsentInfo = _useState164[1]; // parsed local health_consent for display
-  var _useState165 = useState(navigator.onLine),
+    showLapsed = _useState164[0],
+    setShowLapsed = _useState164[1];
+  var _useState165 = useState(false),
     _useState166 = _slicedToArray(_useState165, 2),
-    isOnline = _useState166[0],
-    setIsOnline = _useState166[1];
-  var _useState167 = useState(""),
+    needsConsent = _useState166[0],
+    setNeedsConsent = _useState166[1]; // retroactive Art. 9 consent (R2)
+  var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    syncMsg = _useState168[0],
-    setSyncMsg = _useState168[1];
+    consentInfo = _useState168[0],
+    setConsentInfo = _useState168[1]; // parsed local health_consent for display
+  var _useState169 = useState(navigator.onLine),
+    _useState170 = _slicedToArray(_useState169, 2),
+    isOnline = _useState170[0],
+    setIsOnline = _useState170[1];
+  var _useState171 = useState(""),
+    _useState172 = _slicedToArray(_useState171, 2),
+    syncMsg = _useState172[0],
+    setSyncMsg = _useState172[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -8351,7 +8424,7 @@ function App() {
 
   var handleSignInSuccess = /*#__PURE__*/function () {
     var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t29;
+      var user, rec, pulled, tod, snap, _t31;
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.p = _context44.n) {
           case 0:
@@ -8433,7 +8506,7 @@ function App() {
             break;
           case 9:
             _context44.p = 9;
-            _t29 = _context44.v;
+            _t31 = _context44.v;
           case 10:
             setSyncMsg("");
           case 11:
@@ -8484,7 +8557,7 @@ function App() {
   }();
   var handleSignOut = /*#__PURE__*/function () {
     var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
-      var clearKeys, _i2, _clearKeys, k, i, key, _t30;
+      var clearKeys, _i2, _clearKeys, k, i, key, _t32;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.p = _context46.n) {
           case 0:
@@ -8500,7 +8573,7 @@ function App() {
             break;
           case 3:
             _context46.p = 3;
-            _t30 = _context46.v;
+            _t32 = _context46.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i2 = 0, _clearKeys = clearKeys;

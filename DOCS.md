@@ -577,6 +577,7 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 |---|---|---|
 | **Bug: AI coach ignores goals already met/exceeded** | Bug · quick win | Coach tells you to "drink 2 more glasses" after 10/8, or "eat 25g more protein" after 200/175g. **Cause:** the prompt at `app.jsx` `CoachCard` (~L1180) sends raw `X/Y` ratios but never states over/under, so the model assumes a deficit. **Fix:** compute surplus/deficit per metric and put it in the prompt explicitly (e.g. "protein 200/175g — 25g OVER, goal met ✅"; "water 10/8 — exceeded"), and instruct it not to suggest more of a metric that's already met. |
 | ~~Edit log entry in place (+ AI re-estimate)~~ | Enhancement | ✅ **Done (v6.1.2).** Inline `EntryEditor` on the dashboard today-list + History day view; manual edit for all, AI re-estimate premium-gated. |
+| **AI estimate on new Quick Add item** | Enhancement · quick | When creating a new Quick Add meal, add a ✨ AI-estimate button that fills kcal/macros from the typed name. Reuses `AI_REESTIMATE_PROMPT` + Open Food Facts cross-check (same as `EntryEditor`); premium-gated. Low effort — machinery already exists. |
 | **Celebration redesign — one engine** | Polish · decided | Collapse the two celebration systems into one. Daily streak increment = quiet **pop + increment on the header 🔥 chip** (no overlay, no sound). Badges become the **sole** fanfare authority: Bronze/Silver = toast + chip glow; **Gold tier and above = full overlay, slowed to ~2.5s** so it's readable. **Delete** the standalone streak-milestone overlay (old days 7/14/30/50/100, `app.jsx` ~L3112; `StreakCelebration` ~L1048). |
 | **More badge categories** | Feature | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above. |
 | **Notification engine (context-aware)** | Feature · needs-a-plan | Merges the old "weekly weigh-in summary" + "meal/water reminders" into one push system. **Context-aware from the start:** reminders read the day (kcal remaining, last-logged time, water progress, weigh-in done?) and stay quiet once a goal is met. ⚠️ Platform reality: works on installed Android PWA/TWA; iOS Safari push is restricted — degrade gracefully. |
@@ -588,6 +589,8 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 | **Coach: state-aware + varied suggestions** | Bug · unrefined | Coach repeats eggs/Greek yogurt every time and re-suggests food already logged today (it's stateless). Feed it today's logged item *names* so it varies suggestions and never re-recommends what you just ate. Variety also matters for gut health/fibre, not just macros. (Track A — "give the coach context".) |
 | **Coach: time-of-day pacing** | Bug · unrefined | Coach calls you "behind pace" early in the day — e.g. 62g protein by 7am still nagged about an 85g gap; 79/146g at 10am flagged "behind" when 2 meals + snacks remain (actually *ahead* of pace). Compute % of eating-window elapsed vs % of each goal hit and hand that to the prompt — don't let the LLM judge pace. (Track A.) |
 | **Macro model: protein-priority / fat-floor / carb-flex** | Calc change · unrefined · needs-a-plan | Replace proportional macro scaling (§9), which currently scales fat *below* its hormonal floor on a cut. New model: protein = muscle-preservation floor (2.2 g/kg **lean mass**); fat = a **minimum floor**, never below (can go above); carbs absorb the entire deficit/surplus. **OPEN:** (1) fat-floor value (~0.6–0.8 g/kg bodyweight?); (2) does 2.2 g/kg LBM apply to all modes or just cut/maintain?; (3) edge case — what gives when carbs hit their own floor *before* the deficit is met? Needs `calcTargets` rework + test rewrite. (Track B.) |
+| **Add feedback: re-blink + count on repeat add** | Polish · unrefined | After an item is added (AI Log per-item, and similar), tapping it *again* gives no signal even though it adds a second time — easy to over-tap. The "✓ Added" should re-blink/pulse on each tap and ideally show a count ("✓ Added ×2") so repeat adds register visually. |
+| **Haptic feedback on add (vibrate)** | Polish · unrefined | A short device vibrate (`navigator.vibrate`) on add/log actions for sensory confirmation — especially useful when tapping fast. App-wide (AI Log items, ⚡ quick-add, Save). Feature-detect; no-op where unsupported (iOS Safari lacks it). |
 | **Dietary requirements + allergies (config)** | Feature · unrefined · pre-go-live | Allergies, diet type (omnivore/veg/vegan/pescatarian) and dislikes live in the profile/config screen and feed **all** AI food prompts. Allergies must be a **hard filter** — the coach/AI must *never* suggest an allergen (safety, not just UX). **OPEN:** structured toggles + allergen checkboxes vs free-text. (Track C; also feeds Track A coach context.) |
 
 **Cut 2026-06-11 (do not re-spec):**
@@ -1302,6 +1305,22 @@ appears after a deploy.
 ---
 
 ## 37. Changelog
+
+### v6.1.3 — AI feedback + bad-connection resilience (June 2026)
+- **AI Log per-item feedback:** tapping an item in the AI breakdown now turns it
+  green with a "✓ Added" confirmation (previously silent — you couldn't tell if
+  it logged).
+- **Re-estimate feedback:** the inline editor's ✨ re-estimate now confirms with
+  "✓ Updated" on success and a clear red error on failure (was silent both ways).
+- **No more infinite hangs:** AI calls (`callAI`) get a 30s `AbortController`
+  timeout, so a stalled request on poor signal fails with a retryable error
+  instead of hanging forever.
+- **Snappier re-estimate on weak signal:** the Open Food Facts cross-check is now
+  bounded to 6s *and* non-blocking — the AI answer fills the fields immediately,
+  OFF only refines in the background if it returns.
+- **Coach celebrates hit goals:** a met goal now gets a quick positive nod rather
+  than being silently ignored (builds on the v6.1.1 no-nag fix).
+- Files touched: `app.jsx`, `app.js`, `sw.js` (cache → `fuel-log-v33`).
 
 ### v6.1.2 — Edit log entry in place + AI re-estimate (June 2026)
 - **Edit logged entries in place:** tap any food entry (today's dashboard list

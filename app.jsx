@@ -506,10 +506,23 @@ const deleteAccountRequest = async () => {
 const callAI = async (prompt, maxTokens = 500) => {
   const token = await getAccessToken();
   if (!token) throw new Error("Please sign in to use AI features.");
-  const res = await fetch(AI_ENDPOINT, { method:"POST",
-    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
-    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens,
-      messages:[{ role:"user", content:prompt }] }) });
+  // Hard timeout so a stalled request (e.g. flaky mobile signal) can never hang
+  // the UI forever — it aborts and surfaces as a clear, retryable error.
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  let res;
+  try {
+    res = await fetch(AI_ENDPOINT, { method:"POST", signal: ctrl.signal,
+      headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
+      body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens,
+        messages:[{ role:"user", content:prompt }] }) });
+  } catch (e) {
+    throw new Error(e.name === "AbortError"
+      ? "AI request timed out — check your connection and try again."
+      : "Couldn't reach the AI — check your connection.");
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     if (res.status === 401) throw new Error("Your session expired — please sign in again.");
     if (res.status === 429) throw new Error("Daily AI limit reached — try again tomorrow.");
@@ -1196,7 +1209,7 @@ function CoachCard({ mode, totals, targets, streak, water }) {
         ? `water ${water}/8 glasses — goal met ✅ (do NOT suggest more water)`
         : `water ${water}/8 glasses — ${8 - water} under`;
 
-      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today (${mode} mode):\n- ${kcalLine}\n- ${protLine}\n- ${waterLine}\n- ${streak} day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} — never suggest more of a metric already marked "goal met ✅" 3) genuine praise. Brief, personal, max one emoji per sentence.`;
+      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today (${mode} mode):\n- ${kcalLine}\n- ${protLine}\n- ${waterLine}\n- ${streak} day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} — never suggest more of a metric already marked "goal met ✅"; if a goal is already met, give it a quick celebratory nod instead of ignoring it 3) genuine praise. Brief, personal, max one emoji per sentence.`;
       const t    = await callAI(prompt, 200);
       const r    = refreshes + 1;
       setTip(t); setRefreshes(r);
@@ -1694,24 +1707,37 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
     fat:     String(entry.fat),
   });
   const [reest, setReest] = useState(false);
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const [reestMsg, setReestMsg] = useState(""); // "" | "done" | error text
+  const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setReestMsg(""); };
 
   const reestimate = async () => {
     if (!isPremium) { onPremiumGate({ emoji:"✨", name:"AI re-estimate" }); return; }
     if (!f.name.trim() || reest) return;
-    setReest(true);
+    setReest(true); setReestMsg("");
+    const fill = r => setF(p => ({ ...p,
+      kcal:    String(Math.round(r.kcal)),
+      protein: String(Math.round(r.protein * 10) / 10),
+      carbs:   String(Math.round(r.carbs   * 10) / 10),
+      fat:     String(Math.round(r.fat     * 10) / 10),
+    }));
+    let upd;
     try {
-      const upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
-      const oft = await searchOFT(f.name.trim());
-      const r   = (oft && oft.confidence > upd.confidence) ? oft : upd;
-      setF(p => ({ ...p,
-        kcal:    String(Math.round(r.kcal)),
-        protein: String(Math.round(r.protein * 10) / 10),
-        carbs:   String(Math.round(r.carbs   * 10) / 10),
-        fat:     String(Math.round(r.fat     * 10) / 10),
-      }));
-    } catch (e) {}
+      upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
+    } catch (e) {
+      setReestMsg("Couldn't reach the AI — check your connection and try again.");
+      setReest(false);
+      return;
+    }
+    // Show the AI answer immediately — the user never waits on Open Food Facts.
+    fill(upd);
+    setReestMsg("done");
     setReest(false);
+    // OFF is a best-effort background refinement: bounded (6s) and may not return
+    // at all on a poor connection. Only upgrades the figures if it beats the AI.
+    try {
+      const oft = await searchOFT(f.name.trim());
+      if (oft && oft.confidence > upd.confidence) fill(oft);
+    } catch (e) {}
   };
 
   const save = () => onSave({
@@ -1741,11 +1767,14 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
           <input value={f.fat}     onChange={e => set("fat", e.target.value)}     inputMode="decimal" style={fld}/></div>
       </div>
       <button onClick={reestimate} disabled={reest}
-        style={{ width:"100%", padding:"10px", marginBottom:8, background:"#1c1a15",
+        style={{ width:"100%", padding:"10px", marginBottom: reestMsg ? 6 : 8, background:"#1c1a15",
           border:`1px solid ${A}44`, borderRadius:10, color:A, fontSize:12.5, fontWeight:800,
           cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
-        {reest ? "Re-estimating…" : "✨ AI re-estimate from name"}
+        {reest ? "Re-estimating…" : reestMsg === "done" ? "✓ Updated — re-estimate again" : "✨ AI re-estimate from name"}
       </button>
+      {reestMsg && reestMsg !== "done" && (
+        <div style={{ fontSize:11, color:"#ff7b6b", marginBottom:8, lineHeight:1.4 }}>{reestMsg}</div>
+      )}
       <div style={{ display:"flex", gap:8 }}>
         <button onClick={onCancel}
           style={{ flex:1, padding:"10px", background:"#1c1a15", border:`1px solid ${BD}`,
@@ -2166,9 +2195,17 @@ const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
 async function searchOFT(query) {
   try {
-    const res = await fetch(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size`
-    );
+    // Bound this optional cross-check — OFF is flaky; never let it add a long
+    // tail to an AI result. Abort after 6s and fall back to the AI estimate.
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    let res;
+    try {
+      res = await fetch(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size`,
+        { signal: ctrl.signal }
+      );
+    } finally { clearTimeout(timer); }
     const data = await res.json();
     const p = (data.products || []).find(p => p.nutriments?.["energy-kcal_100g"] != null);
     if (!p) return null;
@@ -2245,6 +2282,7 @@ function AILog({ onAdd, onBack }) {
   const [reestIdx,     setReestIdx]     = useState(null);
   const [error,        setError]        = useState("");
   const [loggedAll,    setLoggedAll]    = useState(false);
+  const [loggedIdx,    setLoggedIdx]    = useState([]);
 
   const totals = items ? items.reduce((a, it) => ({
     kcal:    a.kcal    + it.kcal,
@@ -2304,11 +2342,12 @@ function AILog({ onAdd, onBack }) {
     onBack();
   };
 
-  const logItem = (item) => {
+  const logItem = (item, idx) => {
     onAdd({ name: item.name, kcal: Math.round(item.kcal),
       protein: Math.round(item.protein * 10) / 10,
       carbs:   Math.round(item.carbs   * 10) / 10,
       fat:     Math.round(item.fat     * 10) / 10 });
+    setLoggedIdx(prev => prev.includes(idx) ? prev : [...prev, idx]);
   };
 
   return (
@@ -2393,16 +2432,21 @@ function AILog({ onAdd, onBack }) {
             or tap individual items to log them separately ↑
           </div>
 
-          {items.map((item, i) => (
-            <button key={i} onClick={() => logItem(item)}
-              style={{ width:"100%", padding:"10px 14px", background:"#1c1a15",
-                border:`1px solid ${BD}`, borderRadius:10, color:"#b6b0a4",
+          {items.map((item, i) => {
+            const added = loggedIdx.includes(i);
+            return (
+            <button key={i} onClick={() => logItem(item, i)}
+              style={{ width:"100%", padding:"10px 14px",
+                background: added ? A + "1e" : "#1c1a15",
+                border:`1px solid ${added ? A + "66" : BD}`, borderRadius:10,
+                color: added ? A : "#b6b0a4",
                 fontSize:12, fontWeight:600, cursor:"pointer", marginBottom:6,
                 textAlign:"left", display:"flex", justifyContent:"space-between" }}>
-              <span>+ {item.name}</span>
+              <span>{added ? "✓ Added · " : "+ "}{item.name}</span>
               <span style={{ color:A, fontWeight:900 }}>{Math.round(item.kcal)} kcal</span>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
