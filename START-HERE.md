@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-11 (session 3: backlog features #2–#8 all built, 70/70 tests, sw v34) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-11 (session 3: features #2–#8 BUILT + DEPLOYED to main, sw v35; coach #5/#6 + #3 verified on Pixel 7; haptics #4 deferred to native) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -54,13 +54,32 @@ Read this first. It never duplicates roadmap detail — it points to it.
 >   `DIETARY` cache feeds `dietaryPromptBlock` into all 4 AI prompts; zero-token `scanAllergens`
 >   backstop flags coach tips + AI Log items. Allergen matching biased to over-detect (safety).
 >
-> **⚠️ NOT yet eyeballed on a real device / live worker.** Unit-tested only. Haptics need a real phone;
-> the AI features (#2 estimate, #5/#6 coach, #8 filter) need the live Cloudflare worker. `@wip` tags in
-> the feature file are left ON until manual verification. **NOT committed yet** (working tree only).
-> **Deploy note:** these go live when Phase B merges → `main`.
+> **DEPLOYED LIVE to `origin/main`** (session 3, 2026-06-11). Fast-forwarded `8e24a56 → 1a7f7f2`
+> (rollback point = **`8e24a56`** "Phase B verified live"). Final `sw` = **v35**. Shipped together with
+> a **privacy update** (POLICY_VERSION 1.0→1.2 forces re-consent; `legal/` now discloses dietary &
+> allergy data + the religious-belief nuance of diet choices).
 >
-> **Next (feature track):** commit the build → manual on-device/live verification pass → flip `@wip`
-> tags → update `DOCS.md` changelog → then the celebration-redesign feature.
+> **On-device verification status (Pixel 7, real device + live worker):**
+> - ✅ **#5/#6 coach** — confirmed: avoided re-suggesting logged foods (greek yog/cottage cheese),
+>   suggested edamame (variety/fibre). State-awareness + pacing working end-to-end.
+> - ✅ **#3 repeat-add** — `✓ Added` tick + re-confirm seen working.
+> - ⏸️ **#4 haptics — DEFERRED to native/Play packaging.** `navigator.vibrate` is a silent no-op on
+>   this Pixel 7 / mobile-Chrome (keyboard haptics work, so motor+settings are fine — it's the web
+>   Vibration API). Bumped pulse 12→35ms, still nothing; isolation test page confirmed it's the
+>   platform, not our code. `haptic()` left in as a graceful feature-detected no-op; revisit when the
+>   app is packaged for the Play Store (a basic TWA may still not expose it → native haptics bridge is
+>   the fallback). **Do not re-debug web haptics.** (Debug page `haptic-test.html` removed from prod;
+>   recoverable at git `9f4b54f`.)
+> - ✅ **#8 diet-type filter** — confirmed: set to *vegan keto*, AI food suggestions stayed on point
+>   (hard diet filter via `dietaryPromptBlock` reaching the model). **Allergen backstop still to test.**
+> - ⬜ **Still to eyeball:** #8 **allergen** scan (declare peanuts → AI-log "peanut satay" → ⚠️ flag;
+>   soya → edamame is a good synonym test), #7 "FLOORS KEPT" warning on a low custom target, #2 Quick
+>   Add "✨ AI estimate from name".
+>
+> `@wip` tags in the feature file stay ON until the remaining three are eyeballed.
+>
+> **Next (feature track):** finish the #8/#7/#2 on-device pass → flip `@wip` tags → update `DOCS.md`
+> changelog → then the celebration-redesign feature.
 >
 > **Stray file:** `features/_inbox.feature` (untracked BDD staging placeholder) — keep or bin.
 >
