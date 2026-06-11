@@ -31,14 +31,26 @@ Read this first. It never duplicates roadmap detail — it points to it.
 3. **ICO fee + correspondence address** — `LEGAL_ROADMAP.md §13` / risk **R7** (get a PO box / virtual
    address *before* registering so your home address stays off the public register).
 
-> **Feature track (parallel to legal, 2026-06-11):** a triaged product backlog now exists in
-> `DOCS.md §23` (post-challenge; 2 items cut). Decided + specced: **celebration redesign → one engine**
-> (spec in `features/fuel-log.feature`, `@wip`). **Shipped to the `phase-b-compliance` working tree
-> (built + tests green, but NOT yet merged/deployed):** (1) **Daily Coach goal-awareness fix** (no
-> longer says "drink more" after you hit a goal); (2) **Edit log entry in place + AI re-estimate**
-> (inline `EntryEditor` on dashboard + History; manual edit for all, AI re-estimate premium-gated;
-> `sw` at `v32`). ⚠️ Both want a quick live eyeball before deploy. Other open items: celebration
-> build, more badge categories, context-aware notification engine (`§23`).
+> **Feature track (parallel to legal, last touched 2026-06-11):** triaged product backlog lives in
+> `DOCS.md §23` (post-challenge; 2 items cut). Decided + specced but NOT built: **celebration redesign
+> → one engine** (`features/fuel-log.feature`, `@wip`).
+>
+> **Committed to `phase-b-compliance` (built, tests 44/44, but NOT merged/deployed — live app still
+> old):** `0947b3f` edit-entry + AI re-estimate · `9255af5` coach no-nag · `88aa39d` AI feedback +
+> bad-connection resilience (30s AI timeout, 6s OFF cap + non-blocking, AI Log "✓ Added", coach
+> celebrates hit goals). `sw` at **v33**.
+>
+> **Live-tested on real train wifi & verified ✅** (edit on dashboard + History, AI re-estimate,
+> AI Log feedback, coach no-nag, timeouts). **One NOT eyeballed:** coach "celebrate a hit goal" nod
+> (committed, unobserved — check when a goal >target on next refresh).
+>
+> **Pick-up options:** (a) **build the celebration redesign** (spec ready, `@wip`); (b) knock out
+> quick banked wins — **AI-estimate on new Quick Add**, **re-blink/count on repeat add**, **haptic
+> vibrate**; (c) the bigger banked tracks — **coach intelligence** (variety/state/pacing),
+> **macro model** (protein-priority/fat-floor/carb-flex), **dietary+allergies config**. All in `§23`.
+> **Deploy note:** these feature commits will go live when Phase B merges → `main`.
+>
+> **Stray file:** `features/_inbox.feature` (untracked BDD staging placeholder) — keep or bin.
 >
 > **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` (2026-06-10) and tracking it;
 > the remote URL is credential-free (auth via Windows Credential Manager) and the exposed PAT was
