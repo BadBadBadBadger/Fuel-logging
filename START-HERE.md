@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-10 (deploy session: DB + worker live; publish/test remain) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-11 (feature-planning session: backlog triaged; coach bug fixed) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -31,6 +31,13 @@ Read this first. It never duplicates roadmap detail — it points to it.
 3. **ICO fee + correspondence address** — `LEGAL_ROADMAP.md §13` / risk **R7** (get a PO box / virtual
    address *before* registering so your home address stays off the public register).
 
+> **Feature track (parallel to legal, 2026-06-11):** a triaged product backlog now exists in
+> `DOCS.md §23` (post-challenge; 2 items cut). Decided + specced: **celebration redesign → one engine**
+> (spec in `features/fuel-log.feature`, `@wip`). **Shipped to the `phase-b-compliance` working tree:**
+> the **Daily Coach goal-awareness fix** (no longer says "drink more" after you hit a goal) — built,
+> `sw` bumped to `v31`, 44/44 tests pass; **not yet merged/deployed**. Other open items: edit-entry +
+> AI re-estimate, more badge categories, context-aware notification engine (`§23`).
+>
 > **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` (2026-06-10) and tracking it;
 > the remote URL is credential-free (auth via Windows Credential Manager) and the exposed PAT was
 > **deleted on GitHub**. **DB migration + worker deploy are DONE** (consent columns live; worker serves
@@ -47,7 +54,7 @@ Read this first. It never duplicates roadmap detail — it points to it.
 | **DOCS.md** | how the product works — features, design system, changelog, backlog |
 | **ARCHITECTURE_REVIEW.md** | known issues & severities |
 | **SETUP.md** | how to build / run / deploy locally |
-| **personas/** | reusable chat "hats" — `Admin` (docs), `privacy-counsel` (legal) |
+| **personas/** | reusable chat "hats" — `Admin` (docs), `privacy-counsel` (legal), `QA` (BDD/Gherkin) |
 
 ---
 

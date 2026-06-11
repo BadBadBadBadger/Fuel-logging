@@ -3179,7 +3179,7 @@ function CoachCard(_ref36) {
 
   var gen = /*#__PURE__*/function () {
     var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
-      var h, timeLabel, prompt, t, r, _t22;
+      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, prompt, t, r, _t22;
       return _regenerator().w(function (_context24) {
         while (1) switch (_context24.p = _context24.n) {
           case 0:
@@ -3192,8 +3192,16 @@ function CoachCard(_ref36) {
             setLoading(true);
             _context24.p = 2;
             h = getCurrentHour();
-            timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
-            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today: ").concat(mode, " mode, ").concat(Math.round(totals.kcal), "/").concat(targets.kcal, " kcal, protein ").concat(Math.round(totals.protein), "g/").concat(targets.protein, "g, ").concat(water, "/8 glasses, ").concat(streak, " day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
+            timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night"; // Spell out over/under per metric so the model never tells you to eat/drink
+            // more of something you've already hit. Raw "X/Y" alone reads as a deficit.
+            kcalNum = Math.round(totals.kcal);
+            kcalDelta = kcalNum - targets.kcal;
+            kcalLine = kcalDelta > 0 ? "calories ".concat(kcalNum, "/").concat(targets.kcal, " kcal \u2014 ").concat(kcalDelta, " OVER target") : "calories ".concat(kcalNum, "/").concat(targets.kcal, " kcal \u2014 ").concat(Math.abs(kcalDelta), " remaining");
+            protNum = Math.round(totals.protein);
+            protDelta = protNum - targets.protein;
+            protLine = protDelta >= 0 ? "protein ".concat(protNum, "/").concat(targets.protein, "g \u2014 ").concat(protDelta, "g OVER, goal met \u2705 (do NOT suggest more protein)") : "protein ".concat(protNum, "/").concat(targets.protein, "g \u2014 ").concat(Math.abs(protDelta), "g under");
+            waterLine = water >= 8 ? "water ".concat(water, "/8 glasses \u2014 goal met \u2705 (do NOT suggest more water)") : "water ".concat(water, "/8 glasses \u2014 ").concat(8 - water, " under");
+            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today (").concat(mode, " mode):\n- ").concat(kcalLine, "\n- ").concat(protLine, "\n- ").concat(waterLine, "\n- ").concat(streak, " day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ").concat(timeLabel, " \u2014 never suggest more of a metric already marked \"goal met \u2705\" 3) genuine praise. Brief, personal, max one emoji per sentence.");
             _context24.n = 3;
             return callAI(prompt, 200);
           case 3:

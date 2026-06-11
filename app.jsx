@@ -1177,7 +1177,26 @@ function CoachCard({ mode, totals, targets, streak, water }) {
     try {
       const h = getCurrentHour();
       const timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night";
-      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today: ${mode} mode, ${Math.round(totals.kcal)}/${targets.kcal} kcal, protein ${Math.round(totals.protein)}g/${targets.protein}g, ${water}/8 glasses, ${streak} day streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} 3) genuine praise. Brief, personal, max one emoji per sentence.`;
+
+      // Spell out over/under per metric so the model never tells you to eat/drink
+      // more of something you've already hit. Raw "X/Y" alone reads as a deficit.
+      const kcalNum   = Math.round(totals.kcal);
+      const kcalDelta = kcalNum - targets.kcal;
+      const kcalLine  = kcalDelta > 0
+        ? `calories ${kcalNum}/${targets.kcal} kcal — ${kcalDelta} OVER target`
+        : `calories ${kcalNum}/${targets.kcal} kcal — ${Math.abs(kcalDelta)} remaining`;
+
+      const protNum   = Math.round(totals.protein);
+      const protDelta = protNum - targets.protein;
+      const protLine  = protDelta >= 0
+        ? `protein ${protNum}/${targets.protein}g — ${protDelta}g OVER, goal met ✅ (do NOT suggest more protein)`
+        : `protein ${protNum}/${targets.protein}g — ${Math.abs(protDelta)}g under`;
+
+      const waterLine = water >= 8
+        ? `water ${water}/8 glasses — goal met ✅ (do NOT suggest more water)`
+        : `water ${water}/8 glasses — ${8 - water} under`;
+
+      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today (${mode} mode):\n- ${kcalLine}\n- ${protLine}\n- ${waterLine}\n- ${streak} day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} — never suggest more of a metric already marked "goal met ✅" 3) genuine praise. Brief, personal, max one emoji per sentence.`;
       const t    = await callAI(prompt, 200);
       const r    = refreshes + 1;
       setTip(t); setRefreshes(r);

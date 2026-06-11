@@ -568,15 +568,21 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 > Only the product **backlog** below is still maintained in this file.
 
 ### Other backlog
-| Feature | Notes |
-|---|---|
-| **Bug: AI coach ignores goals already met/exceeded** | Coach tells you to "drink 2 more glasses" after 10/8, or "eat 25g more protein" after 200/175g. **Cause:** the prompt at `app.jsx` `CoachCard` (~L1180) sends raw `X/Y` ratios but never states over/under, so the model assumes a deficit. **Fix:** compute surplus/deficit per metric and put it in the prompt explicitly (e.g. "protein 200/175g — 25g OVER, goal met ✅"; "water 10/8 — exceeded"), and instruct it not to suggest more of a metric that's already met. Cheap, high-trust win. |
-| Multi-user login | Per-device named users with PIN, namespaced storage |
-| More badge categories | Protein King, Cut Champion, Bulk Mode, Balanced |
-| Serving size multiplier on Food Search | Currently uses product's default serving size |
-| Edit log entry in place | Currently: delete and re-add |
-| Weekly weigh-in summary notification | Recap of the week's calibration |
-| Push notifications | Meal + water reminders |
+
+> **Triaged 2026-06-11** (feature-planning session). Worklist below is post-challenge; two items cut.
+> Scenarios for these live in `features/fuel-log.feature` (tagged `@wip` until built).
+
+| Feature | Type | Notes |
+|---|---|---|
+| **Bug: AI coach ignores goals already met/exceeded** | Bug · quick win | Coach tells you to "drink 2 more glasses" after 10/8, or "eat 25g more protein" after 200/175g. **Cause:** the prompt at `app.jsx` `CoachCard` (~L1180) sends raw `X/Y` ratios but never states over/under, so the model assumes a deficit. **Fix:** compute surplus/deficit per metric and put it in the prompt explicitly (e.g. "protein 200/175g — 25g OVER, goal met ✅"; "water 10/8 — exceeded"), and instruct it not to suggest more of a metric that's already met. |
+| **Edit log entry in place (+ AI re-estimate)** | Enhancement | Currently: delete and re-add. Add in-place edit of an entry's values; plus an AI re-estimate of a single item (premium-gated, like `AILog`). |
+| **Celebration redesign — one engine** | Polish · decided | Collapse the two celebration systems into one. Daily streak increment = quiet **pop + increment on the header 🔥 chip** (no overlay, no sound). Badges become the **sole** fanfare authority: Bronze/Silver = toast + chip glow; **Gold tier and above = full overlay, slowed to ~2.5s** so it's readable. **Delete** the standalone streak-milestone overlay (old days 7/14/30/50/100, `app.jsx` ~L3112; `StreakCelebration` ~L1048). |
+| **More badge categories** | Feature | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above. |
+| **Notification engine (context-aware)** | Feature · needs-a-plan | Merges the old "weekly weigh-in summary" + "meal/water reminders" into one push system. **Context-aware from the start:** reminders read the day (kcal remaining, last-logged time, water progress, weigh-in done?) and stay quiet once a goal is met. ⚠️ Platform reality: works on installed Android PWA/TWA; iOS Safari push is restricted — degrade gracefully. |
+
+**Cut 2026-06-11 (do not re-spec):**
+- ~~Multi-user login (per-device PIN, namespaced storage)~~ — cloud sync already does multi-user the correct way (each Google account → its own Supabase rows). On-device PIN users would be a competing, worse identity system.
+- ~~Serving-size multiplier on Food Search~~ — if free users later report wrong portions, this is the shelved fix (a portion/quantity adjust is their only non-AI portion control). Until then, not worth the surface area.
 
 ---
 
@@ -1286,6 +1292,14 @@ appears after a deploy.
 ---
 
 ## 37. Changelog
+
+### v6.1.1 — Coach goal-awareness fix (June 2026)
+- **Bug fix:** the Daily Coach no longer tells you to consume *more* of a goal
+  you've already met (e.g. "drink 2 more glasses" after 10/8, "eat 25g more
+  protein" after 200/175g). The prompt now states each metric's over/under
+  explicitly, marks met goals `✅`, and instructs the model never to suggest more
+  of a metric already hit (`CoachCard.gen`, `app.jsx`).
+- Files touched: `app.jsx`, `app.js`, `sw.js` (cache → `fuel-log-v31`).
 
 ### v6.1 — Cream-grey UI refresh & readability (June 2026)
 - **Theme:** replaced the neon-lime/black palette with a warm cream-grey theme.
