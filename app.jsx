@@ -200,6 +200,11 @@ const parseJwt = token => {
   catch(e) { return {}; }
 };
 
+// Haptic confirmation for Create / Update / Delete actions (#4). Fire-and-forget:
+// feature-detected, wrapped so an unsupported or throwing Vibration API (e.g. iOS
+// Safari) can never block or break the action. Reads never call this.
+const haptic = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e) {} };
+
 // ── Supabase cloud sync ───────────────────────────────────────
 const sb = () => window.supabaseClient;
 
@@ -575,7 +580,7 @@ function PremiumModal({ feature, onUpgrade, onDismiss }) {
   const name  = feature ? feature.name  : "This feature";
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, padding:24 }}>
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1002, padding:24 }}>
       <div style={{ background:CARD, borderRadius:24, padding:"36px 28px", textAlign:"center",
         border:`1px solid ${A}44`, maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:64, marginBottom:10 }}>{emoji}</div>
@@ -3251,6 +3256,7 @@ function App() {
   };
 
   const addLog = async e => {
+    haptic();
     const isFirstToday = logs.length === 0;
     await saveLogs([...logs, { ...e, id:Date.now(),
       time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }]);
@@ -3274,10 +3280,10 @@ function App() {
       }
     }
   };
-  const removeLog    = id => saveLogs(logs.filter(l => l.id !== id));
-  const updateLog    = (id, patch) => saveLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
-  const addWorkout   = w  => saveWorkouts([...workouts, w]);
-  const removeWorkout = id => saveWorkouts(workouts.filter(w => w.id !== id));
+  const removeLog    = id => { haptic(); return saveLogs(logs.filter(l => l.id !== id)); };
+  const updateLog    = (id, patch) => { haptic(); return saveLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l)); };
+  const addWorkout   = w  => { haptic(); return saveWorkouts([...workouts, w]); };
+  const removeWorkout = id => { haptic(); return saveWorkouts(workouts.filter(w => w.id !== id)); };
 
   const saveCustomKcal = async kcal => {
     setCustomKcal(kcal);
@@ -3312,6 +3318,7 @@ function App() {
   const addToQA = async entry => {
     const name = entry.name;
     if (meals.find(m => m.name.toLowerCase() === name.toLowerCase())) return;
+    haptic();
     const clean = { name, kcal: Math.round(entry.kcal),
       protein: Math.round(entry.protein * 10) / 10,
       carbs:   Math.round(entry.carbs   * 10) / 10,
