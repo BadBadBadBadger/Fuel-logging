@@ -4260,24 +4260,32 @@ function MealForm(_ref43) {
             setReest(false);
             return _context25.a(2);
           case 6:
+            if (!(!upd || !isFinite(Number(upd.kcal)))) {
+              _context25.n = 7;
+              break;
+            }
+            setReestMsg("Couldn't estimate that — try rephrasing the name.");
+            setReest(false);
+            return _context25.a(2);
+          case 7:
             fill(upd);
             setReestMsg("done");
             setReest(false);
-            _context25.p = 7;
-            _context25.n = 8;
+            _context25.p = 8;
+            _context25.n = 9;
             return searchOFT(f.name.trim());
-          case 8:
+          case 9:
             oft = _context25.v;
             if (oft && oft.confidence > upd.confidence) fill(oft);
-            _context25.n = 10;
+            _context25.n = 11;
             break;
-          case 9:
-            _context25.p = 9;
-            _t25 = _context25.v;
           case 10:
+            _context25.p = 10;
+            _t25 = _context25.v;
+          case 11:
             return _context25.a(2);
         }
-      }, _callee25, null, [[7, 9], [3, 5]]);
+      }, _callee25, null, [[8, 10], [3, 5]]);
     }));
     return function estimate() {
       return _ref44.apply(this, arguments);
@@ -6238,10 +6246,10 @@ function Dashboard(_ref51) {
 // ── AI Log ────────────────────────────────────────────────────
 
 var AI_PROMPT = function AI_PROMPT(desc) {
-  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.\n\nRules:\n- For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data \u2014 never substitute a generic equivalent.\n- Break the meal into individual components. Each component gets its own nutrition estimate and confidence score.\n- Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.\n- If a component is ambiguous (e.g. \"large meal\" at a restaurant that only does regular), state the ambiguity in the reasoning field.\n- Be conservative \u2014 if unsure between two estimates, explain both.\n".concat(dietaryPromptBlock(DIETARY), "\nMeal to analyse: \"").concat(desc, "\"\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    {\n      \"name\": \"specific item name with quantity/size\",\n      \"kcal\": number,\n      \"protein\": number,\n      \"carbs\": number,\n      \"fat\": number,\n      \"confidence\": number,\n      \"reasoning\": \"one sentence explaining source of data or uncertainty\"\n    }\n  ]\n}");
+  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.\n\nRules:\n- For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data \u2014 never substitute a generic equivalent.\n- Break the meal into individual components. Each component gets its own nutrition estimate and confidence score.\n- Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.\n- If a component is ambiguous (e.g. \"large meal\" at a restaurant that only does regular), state the ambiguity in the reasoning field.\n- Be conservative \u2014 if unsure between two estimates, explain both.\n\nMeal to analyse: \"".concat(desc, "\"\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    {\n      \"name\": \"specific item name with quantity/size\",\n      \"kcal\": number,\n      \"protein\": number,\n      \"carbs\": number,\n      \"fat\": number,\n      \"confidence\": number,\n      \"reasoning\": \"one sentence explaining source of data or uncertainty\"\n    }\n  ]\n}");
 };
 var AI_REESTIMATE_PROMPT = function AI_REESTIMATE_PROMPT(item) {
-  return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n").concat(dietaryPromptBlock(DIETARY), "\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
+  return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
 };
 var confColor = function confColor(c) {
   return c <= 33 ? "#ff5555" : c <= 66 ? "#ffb84b" : A;

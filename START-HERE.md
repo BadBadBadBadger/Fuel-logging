@@ -72,9 +72,17 @@ Read this first. It never duplicates roadmap detail — it points to it.
 >   recoverable at git `9f4b54f`.)
 > - ✅ **#8 diet-type filter** — confirmed: set to *vegan keto*, AI food suggestions stayed on point
 >   (hard diet filter via `dietaryPromptBlock` reaching the model). **Allergen backstop still to test.**
-> - ⬜ **Still to eyeball:** #8 **allergen** scan (declare peanuts → AI-log "peanut satay" → ⚠️ flag;
->   soya → edamame is a good synonym test), #7 "FLOORS KEPT" warning on a low custom target, #2 Quick
->   Add "✨ AI estimate from name".
+> - 🐛→✅ **#2 Quick Add AI estimate — BUG FOUND & FIXED (deployed, sw v36).** "massive glass of milk"
+>   while vegan-keto returned a false "✓ Filled" with blank macros. Cause: the dietary HARD filter was
+>   injected into the *estimation* prompts (AI_PROMPT + AI_REESTIMATE_PROMPT), so "estimate milk" vs
+>   "never name non-vegan food" conflicted → mangled JSON. Fix: dietary block now ONLY on the coach
+>   (suggestion) prompt; estimation prompts estimate unconditionally; allergen OUTPUT scan still covers
+>   safety. Added a guard so junk → "Couldn't estimate that" not a false Filled. **Re-verify on device.**
+> - ⬜ **Still to eyeball:** #2 milk estimate now fills, #8 **allergen** scan (declare soya → coach
+>   suggests edamame → ⚠️ flag), #7 "FLOORS KEPT" warning on a low custom target.
+>
+> **Dev harness IS running** this session at http://localhost:3000 (+ /preview.html). NOTE: localhost
+> Google sign-in may be blocked (origin not authorised) — if so, verify on the live phone instead.
 >
 > `@wip` tags in the feature file stay ON until the remaining three are eyeballed.
 >

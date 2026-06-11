@@ -1700,6 +1700,13 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
       setReest(false);
       return;
     }
+    // Guard against a malformed/empty AI response: never claim "Filled" with blank
+    // fields — show an honest retry message instead.
+    if (!upd || !isFinite(Number(upd.kcal))) {
+      setReestMsg("Couldn't estimate that — try rephrasing the name.");
+      setReest(false);
+      return;
+    }
     fill(upd);
     setReestMsg("done");
     setReest(false);
@@ -2476,7 +2483,7 @@ Rules:
 - Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.
 - If a component is ambiguous (e.g. "large meal" at a restaurant that only does regular), state the ambiguity in the reasoning field.
 - Be conservative — if unsure between two estimates, explain both.
-${dietaryPromptBlock(DIETARY)}
+
 Meal to analyse: "${desc}"
 
 Return ONLY valid JSON (no markdown, no preamble):
@@ -2499,7 +2506,7 @@ const AI_REESTIMATE_PROMPT = (item) => `You are a nutrition database expert. Re-
 Item: "${item}"
 
 Apply the same rules: use exact menu/label data for branded products. Be precise, not approximate.
-${dietaryPromptBlock(DIETARY)}
+
 Return ONLY valid JSON (no markdown):
 {
   "name": "item name",
