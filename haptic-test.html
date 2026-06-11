@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haptic isolation test</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system, "Segoe UI", sans-serif; background:#0b0d0b; color:#e6e1d7;
+         padding:18px; line-height:1.5; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p  { font-size:13px; color:#aea79c; margin:4px 0 14px; }
+  button { display:block; width:100%; padding:18px; margin:10px 0; font-size:17px; font-weight:800;
+           border:none; border-radius:14px; background:#1c1a15; color:#cdeba0; border:1px solid #3a4a28; }
+  button:active { background:#2a3a18; }
+  #log { margin-top:16px; font-size:13px; white-space:pre-wrap; background:#141210;
+         border:1px solid #2a2620; border-radius:12px; padding:12px; min-height:120px; }
+  .ok  { color:#9fdb70; } .bad { color:#ff7b6b; } .dim { color:#827c73; }
+</style>
+</head>
+<body>
+  <h1>Haptic isolation test</h1>
+  <p>Tap each button and note if the phone buzzes. The line below shows what the browser reported.
+     This page has <strong>no service worker</strong> and is a plain tab — it bypasses the app entirely.</p>
+
+  <button onclick="buzz(35)">Vibrate 35 ms</button>
+  <button onclick="buzz(100)">Vibrate 100 ms</button>
+  <button onclick="buzz(400)">Vibrate 400 ms (long)</button>
+  <button onclick="buzz([120,60,120,60,120])">Pattern · buzz-pause-buzz-pause-buzz</button>
+
+  <div id="log"></div>
+
+<script>
+  var logEl = document.getElementById("log");
+  function line(html){ logEl.innerHTML = html + "\n" + logEl.innerHTML; }
+
+  // Environment readout on load.
+  var supported = ("vibrate" in navigator);
+  var standalone = window.matchMedia("(display-mode: standalone)").matches;
+  line('<span class="dim">UA: ' + navigator.userAgent + '</span>');
+  line('display-mode: ' + (standalone ? '<span class="bad">standalone (installed PWA)</span>' : '<span class="ok">browser tab</span>'));
+  line('navigator.vibrate exists: ' + (supported ? '<span class="ok">YES</span>' : '<span class="bad">NO — API absent</span>'));
+
+  function buzz(arg){
+    var label = Array.isArray(arg) ? "pattern [" + arg.join(",") + "]" : (arg + "ms");
+    if (!("vibrate" in navigator)) { line('<span class="bad">' + label + ': API not supported on this browser</span>'); return; }
+    var ret;
+    try { ret = navigator.vibrate(arg); }
+    catch (e) { line('<span class="bad">' + label + ': threw ' + e + '</span>'); return; }
+    line(label + ' → navigator.vibrate returned <strong class="' + (ret ? "ok" : "bad") + '">' + ret + '</strong>'
+         + (ret ? ' <span class="dim">(accepted — did it buzz?)</span>' : ' <span class="bad">(rejected by browser)</span>'));
+  }
+</script>
+</body>
+</html>
