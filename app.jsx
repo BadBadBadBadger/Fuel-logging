@@ -323,7 +323,10 @@ const parseJwt = token => {
 // Haptic confirmation for Create / Update / Delete actions (#4). Fire-and-forget:
 // feature-detected, wrapped so an unsupported or throwing Vibration API (e.g. iOS
 // Safari) can never block or break the action. Reads never call this.
-const haptic = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e) {} };
+// 35ms, not 12 — Pixel-class LRA motors barely register a sub-~30ms raw vibrate
+// (the keyboard feels crisp because it uses Android's tuned haptic effect, not
+// this raw on/off timer). Still a single short tick, not a sustained buzz.
+const haptic = (ms = 35) => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e) {} };
 
 // ── Supabase cloud sync ───────────────────────────────────────
 const sb = () => window.supabaseClient;

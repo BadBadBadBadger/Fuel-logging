@@ -580,7 +580,7 @@ Feature: Haptic feedback on every Create, Update and Delete
 
   Scenario: The vibration is brief, not buzzy
     Given a successful create, update or delete on a supporting device
-    Then the vibration is one short pulse (~10–20ms)
+    Then the vibration is one short pulse (~35ms — long enough for Pixel-class motors to register, still a tick not a buzz)
     And it does not repeat or sustain
 
   Scenario: Unsupported devices simply do nothing

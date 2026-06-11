@@ -633,8 +633,11 @@ var parseJwt = function parseJwt(token) {
 // Haptic confirmation for Create / Update / Delete actions (#4). Fire-and-forget:
 // feature-detected, wrapped so an unsupported or throwing Vibration API (e.g. iOS
 // Safari) can never block or break the action. Reads never call this.
+// 35ms, not 12 — Pixel-class LRA motors barely register a sub-~30ms raw vibrate
+// (the keyboard feels crisp because it uses Android's tuned haptic effect, not
+// this raw on/off timer). Still a single short tick, not a sustained buzz.
 var haptic = function haptic() {
-  var ms = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 12;
+  var ms = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 35;
   try {
     navigator.vibrate && navigator.vibrate(ms);
   } catch (e) {}
