@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-11 (feature-planning session: backlog triaged; coach bug fixed) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-11 (session 3: backlog features #2–#8 all built, 70/70 tests, sw v34) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -31,34 +31,36 @@ Read this first. It never duplicates roadmap detail — it points to it.
 3. **ICO fee + correspondence address** — `LEGAL_ROADMAP.md §13` / risk **R7** (get a PO box / virtual
    address *before* registering so your home address stays off the public register).
 
-> **Feature track (parallel to legal, last touched 2026-06-11):** triaged product backlog lives in
-> `DOCS.md §23` (post-challenge; 2 items cut). Decided + specced but NOT built: **celebration redesign
-> → one engine** (`features/fuel-log.feature`, `@wip`).
+> **Feature track (parallel to legal, last touched 2026-06-11 session 3):** triaged product backlog
+> lives in `DOCS.md §23`. Still decided + specced but NOT built: **celebration redesign → one engine**
+> (`features/fuel-log.feature`, `@wip`).
 >
-> **Committed to `phase-b-compliance` (built, tests 44/44, but NOT merged/deployed — live app still
-> old):** `0947b3f` edit-entry + AI re-estimate · `9255af5` coach no-nag · `88aa39d` AI feedback +
-> bad-connection resilience (30s AI timeout, 6s OFF cap + non-blocking, AI Log "✓ Added", coach
-> celebrates hit goals). `sw` at **v33**.
+> **2026-06-11 (session 3): ALL 6 backlog features #2–#8 BUILT.** `app.jsx` rebuilt → `app.js`, `sw`
+> bumped **v33 → v34**, tests **70/70 green** (added 26: macro floor engine, coach pacing, dietary
+> scan + prompt block). Summary:
+> - **#4 haptic** on every C/U/D (weigh-in, target override, profile save, MealForm save, QuickAdd
+>   delete/reset, voucher; shared funnels de-duped to avoid double-buzz).
+> - **#3 repeat-add** — AI Log rows show `✓ Added ×N` + re-blink each tap (remount-keyed `blink_add`);
+>   dashboard ⚡ chip re-blinks; count ephemeral.
+> - **#2 AI estimate on Quick Add** — `MealForm` mirrors `EntryEditor` (premium-gated, AI-first, OFF
+>   refinement); threaded through QuickAdd + History manual.
+> - **#7 macro floor engine** — new `computeMacros` pure fn (flat protein 2.2/2.0 g/kg LBM across all
+>   modes, fat 0.6 g/kg hard floor, carbs absorb, "FLOORS KEPT" warn). Replaced per-mode protein in
+>   `calcTargets` AND the proportional scaling in the custom-target path.
+> - **#5/#6 coach** — state-aware (eaten foods by name, prior tips to avoid repeats, variety/fibre)
+>   + computed `paceVerdict` (window starts at first meal; only protein/water paced, never calories;
+>   no "behind" <25% window; gentle non-shaming nudges). Coach-hat reviewed.
+> - **#8 dietary/allergies** — `TagField` combobox in Profile (diet/allergens/dislikes); module-level
+>   `DIETARY` cache feeds `dietaryPromptBlock` into all 4 AI prompts; zero-token `scanAllergens`
+>   backstop flags coach tips + AI Log items. Allergen matching biased to over-detect (safety).
 >
-> **Live-tested on real train wifi & verified ✅** (edit on dashboard + History, AI re-estimate,
-> AI Log feedback, coach no-nag, timeouts). **One NOT eyeballed:** coach "celebrate a hit goal" nod
-> (committed, unobserved — check when a goal >target on next refresh).
->
-> **2026-06-11 (session 2): all 7 backlog features are now BDD-ready and pushed** (`3f38937` on
-> `origin/phase-b-compliance`). Specs live in `features/fuel-log.feature` (`@wip`): #2 AI-estimate on
-> Quick Add, #3 re-blink+count, #4 haptic on every C/U/D, #5/#6 coach intelligence (state-aware +
-> computed pacing, with coach-hat safeguarding rules baked in), #7 macro **floor engine**, #8
-> dietary/allergies. Decisions locked this session (see memory): macro = flat protein floor 2.2/2.0
-> g/kg LBM across modes + fat 0.6 g/kg hard floor + carbs absorb + warn; allergens = prompt-only
-> hard filter; no delete confirms/undo; **invoke the coach persona proactively** on nutrition work.
->
-> **BUILD STARTED — paused mid-#4 (`115fba9`, WIP).** `haptic()` helper added + wired into core CRUD
-> handlers (addLog/removeLog/updateLog/addToQA/add+removeWorkout). **NOT yet wired:** weigh-in, target
-> override (`commitTarget` app.jsx:1824), profile save (~1263), MealForm save (~1447), QuickAdd
-> delete/reset (~2497/2505), voucher (~674). **⚠️ app.jsx NOT rebuilt to app.js, sw.js NOT bumped** —
-> nothing runs live yet. **Build order next:** finish #4 → #3 → #2 → #7 (extract custom-target at
-> app.jsx:3517 to a pure fn for Jest) → #5/#6 → #8 → rebuild + bump `sw`. Todo list captured the plan.
+> **⚠️ NOT yet eyeballed on a real device / live worker.** Unit-tested only. Haptics need a real phone;
+> the AI features (#2 estimate, #5/#6 coach, #8 filter) need the live Cloudflare worker. `@wip` tags in
+> the feature file are left ON until manual verification. **NOT committed yet** (working tree only).
 > **Deploy note:** these go live when Phase B merges → `main`.
+>
+> **Next (feature track):** commit the build → manual on-device/live verification pass → flip `@wip`
+> tags → update `DOCS.md` changelog → then the celebration-redesign feature.
 >
 > **Stray file:** `features/_inbox.feature` (untracked BDD staging placeholder) — keep or bin.
 >

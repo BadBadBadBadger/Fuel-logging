@@ -24,7 +24,7 @@ None used for advertising or analytics.
 |---|---|---|---|---|
 | Email address | Yes | No | Account management, App functionality | From Google sign-in |
 | User IDs | Yes | No | Account management | Google OAuth identifier |
-| **Health & fitness** (weight, body fat, sex, weigh-ins, workouts, calories/nutrition) | Yes | **Yes** | App functionality | Weight & body-fat % sent to AI (Anthropic) **without identifiers** |
+| **Health & fitness** (weight, body fat, sex, weigh-ins, workouts, calories/nutrition, dietary requirements & allergies) | Yes | **Yes** | App functionality | Weight, body-fat % and dietary requirements/allergies sent to AI (Anthropic) **without identifiers**. Diet choices may reveal religious belief — covered by explicit consent. |
 | App activity / other user-generated content (food/water logs, notes, meal text) | Yes | **Yes** | App functionality | Meal/workout text sent to AI **without identifiers** |
 | App info & performance / diagnostics | Minimal | No | App functionality | Server logs only; no analytics SDK |
 

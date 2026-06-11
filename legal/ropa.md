@@ -19,7 +19,7 @@
 
 ## Categories of personal data
 - **Account identifiers:** Google account email and OAuth account identifier.
-- **Special-category health data (Art. 9):** weight, body-fat %, sex, weigh-in history.
+- **Special-category health data (Art. 9):** weight, body-fat %, sex, weigh-in history, dietary requirements and allergies. Diet choices (e.g. halal/kosher) may reveal religious/philosophical beliefs — also Art. 9, same explicit-consent basis.
 - **Activity & app data:** food/water/workout logs, goals, settings, badges, history snapshots.
 - **Technical:** minimal connection/server logs. No analytics, advertising, or tracking SDKs.
 
@@ -36,7 +36,7 @@
 | Anthropic, PBC | AI nutrition/calorie estimation | United States |
 
 ## International transfers
-- US transfer to **Anthropic** for AI estimation. Data sent **without identifiers**.
+- US transfer to **Anthropic** for AI estimation (incl. dietary requirements/allergies when set, so suggestions avoid them). Data sent **without identifiers**.
 - Safeguard: Anthropic DPA (effective 24 Feb 2025), auto-incorporated into the Commercial Terms.
   **EU SCCs Module Two** (Commission Implementing Decision (EU) 2021/914) **+ UK Addendum** (ICO Approved
   Addendum, template B.1.0). Anthropic does not train on customer content. *Verified 2026-06-10 against

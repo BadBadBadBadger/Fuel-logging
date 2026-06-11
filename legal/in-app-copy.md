@@ -35,9 +35,11 @@ Modal copy (checkbox **unticked** by default):
 > **Storing your health data**
 >
 > To track your progress and give you coaching, Fuel Log needs to store health information —
-> your **weight, body fat %, and sex** — in the cloud. We also send meal/workout descriptions and
-> body metrics to our AI provider (Anthropic, US) to estimate nutrition, **without any information
-> that identifies you**.
+> your **weight, body fat %, sex, and any dietary requirements and allergies you enter** — in the
+> cloud. We also send meal/workout descriptions, body metrics and your dietary needs to our AI
+> provider (Anthropic, US) to estimate nutrition and tailor suggestions, **without any information
+> that identifies you**. (Some diet choices, e.g. halal/kosher, may reveal religious belief — also
+> covered by this consent.)
 >
 > ☐ **I explicitly consent to Fuel Log storing and processing my health data** as described in the
 > [Privacy Policy](privacy.html).

@@ -44,12 +44,78 @@ const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
 const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null };
 
+// ── Dietary requirements & allergies (feature #8) ─────────────────
+// Suggestion lists for the profile tag-input. Allergens are the UK/EEA 'Big 14'
+// (FIC regulated). The user can also commit a custom tag not in these lists.
+const DIET_SUGGESTIONS = ["vegan","vegetarian","pescatarian","halal","kosher",
+  "dairy-free","gluten-free","keto","low-carb"];
+const BIG14_ALLERGENS = ["celery","gluten","crustaceans","eggs","fish","lupin","milk",
+  "molluscs","mustard","peanuts","sesame","soya","sulphites","tree nuts"];
+
+// Single-user cache so the scattered AI prompt builders (coach, AI Log, re-estimate,
+// Quick Add estimate) can read the user's dietary config without threading a prop
+// through every food surface. Refreshed whenever the profile loads or saves.
+let DIETARY = { diets:[], allergens:[], dislikes:[] };
+const normaliseDietary = d => ({
+  diets:     d && Array.isArray(d.diets)     ? d.diets     : [],
+  allergens: d && Array.isArray(d.allergens) ? d.allergens : [],
+  dislikes:  d && Array.isArray(d.dislikes)  ? d.dislikes  : [],
+});
+const setDietaryCache = d => { DIETARY = normaliseDietary(d); };
+
+// Hard-exclusion block appended to every AI food prompt. Empty when nothing is
+// configured (no-regression). Diets + allergens are HARD; dislikes are SOFT.
+const dietaryPromptBlock = (d) => {
+  const c = normaliseDietary(d);
+  const lines = [];
+  if (c.diets.length)
+    lines.push(`- DIET (hard rule): the user follows ${c.diets.join(", ")}. Never suggest, name or include any food that violates these diets.`);
+  if (c.allergens.length)
+    lines.push(`- ALLERGIES (hard SAFETY rule): the user is allergic to ${c.allergens.join(", ")}. Never suggest, name or include any food containing these — or any dish that typically contains them. This is a medical safety constraint.`);
+  if (c.dislikes.length)
+    lines.push(`- DISLIKES (soft preference): avoid ${c.dislikes.join(", ")} where reasonable; this is a preference, not a safety rule.`);
+  return lines.length ? `\nDietary constraints:\n${lines.join("\n")}\n` : "";
+};
+
+// Zero-token output backstop: which declared allergens does this text name?
+// Synonyms expand the trickier presets; matching uses a START word-boundary so
+// plurals/derivatives still hit (walnut→walnuts). We deliberately bias toward
+// OVER-detection — a spurious flag is cautious, a missed allergen is dangerous.
+const ALLERGEN_SYNONYMS = {
+  "tree nuts":   ["tree nut","almond","walnut","cashew","pecan","pistachio","hazelnut","macadamia","brazil nut","praline","nutella","marzipan"],
+  "peanuts":     ["peanut","groundnut","satay"],
+  "milk":        ["milk","dairy","cheese","butter","cream","yogurt","yoghurt","whey","casein","custard"],
+  "eggs":        ["egg","mayonnaise","mayo","meringue"],
+  "gluten":      ["gluten","wheat","barley","rye","bread","pasta","flour","breaded","batter","couscous"],
+  "crustaceans": ["crustacean","prawn","shrimp","crab","lobster","langoustine"],
+  "molluscs":    ["mollusc","mussel","clam","oyster","squid","octopus","scallop","snail"],
+  "soya":        ["soya","soy","tofu","edamame","miso","tempeh"],
+  "fish":        ["fish","salmon","tuna","cod","haddock","anchovy","mackerel","sardine"],
+  "sesame":      ["sesame","tahini","hummus"],
+  "celery":      ["celery","celeriac"],
+  "mustard":     ["mustard"],
+  "sulphites":   ["sulphite","sulfite"],
+  "lupin":       ["lupin"],
+};
+const scanAllergens = (text, allergens) => {
+  if (!text || !allergens || !allergens.length) return [];
+  const hay = String(text).toLowerCase();
+  const hits = [];
+  for (const a of allergens) {
+    const key   = String(a).toLowerCase();
+    const terms = ALLERGEN_SYNONYMS[key] || [key];
+    const found = terms.some(t => new RegExp("\\b" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(hay));
+    if (found) hits.push(a);
+  }
+  return hits;
+};
+
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
 // ── Legal / compliance (LEGAL_ROADMAP Phase B) ────────────────
 // Bump POLICY_VERSION whenever the privacy policy changes materially; the value
 // is stored against each consent so we know which version a user agreed to.
-const POLICY_VERSION = "1.0";
+const POLICY_VERSION = "1.2"; // v1.2: privacy policy now covers dietary requirements & allergies (#8)
 const LEGAL = {
   privacy:       "legal/privacy.html",
   terms:         "legal/terms.html",
@@ -131,6 +197,43 @@ const estimateSessionKcal = (w, bf, type, dur, int) =>
 
 const SAFE_MIN = { male:1400, female:1200 };
 
+// ── Macro floor engine (feature #7) ──────────────────────────────
+// One source of truth for protein/fat/carbs at any calorie target, used by both
+// the preset path (calcTargets) and the custom-target path. Protein and fat are
+// FLOORS, not proportionally-scaled values — carbs absorb the whole deficit/surplus.
+//   • protein: a flat g/kg-LEAN-MASS floor, identical in every mode, so it stops
+//     fluctuating on a cut/maintain/bulk switch (male 2.2 / female 2.0).
+//   • fat: stays mode-varying (more to spare on a bulk) but never below a hormonal
+//     floor of 0.6 g/kg BODYWEIGHT — this is what the old proportional scaling broke.
+//   • carbs: whatever calories remain after the two floors, min 50g.
+//   • floorsExceedKcal: true when the target is too low to fit both floors + min
+//     carbs. We keep the floors (never silently break one) and let the UI warn.
+const PROTEIN_PER_LBM  = { male: 2.2, female: 2.0 };
+const FAT_FLOOR_PER_KG = 0.6;
+const FAT_MODE_PER_KG  = {
+  male:   { cut: 0.8, maintain: 1.0, bulk: 1.0 },
+  female: { cut: 0.7, maintain: 0.9, bulk: 0.9 },
+};
+const MIN_CARBS_G = 50;
+
+const computeMacros = (p, mode, kcal) => {
+  const w   = Number(p.weight)  || 80;
+  const bf  = Number(p.bodyFat) || 18;
+  const sex = p.sex === "female" ? "female" : "male";
+  const lbm = w * (1 - bf / 100);
+
+  const protein  = Math.round(lbm * PROTEIN_PER_LBM[sex]);
+  const fatPerKg = Math.max(FAT_FLOOR_PER_KG, (FAT_MODE_PER_KG[sex][mode] ?? FAT_MODE_PER_KG[sex].maintain));
+  const fat      = Math.round(w * fatPerKg);
+
+  const floorKcal = protein * 4 + fat * 9;
+  const carbs     = Math.max(MIN_CARBS_G, Math.round((kcal - floorKcal) / 4));
+  // The floors alone (+ minimum carbs) already cost more than the target asks for.
+  const floorsExceedKcal = floorKcal + MIN_CARBS_G * 4 > kcal;
+
+  return { protein, carbs, fat, lbm: Math.round(lbm), floorsExceedKcal };
+};
+
 const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
@@ -139,17 +242,34 @@ const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const bmr  = Math.round(370 + 21.6 * lbm);
   const tdee = Math.round(bmr * 1.2) + tdeeAdj;
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
-  const protein = Math.round(lbm * (sex === "female"
-    ? (mode === "cut" ? 2.0 : mode === "bulk" ? 1.8 : 1.6)
-    : (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8)));
-  const fat     = Math.round(w   * (sex === "female"
-    ? (mode === "cut" ? 0.7 : 0.9)
-    : (mode === "cut" ? 0.8 : 1.0)));
   const safeMin = SAFE_MIN[sex] || 1400;
   const safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
-  const carbs   = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus: totalWorkoutKcal || 0, safeMinApplied };
+  const m = computeMacros(p, mode, kcal);
+  return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
+    lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied,
+    floorsExceedKcal: m.floorsExceedKcal };
+};
+
+// ── Coach pacing (feature #6) ────────────────────────────────────
+// Pace is COMPUTED here and handed to the LLM as a verdict — the model never
+// judges "behind" itself (that misfires early in the day). Safeguards baked in:
+//   • the eating window STARTS at today's first logged meal, not a wall clock,
+//     so fasting / 16:8 / Ramadan users are never falsely told they're behind;
+//   • callers pace only FLOOR goals (protein, water) — never the calorie ceiling,
+//     where being under is success, not a failure to fix;
+//   • "behind" is never used until >25% of the window has elapsed.
+const EATING_WINDOW_H = 14; // a typical waking eating span measured from the first meal
+
+const paceVerdict = (firstMealHour, nowHour, frac) => {
+  if (firstMealHour == null) return { elapsed: 0, verdict: "ahead" }; // nothing eaten yet → window not started
+  let elapsed = (nowHour - firstMealHour) / EATING_WINDOW_H;
+  elapsed = Math.max(0, Math.min(1, elapsed));
+  if (frac >= 1)              return { elapsed, verdict: "met" };
+  if (elapsed < 0.25)         return { elapsed, verdict: "ahead" }; // day is just getting going
+  if (frac >= elapsed)        return { elapsed, verdict: "ahead" };
+  if (frac >= elapsed - 0.15) return { elapsed, verdict: "on" };
+  return { elapsed, verdict: "behind" };
 };
 
 // ── Adaptive TDEE ─────────────────────────────────────────────
@@ -672,6 +792,7 @@ function SignInModal({ onSuccess, onCancel }) {
     setVError("");
     try {
       await redeemVoucher(voucher);
+      haptic();
       onSuccess(gUser || { name:"Guest", email:"", picture:"" }, "voucher", consentMeta());
     } catch(e) {
       setVError(e.message || "Redemption failed. Try again.");
@@ -751,7 +872,8 @@ function SignInModal({ onSuccess, onCancel }) {
                 style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
               <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
                 I explicitly consent to Fuel Log storing my <strong>health data</strong> (weight, body&nbsp;fat,
-                sex) in the cloud to provide the service. Meal/workout text and body metrics are sent to our
+                sex, and any dietary&nbsp;requirements&nbsp;and&nbsp;allergies I enter) in the cloud to provide the
+                service. Meal/workout text, body metrics and my dietary needs are sent to our
                 AI provider <strong>without anything that identifies me</strong>. See the{" "}
                 <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
               </span>
@@ -839,7 +961,7 @@ function ConsentModal({ onConsent, onSignOut }) {
             style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
           <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
             I explicitly consent to Fuel Log storing my <strong>health data</strong> (weight, body&nbsp;fat,
-            sex) to provide the service. See the{" "}
+            sex, and any dietary&nbsp;requirements&nbsp;and&nbsp;allergies I enter) to provide the service. See the{" "}
             <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
           </span>
         </label>
@@ -1174,14 +1296,15 @@ function StreakCelebration({ anim, onDone }) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard({ mode, totals, targets, streak, water }) {
+function CoachCard({ mode, totals, targets, streak, water, logs = [] }) {
   const [tip, setTip]           = useState("");
   const [refreshes, setRefreshes] = useState(0);
   const [loading, setLoading]   = useState(false);
+  const [history, setHistory]   = useState([]); // tips already given today, so refreshes don't repeat
 
   useEffect(() => {
     sg("coach__" + todayKey()).then(v => {
-      if (v) { const d = JSON.parse(v); setTip(d.tip || ""); setRefreshes(d.r || 0); }
+      if (v) { const d = JSON.parse(v); setTip(d.tip || ""); setRefreshes(d.r || 0); setHistory(d.history || []); }
     });
   }, []);
 
@@ -1214,16 +1337,62 @@ function CoachCard({ mode, totals, targets, streak, water }) {
         ? `water ${water}/8 glasses — goal met ✅ (do NOT suggest more water)`
         : `water ${water}/8 glasses — ${8 - water} under`;
 
-      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today (${mode} mode):\n- ${kcalLine}\n- ${protLine}\n- ${waterLine}\n- ${streak} day logging streak.\nWrite exactly 3 sentences: 1) honest observation about today 2) a food or habit suggestion appropriate for ${timeLabel} — never suggest more of a metric already marked "goal met ✅"; if a goal is already met, give it a quick celebratory nod instead of ignoring it 3) genuine praise. Brief, personal, max one emoji per sentence.`;
+      // (#5) State-awareness: tell the coach exactly what's been eaten so it neither
+      // re-suggests it nor guesses. Names only — no quantities needed for variety.
+      const foods = [...new Set(logs.map(l => l && l.name).filter(Boolean))];
+      const foodsLine = foods.length
+        ? `Already eaten today (do NOT suggest any of these again): ${foods.join(", ")}.`
+        : `Nothing logged yet today.`;
+
+      // (#6) Pace is COMPUTED here, never judged by the LLM. Window starts at the
+      // first logged meal; only floor goals (protein, water) are paced — never calories.
+      const firstMealHour = logs.length
+        ? new Date(Math.min(...logs.map(l => Number(l.id) || Date.now()))).getHours()
+        : null;
+      const protFrac  = targets.protein > 0 ? totals.protein / targets.protein : 1;
+      const protPace  = paceVerdict(firstMealHour, h, protFrac);
+      const waterPace = paceVerdict(firstMealHour, h, water / 8);
+      const protPaceLine = protDelta >= 0 ? "" :
+        `Protein pace → ${Math.round(protPace.elapsed * 100)}% of the eating window elapsed vs ${Math.round(protFrac * 100)}% of the protein floor hit; verdict: ${protPace.verdict}.`;
+      const waterPaceLine = water >= 8 ? "" :
+        `Water pace → ${Math.round(waterPace.elapsed * 100)}% of window elapsed vs ${Math.round((water / 8) * 100)}% of the water goal hit; verdict: ${waterPace.verdict}.`;
+
+      // (#5) Vary across refreshes: hand the model what it already said today.
+      const prevLine = history.length
+        ? `You have ALREADY suggested these today — say something meaningfully different: ${history.slice(-3).join(" | ")}.`
+        : "";
+
+      const ctx = [
+        `- ${kcalLine}`, `- ${protLine}`, `- ${waterLine}`, `- ${streak} day logging streak.`,
+        `- ${foodsLine}`,
+        protPaceLine  ? `- ${protPaceLine}`  : "",
+        waterPaceLine ? `- ${waterPaceLine}` : "",
+        prevLine      ? `- ${prevLine}`      : "",
+      ].filter(Boolean).join("\n");
+
+      const prompt = `You are a supportive fitness coach. Local time: ${timeLabel} (${h}:00). Today (${mode} mode):
+${ctx}
+
+Rules:
+- Use the pace VERDICT given above; do NOT decide for yourself whether I am "behind". Only protein and water are paced — NEVER calories. Being under my calorie target is success on a cut/maintain, never "behind", and you must never urge me to eat more to "catch up" on calories.
+- Never suggest more of a metric marked "goal met ✅"; instead give that met goal a brief celebratory nod.
+- If the protein floor is still unmet, meeting it OUTRANKS variety; once the floors are met, favour VARIETY and fibre / gut-health diversity instead of re-recommending the same high-protein food.
+- Any food you suggest must NOT be something already eaten today, and must differ from what you already suggested.
+- If a floor goal's verdict is "behind", give a gentle, non-punishing nudge toward one specific food choice to round the day out — no "catch up" urgency, no shame.
+${dietaryPromptBlock(DIETARY)}Write exactly 3 sentences: 1) an honest observation about today 2) a specific food or habit suggestion appropriate for ${timeLabel} 3) genuine praise. Brief, personal, max one emoji per sentence.`;
       const t    = await callAI(prompt, 200);
       const r    = refreshes + 1;
-      setTip(t); setRefreshes(r);
-      await ss("coach__" + todayKey(), JSON.stringify({ tip:t, r }));
+      const newHistory = [...history, t].slice(-3);
+      setTip(t); setRefreshes(r); setHistory(newHistory);
+      await ss("coach__" + todayKey(), JSON.stringify({ tip:t, r, history: newHistory }));
     } catch(e) {}
     setLoading(false);
   };
 
   if (totals.kcal < 200 && !tip) return null;
+  // Zero-token allergen backstop: if a tip slips a declared allergen past the
+  // prompt, flag it before the user acts on it (never silently trust the LLM).
+  const tipAllergens = scanAllergens(tip, DIETARY.allergens);
   return (
     <div style={{ background:CARD, border:`1px solid ${A}22`, borderRadius:20, padding:"14px 18px", marginBottom:14 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: tip ? 8 : 0 }}>
@@ -1237,6 +1406,65 @@ function CoachCard({ mode, totals, targets, streak, water }) {
       </div>
       {loading && !tip && <div style={{ fontSize:12, color:"#9b958b", marginTop:4 }}>Generating your tip...</div>}
       {tip && <div style={{ fontSize:14.5, color:"#c2bcb0", lineHeight:1.7 }}>{tip}</div>}
+      {tipAllergens.length > 0 && (
+        <div style={{ marginTop:8, background:"#1a0d08", border:"1px solid #ff555544", borderRadius:10,
+          padding:"8px 12px", fontSize:11, color:"#ff8866", lineHeight:1.5 }}>
+          ⚠️ This tip may mention {tipAllergens.join(", ")}, which you've flagged as an allergy — please double-check before acting on it.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tag input (feature #8) ────────────────────────────────────
+// A hybrid combobox: free-text that surfaces selectable suggestions and also
+// lets the user commit a CUSTOM tag the app didn't suggest. Tags are removable pills.
+function TagField({ label, tags, suggestions, onChange, accent = A, placeholder }) {
+  const [input, setInput] = useState("");
+  const has = t => tags.some(x => x.toLowerCase() === t.toLowerCase());
+  const add = raw => {
+    const t = raw.trim().toLowerCase();
+    if (t && !has(t)) onChange([...tags, t]);
+    setInput("");
+  };
+  const remove = t => onChange(tags.filter(x => x !== t));
+  const q = input.trim().toLowerCase();
+  const shown = suggestions.filter(s => !has(s) && (q === "" || s.toLowerCase().includes(q))).slice(0, 8);
+  const isCustom = q && !suggestions.some(s => s.toLowerCase() === q);
+
+  return (
+    <div style={{ marginBottom:18 }}>
+      <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>{label}</div>
+      {tags.length > 0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+          {tags.map(t => (
+            <span key={t} style={{ display:"inline-flex", alignItems:"center", gap:5,
+              background: accent + "1e", border:`1px solid ${accent}55`, borderRadius:999,
+              padding:"4px 10px", fontSize:12, color:accent, fontWeight:700 }}>
+              {t}
+              <button onClick={() => remove(t)} style={{ background:"none", border:"none",
+                color:accent, fontSize:14, padding:0, cursor:"pointer", lineHeight:1 }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input value={input} onChange={e => setInput(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(input); } }}
+        placeholder={placeholder} style={{ ...INP }}/>
+      {(shown.length > 0 || isCustom) && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
+          {shown.map(s => (
+            <button key={s} onClick={() => add(s)} style={{ background:"#1c1a15",
+              border:`1px solid ${BD}`, borderRadius:999, padding:"4px 10px",
+              fontSize:12, color:"#aea79c", cursor:"pointer", fontFamily:"inherit" }}>+ {s}</button>
+          ))}
+          {isCustom && (
+            <button onClick={() => add(input)} style={{ background:"none",
+              border:`1px dashed ${accent}66`, borderRadius:999, padding:"4px 10px",
+              fontSize:12, color:accent, cursor:"pointer", fontFamily:"inherit" }}>+ Add "{input.trim()}"</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1248,6 +1476,14 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   const [saved, setSaved] = useState(false);
   const [bfFocused, setBfFocused] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]:v }));
+  // Dietary config (#8) persists immediately on change — the body-stats auto-save
+  // effect only watches weight/height/bf/sex, so tag edits save themselves here.
+  const diet = normaliseDietary(f.dietary);
+  const setDiet = (key, list) => {
+    const nf = { ...f, dietary: { ...diet, [key]: list } };
+    setF(nf);
+    onSave(nf);
+  };
   const valid = Number(f.weight) > 0 && Number(f.height) > 0 &&
                 Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
   const bfVal = Number(f.bodyFat);
@@ -1261,6 +1497,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
     if (!valid) return;
     const t = setTimeout(() => {
       onSave(f);
+      haptic();
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
     }, 600);
@@ -1341,6 +1578,22 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
           Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
         </div>
       </div>
+
+      {/* Dietary requirements & allergies (#8) — steers every AI food suggestion */}
+      <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
+        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>DIET & ALLERGIES</div>
+        <p style={{ fontSize:11, color:"#827c73", lineHeight:1.5, marginBottom:16 }}>
+          These steer every AI suggestion — the coach, AI Meal Log and estimates. Allergies are a
+          hard safety filter, applied in the prompt and double-checked on every AI response.
+        </p>
+        <TagField label="DIET TYPE" tags={diet.diets} suggestions={DIET_SUGGESTIONS}
+          onChange={l => setDiet("diets", l)} placeholder="e.g. vegan, halal…"/>
+        <TagField label="ALLERGIES (HARD FILTER)" tags={diet.allergens} suggestions={BIG14_ALLERGENS}
+          onChange={l => setDiet("allergens", l)} accent="#ff7b6b" placeholder="e.g. peanuts, milk…"/>
+        <TagField label="DISLIKES (SOFT — AVOID WHERE POSSIBLE)" tags={diet.dislikes} suggestions={[]}
+          onChange={l => setDiet("dislikes", l)} accent="#aea79c" placeholder="e.g. coriander, olives…"/>
+      </div>
+
       {valid && (
         <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px" }}>
           <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
@@ -1413,14 +1666,45 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm({ meal, onSave, onCancel }) {
+function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = () => {} }) {
   const blank = { name:"", kcal:"", protein:"", carbs:"", fat:"" };
   const [f, setF] = useState(meal ? {
     name: meal.name, kcal: String(meal.kcal), protein: String(meal.protein),
     carbs: String(meal.carbs), fat: String(meal.fat),
   } : blank);
-  const set = (k, v) => setF(p => ({ ...p, [k]:v }));
+  const [reest,    setReest]    = useState(false);
+  const [reestMsg, setReestMsg] = useState(""); // "" | "done" | error text
+  const set = (k, v) => { setF(p => ({ ...p, [k]:v })); setReestMsg(""); };
   const ok  = f.name.trim() && Number(f.kcal) > 0;
+
+  // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
+  // Open Food Facts a bounded background refinement that only wins on confidence.
+  const estimate = async () => {
+    if (!isPremium) { onPremiumGate({ emoji:"✨", name:"AI estimate" }); return; }
+    if (!f.name.trim() || reest) return;
+    setReest(true); setReestMsg("");
+    const fill = r => setF(p => ({ ...p,
+      kcal:    String(Math.round(r.kcal)),
+      protein: String(Math.round(r.protein * 10) / 10),
+      carbs:   String(Math.round(r.carbs   * 10) / 10),
+      fat:     String(Math.round(r.fat     * 10) / 10),
+    }));
+    let upd;
+    try {
+      upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
+    } catch (e) {
+      setReestMsg("Couldn't reach the AI — check your connection and try again.");
+      setReest(false);
+      return;
+    }
+    fill(upd);
+    setReestMsg("done");
+    setReest(false);
+    try {
+      const oft = await searchOFT(f.name.trim());
+      if (oft && oft.confidence > upd.confidence) fill(oft);
+    } catch (e) {}
+  };
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", display:"flex",
@@ -1449,10 +1733,19 @@ function MealForm({ meal, onSave, onCancel }) {
             </div>
           ))}
         </div>
-        <button onClick={() => ok && onSave({
+        <button onClick={estimate} disabled={reest}
+          style={{ width:"100%", padding:"12px", marginBottom: reestMsg && reestMsg !== "done" ? 6 : 12,
+            background:"#1c1a15", border:`1px solid ${A}44`, borderRadius:11, color:A,
+            fontSize:13, fontWeight:800, cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
+          {reest ? "Estimating…" : reestMsg === "done" ? "✓ Filled — estimate again" : "✨ AI estimate from name"}
+        </button>
+        {reestMsg && reestMsg !== "done" && (
+          <div style={{ fontSize:11, color:"#ff7b6b", marginBottom:12, lineHeight:1.4 }}>{reestMsg}</div>
+        )}
+        <button onClick={() => ok && (haptic(), onSave({
           name: f.name.trim(), kcal: Number(f.kcal) || 0,
           protein: Number(f.protein) || 0, carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
-        })} disabled={!ok}
+        }))} disabled={!ok}
           style={{ width:"100%", padding:"15px",
             background: ok ? A : "#1c1a15", color: ok ? "#0b0d0b" : "#2c2820",
             border:"none", borderRadius:13, fontSize:14, fontWeight:900, letterSpacing:"0.08em" }}>
@@ -1818,12 +2111,13 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   const kcalBorder  = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
 
   const [savedIds,      setSavedIds]      = useState({});
+  const [qaBlink,       setQaBlink]       = useState({}); // log.id -> tap nonce, drives re-blink on every tap
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetInputVal, setTargetInputVal] = useState("");
 
   const commitTarget = () => {
     const v = parseInt(targetInputVal);
-    if (v > 0) onSetCustomKcal(v);
+    if (v > 0) { haptic(); onSetCustomKcal(v); }
     setEditingTarget(false);
   };
 
@@ -1846,6 +2140,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   const handleAddToQA = async log => {
     await addToQA(log);
     setSavedIds(p => ({ ...p, [log.id]:true }));
+    setQaBlink(p => ({ ...p, [log.id]: (p[log.id] || 0) + 1 })); // re-blink even when already saved
     setTimeout(() => setSavedIds(p => ({ ...p, [log.id]:false })), 1800);
   };
 
@@ -1973,6 +2268,23 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       )}
 
+      {/* Macro floors too low for the target (#7) — floors kept, never silently broken */}
+      {targets.floorsExceedKcal && (
+        <div style={{ background:"#1a1200", border:"1px solid #ffb84b33", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>⚠️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              FLOORS KEPT
+            </div>
+            <div style={{ fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+              This target's too low to hit your protein and fat floors. We've kept your floors,
+              so your macros add up to a bit more than this number.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Calorie card */}
       <div style={{ background:CARD, borderRadius:22,
         border:`1px solid ${kcalBorder}`, padding:"20px 22px", marginBottom:14 }}>
@@ -2044,7 +2356,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       </div>
 
       {/* Coach tip */}
-      {isPremium && <CoachCard key={coachKey} mode={mode} totals={totals} targets={targets} streak={streak} water={water}/>}
+      {isPremium && <CoachCard key={coachKey} mode={mode} totals={totals} targets={targets} streak={streak} water={water} logs={logs}/>}
 
       {/* Water */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
@@ -2124,11 +2436,12 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
                     </div>
                   </div>
                   <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
-                  <button onClick={() => handleAddToQA(log)}
+                  <button key={"qa-" + log.id + "-" + (qaBlink[log.id] || 0)} onClick={() => handleAddToQA(log)}
                     style={{ flexShrink:0, padding:"7px 12px",
                       background: savedIds[log.id] ? A + "22" : "#1c1a15",
                       border: `1px solid ${savedIds[log.id] ? A + "66" : "#2a2620"}`,
                       borderRadius:10, color: savedIds[log.id] ? A : "#827c73",
+                      animation: savedIds[log.id] ? "blink_add 0.4s ease-out" : "none",
                       fontSize:12, fontWeight:700, cursor:"pointer" }}>
                     {savedIds[log.id] ? "✓" : "⚡"}
                   </button>
@@ -2160,7 +2473,7 @@ Rules:
 - Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.
 - If a component is ambiguous (e.g. "large meal" at a restaurant that only does regular), state the ambiguity in the reasoning field.
 - Be conservative — if unsure between two estimates, explain both.
-
+${dietaryPromptBlock(DIETARY)}
 Meal to analyse: "${desc}"
 
 Return ONLY valid JSON (no markdown, no preamble):
@@ -2183,7 +2496,7 @@ const AI_REESTIMATE_PROMPT = (item) => `You are a nutrition database expert. Re-
 Item: "${item}"
 
 Apply the same rules: use exact menu/label data for branded products. Be precise, not approximate.
-
+${dietaryPromptBlock(DIETARY)}
 Return ONLY valid JSON (no markdown):
 {
   "name": "item name",
@@ -2232,6 +2545,7 @@ function ItemRow({ item, onReestimate, reestimating }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(item.name);
   const cc = confColor(item.confidence);
+  const itemAllergens = scanAllergens(item.name, DIETARY.allergens); // zero-token backstop
 
   const submit = () => { setEditing(false); if (draft.trim() !== item.name) onReestimate(draft.trim()); };
 
@@ -2276,6 +2590,11 @@ function ItemRow({ item, onReestimate, reestimating }) {
           {item.reasoning}
         </div>
       )}
+      {itemAllergens.length > 0 && (
+        <div style={{ marginTop:6, fontSize:11, color:"#ff8866", fontWeight:700, lineHeight:1.4 }}>
+          ⚠️ Contains {itemAllergens.join(", ")} — flagged from your allergies.
+        </div>
+      )}
     </div>
   );
 }
@@ -2287,7 +2606,7 @@ function AILog({ onAdd, onBack }) {
   const [reestIdx,     setReestIdx]     = useState(null);
   const [error,        setError]        = useState("");
   const [loggedAll,    setLoggedAll]    = useState(false);
-  const [loggedIdx,    setLoggedIdx]    = useState([]);
+  const [loggedCount,  setLoggedCount]  = useState({}); // idx -> times logged (ephemeral; resets on unmount)
 
   const totals = items ? items.reduce((a, it) => ({
     kcal:    a.kcal    + it.kcal,
@@ -2300,7 +2619,7 @@ function AILog({ onAdd, onBack }) {
 
   const estimate = async () => {
     if (!desc.trim()) return;
-    setLoading(true); setError(""); setItems(null); setLoggedAll(false);
+    setLoading(true); setError(""); setItems(null); setLoggedAll(false); setLoggedCount({});
     try {
       const parsed = await callAIJson(AI_PROMPT(desc), 2000);
       let aiItems  = parsed.items || [];
@@ -2352,7 +2671,7 @@ function AILog({ onAdd, onBack }) {
       protein: Math.round(item.protein * 10) / 10,
       carbs:   Math.round(item.carbs   * 10) / 10,
       fat:     Math.round(item.fat     * 10) / 10 });
-    setLoggedIdx(prev => prev.includes(idx) ? prev : [...prev, idx]);
+    setLoggedCount(prev => ({ ...prev, [idx]: (prev[idx] || 0) + 1 }));
   };
 
   return (
@@ -2438,16 +2757,20 @@ function AILog({ onAdd, onBack }) {
           </div>
 
           {items.map((item, i) => {
-            const added = loggedIdx.includes(i);
+            const count = loggedCount[i] || 0;
+            const added = count > 0;
+            const tag   = added ? "✓ Added" + (count > 1 ? " ×" + count : "") + " · " : "+ ";
             return (
-            <button key={i} onClick={() => logItem(item, i)}
+            // key includes the count so each repeat tap remounts the row and re-runs blink_add
+            <button key={i + "-" + count} onClick={() => logItem(item, i)}
               style={{ width:"100%", padding:"10px 14px",
                 background: added ? A + "1e" : "#1c1a15",
                 border:`1px solid ${added ? A + "66" : BD}`, borderRadius:10,
                 color: added ? A : "#b6b0a4",
                 fontSize:12, fontWeight:600, cursor:"pointer", marginBottom:6,
+                animation: added ? "blink_add 0.4s ease-out" : "none",
                 textAlign:"left", display:"flex", justifyContent:"space-between" }}>
-              <span>{added ? "✓ Added · " : "+ "}{item.name}</span>
+              <span>{tag}{item.name}</span>
               <span style={{ color:A, fontWeight:900 }}>{Math.round(item.kcal)} kcal</span>
             </button>
             );
@@ -2460,7 +2783,7 @@ function AILog({ onAdd, onBack }) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd({ onAdd, onBack, meals, setMeals }) {
+function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremiumGate = () => {} }) {
   const [search, setSearch] = useState("");
   const [modal, setModal]   = useState(null);
 
@@ -2475,7 +2798,7 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
 
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
-      {modal !== null && <MealForm meal={modal.meal} onSave={handleSave} onCancel={() => setModal(null)}/>}
+      {modal !== null && <MealForm meal={modal.meal} onSave={handleSave} onCancel={() => setModal(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>}
       <BackHdr title="QUICK ADD" onBack={onBack}/>
       <div style={{ display:"flex", gap:10, marginBottom:16 }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
@@ -2499,7 +2822,7 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
             <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{m.kcal}</span>
             <button onClick={() => setModal({ meal:m, index:m._i })}
               style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>✏️</button>
-            <button onClick={() => save(meals.filter((_, i) => i !== m._i))}
+            <button onClick={() => { haptic(); save(meals.filter((_, i) => i !== m._i)); }}
               style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>🗑️</button>
           </div>
         ))}
@@ -2507,7 +2830,7 @@ function QuickAdd({ onAdd, onBack, meals, setMeals }) {
           <div style={{ textAlign:"center", color:"#6e6960", padding:"30px 0", fontSize:14 }}>No meals found</div>
         )}
       </div>
-      <button onClick={() => save([...DEF_MEALS])}
+      <button onClick={() => { haptic(); save([...DEF_MEALS]); }}
         style={{ marginTop:16, width:"100%", padding:"11px", background:"none",
           border:`1px dashed #24211b`, borderRadius:12, color:"#6e6960", fontSize:12, fontFamily:"inherit" }}>
         ↩ Reset to defaults
@@ -2699,8 +3022,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
     setAddCtx(null);
   };
 
-  if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onAdd={addEntry} onBack={() => setAddCtx(null)}/>;
-  if (addCtx === "manual") return <MealForm onSave={addEntry} onCancel={() => setAddCtx(null)}/>;
+  if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onAdd={addEntry} onBack={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
+  if (addCtx === "manual") return <MealForm onSave={addEntry} onCancel={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
   if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)}/>;
 
   return (
@@ -3140,7 +3463,7 @@ function App() {
       const lv = await sg("logs__"  + k); if (lv)  setLogs(JSON.parse(lv));
       const wv = await sg("water__" + k); if (wv)  setWater(parseInt(wv) || 0);
       const mv = await sg("mode__"  + k); if (mv)  setMode(mv);
-      const pv = await sg("profile");     if (pv)  setProf(JSON.parse(pv));
+      const pv = await sg("profile");     if (pv)  { const pp = JSON.parse(pv); setProf(pp); setDietaryCache(pp.dietary); }
       const mv2 = await sg("meals");      if (mv2) setMeals(JSON.parse(mv2));
       const wkv = await sg("workouts__" + k); if (wkv) setWorkouts(JSON.parse(wkv));
       const bv = await sg("badges");     if (bv)  setEarnedBdgs(JSON.parse(bv));
@@ -3170,7 +3493,7 @@ function App() {
           // Background pull — app shows immediately from local, Supabase data merges in
           if (u.id && navigator.onLine) {
             pullFromSupabase(u.id).then(pulled => {
-              if (pulled.profile)  setProf(pulled.profile);
+              if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
               if (pulled.weighIns) setWeighIns(pulled.weighIns);
               if (pulled.meals)    setMeals(pulled.meals);
               if (pulled.badges)   setEarnedBdgs(pulled.badges);
@@ -3244,6 +3567,7 @@ function App() {
   };
   const saveProf = async p => {
     setProf(p);
+    setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
     await ss("profile", JSON.stringify(p));
     if (authState === "premium" && authUser?.id)
       syncProfile(authUser.id, p).catch(() => {});
@@ -3358,7 +3682,7 @@ function App() {
         if (consentMeta) await syncConsent(user.id, consentMeta);
         await migrateLocalToSupabase(user.id);
         const pulled = await pullFromSupabase(user.id);
-        if (pulled.profile)  setProf(pulled.profile);
+        if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
         if (pulled.weighIns) setWeighIns(pulled.weighIns);
         if (pulled.meals)    setMeals(pulled.meals);
         if (pulled.badges)   setEarnedBdgs(pulled.badges);
@@ -3487,6 +3811,7 @@ function App() {
   };
 
   const onWeighIn = async weight => {
+    haptic();
     const entry = { date: todayKey(), weight };
     const updated = [...weighIns.filter(w => w.date !== entry.date), entry]
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -3524,14 +3849,17 @@ function App() {
     if (customKcal == null) return baseTargets;
     const safeMin = SAFE_MIN[p.sex || "male"] || 1400;
     const safeKcal = Math.max(safeMin, customKcal);
-    const scale = baseTargets.kcal > 0 ? safeKcal / baseTargets.kcal : 1;
+    // Floors hold; carbs absorb the change — never proportionally scale protein/fat
+    // (the old bug dragged fat under its hormonal floor on a deep custom cut).
+    const m = computeMacros(p, effectiveMode, safeKcal);
     return {
       ...baseTargets,
       kcal:    safeKcal,
-      protein: Math.round(baseTargets.protein * scale),
-      carbs:   Math.max(50, Math.round(baseTargets.carbs * scale)),
-      fat:     Math.round(baseTargets.fat * scale),
-      safeMinApplied:   safeKcal > customKcal,
+      protein: m.protein,
+      carbs:   m.carbs,
+      fat:     m.fat,
+      floorsExceedKcal:  m.floorsExceedKcal,
+      safeMinApplied:    safeKcal > customKcal,
       customKcalApplied: true,
     };
   })();
@@ -3556,6 +3884,7 @@ function App() {
         select { background: #0b0d0b; color: #e6e1d7; }
         button { cursor: pointer; }
         button:disabled { cursor: not-allowed; }
+        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }
       `}</style>
 
       {/* Streak celebration */}
@@ -3624,7 +3953,7 @@ function App() {
           isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals}/>}
+      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}

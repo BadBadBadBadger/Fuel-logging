@@ -32,7 +32,7 @@
   </div>
   <div class="card">
     <h1>Privacy Policy</h1>
-    <p class="meta">Fuel Log · Version 1.1 · Last updated 10 June 2026</p>
+    <p class="meta">Fuel Log · Version 1.2 · Last updated 11 June 2026</p>
     <p>This policy explains what personal data Fuel Log collects, why, and your rights over it.
        Fuel Log is intended for users aged <strong>18 or over</strong> in the
        <strong>United Kingdom and the European Economic Area (EEA)</strong>.</p>
@@ -47,7 +47,7 @@
     <table>
       <tr><th>Category</th><th>Examples</th></tr>
       <tr><td>Account</td><td>The email address and account identifier provided by Google when you sign in with Google.</td></tr>
-      <tr><td><strong>Health data (special category)</strong></td><td>Weight, body-fat&nbsp;%, sex, and your weigh-in history.</td></tr>
+      <tr><td><strong>Health data (special category)</strong></td><td>Weight, body-fat&nbsp;%, sex, your weigh-in history, and any dietary requirements and allergies you choose to enter. Some diet choices (for example halal or kosher) may also reveal religious or philosophical beliefs, which we treat as special-category data too.</td></tr>
       <tr><td>Activity &amp; app data</td><td>Food, water and workout logs; goals and settings; earned badges; history snapshots.</td></tr>
       <tr><td>Technical</td><td>Minimal. We do <strong>not</strong> use analytics, advertising, or third-party tracking SDKs. Standard server logs may briefly record connection data needed to run the service securely.</td></tr>
     </table>
@@ -56,16 +56,19 @@
     <table>
       <tr><th>Purpose</th><th>Data</th><th>Lawful basis (UK/EU GDPR)</th></tr>
       <tr><td>Provide the app and sync your data across devices</td><td>Account, activity &amp; app data</td><td>Performance of a contract (Art.&nbsp;6(1)(b)) and/or consent</td></tr>
-      <tr><td>Store and process your health metrics to give you tracking and coaching features</td><td>Health data</td><td><strong>Your explicit consent (Art.&nbsp;9(2)(a))</strong></td></tr>
-      <tr><td>Estimate nutrition/calories from meal and workout descriptions</td><td>Meal/workout text; weight &amp; body-fat&nbsp;% (no identifiers — see §4)</td><td>Explicit consent (Art.&nbsp;9(2)(a)) / contract</td></tr>
+      <tr><td>Store and process your health metrics to give you tracking and coaching features</td><td>Health data (including dietary requirements, allergies, and any beliefs a diet choice may reveal)</td><td><strong>Your explicit consent (Art.&nbsp;9(2)(a))</strong></td></tr>
+      <tr><td>Estimate nutrition/calories and tailor suggestions from meal and workout descriptions</td><td>Meal/workout text; weight &amp; body-fat&nbsp;%; your dietary requirements and allergies (no identifiers — see §4)</td><td>Explicit consent (Art.&nbsp;9(2)(a)) / contract</td></tr>
     </table>
     <p>You give explicit consent for health data the first time the app syncs it to the cloud.
        You can withdraw consent at any time (see §8); withdrawal stops further cloud sync and lets you delete your data.</p>
 
     <h2>4. AI processing (Anthropic)</h2>
-    <p>To estimate calories and nutrition, Fuel Log sends your meal descriptions, workout descriptions,
-       and — for workout calorie estimates — your weight and body-fat&nbsp;% to
-       <strong>Anthropic, PBC (United States)</strong>, the provider of the Claude AI model.</p>
+    <p>To estimate calories and nutrition and to tailor coaching suggestions, Fuel Log sends your meal
+       descriptions, workout descriptions, — for workout calorie estimates — your weight and
+       body-fat&nbsp;%, and — if you have set them — your dietary requirements and allergies, to
+       <strong>Anthropic, PBC (United States)</strong>, the provider of the Claude AI model. Your
+       dietary requirements and allergies are sent so the AI can avoid suggesting foods you cannot or
+       prefer not to eat.</p>
     <p><strong>No identifiers are sent.</strong> Your name, email, and account identifier are never
        transmitted to Anthropic — the data is sent unlinked to your identity. Full detail is in our
        <a href="./subprocessors.html">sub-processor disclosure</a>.</p>

@@ -47,6 +47,91 @@ const calcTargets = (p, mode, training, sessKcal = null, tdeeAdj = 0) => {
   return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus };
 };
 
+// ── Macro floor engine (feature #7) — mirror of app.jsx computeMacros ──────────
+const PROTEIN_PER_LBM  = { male: 2.2, female: 2.0 };
+const FAT_FLOOR_PER_KG = 0.6;
+const FAT_MODE_PER_KG  = {
+  male:   { cut: 0.8, maintain: 1.0, bulk: 1.0 },
+  female: { cut: 0.7, maintain: 0.9, bulk: 0.9 },
+};
+const MIN_CARBS_G = 50;
+
+const computeMacros = (p, mode, kcal) => {
+  const w   = Number(p.weight)  || 80;
+  const bf  = Number(p.bodyFat) || 18;
+  const sex = p.sex === "female" ? "female" : "male";
+  const lbm = w * (1 - bf / 100);
+
+  const protein  = Math.round(lbm * PROTEIN_PER_LBM[sex]);
+  const fatPerKg = Math.max(FAT_FLOOR_PER_KG, (FAT_MODE_PER_KG[sex][mode] ?? FAT_MODE_PER_KG[sex].maintain));
+  const fat      = Math.round(w * fatPerKg);
+
+  const floorKcal = protein * 4 + fat * 9;
+  const carbs     = Math.max(MIN_CARBS_G, Math.round((kcal - floorKcal) / 4));
+  const floorsExceedKcal = floorKcal + MIN_CARBS_G * 4 > kcal;
+
+  return { protein, carbs, fat, lbm: Math.round(lbm), floorsExceedKcal };
+};
+
+// ── Dietary / allergies (feature #8) — mirror of app.jsx pure helpers ──────────
+const normaliseDietary = d => ({
+  diets:     d && Array.isArray(d.diets)     ? d.diets     : [],
+  allergens: d && Array.isArray(d.allergens) ? d.allergens : [],
+  dislikes:  d && Array.isArray(d.dislikes)  ? d.dislikes  : [],
+});
+const dietaryPromptBlock = (d) => {
+  const c = normaliseDietary(d);
+  const lines = [];
+  if (c.diets.length)
+    lines.push(`- DIET (hard rule): the user follows ${c.diets.join(", ")}. Never suggest, name or include any food that violates these diets.`);
+  if (c.allergens.length)
+    lines.push(`- ALLERGIES (hard SAFETY rule): the user is allergic to ${c.allergens.join(", ")}. Never suggest, name or include any food containing these — or any dish that typically contains them. This is a medical safety constraint.`);
+  if (c.dislikes.length)
+    lines.push(`- DISLIKES (soft preference): avoid ${c.dislikes.join(", ")} where reasonable; this is a preference, not a safety rule.`);
+  return lines.length ? `\nDietary constraints:\n${lines.join("\n")}\n` : "";
+};
+const ALLERGEN_SYNONYMS = {
+  "tree nuts":   ["tree nut","almond","walnut","cashew","pecan","pistachio","hazelnut","macadamia","brazil nut","praline","nutella","marzipan"],
+  "peanuts":     ["peanut","groundnut","satay"],
+  "milk":        ["milk","dairy","cheese","butter","cream","yogurt","yoghurt","whey","casein","custard"],
+  "eggs":        ["egg","mayonnaise","mayo","meringue"],
+  "gluten":      ["gluten","wheat","barley","rye","bread","pasta","flour","breaded","batter","couscous"],
+  "crustaceans": ["crustacean","prawn","shrimp","crab","lobster","langoustine"],
+  "molluscs":    ["mollusc","mussel","clam","oyster","squid","octopus","scallop","snail"],
+  "soya":        ["soya","soy","tofu","edamame","miso","tempeh"],
+  "fish":        ["fish","salmon","tuna","cod","haddock","anchovy","mackerel","sardine"],
+  "sesame":      ["sesame","tahini","hummus"],
+  "celery":      ["celery","celeriac"],
+  "mustard":     ["mustard"],
+  "sulphites":   ["sulphite","sulfite"],
+  "lupin":       ["lupin"],
+};
+const scanAllergens = (text, allergens) => {
+  if (!text || !allergens || !allergens.length) return [];
+  const hay = String(text).toLowerCase();
+  const hits = [];
+  for (const a of allergens) {
+    const key   = String(a).toLowerCase();
+    const terms = ALLERGEN_SYNONYMS[key] || [key];
+    const found = terms.some(t => new RegExp("\\b" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(hay));
+    if (found) hits.push(a);
+  }
+  return hits;
+};
+
+// ── Coach pacing (feature #6) — mirror of app.jsx paceVerdict ──────────────────
+const EATING_WINDOW_H = 14;
+const paceVerdict = (firstMealHour, nowHour, frac) => {
+  if (firstMealHour == null) return { elapsed: 0, verdict: "ahead" };
+  let elapsed = (nowHour - firstMealHour) / EATING_WINDOW_H;
+  elapsed = Math.max(0, Math.min(1, elapsed));
+  if (frac >= 1)              return { elapsed, verdict: "met" };
+  if (elapsed < 0.25)         return { elapsed, verdict: "ahead" };
+  if (frac >= elapsed)        return { elapsed, verdict: "ahead" };
+  if (frac >= elapsed - 0.15) return { elapsed, verdict: "on" };
+  return { elapsed, verdict: "behind" };
+};
+
 const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   const subset = weighIns.filter(w => w.date < beforeDate).slice(-n);
   if (subset.length < 3) return null;
@@ -178,6 +263,159 @@ describe("calcTargets — Katch-McArdle", () => {
   test("lbm returned is rounded", () => {
     const { lbm } = calcTargets(prof, "maintain", false);
     expect(lbm).toBe(Math.round(80 * 0.82));
+  });
+});
+
+// ── computeMacros — macro floor engine (#7) ───────────────────
+describe("computeMacros — floors hold, carbs absorb", () => {
+  const man   = { weight: 80, bodyFat: 18, sex: "male"   }; // lbm 65.6
+  const woman = { weight: 70, bodyFat: 25, sex: "female" }; // lbm 52.5
+
+  test("protein is identical across cut, maintain and bulk", () => {
+    const cut      = computeMacros(man, "cut",      1800).protein;
+    const maintain = computeMacros(man, "maintain", 2300).protein;
+    const bulk     = computeMacros(man, "bulk",     2800).protein;
+    expect(cut).toBe(maintain);
+    expect(maintain).toBe(bulk);
+  });
+
+  test("male protein floor is 2.2 g/kg LBM", () => {
+    expect(computeMacros(man, "maintain", 2300).protein).toBe(Math.round(65.6 * 2.2));
+  });
+
+  test("female protein floor is 2.0 g/kg LBM and lower than a man at equal LBM", () => {
+    expect(computeMacros(woman, "maintain", 2000).protein).toBe(Math.round(52.5 * 2.0));
+    const m = { weight: 70, bodyFat: 25, sex: "male"   }; // same lbm as `woman`
+    const f = { weight: 70, bodyFat: 25, sex: "female" };
+    expect(computeMacros(m, "maintain", 2000).protein)
+      .toBeGreaterThan(computeMacros(f, "maintain", 2000).protein);
+  });
+
+  test("fat rises from cut to bulk but never below the 0.6 g/kg floor", () => {
+    const cutFat  = computeMacros(man, "cut",  1800).fat;
+    const bulkFat = computeMacros(man, "bulk", 2800).fat;
+    expect(bulkFat).toBeGreaterThan(cutFat);
+    // A deep custom cut must not drag fat under 0.6 g/kg bodyweight.
+    expect(computeMacros(man, "cut", 1200).fat).toBeGreaterThanOrEqual(Math.round(80 * 0.6));
+  });
+
+  test("carbs absorb the whole change while protein and fat hold", () => {
+    const lo = computeMacros(man, "maintain", 2000);
+    const hi = computeMacros(man, "maintain", 2600);
+    expect(hi.protein).toBe(lo.protein);
+    expect(hi.fat).toBe(lo.fat);
+    // 600 kcal added → all into carbs → +150 g (±1 for rounding)
+    expect(hi.carbs - lo.carbs).toBeGreaterThanOrEqual(149);
+    expect(hi.carbs - lo.carbs).toBeLessThanOrEqual(151);
+  });
+
+  test("preset and custom paths agree at the same calorie number", () => {
+    expect(computeMacros(man, "cut", 1900)).toEqual(computeMacros(man, "cut", 1900));
+  });
+
+  test("a target too low to fit the floors flags floorsExceedKcal and keeps carbs ≥ 50", () => {
+    const r = computeMacros(man, "cut", 900);
+    expect(r.floorsExceedKcal).toBe(true);
+    expect(r.carbs).toBe(50); // floor kept, never negative
+  });
+
+  test("a comfortable target does not flag floorsExceedKcal", () => {
+    expect(computeMacros(man, "maintain", 2300).floorsExceedKcal).toBe(false);
+  });
+});
+
+// ── scanAllergens & dietaryPromptBlock — dietary safety (#8) ───
+describe("scanAllergens — zero-token output backstop", () => {
+  test("catches a declared allergen named directly", () => {
+    expect(scanAllergens("Peanut satay chicken", ["peanuts"])).toContain("peanuts");
+  });
+
+  test("catches an allergen via a synonym the prompt may have slipped (walnut → tree nuts)", () => {
+    expect(scanAllergens("Walnut and honey salad", ["tree nuts"])).toContain("tree nuts");
+  });
+
+  test("matches plurals/derivatives (walnut matches 'walnuts')", () => {
+    expect(scanAllergens("a handful of walnuts", ["tree nuts"])).toContain("tree nuts");
+  });
+
+  test("custom allergen tags are scanned too (celeriac)", () => {
+    expect(scanAllergens("celeriac remoulade", ["celeriac"])).toContain("celeriac");
+  });
+
+  test("does not flag unrelated food", () => {
+    expect(scanAllergens("grilled chicken and rice", ["peanuts", "milk"])).toEqual([]);
+  });
+
+  test("no allergens declared → never flags (no regression)", () => {
+    expect(scanAllergens("peanut butter on toast", [])).toEqual([]);
+  });
+
+  test("returns every distinct allergen present", () => {
+    const hits = scanAllergens("cheese and prawn toastie", ["milk", "crustaceans", "soya"]);
+    expect(hits).toContain("milk");
+    expect(hits).toContain("crustaceans");
+    expect(hits).not.toContain("soya");
+  });
+});
+
+describe("dietaryPromptBlock — prompt injection", () => {
+  test("empty config yields an empty block (no regression)", () => {
+    expect(dietaryPromptBlock({})).toBe("");
+    expect(dietaryPromptBlock(null)).toBe("");
+  });
+
+  test("vegan diet becomes a hard rule", () => {
+    expect(dietaryPromptBlock({ diets: ["vegan"] })).toMatch(/hard rule/i);
+    expect(dietaryPromptBlock({ diets: ["vegan"] })).toMatch(/vegan/);
+  });
+
+  test("allergens become a hard safety rule listing each allergen", () => {
+    const b = dietaryPromptBlock({ allergens: ["peanuts", "milk"] });
+    expect(b).toMatch(/SAFETY/);
+    expect(b).toMatch(/peanuts/);
+    expect(b).toMatch(/milk/);
+  });
+
+  test("dislikes are framed as a soft preference, not a safety rule", () => {
+    const b = dietaryPromptBlock({ dislikes: ["coriander"] });
+    expect(b).toMatch(/soft preference/i);
+    expect(b).toMatch(/coriander/);
+  });
+});
+
+// ── paceVerdict — coach pacing safeguards (#6) ─────────────────
+describe("paceVerdict — computed pace with safeguards", () => {
+  test("low totals early in the day are never 'behind' (62/147g protein at 07:00)", () => {
+    // first meal at 07:00, now 07:00 → window barely started
+    expect(paceVerdict(7, 7, 62 / 147).verdict).not.toBe("behind");
+    expect(paceVerdict(7, 7, 62 / 147).verdict).toBe("ahead");
+  });
+
+  test("ahead of pace is recognised as ahead (79/146g at 10:00, first meal 07:00)", () => {
+    expect(paceVerdict(7, 10, 79 / 146).verdict).toBe("ahead");
+  });
+
+  test("genuinely behind late in the day (40/150g at 20:00, first meal 07:00)", () => {
+    expect(paceVerdict(7, 20, 40 / 150).verdict).toBe("behind");
+  });
+
+  test("before 25% of the window elapses, 'behind' is never used", () => {
+    // 3% of goal hit but only ~14% of window elapsed → not behind
+    expect(paceVerdict(8, 10, 0.03).verdict).not.toBe("behind");
+  });
+
+  test("no food logged yet means the window has not started — never behind", () => {
+    expect(paceVerdict(null, 20, 0).verdict).not.toBe("behind");
+  });
+
+  test("a met goal reports 'met', not a pace verdict", () => {
+    expect(paceVerdict(7, 20, 1.0).verdict).toBe("met");
+    expect(paceVerdict(7, 20, 1.2).verdict).toBe("met");
+  });
+
+  test("on-track mid-window reads as 'on'", () => {
+    // first meal 07:00, now 14:00 → ~50% elapsed; ~40% hit → on (within 15%)
+    expect(paceVerdict(7, 14, 0.40).verdict).toBe("on");
   });
 });
 
