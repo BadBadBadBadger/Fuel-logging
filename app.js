@@ -4484,41 +4484,287 @@ function Avatar(_ref46) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
-function Dashboard(_ref47) {
-  var logs = _ref47.logs,
-    totals = _ref47.totals,
-    targets = _ref47.targets,
-    remaining = _ref47.remaining,
-    water = _ref47.water,
-    setWater = _ref47.setWater,
-    mode = _ref47.mode,
-    setMode = _ref47.setMode,
-    setView = _ref47.setView,
-    removeLog = _ref47.removeLog,
-    addToQA = _ref47.addToQA,
-    hasProfile = _ref47.hasProfile,
-    streak = _ref47.streak,
-    prof = _ref47.prof,
-    weighIns = _ref47.weighIns,
-    onWeighIn = _ref47.onWeighIn,
-    tdeeAdj = _ref47.tdeeAdj,
-    baseTDEE = _ref47.baseTDEE,
-    coachKey = _ref47.coachKey,
-    workouts = _ref47.workouts,
-    onAddWorkout = _ref47.onAddWorkout,
-    onRemoveWorkout = _ref47.onRemoveWorkout,
-    customKcal = _ref47.customKcal,
-    onSetCustomKcal = _ref47.onSetCustomKcal,
-    isCustomMode = _ref47.isCustomMode,
-    aggressiveCutAcked = _ref47.aggressiveCutAcked,
-    onAckAggressiveCut = _ref47.onAckAggressiveCut,
-    authState = _ref47.authState,
-    authUser = _ref47.authUser,
-    onPremiumGate = _ref47.onPremiumGate,
-    onSignOut = _ref47.onSignOut,
-    isOnline = _ref47.isOnline,
-    syncMsg = _ref47.syncMsg;
+// Inline editor for an already-logged food entry. Reused by the dashboard
+// today-list and the History day view. Every field is editable by all users;
+// the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
+// reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
+function EntryEditor(_ref47) {
+  var entry = _ref47.entry,
+    onSave = _ref47.onSave,
+    onCancel = _ref47.onCancel,
+    isPremium = _ref47.isPremium,
+    onPremiumGate = _ref47.onPremiumGate;
+  var _useState59 = useState({
+      name: entry.name,
+      kcal: String(entry.kcal),
+      protein: String(entry.protein),
+      carbs: String(entry.carbs),
+      fat: String(entry.fat)
+    }),
+    _useState60 = _slicedToArray(_useState59, 2),
+    f = _useState60[0],
+    setF = _useState60[1];
+  var _useState61 = useState(false),
+    _useState62 = _slicedToArray(_useState61, 2),
+    reest = _useState62[0],
+    setReest = _useState62[1];
+  var set = function set(k, v) {
+    return setF(function (p) {
+      return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
+    });
+  };
+  var reestimate = /*#__PURE__*/function () {
+    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+      var upd, oft, r, _t25;
+      return _regenerator().w(function (_context26) {
+        while (1) switch (_context26.p = _context26.n) {
+          case 0:
+            if (isPremium) {
+              _context26.n = 1;
+              break;
+            }
+            onPremiumGate({
+              emoji: "✨",
+              name: "AI re-estimate"
+            });
+            return _context26.a(2);
+          case 1:
+            if (!(!f.name.trim() || reest)) {
+              _context26.n = 2;
+              break;
+            }
+            return _context26.a(2);
+          case 2:
+            setReest(true);
+            _context26.p = 3;
+            _context26.n = 4;
+            return callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
+          case 4:
+            upd = _context26.v;
+            _context26.n = 5;
+            return searchOFT(f.name.trim());
+          case 5:
+            oft = _context26.v;
+            r = oft && oft.confidence > upd.confidence ? oft : upd;
+            setF(function (p) {
+              return _objectSpread(_objectSpread({}, p), {}, {
+                kcal: String(Math.round(r.kcal)),
+                protein: String(Math.round(r.protein * 10) / 10),
+                carbs: String(Math.round(r.carbs * 10) / 10),
+                fat: String(Math.round(r.fat * 10) / 10)
+              });
+            });
+            _context26.n = 7;
+            break;
+          case 6:
+            _context26.p = 6;
+            _t25 = _context26.v;
+          case 7:
+            setReest(false);
+          case 8:
+            return _context26.a(2);
+        }
+      }, _callee26, null, [[3, 6]]);
+    }));
+    return function reestimate() {
+      return _ref48.apply(this, arguments);
+    };
+  }();
+  var save = function save() {
+    return onSave({
+      name: f.name.trim() || entry.name,
+      kcal: Math.round(Number(f.kcal) || 0),
+      protein: Math.round((Number(f.protein) || 0) * 10) / 10,
+      carbs: Math.round((Number(f.carbs) || 0) * 10) / 10,
+      fat: Math.round((Number(f.fat) || 0) * 10) / 10
+    });
+  };
+  var fld = {
+    background: BG,
+    border: "1px solid ".concat(BD),
+    borderRadius: 9,
+    color: "#e6e1d7",
+    fontSize: 13,
+    padding: "8px 10px",
+    outline: "none",
+    width: "100%",
+    boxSizing: "border-box",
+    fontFamily: "inherit"
+  };
+  var lbl = {
+    fontSize: 10,
+    color: "#827c73",
+    fontWeight: 700,
+    letterSpacing: "0.05em",
+    marginBottom: 3,
+    display: "block"
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "12px 16px 14px",
+      background: "#15130f"
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "NAME"), /*#__PURE__*/React.createElement("input", {
+    value: f.name,
+    onChange: function onChange(e) {
+      return set("name", e.target.value);
+    },
+    style: _objectSpread(_objectSpread({}, fld), {}, {
+      marginBottom: 10
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "KCAL"), /*#__PURE__*/React.createElement("input", {
+    value: f.kcal,
+    onChange: function onChange(e) {
+      return set("kcal", e.target.value);
+    },
+    inputMode: "numeric",
+    style: fld
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "P (g)"), /*#__PURE__*/React.createElement("input", {
+    value: f.protein,
+    onChange: function onChange(e) {
+      return set("protein", e.target.value);
+    },
+    inputMode: "decimal",
+    style: fld
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "C (g)"), /*#__PURE__*/React.createElement("input", {
+    value: f.carbs,
+    onChange: function onChange(e) {
+      return set("carbs", e.target.value);
+    },
+    inputMode: "decimal",
+    style: fld
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "F (g)"), /*#__PURE__*/React.createElement("input", {
+    value: f.fat,
+    onChange: function onChange(e) {
+      return set("fat", e.target.value);
+    },
+    inputMode: "decimal",
+    style: fld
+  }))), /*#__PURE__*/React.createElement("button", {
+    onClick: reestimate,
+    disabled: reest,
+    style: {
+      width: "100%",
+      padding: "10px",
+      marginBottom: 8,
+      background: "#1c1a15",
+      border: "1px solid ".concat(A, "44"),
+      borderRadius: 10,
+      color: A,
+      fontSize: 12.5,
+      fontWeight: 800,
+      cursor: "pointer",
+      opacity: reest ? 0.6 : 1
+    }
+  }, reest ? "Re-estimating…" : "✨ AI re-estimate from name"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onCancel,
+    style: {
+      flex: 1,
+      padding: "10px",
+      background: "#1c1a15",
+      border: "1px solid ".concat(BD),
+      borderRadius: 10,
+      color: "#9b958b",
+      fontSize: 13,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: save,
+    style: {
+      flex: 1,
+      padding: "10px",
+      background: A,
+      border: "none",
+      borderRadius: 10,
+      color: "#0b0d0b",
+      fontSize: 13,
+      fontWeight: 800,
+      cursor: "pointer"
+    }
+  }, "Save")));
+}
+function Dashboard(_ref49) {
+  var logs = _ref49.logs,
+    totals = _ref49.totals,
+    targets = _ref49.targets,
+    remaining = _ref49.remaining,
+    water = _ref49.water,
+    setWater = _ref49.setWater,
+    mode = _ref49.mode,
+    setMode = _ref49.setMode,
+    setView = _ref49.setView,
+    removeLog = _ref49.removeLog,
+    updateLog = _ref49.updateLog,
+    addToQA = _ref49.addToQA,
+    hasProfile = _ref49.hasProfile,
+    streak = _ref49.streak,
+    prof = _ref49.prof,
+    weighIns = _ref49.weighIns,
+    onWeighIn = _ref49.onWeighIn,
+    tdeeAdj = _ref49.tdeeAdj,
+    baseTDEE = _ref49.baseTDEE,
+    coachKey = _ref49.coachKey,
+    workouts = _ref49.workouts,
+    onAddWorkout = _ref49.onAddWorkout,
+    onRemoveWorkout = _ref49.onRemoveWorkout,
+    customKcal = _ref49.customKcal,
+    onSetCustomKcal = _ref49.onSetCustomKcal,
+    isCustomMode = _ref49.isCustomMode,
+    aggressiveCutAcked = _ref49.aggressiveCutAcked,
+    onAckAggressiveCut = _ref49.onAckAggressiveCut,
+    authState = _ref49.authState,
+    authUser = _ref49.authUser,
+    onPremiumGate = _ref49.onPremiumGate,
+    onSignOut = _ref49.onSignOut,
+    isOnline = _ref49.isOnline,
+    syncMsg = _ref49.syncMsg;
   var isPremium = authState === "premium";
+  var _useState63 = useState(null),
+    _useState64 = _slicedToArray(_useState63, 2),
+    editingId = _useState64[0],
+    setEditingId = _useState64[1];
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -4530,18 +4776,18 @@ function Dashboard(_ref47) {
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
-  var _useState59 = useState({}),
-    _useState60 = _slicedToArray(_useState59, 2),
-    savedIds = _useState60[0],
-    setSavedIds = _useState60[1];
-  var _useState61 = useState(false),
-    _useState62 = _slicedToArray(_useState61, 2),
-    editingTarget = _useState62[0],
-    setEditingTarget = _useState62[1];
-  var _useState63 = useState(""),
-    _useState64 = _slicedToArray(_useState63, 2),
-    targetInputVal = _useState64[0],
-    setTargetInputVal = _useState64[1];
+  var _useState65 = useState({}),
+    _useState66 = _slicedToArray(_useState65, 2),
+    savedIds = _useState66[0],
+    setSavedIds = _useState66[1];
+  var _useState67 = useState(false),
+    _useState68 = _slicedToArray(_useState67, 2),
+    editingTarget = _useState68[0],
+    setEditingTarget = _useState68[1];
+  var _useState69 = useState(""),
+    _useState70 = _slicedToArray(_useState69, 2),
+    targetInputVal = _useState70[0],
+    setTargetInputVal = _useState70[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) onSetCustomKcal(v);
@@ -4572,11 +4818,11 @@ function Dashboard(_ref47) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(log) {
-      return _regenerator().w(function (_context26) {
-        while (1) switch (_context26.n) {
+    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(log) {
+      return _regenerator().w(function (_context27) {
+        while (1) switch (_context27.n) {
           case 0:
-            _context26.n = 1;
+            _context27.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -4588,12 +4834,12 @@ function Dashboard(_ref47) {
               });
             }, 1800);
           case 2:
-            return _context26.a(2);
+            return _context27.a(2);
         }
-      }, _callee26);
+      }, _callee27);
     }));
     return function handleAddToQA(_x38) {
-      return _ref48.apply(this, arguments);
+      return _ref50.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -4732,10 +4978,10 @@ function Dashboard(_ref47) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref49) {
-    var _ref50 = _slicedToArray(_ref49, 2),
-      k = _ref50[0],
-      v = _ref50[1];
+  }, Object.entries(MODES).map(function (_ref51) {
+    var _ref52 = _slicedToArray(_ref51, 2),
+      k = _ref52[0],
+      v = _ref52[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -5254,16 +5500,34 @@ function Dashboard(_ref47) {
     return /*#__PURE__*/React.createElement("div", {
       key: log.id,
       style: {
+        borderBottom: i < logs.length - 1 ? "1px solid ".concat(BD) : "none"
+      }
+    }, editingId === log.id ? /*#__PURE__*/React.createElement(EntryEditor, {
+      entry: log,
+      isPremium: isPremium,
+      onPremiumGate: onPremiumGate,
+      onCancel: function onCancel() {
+        return setEditingId(null);
+      },
+      onSave: function onSave(patch) {
+        updateLog(log.id, patch);
+        setEditingId(null);
+      }
+    }) : /*#__PURE__*/React.createElement("div", {
+      style: {
         display: "flex",
         alignItems: "center",
         padding: "13px 16px",
-        borderBottom: i < logs.length - 1 ? "1px solid ".concat(BD) : "none",
         gap: 10
       }
     }, /*#__PURE__*/React.createElement("div", {
+      onClick: function onClick() {
+        return setEditingId(log.id);
+      },
       style: {
         flex: 1,
-        minWidth: 0
+        minWidth: 0,
+        cursor: "pointer"
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -5280,7 +5544,11 @@ function Dashboard(_ref47) {
         color: "#8b857c",
         marginTop: 3
       }
-    }, log.time, " \xB7 P:", log.protein, "g C:", log.carbs, "g F:", log.fat, "g")), /*#__PURE__*/React.createElement("span", {
+    }, log.time, " \xB7 P:", log.protein, "g C:", log.carbs, "g F:", log.fat, "g ", /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#6e6960"
+      }
+    }, "\u270E"))), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 16,
         fontWeight: 900,
@@ -5320,7 +5588,7 @@ function Dashboard(_ref47) {
         alignItems: "center",
         justifyContent: "center"
       }
-    }, "\xD7"));
+    }, "\xD7")));
   })) : /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -5354,32 +5622,32 @@ function searchOFT(_x39) {
   return _searchOFT.apply(this, arguments);
 }
 function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(query) {
-    var _p$product_name2, res, data, p, sg2, f, n, _t30;
-    return _regenerator().w(function (_context49) {
-      while (1) switch (_context49.p = _context49.n) {
+  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(query) {
+    var _p$product_name2, res, data, p, sg2, f, n, _t31;
+    return _regenerator().w(function (_context50) {
+      while (1) switch (_context50.p = _context50.n) {
         case 0:
-          _context49.p = 0;
-          _context49.n = 1;
+          _context50.p = 0;
+          _context50.n = 1;
           return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"));
         case 1:
-          res = _context49.v;
-          _context49.n = 2;
+          res = _context50.v;
+          _context50.n = 2;
           return res.json();
         case 2:
-          data = _context49.v;
+          data = _context50.v;
           p = (data.products || []).find(function (p) {
             var _p$nutriments;
             return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
           });
           if (p) {
-            _context49.n = 3;
+            _context50.n = 3;
             break;
           }
-          return _context49.a(2, null);
+          return _context50.a(2, null);
         case 3:
           sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context49.a(2, {
+          return _context50.a(2, {
             name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
             kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
             protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
@@ -5390,26 +5658,26 @@ function _searchOFT() {
             source: "oft"
           });
         case 4:
-          _context49.p = 4;
-          _t30 = _context49.v;
-          return _context49.a(2, null);
+          _context50.p = 4;
+          _t31 = _context50.v;
+          return _context50.a(2, null);
       }
-    }, _callee49, null, [[0, 4]]);
+    }, _callee50, null, [[0, 4]]);
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref51) {
-  var item = _ref51.item,
-    onReestimate = _ref51.onReestimate,
-    reestimating = _ref51.reestimating;
-  var _useState65 = useState(false),
-    _useState66 = _slicedToArray(_useState65, 2),
-    editing = _useState66[0],
-    setEditing = _useState66[1];
-  var _useState67 = useState(item.name),
-    _useState68 = _slicedToArray(_useState67, 2),
-    draft = _useState68[0],
-    setDraft = _useState68[1];
+function ItemRow(_ref53) {
+  var item = _ref53.item,
+    onReestimate = _ref53.onReestimate,
+    reestimating = _ref53.reestimating;
+  var _useState71 = useState(false),
+    _useState72 = _slicedToArray(_useState71, 2),
+    editing = _useState72[0],
+    setEditing = _useState72[1];
+  var _useState73 = useState(item.name),
+    _useState74 = _slicedToArray(_useState73, 2),
+    draft = _useState74[0],
+    setDraft = _useState74[1];
   var cc = confColor(item.confidence);
   var submit = function submit() {
     setEditing(false);
@@ -5521,33 +5789,33 @@ function ItemRow(_ref51) {
     }
   }, item.reasoning));
 }
-function AILog(_ref52) {
-  var onAdd = _ref52.onAdd,
-    onBack = _ref52.onBack;
-  var _useState69 = useState(""),
-    _useState70 = _slicedToArray(_useState69, 2),
-    desc = _useState70[0],
-    setDesc = _useState70[1];
-  var _useState71 = useState(false),
-    _useState72 = _slicedToArray(_useState71, 2),
-    loading = _useState72[0],
-    setLoading = _useState72[1];
-  var _useState73 = useState(null),
-    _useState74 = _slicedToArray(_useState73, 2),
-    items = _useState74[0],
-    setItems = _useState74[1];
-  var _useState75 = useState(null),
+function AILog(_ref54) {
+  var onAdd = _ref54.onAdd,
+    onBack = _ref54.onBack;
+  var _useState75 = useState(""),
     _useState76 = _slicedToArray(_useState75, 2),
-    reestIdx = _useState76[0],
-    setReestIdx = _useState76[1];
-  var _useState77 = useState(""),
+    desc = _useState76[0],
+    setDesc = _useState76[1];
+  var _useState77 = useState(false),
     _useState78 = _slicedToArray(_useState77, 2),
-    error = _useState78[0],
-    setError = _useState78[1];
-  var _useState79 = useState(false),
+    loading = _useState78[0],
+    setLoading = _useState78[1];
+  var _useState79 = useState(null),
     _useState80 = _slicedToArray(_useState79, 2),
-    loggedAll = _useState80[0],
-    setLoggedAll = _useState80[1];
+    items = _useState80[0],
+    setItems = _useState80[1];
+  var _useState81 = useState(null),
+    _useState82 = _slicedToArray(_useState81, 2),
+    reestIdx = _useState82[0],
+    setReestIdx = _useState82[1];
+  var _useState83 = useState(""),
+    _useState84 = _slicedToArray(_useState83, 2),
+    error = _useState84[0],
+    setError = _useState84[1];
+  var _useState85 = useState(false),
+    _useState86 = _slicedToArray(_useState85, 2),
+    loggedAll = _useState86[0],
+    setLoggedAll = _useState86[1];
   var totals = items ? items.reduce(function (a, it) {
     return {
       kcal: a.kcal + it.kcal,
@@ -5565,33 +5833,33 @@ function AILog(_ref52) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref53 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
-      var parsed, aiItems, oftResults, merged, _t25;
-      return _regenerator().w(function (_context27) {
-        while (1) switch (_context27.p = _context27.n) {
+    var _ref55 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
+      var parsed, aiItems, oftResults, merged, _t26;
+      return _regenerator().w(function (_context28) {
+        while (1) switch (_context28.p = _context28.n) {
           case 0:
             if (desc.trim()) {
-              _context27.n = 1;
+              _context28.n = 1;
               break;
             }
-            return _context27.a(2);
+            return _context28.a(2);
           case 1:
             setLoading(true);
             setError("");
             setItems(null);
             setLoggedAll(false);
-            _context27.p = 2;
-            _context27.n = 3;
+            _context28.p = 2;
+            _context28.n = 3;
             return callAIJson(AI_PROMPT(desc), 2000);
           case 3:
-            parsed = _context27.v;
+            parsed = _context28.v;
             aiItems = parsed.items || []; // OFT parallel lookup for each item
-            _context27.n = 4;
+            _context28.n = 4;
             return Promise.all(aiItems.map(function (it) {
               return searchOFT(it.name);
             }));
           case 4:
-            oftResults = _context27.v;
+            oftResults = _context28.v;
             merged = aiItems.map(function (it, i) {
               var oft = oftResults[i];
               // Use OFT data if found AND it has higher confidence than AI estimate
@@ -5601,39 +5869,39 @@ function AILog(_ref52) {
               return it;
             });
             setItems(merged);
-            _context27.n = 6;
+            _context28.n = 6;
             break;
           case 5:
-            _context27.p = 5;
-            _t25 = _context27.v;
-            setError("Estimation failed: " + _t25.message);
+            _context28.p = 5;
+            _t26 = _context28.v;
+            setError("Estimation failed: " + _t26.message);
           case 6:
             setLoading(false);
           case 7:
-            return _context27.a(2);
+            return _context28.a(2);
         }
-      }, _callee27, null, [[2, 5]]);
+      }, _callee28, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref53.apply(this, arguments);
+      return _ref55.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref54 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(idx, newName) {
-      var updated, oft, _final, _t26;
-      return _regenerator().w(function (_context28) {
-        while (1) switch (_context28.p = _context28.n) {
+    var _ref56 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(idx, newName) {
+      var updated, oft, _final, _t27;
+      return _regenerator().w(function (_context29) {
+        while (1) switch (_context29.p = _context29.n) {
           case 0:
             setReestIdx(idx);
-            _context28.p = 1;
-            _context28.n = 2;
+            _context29.p = 1;
+            _context29.n = 2;
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            updated = _context28.v;
-            _context28.n = 3;
+            updated = _context29.v;
+            _context29.n = 3;
             return searchOFT(newName);
           case 3:
-            oft = _context28.v;
+            oft = _context29.v;
             _final = oft && oft.confidence > updated.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
               name: newName
             }) : _objectSpread(_objectSpread({}, updated), {}, {
@@ -5644,20 +5912,20 @@ function AILog(_ref52) {
                 return i === idx ? _final : it;
               });
             });
-            _context28.n = 5;
+            _context29.n = 5;
             break;
           case 4:
-            _context28.p = 4;
-            _t26 = _context28.v;
+            _context29.p = 4;
+            _t27 = _context29.v;
           case 5:
             setReestIdx(null);
           case 6:
-            return _context28.a(2);
+            return _context29.a(2);
         }
-      }, _callee28, null, [[1, 4]]);
+      }, _callee29, null, [[1, 4]]);
     }));
     return function reestimate(_x40, _x41) {
-      return _ref54.apply(this, arguments);
+      return _ref56.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -5884,34 +6152,34 @@ function AILog(_ref52) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref55) {
-  var onAdd = _ref55.onAdd,
-    onBack = _ref55.onBack,
-    meals = _ref55.meals,
-    setMeals = _ref55.setMeals;
-  var _useState81 = useState(""),
-    _useState82 = _slicedToArray(_useState81, 2),
-    search = _useState82[0],
-    setSearch = _useState82[1];
-  var _useState83 = useState(null),
-    _useState84 = _slicedToArray(_useState83, 2),
-    modal = _useState84[0],
-    setModal = _useState84[1];
+function QuickAdd(_ref57) {
+  var onAdd = _ref57.onAdd,
+    onBack = _ref57.onBack,
+    meals = _ref57.meals,
+    setMeals = _ref57.setMeals;
+  var _useState87 = useState(""),
+    _useState88 = _slicedToArray(_useState87, 2),
+    search = _useState88[0],
+    setSearch = _useState88[1];
+  var _useState89 = useState(null),
+    _useState90 = _slicedToArray(_useState89, 2),
+    modal = _useState90[0],
+    setModal = _useState90[1];
   var save = /*#__PURE__*/function () {
-    var _ref56 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(m) {
-      return _regenerator().w(function (_context29) {
-        while (1) switch (_context29.n) {
+    var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(m) {
+      return _regenerator().w(function (_context30) {
+        while (1) switch (_context30.n) {
           case 0:
             setMeals(m);
-            _context29.n = 1;
+            _context30.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context29.a(2);
+            return _context30.a(2);
         }
-      }, _callee29);
+      }, _callee30);
     }));
     return function save(_x42) {
-      return _ref56.apply(this, arguments);
+      return _ref58.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -6086,60 +6354,60 @@ function QuickAdd(_ref55) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref57) {
-  var onAdd = _ref57.onAdd,
-    onBack = _ref57.onBack;
-  var _useState85 = useState(""),
-    _useState86 = _slicedToArray(_useState85, 2),
-    q = _useState86[0],
-    setQ = _useState86[1];
-  var _useState87 = useState([]),
-    _useState88 = _slicedToArray(_useState87, 2),
-    results = _useState88[0],
-    setResults = _useState88[1];
-  var _useState89 = useState(false),
-    _useState90 = _slicedToArray(_useState89, 2),
-    loading = _useState90[0],
-    setLoading = _useState90[1];
+function FoodSearch(_ref59) {
+  var onAdd = _ref59.onAdd,
+    onBack = _ref59.onBack;
   var _useState91 = useState(""),
     _useState92 = _slicedToArray(_useState91, 2),
-    error = _useState92[0],
-    setError = _useState92[1];
-  var _useState93 = useState(false),
+    q = _useState92[0],
+    setQ = _useState92[1];
+  var _useState93 = useState([]),
     _useState94 = _slicedToArray(_useState93, 2),
-    done = _useState94[0],
-    setDone = _useState94[1];
+    results = _useState94[0],
+    setResults = _useState94[1];
+  var _useState95 = useState(false),
+    _useState96 = _slicedToArray(_useState95, 2),
+    loading = _useState96[0],
+    setLoading = _useState96[1];
+  var _useState97 = useState(""),
+    _useState98 = _slicedToArray(_useState97, 2),
+    error = _useState98[0],
+    setError = _useState98[1];
+  var _useState99 = useState(false),
+    _useState100 = _slicedToArray(_useState99, 2),
+    done = _useState100[0],
+    setDone = _useState100[1];
   var search = /*#__PURE__*/function () {
-    var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
-      var res, data, parseServing, parseKcal, valid, _t27;
-      return _regenerator().w(function (_context30) {
-        while (1) switch (_context30.p = _context30.n) {
+    var _ref60 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
+      var res, data, parseServing, parseKcal, valid, _t28;
+      return _regenerator().w(function (_context31) {
+        while (1) switch (_context31.p = _context31.n) {
           case 0:
             if (q.trim()) {
-              _context30.n = 1;
+              _context31.n = 1;
               break;
             }
-            return _context30.a(2);
+            return _context31.a(2);
           case 1:
             setLoading(true);
             setError("");
             setResults([]);
             setDone(true);
-            _context30.p = 2;
-            _context30.n = 3;
+            _context31.p = 2;
+            _context31.n = 3;
             return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
           case 3:
-            res = _context30.v;
+            res = _context31.v;
             if (res.ok) {
-              _context30.n = 4;
+              _context31.n = 4;
               break;
             }
             throw new Error("Network error");
           case 4:
-            _context30.n = 5;
+            _context31.n = 5;
             return res.json();
           case 5:
-            data = _context30.v;
+            data = _context31.v;
             parseServing = function parseServing(raw) {
               if (!raw) return 100;
               var n = parseFloat(raw);
@@ -6155,12 +6423,12 @@ function FoodSearch(_ref57) {
               return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
             });
             if (valid.length) {
-              _context30.n = 6;
+              _context31.n = 6;
               break;
             }
             setError("No results — try a brand name or simpler search term.");
             setLoading(false);
-            return _context30.a(2);
+            return _context31.a(2);
           case 6:
             setResults(valid.slice(0, 12).map(function (p) {
               var _p$brands;
@@ -6178,21 +6446,21 @@ function FoodSearch(_ref57) {
                 notes: "Per serving (~".concat(Math.round(sg2), "g)")
               };
             }));
-            _context30.n = 8;
+            _context31.n = 8;
             break;
           case 7:
-            _context30.p = 7;
-            _t27 = _context30.v;
+            _context31.p = 7;
+            _t28 = _context31.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
           case 9:
-            return _context30.a(2);
+            return _context31.a(2);
         }
-      }, _callee30, null, [[2, 7]]);
+      }, _callee31, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref58.apply(this, arguments);
+      return _ref60.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -6323,17 +6591,21 @@ function FoodSearch(_ref57) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref59) {
+function History(_ref61) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref59.history,
-    onBack = _ref59.onBack,
-    onUpdateDay = _ref59.onUpdateDay,
-    _ref59$weighIns = _ref59.weighIns,
-    weighIns = _ref59$weighIns === void 0 ? [] : _ref59$weighIns,
-    _ref59$meals = _ref59.meals,
-    meals = _ref59$meals === void 0 ? DEF_MEALS : _ref59$meals,
-    _ref59$setMeals = _ref59.setMeals,
-    setMeals = _ref59$setMeals === void 0 ? function () {} : _ref59$setMeals;
+  var history = _ref61.history,
+    onBack = _ref61.onBack,
+    onUpdateDay = _ref61.onUpdateDay,
+    _ref61$weighIns = _ref61.weighIns,
+    weighIns = _ref61$weighIns === void 0 ? [] : _ref61$weighIns,
+    _ref61$meals = _ref61.meals,
+    meals = _ref61$meals === void 0 ? DEF_MEALS : _ref61$meals,
+    _ref61$setMeals = _ref61.setMeals,
+    setMeals = _ref61$setMeals === void 0 ? function () {} : _ref61$setMeals,
+    _ref61$isPremium = _ref61.isPremium,
+    isPremium = _ref61$isPremium === void 0 ? false : _ref61$isPremium,
+    _ref61$onPremiumGate = _ref61.onPremiumGate,
+    onPremiumGate = _ref61$onPremiumGate === void 0 ? function () {} : _ref61$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -6369,30 +6641,34 @@ function History(_ref59) {
       unit: "g"
     }
   };
-  var _useState95 = useState("30D"),
-    _useState96 = _slicedToArray(_useState95, 2),
-    range = _useState96[0],
-    setRange = _useState96[1];
-  var _useState97 = useState(["KCAL"]),
-    _useState98 = _slicedToArray(_useState97, 2),
-    metrics = _useState98[0],
-    setMetrics = _useState98[1];
-  var _useState99 = useState(false),
-    _useState100 = _slicedToArray(_useState99, 2),
-    showWeight = _useState100[0],
-    setShowWeight = _useState100[1];
-  var _useState101 = useState("line"),
+  var _useState101 = useState("30D"),
     _useState102 = _slicedToArray(_useState101, 2),
-    chartType = _useState102[0],
-    setChartType = _useState102[1];
-  var _useState103 = useState(Math.max(0, history.length - 1)),
+    range = _useState102[0],
+    setRange = _useState102[1];
+  var _useState103 = useState(["KCAL"]),
     _useState104 = _slicedToArray(_useState103, 2),
-    dayIdx = _useState104[0],
-    setDayIdx = _useState104[1];
-  var _useState105 = useState(null),
+    metrics = _useState104[0],
+    setMetrics = _useState104[1];
+  var _useState105 = useState(false),
     _useState106 = _slicedToArray(_useState105, 2),
-    addCtx = _useState106[0],
-    setAddCtx = _useState106[1];
+    showWeight = _useState106[0],
+    setShowWeight = _useState106[1];
+  var _useState107 = useState("line"),
+    _useState108 = _slicedToArray(_useState107, 2),
+    chartType = _useState108[0],
+    setChartType = _useState108[1];
+  var _useState109 = useState(Math.max(0, history.length - 1)),
+    _useState110 = _slicedToArray(_useState109, 2),
+    dayIdx = _useState110[0],
+    setDayIdx = _useState110[1];
+  var _useState111 = useState(null),
+    _useState112 = _slicedToArray(_useState111, 2),
+    addCtx = _useState112[0],
+    setAddCtx = _useState112[1];
+  var _useState113 = useState(null),
+    _useState114 = _slicedToArray(_useState113, 2),
+    editId = _useState114[0],
+    setEditId = _useState114[1];
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -6872,17 +7148,39 @@ function History(_ref59) {
     return /*#__PURE__*/React.createElement("div", {
       key: log.id || i,
       style: {
+        borderBottom: i < day.logs.length - 1 ? "1px solid ".concat(BD) : "none"
+      }
+    }, editId === (log.id || i) ? /*#__PURE__*/React.createElement(EntryEditor, {
+      entry: log,
+      isPremium: isPremium,
+      onPremiumGate: onPremiumGate,
+      onCancel: function onCancel() {
+        return setEditId(null);
+      },
+      onSave: function onSave(p) {
+        patch({
+          logs: (day.logs || []).map(function (l) {
+            return (l.id || l) === (log.id || log) ? _objectSpread(_objectSpread({}, l), p) : l;
+          })
+        });
+        setEditId(null);
+      }
+    }) : /*#__PURE__*/React.createElement("div", {
+      style: {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "11px 16px",
-        borderBottom: i < day.logs.length - 1 ? "1px solid ".concat(BD) : "none"
+        padding: "11px 16px"
       }
     }, /*#__PURE__*/React.createElement("div", {
+      onClick: function onClick() {
+        return setEditId(log.id || i);
+      },
       style: {
         flex: 1,
         minWidth: 0,
-        paddingRight: 10
+        paddingRight: 10,
+        cursor: "pointer"
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -6898,7 +7196,11 @@ function History(_ref59) {
         color: "#8b857c",
         marginTop: 2
       }
-    }, "P:", log.protein, "g C:", log.carbs, "g F:", log.fat, "g")), /*#__PURE__*/React.createElement("span", {
+    }, "P:", log.protein, "g C:", log.carbs, "g F:", log.fat, "g ", /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#6e6960"
+      }
+    }, "\u270E"))), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 15,
         fontWeight: 900,
@@ -6920,7 +7222,7 @@ function History(_ref59) {
         fontSize: 18,
         padding: "2px 10px"
       }
-    }, "\xD7"));
+    }, "\xD7")));
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -6979,10 +7281,10 @@ function History(_ref59) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref60) {
-    var _ref61 = _slicedToArray(_ref60, 2),
-      k = _ref61[0],
-      m = _ref61[1];
+  }, Object.entries(MM).map(function (_ref62) {
+    var _ref63 = _slicedToArray(_ref62, 2),
+      k = _ref63[0],
+      m = _ref63[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -7020,10 +7322,10 @@ function History(_ref59) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref62) {
-    var _ref63 = _slicedToArray(_ref62, 2),
-      t = _ref63[0],
-      e = _ref63[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref64) {
+    var _ref65 = _slicedToArray(_ref64, 2),
+      t = _ref65[0],
+      e = _ref65[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -7189,10 +7491,10 @@ function History(_ref59) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref64) {
-    var _ref65 = _slicedToArray(_ref64, 2),
-      k = _ref65[0],
-      m = _ref65[1];
+  }, Object.entries(MM).map(function (_ref66) {
+    var _ref67 = _slicedToArray(_ref66, 2),
+      k = _ref67[0],
+      m = _ref67[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -7325,9 +7627,9 @@ function History(_ref59) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref66) {
-  var earnedBdgs = _ref66.earnedBdgs,
-    onBack = _ref66.onBack;
+function Achievements(_ref68) {
+  var earnedBdgs = _ref68.earnedBdgs,
+    onBack = _ref68.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -7425,116 +7727,116 @@ function Achievements(_ref66) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState107 = useState("dashboard"),
-    _useState108 = _slicedToArray(_useState107, 2),
-    view = _useState108[0],
-    setView = _useState108[1];
-  var _useState109 = useState([]),
-    _useState110 = _slicedToArray(_useState109, 2),
-    logs = _useState110[0],
-    setLogs = _useState110[1];
-  var _useState111 = useState(0),
-    _useState112 = _slicedToArray(_useState111, 2),
-    water = _useState112[0],
-    setWater = _useState112[1];
-  var _useState113 = useState("cut"),
-    _useState114 = _slicedToArray(_useState113, 2),
-    mode = _useState114[0],
-    setMode = _useState114[1];
-  var _useState115 = useState(null),
+  var _useState115 = useState("dashboard"),
     _useState116 = _slicedToArray(_useState115, 2),
-    prof = _useState116[0],
-    setProf = _useState116[1];
+    view = _useState116[0],
+    setView = _useState116[1];
   var _useState117 = useState([]),
     _useState118 = _slicedToArray(_useState117, 2),
-    hist = _useState118[0],
-    setHist = _useState118[1];
-  var _useState119 = useState([].concat(DEF_MEALS)),
+    logs = _useState118[0],
+    setLogs = _useState118[1];
+  var _useState119 = useState(0),
     _useState120 = _slicedToArray(_useState119, 2),
-    meals = _useState120[0],
-    setMeals = _useState120[1];
-  var _useState121 = useState([]),
+    water = _useState120[0],
+    setWater = _useState120[1];
+  var _useState121 = useState("cut"),
     _useState122 = _slicedToArray(_useState121, 2),
-    workouts = _useState122[0],
-    setWorkouts = _useState122[1];
-  var _useState123 = useState([]),
+    mode = _useState122[0],
+    setMode = _useState122[1];
+  var _useState123 = useState(null),
     _useState124 = _slicedToArray(_useState123, 2),
-    earnedBdgs = _useState124[0],
-    setEarnedBdgs = _useState124[1];
-  var _useState125 = useState(null),
+    prof = _useState124[0],
+    setProf = _useState124[1];
+  var _useState125 = useState([]),
     _useState126 = _slicedToArray(_useState125, 2),
-    newBadge = _useState126[0],
-    setNewBadge = _useState126[1];
-  var _useState127 = useState(false),
+    hist = _useState126[0],
+    setHist = _useState126[1];
+  var _useState127 = useState([].concat(DEF_MEALS)),
     _useState128 = _slicedToArray(_useState127, 2),
-    ready = _useState128[0],
-    setReady = _useState128[1];
+    meals = _useState128[0],
+    setMeals = _useState128[1];
   var _useState129 = useState([]),
     _useState130 = _slicedToArray(_useState129, 2),
-    weighIns = _useState130[0],
-    setWeighIns = _useState130[1];
-  var _useState131 = useState(0),
+    workouts = _useState130[0],
+    setWorkouts = _useState130[1];
+  var _useState131 = useState([]),
     _useState132 = _slicedToArray(_useState131, 2),
-    tdeeAdj = _useState132[0],
-    setTdeeAdj = _useState132[1];
-  var _useState133 = useState(0),
+    earnedBdgs = _useState132[0],
+    setEarnedBdgs = _useState132[1];
+  var _useState133 = useState(null),
     _useState134 = _slicedToArray(_useState133, 2),
-    coachKey = _useState134[0],
-    setCoachKey = _useState134[1];
-  var _useState135 = useState(null),
+    newBadge = _useState134[0],
+    setNewBadge = _useState134[1];
+  var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
-    streakAnim = _useState136[0],
-    setStreakAnim = _useState136[1];
-  var _useState137 = useState(null),
+    ready = _useState136[0],
+    setReady = _useState136[1];
+  var _useState137 = useState([]),
     _useState138 = _slicedToArray(_useState137, 2),
-    customKcal = _useState138[0],
-    setCustomKcal = _useState138[1];
-  var _useState139 = useState(false),
+    weighIns = _useState138[0],
+    setWeighIns = _useState138[1];
+  var _useState139 = useState(0),
     _useState140 = _slicedToArray(_useState139, 2),
-    aggressiveCutAcked = _useState140[0],
-    setAggressiveCutAcked = _useState140[1];
-
-  // ── Auth state ────────────────────────────────────────────────
-  var _useState141 = useState("anonymous"),
+    tdeeAdj = _useState140[0],
+    setTdeeAdj = _useState140[1];
+  var _useState141 = useState(0),
     _useState142 = _slicedToArray(_useState141, 2),
-    authState = _useState142[0],
-    setAuthState = _useState142[1];
+    coachKey = _useState142[0],
+    setCoachKey = _useState142[1];
   var _useState143 = useState(null),
     _useState144 = _slicedToArray(_useState143, 2),
-    authUser = _useState144[0],
-    setAuthUser = _useState144[1];
+    streakAnim = _useState144[0],
+    setStreakAnim = _useState144[1];
   var _useState145 = useState(null),
     _useState146 = _slicedToArray(_useState145, 2),
-    premiumGate = _useState146[0],
-    setPremiumGate = _useState146[1]; // {emoji, name} | null
+    customKcal = _useState146[0],
+    setCustomKcal = _useState146[1];
   var _useState147 = useState(false),
     _useState148 = _slicedToArray(_useState147, 2),
-    showSignIn = _useState148[0],
-    setShowSignIn = _useState148[1];
-  var _useState149 = useState(false),
+    aggressiveCutAcked = _useState148[0],
+    setAggressiveCutAcked = _useState148[1];
+
+  // ── Auth state ────────────────────────────────────────────────
+  var _useState149 = useState("anonymous"),
     _useState150 = _slicedToArray(_useState149, 2),
-    showSignOut = _useState150[0],
-    setShowSignOut = _useState150[1];
-  var _useState151 = useState(false),
+    authState = _useState150[0],
+    setAuthState = _useState150[1];
+  var _useState151 = useState(null),
     _useState152 = _slicedToArray(_useState151, 2),
-    showLapsed = _useState152[0],
-    setShowLapsed = _useState152[1];
-  var _useState153 = useState(false),
+    authUser = _useState152[0],
+    setAuthUser = _useState152[1];
+  var _useState153 = useState(null),
     _useState154 = _slicedToArray(_useState153, 2),
-    needsConsent = _useState154[0],
-    setNeedsConsent = _useState154[1]; // retroactive Art. 9 consent (R2)
-  var _useState155 = useState(null),
+    premiumGate = _useState154[0],
+    setPremiumGate = _useState154[1]; // {emoji, name} | null
+  var _useState155 = useState(false),
     _useState156 = _slicedToArray(_useState155, 2),
-    consentInfo = _useState156[0],
-    setConsentInfo = _useState156[1]; // parsed local health_consent for display
-  var _useState157 = useState(navigator.onLine),
+    showSignIn = _useState156[0],
+    setShowSignIn = _useState156[1];
+  var _useState157 = useState(false),
     _useState158 = _slicedToArray(_useState157, 2),
-    isOnline = _useState158[0],
-    setIsOnline = _useState158[1];
-  var _useState159 = useState(""),
+    showSignOut = _useState158[0],
+    setShowSignOut = _useState158[1];
+  var _useState159 = useState(false),
     _useState160 = _slicedToArray(_useState159, 2),
-    syncMsg = _useState160[0],
-    setSyncMsg = _useState160[1];
+    showLapsed = _useState160[0],
+    setShowLapsed = _useState160[1];
+  var _useState161 = useState(false),
+    _useState162 = _slicedToArray(_useState161, 2),
+    needsConsent = _useState162[0],
+    setNeedsConsent = _useState162[1]; // retroactive Art. 9 consent (R2)
+  var _useState163 = useState(null),
+    _useState164 = _slicedToArray(_useState163, 2),
+    consentInfo = _useState164[0],
+    setConsentInfo = _useState164[1]; // parsed local health_consent for display
+  var _useState165 = useState(navigator.onLine),
+    _useState166 = _slicedToArray(_useState165, 2),
+    isOnline = _useState166[0],
+    setIsOnline = _useState166[1];
+  var _useState167 = useState(""),
+    _useState168 = _slicedToArray(_useState167, 2),
+    syncMsg = _useState168[0],
+    setSyncMsg = _useState168[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -7574,112 +7876,112 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref67 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
+      var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
         var k, lv, wv, mv, pv, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u, hc, hcParsed;
-        return _regenerator().w(function (_context31) {
-          while (1) switch (_context31.n) {
+        return _regenerator().w(function (_context32) {
+          while (1) switch (_context32.n) {
             case 0:
-              _context31.n = 1;
+              _context32.n = 1;
               return runMigrations();
             case 1:
               k = todayKey();
-              _context31.n = 2;
+              _context32.n = 2;
               return sg("logs__" + k);
             case 2:
-              lv = _context31.v;
+              lv = _context32.v;
               if (lv) setLogs(JSON.parse(lv));
-              _context31.n = 3;
+              _context32.n = 3;
               return sg("water__" + k);
             case 3:
-              wv = _context31.v;
+              wv = _context32.v;
               if (wv) setWater(parseInt(wv) || 0);
-              _context31.n = 4;
+              _context32.n = 4;
               return sg("mode__" + k);
             case 4:
-              mv = _context31.v;
+              mv = _context32.v;
               if (mv) setMode(mv);
-              _context31.n = 5;
+              _context32.n = 5;
               return sg("profile");
             case 5:
-              pv = _context31.v;
+              pv = _context32.v;
               if (pv) setProf(JSON.parse(pv));
-              _context31.n = 6;
+              _context32.n = 6;
               return sg("meals");
             case 6:
-              mv2 = _context31.v;
+              mv2 = _context32.v;
               if (mv2) setMeals(JSON.parse(mv2));
-              _context31.n = 7;
+              _context32.n = 7;
               return sg("workouts__" + k);
             case 7:
-              wkv = _context31.v;
+              wkv = _context32.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
-              _context31.n = 8;
+              _context32.n = 8;
               return sg("badges");
             case 8:
-              bv = _context31.v;
+              bv = _context32.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context31.n = 9;
+              _context32.n = 9;
               return sg("history");
             case 9:
-              hv = _context31.v;
+              hv = _context32.v;
               if (hv) setHist(JSON.parse(hv));
-              _context31.n = 10;
+              _context32.n = 10;
               return sg("weighins");
             case 10:
-              wiv = _context31.v;
+              wiv = _context32.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context31.n = 11;
+              _context32.n = 11;
               return sg("tdee_adj");
             case 11:
-              tav = _context31.v;
+              tav = _context32.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context31.n = 12;
+              _context32.n = 12;
               return sg("target_kcal");
             case 12:
-              ckv = _context31.v;
+              ckv = _context32.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context31.n = 13;
+              _context32.n = 13;
               return sg("aggressive_cut_acked");
             case 13:
-              acv = _context31.v;
+              acv = _context32.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context31.n = 14;
+              _context32.n = 14;
               return sg("auth_state");
             case 14:
-              asv = _context31.v;
-              _context31.n = 15;
+              asv = _context32.v;
+              _context32.n = 15;
               return sg("auth_user");
             case 15:
-              auv = _context31.v;
+              auv = _context32.v;
               if (!(asv === "premium" && auv)) {
-                _context31.n = 19;
+                _context32.n = 19;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context31.n = 17;
+                _context32.n = 17;
                 break;
               }
-              _context31.n = 16;
+              _context32.n = 16;
               return ss("auth_state", "anonymous");
             case 16:
               setShowLapsed(true);
-              _context31.n = 19;
+              _context32.n = 19;
               break;
             case 17:
               setAuthState("premium");
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context31.n = 18;
+              _context32.n = 18;
               return sg("health_consent");
             case 18:
-              hc = _context31.v;
+              hc = _context32.v;
               hcParsed = null;
               try {
                 hcParsed = hc ? JSON.parse(hc) : null;
@@ -7716,12 +8018,12 @@ function App() {
             case 19:
               setReady(true);
             case 20:
-              return _context31.a(2);
+              return _context32.a(2);
           }
-        }, _callee31);
+        }, _callee32);
       }));
       return function load() {
-        return _ref67.apply(this, arguments);
+        return _ref69.apply(this, arguments);
       };
     }();
     load();
@@ -7764,108 +8066,108 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(l) {
-      return _regenerator().w(function (_context32) {
-        while (1) switch (_context32.n) {
-          case 0:
-            setLogs(l);
-            _context32.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogs(authUser.id, todayKey(), l)["catch"](function () {});
-          case 2:
-            return _context32.a(2);
-        }
-      }, _callee32);
-    }));
-    return function saveLogs(_x43) {
-      return _ref68.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(w) {
+    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(l) {
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.n) {
           case 0:
-            setWater(w);
+            setLogs(l);
             _context33.n = 1;
-            return ss("water__" + todayKey(), String(w));
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogs(authUser.id, todayKey(), l)["catch"](function () {});
           case 2:
             return _context33.a(2);
         }
       }, _callee33);
     }));
-    return function saveWater(_x44) {
-      return _ref69.apply(this, arguments);
+    return function saveLogs(_x43) {
+      return _ref70.apply(this, arguments);
     };
   }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(m) {
+  var saveWater = /*#__PURE__*/function () {
+    var _ref71 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(w) {
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.n) {
           case 0:
-            setMode(m);
+            setWater(w);
             _context34.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("water__" + todayKey(), String(w));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
           case 2:
             return _context34.a(2);
         }
       }, _callee34);
     }));
-    return function saveMode(_x45) {
-      return _ref70.apply(this, arguments);
+    return function saveWater(_x44) {
+      return _ref71.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref71 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(p) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(m) {
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.n) {
           case 0:
-            setProf(p);
+            setMode(m);
             _context35.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("mode__" + todayKey(), m);
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 2:
             return _context35.a(2);
         }
       }, _callee35);
     }));
-    return function saveProf(_x46) {
-      return _ref71.apply(this, arguments);
+    return function saveMode(_x45) {
+      return _ref72.apply(this, arguments);
     };
   }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(w) {
+  var saveProf = /*#__PURE__*/function () {
+    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(p) {
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.n) {
           case 0:
-            setWorkouts(w);
+            setProf(p);
             _context36.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("profile", JSON.stringify(p));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
           case 2:
             return _context36.a(2);
         }
       }, _callee36);
     }));
-    return function saveWorkouts(_x47) {
-      return _ref72.apply(this, arguments);
+    return function saveProf(_x46) {
+      return _ref73.apply(this, arguments);
     };
   }();
-  var addLog = /*#__PURE__*/function () {
-    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(e) {
-      var isFirstToday, animKey, today, simulatedHist, newStreak;
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(w) {
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.n) {
           case 0:
-            isFirstToday = logs.length === 0;
+            setWorkouts(w);
             _context37.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+          case 2:
+            return _context37.a(2);
+        }
+      }, _callee37);
+    }));
+    return function saveWorkouts(_x47) {
+      return _ref74.apply(this, arguments);
+    };
+  }();
+  var addLog = /*#__PURE__*/function () {
+    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(e) {
+      var isFirstToday, animKey, today, simulatedHist, newStreak;
+      return _regenerator().w(function (_context38) {
+        while (1) switch (_context38.n) {
+          case 0:
+            isFirstToday = logs.length === 0;
+            _context38.n = 1;
             return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
               id: Date.now(),
               time: new Date().toLocaleTimeString([], {
@@ -7896,17 +8198,22 @@ function App() {
               }
             }
           case 2:
-            return _context37.a(2);
+            return _context38.a(2);
         }
-      }, _callee37);
+      }, _callee38);
     }));
     return function addLog(_x48) {
-      return _ref73.apply(this, arguments);
+      return _ref75.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
     return saveLogs(logs.filter(function (l) {
       return l.id !== id;
+    }));
+  };
+  var updateLog = function updateLog(id, patch) {
+    return saveLogs(logs.map(function (l) {
+      return l.id === id ? _objectSpread(_objectSpread({}, l), patch) : l;
     }));
   };
   var addWorkout = function addWorkout(w) {
@@ -7918,108 +8225,108 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(kcal) {
-      return _regenerator().w(function (_context38) {
-        while (1) switch (_context38.n) {
+    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(kcal) {
+      return _regenerator().w(function (_context39) {
+        while (1) switch (_context39.n) {
           case 0:
             setCustomKcal(kcal);
             if (!(kcal == null)) {
-              _context38.n = 2;
+              _context39.n = 2;
               break;
             }
-            _context38.n = 1;
+            _context39.n = 1;
             return ss("target_kcal", "");
           case 1:
-            _context38.n = 3;
+            _context39.n = 3;
             break;
           case 2:
-            _context38.n = 3;
+            _context39.n = 3;
             return ss("target_kcal", String(kcal));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context38.a(2);
+            return _context39.a(2);
         }
-      }, _callee38);
+      }, _callee39);
     }));
     return function saveCustomKcal(_x49) {
-      return _ref74.apply(this, arguments);
+      return _ref76.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
-      return _regenerator().w(function (_context39) {
-        while (1) switch (_context39.n) {
+    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(m) {
+      return _regenerator().w(function (_context40) {
+        while (1) switch (_context40.n) {
           case 0:
-            _context39.n = 1;
+            _context40.n = 1;
             return saveMode(m);
           case 1:
-            _context39.n = 2;
+            _context40.n = 2;
             return saveCustomKcal(null);
           case 2:
             // Sync once more with correct (m, null) pair to resolve any stale-closure race
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked)["catch"](function () {});
           case 3:
-            return _context39.a(2);
-        }
-      }, _callee39);
-    }));
-    return function handleSetMode(_x50) {
-      return _ref75.apply(this, arguments);
-    };
-  }();
-  var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
-      return _regenerator().w(function (_context40) {
-        while (1) switch (_context40.n) {
-          case 0:
-            setAggressiveCutAcked(true);
-            _context40.n = 1;
-            return ss("aggressive_cut_acked", "1");
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
-          case 2:
             return _context40.a(2);
         }
       }, _callee40);
     }));
-    return function handleAckAggressiveCut() {
-      return _ref76.apply(this, arguments);
+    return function handleSetMode(_x50) {
+      return _ref77.apply(this, arguments);
     };
   }();
-  var saveMeals = /*#__PURE__*/function () {
-    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(updated) {
+  var handleAckAggressiveCut = /*#__PURE__*/function () {
+    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
-            setMeals(updated);
+            setAggressiveCutAcked(true);
             _context41.n = 1;
-            return ss("meals", JSON.stringify(updated));
+            return ss("aggressive_cut_acked", "1");
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
           case 2:
             return _context41.a(2);
         }
       }, _callee41);
     }));
+    return function handleAckAggressiveCut() {
+      return _ref78.apply(this, arguments);
+    };
+  }();
+  var saveMeals = /*#__PURE__*/function () {
+    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(updated) {
+      return _regenerator().w(function (_context42) {
+        while (1) switch (_context42.n) {
+          case 0:
+            setMeals(updated);
+            _context42.n = 1;
+            return ss("meals", JSON.stringify(updated));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
+          case 2:
+            return _context42.a(2);
+        }
+      }, _callee42);
+    }));
     return function saveMeals(_x51) {
-      return _ref77.apply(this, arguments);
+      return _ref79.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(entry) {
+    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(entry) {
       var name, clean;
-      return _regenerator().w(function (_context42) {
-        while (1) switch (_context42.n) {
+      return _regenerator().w(function (_context43) {
+        while (1) switch (_context43.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context42.n = 1;
+              _context43.n = 1;
               break;
             }
-            return _context42.a(2);
+            return _context43.a(2);
           case 1:
             clean = {
               name: name,
@@ -8028,25 +8335,25 @@ function App() {
               carbs: Math.round(entry.carbs * 10) / 10,
               fat: Math.round(entry.fat * 10) / 10
             };
-            _context42.n = 2;
+            _context43.n = 2;
             return saveMeals([].concat(_toConsumableArray(meals), [clean]));
           case 2:
-            return _context42.a(2);
+            return _context43.a(2);
         }
-      }, _callee42);
+      }, _callee43);
     }));
     return function addToQA(_x52) {
-      return _ref78.apply(this, arguments);
+      return _ref80.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t28;
-      return _regenerator().w(function (_context43) {
-        while (1) switch (_context43.p = _context43.n) {
+    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(googleUser, grantedBy, consentMeta) {
+      var user, rec, pulled, tod, snap, _t29;
+      return _regenerator().w(function (_context44) {
+        while (1) switch (_context44.p = _context44.n) {
           case 0:
             user = {
               id: googleUser.id || null,
@@ -8060,20 +8367,20 @@ function App() {
             };
             setAuthUser(user);
             setAuthState("premium");
-            _context43.n = 1;
+            _context44.n = 1;
             return ss("auth_state", "premium");
           case 1:
-            _context43.n = 2;
+            _context44.n = 2;
             return ss("auth_user", JSON.stringify(user));
           case 2:
             if (!consentMeta) {
-              _context43.n = 4;
+              _context44.n = 4;
               break;
             }
             rec = _objectSpread(_objectSpread({}, consentMeta), {}, {
               version: consentMeta.policyVersion
             });
-            _context43.n = 3;
+            _context44.n = 3;
             return ss("health_consent", JSON.stringify(rec));
           case 3:
             setConsentInfo(rec);
@@ -8081,25 +8388,25 @@ function App() {
             setShowSignIn(false);
             setPremiumGate(null);
             if (!(user.id && navigator.onLine)) {
-              _context43.n = 11;
+              _context44.n = 11;
               break;
             }
             setSyncMsg("Syncing your data…");
-            _context43.p = 5;
+            _context44.p = 5;
             if (!consentMeta) {
-              _context43.n = 6;
+              _context44.n = 6;
               break;
             }
-            _context43.n = 6;
+            _context44.n = 6;
             return syncConsent(user.id, consentMeta);
           case 6:
-            _context43.n = 7;
+            _context44.n = 7;
             return migrateLocalToSupabase(user.id);
           case 7:
-            _context43.n = 8;
+            _context44.n = 8;
             return pullFromSupabase(user.id);
           case 8:
-            pulled = _context43.v;
+            pulled = _context44.v;
             if (pulled.profile) setProf(pulled.profile);
             if (pulled.weighIns) setWeighIns(pulled.weighIns);
             if (pulled.meals) setMeals(pulled.meals);
@@ -8122,29 +8429,29 @@ function App() {
               }
             }
             if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
-            _context43.n = 10;
+            _context44.n = 10;
             break;
           case 9:
-            _context43.p = 9;
-            _t28 = _context43.v;
+            _context44.p = 9;
+            _t29 = _context44.v;
           case 10:
             setSyncMsg("");
           case 11:
-            return _context43.a(2);
+            return _context44.a(2);
         }
-      }, _callee43, null, [[5, 9]]);
+      }, _callee44, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x53, _x54, _x55) {
-      return _ref79.apply(this, arguments);
+      return _ref81.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44() {
+    var _ref82 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
       var meta, rec;
-      return _regenerator().w(function (_context44) {
-        while (1) switch (_context44.n) {
+      return _regenerator().w(function (_context45) {
+        while (1) switch (_context45.n) {
           case 0:
             meta = {
               ageConfirmedAt: null,
@@ -8154,60 +8461,60 @@ function App() {
             rec = _objectSpread(_objectSpread({}, meta), {}, {
               version: POLICY_VERSION
             });
-            _context44.n = 1;
+            _context45.n = 1;
             return ss("health_consent", JSON.stringify(rec));
           case 1:
             setConsentInfo(rec);
             if (!(authUser !== null && authUser !== void 0 && authUser.id)) {
-              _context44.n = 2;
+              _context45.n = 2;
               break;
             }
-            _context44.n = 2;
+            _context45.n = 2;
             return syncConsent(authUser.id, meta);
           case 2:
             setNeedsConsent(false);
           case 3:
-            return _context44.a(2);
+            return _context45.a(2);
         }
-      }, _callee44);
+      }, _callee45);
     }));
     return function handleConsent() {
-      return _ref80.apply(this, arguments);
+      return _ref82.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45() {
-      var clearKeys, _i2, _clearKeys, k, i, key, _t29;
-      return _regenerator().w(function (_context45) {
-        while (1) switch (_context45.p = _context45.n) {
+    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
+      var clearKeys, _i2, _clearKeys, k, i, key, _t30;
+      return _regenerator().w(function (_context46) {
+        while (1) switch (_context46.p = _context46.n) {
           case 0:
             if (!sb()) {
-              _context45.n = 4;
+              _context46.n = 4;
               break;
             }
-            _context45.p = 1;
-            _context45.n = 2;
+            _context46.p = 1;
+            _context46.n = 2;
             return sb().auth.signOut();
           case 2:
-            _context45.n = 4;
+            _context46.n = 4;
             break;
           case 3:
-            _context45.p = 3;
-            _t29 = _context45.v;
+            _context46.p = 3;
+            _t30 = _context46.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i2 = 0, _clearKeys = clearKeys;
           case 5:
             if (!(_i2 < _clearKeys.length)) {
-              _context45.n = 7;
+              _context46.n = 7;
               break;
             }
             k = _clearKeys[_i2];
-            _context45.n = 6;
+            _context46.n = 6;
             return ss(k, "");
           case 6:
             _i2++;
-            _context45.n = 5;
+            _context46.n = 5;
             break;
           case 7:
             try {
@@ -8236,12 +8543,12 @@ function App() {
             setShowSignOut(false);
             setView("dashboard");
           case 8:
-            return _context45.a(2);
+            return _context46.a(2);
         }
-      }, _callee45, null, [[1, 3]]);
+      }, _callee46, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref81.apply(this, arguments);
+      return _ref83.apply(this, arguments);
     };
   }();
 
@@ -8298,22 +8605,22 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref82 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
-      return _regenerator().w(function (_context46) {
-        while (1) switch (_context46.n) {
+    var _ref84 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
+      return _regenerator().w(function (_context47) {
+        while (1) switch (_context47.n) {
           case 0:
-            _context46.n = 1;
+            _context47.n = 1;
             return deleteAccountRequest();
           case 1:
-            _context46.n = 2;
+            _context47.n = 2;
             return handleSignOut();
           case 2:
-            return _context46.a(2);
+            return _context47.a(2);
         }
-      }, _callee46);
+      }, _callee47);
     }));
     return function handleDeleteAccount() {
-      return _ref82.apply(this, arguments);
+      return _ref84.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -8342,10 +8649,10 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(upd) {
+    var _ref85 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(upd) {
       var nh;
-      return _regenerator().w(function (_context47) {
-        while (1) switch (_context47.n) {
+      return _regenerator().w(function (_context48) {
+        while (1) switch (_context48.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -8353,7 +8660,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context47.n = 1;
+            _context48.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) {
@@ -8361,19 +8668,19 @@ function App() {
               if (upd.logs) syncFoodLogs(authUser.id, upd.date, upd.logs)["catch"](function () {});
             }
           case 2:
-            return _context47.a(2);
+            return _context48.a(2);
         }
-      }, _callee47);
+      }, _callee48);
     }));
     return function updateDay(_x56) {
-      return _ref83.apply(this, arguments);
+      return _ref85.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref84 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(weight) {
+    var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(weight) {
       var entry, updated, updatedProf, base, result, newAdj;
-      return _regenerator().w(function (_context48) {
-        while (1) switch (_context48.n) {
+      return _regenerator().w(function (_context49) {
+        while (1) switch (_context49.n) {
           case 0:
             entry = {
               date: todayKey(),
@@ -8385,7 +8692,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context48.n = 1;
+            _context49.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWeighIns(authUser.id, updated)["catch"](function () {});
@@ -8394,29 +8701,29 @@ function App() {
             updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
               weight: weight
             });
-            _context48.n = 2;
+            _context49.n = 2;
             return saveProf(updatedProf);
           case 2:
             // Run calibration whenever a new weigh-in arrives
             base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat / 100))) * 1.2);
             result = runCalibration(hist, updated, base + tdeeAdj);
             if (!(result && Math.abs(result.adj) >= 50)) {
-              _context48.n = 4;
+              _context49.n = 4;
               break;
             }
             newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
             setTdeeAdj(newAdj);
-            _context48.n = 3;
+            _context49.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context48.a(2);
+            return _context49.a(2);
         }
-      }, _callee48);
+      }, _callee49);
     }));
     return function onWeighIn(_x57) {
-      return _ref84.apply(this, arguments);
+      return _ref86.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -8576,6 +8883,7 @@ function App() {
     setMode: handleSetMode,
     setView: setView,
     removeLog: removeLog,
+    updateLog: updateLog,
     addToQA: addToQA,
     hasProfile: !!prof,
     streak: streak,
@@ -8637,7 +8945,11 @@ function App() {
     onUpdateDay: updateDay,
     weighIns: weighIns,
     meals: meals,
-    setMeals: saveMeals
+    setMeals: saveMeals,
+    isPremium: authState === "premium",
+    onPremiumGate: function onPremiumGate(feature) {
+      return setPremiumGate(feature);
+    }
   })), view === "achievements" && /*#__PURE__*/React.createElement(Achievements, {
     earnedBdgs: earnedBdgs,
     onBack: function onBack() {

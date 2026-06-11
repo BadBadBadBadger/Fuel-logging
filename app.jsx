@@ -1681,8 +1681,85 @@ function Avatar({ user, size = 34 }) {
 
 // ── Dashboard ─────────────────────────────────────────────────
 
+// Inline editor for an already-logged food entry. Reused by the dashboard
+// today-list and the History day view. Every field is editable by all users;
+// the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
+// reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
+function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
+  const [f, setF] = useState({
+    name:    entry.name,
+    kcal:    String(entry.kcal),
+    protein: String(entry.protein),
+    carbs:   String(entry.carbs),
+    fat:     String(entry.fat),
+  });
+  const [reest, setReest] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const reestimate = async () => {
+    if (!isPremium) { onPremiumGate({ emoji:"✨", name:"AI re-estimate" }); return; }
+    if (!f.name.trim() || reest) return;
+    setReest(true);
+    try {
+      const upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
+      const oft = await searchOFT(f.name.trim());
+      const r   = (oft && oft.confidence > upd.confidence) ? oft : upd;
+      setF(p => ({ ...p,
+        kcal:    String(Math.round(r.kcal)),
+        protein: String(Math.round(r.protein * 10) / 10),
+        carbs:   String(Math.round(r.carbs   * 10) / 10),
+        fat:     String(Math.round(r.fat     * 10) / 10),
+      }));
+    } catch (e) {}
+    setReest(false);
+  };
+
+  const save = () => onSave({
+    name:    f.name.trim() || entry.name,
+    kcal:    Math.round(Number(f.kcal) || 0),
+    protein: Math.round((Number(f.protein) || 0) * 10) / 10,
+    carbs:   Math.round((Number(f.carbs)   || 0) * 10) / 10,
+    fat:     Math.round((Number(f.fat)     || 0) * 10) / 10,
+  });
+
+  const fld = { background:BG, border:`1px solid ${BD}`, borderRadius:9, color:"#e6e1d7",
+    fontSize:13, padding:"8px 10px", outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
+  const lbl = { fontSize:10, color:"#827c73", fontWeight:700, letterSpacing:"0.05em", marginBottom:3, display:"block" };
+
+  return (
+    <div style={{ padding:"12px 16px 14px", background:"#15130f" }}>
+      <label style={lbl}>NAME</label>
+      <input value={f.name} onChange={e => set("name", e.target.value)} style={{ ...fld, marginBottom:10 }}/>
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+        <div style={{ flex:1, minWidth:0 }}><label style={lbl}>KCAL</label>
+          <input value={f.kcal}    onChange={e => set("kcal", e.target.value)}    inputMode="numeric" style={fld}/></div>
+        <div style={{ flex:1, minWidth:0 }}><label style={lbl}>P (g)</label>
+          <input value={f.protein} onChange={e => set("protein", e.target.value)} inputMode="decimal" style={fld}/></div>
+        <div style={{ flex:1, minWidth:0 }}><label style={lbl}>C (g)</label>
+          <input value={f.carbs}   onChange={e => set("carbs", e.target.value)}   inputMode="decimal" style={fld}/></div>
+        <div style={{ flex:1, minWidth:0 }}><label style={lbl}>F (g)</label>
+          <input value={f.fat}     onChange={e => set("fat", e.target.value)}     inputMode="decimal" style={fld}/></div>
+      </div>
+      <button onClick={reestimate} disabled={reest}
+        style={{ width:"100%", padding:"10px", marginBottom:8, background:"#1c1a15",
+          border:`1px solid ${A}44`, borderRadius:10, color:A, fontSize:12.5, fontWeight:800,
+          cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
+        {reest ? "Re-estimating…" : "✨ AI re-estimate from name"}
+      </button>
+      <div style={{ display:"flex", gap:8 }}>
+        <button onClick={onCancel}
+          style={{ flex:1, padding:"10px", background:"#1c1a15", border:`1px solid ${BD}`,
+            borderRadius:10, color:"#9b958b", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+        <button onClick={save}
+          style={{ flex:1, padding:"10px", background:A, border:"none",
+            borderRadius:10, color:"#0b0d0b", fontSize:13, fontWeight:800, cursor:"pointer" }}>Save</button>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ logs, totals, targets, remaining, water, setWater,
-  mode, setMode, setView, removeLog, addToQA,
+  mode, setMode, setView, removeLog, updateLog, addToQA,
   hasProfile, streak, prof,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
   workouts, onAddWorkout, onRemoveWorkout,
@@ -1692,6 +1769,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   isOnline, syncMsg }) {
 
   const isPremium = authState === "premium";
+  const [editingId, setEditingId] = useState(null);
 
   const overAmt    = Math.round(totals.kcal - targets.kcal);
   const pct        = Math.min(100, (totals.kcal / targets.kcal) * 100);
@@ -1997,28 +2075,35 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             TODAY'S LOG · {logs.length} ITEM{logs.length !== 1 ? "S" : ""}
           </div>
           {[...logs].reverse().map((log, i) => (
-            <div key={log.id} style={{ display:"flex", alignItems:"center", padding:"13px 16px",
-              borderBottom: i < logs.length - 1 ? `1px solid ${BD}` : "none", gap:10 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:14, fontWeight:600, color:"#e6e1d7",
-                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
-                <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
-                  {log.time} · P:{log.protein}g C:{log.carbs}g F:{log.fat}g
+            <div key={log.id} style={{ borderBottom: i < logs.length - 1 ? `1px solid ${BD}` : "none" }}>
+              {editingId === log.id ? (
+                <EntryEditor entry={log} isPremium={isPremium} onPremiumGate={onPremiumGate}
+                  onCancel={() => setEditingId(null)}
+                  onSave={patch => { updateLog(log.id, patch); setEditingId(null); }}/>
+              ) : (
+                <div style={{ display:"flex", alignItems:"center", padding:"13px 16px", gap:10 }}>
+                  <div onClick={() => setEditingId(log.id)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
+                    <div style={{ fontSize:14, fontWeight:600, color:"#e6e1d7",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
+                    <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
+                      {log.time} · P:{log.protein}g C:{log.carbs}g F:{log.fat}g <span style={{ color:"#6e6960" }}>✎</span>
+                    </div>
+                  </div>
+                  <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
+                  <button onClick={() => handleAddToQA(log)}
+                    style={{ flexShrink:0, padding:"7px 12px",
+                      background: savedIds[log.id] ? A + "22" : "#1c1a15",
+                      border: `1px solid ${savedIds[log.id] ? A + "66" : "#2a2620"}`,
+                      borderRadius:10, color: savedIds[log.id] ? A : "#827c73",
+                      fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                    {savedIds[log.id] ? "✓" : "⚡"}
+                  </button>
+                  <button onClick={() => removeLog(log.id)}
+                    style={{ flexShrink:0, width:32, height:32, background:"#1a0d0d",
+                      border:"1px solid #3a1a1a", borderRadius:10, color:"#884444",
+                      fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
                 </div>
-              </div>
-              <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
-              <button onClick={() => handleAddToQA(log)}
-                style={{ flexShrink:0, padding:"7px 12px",
-                  background: savedIds[log.id] ? A + "22" : "#1c1a15",
-                  border: `1px solid ${savedIds[log.id] ? A + "66" : "#2a2620"}`,
-                  borderRadius:10, color: savedIds[log.id] ? A : "#827c73",
-                  fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                {savedIds[log.id] ? "✓" : "⚡"}
-              </button>
-              <button onClick={() => removeLog(log.id)}
-                style={{ flexShrink:0, width:32, height:32, background:"#1a0d0d",
-                  border:"1px solid #3a1a1a", borderRadius:10, color:"#884444",
-                  fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+              )}
             </div>
           ))}
         </div>
@@ -2477,7 +2562,7 @@ function FoodSearch({ onAdd, onBack }) {
 
 const chartsAvailable = typeof ResponsiveContainer !== "undefined";
 
-function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEALS, setMeals = () => {} }) {
+function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEALS, setMeals = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -2493,6 +2578,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
   const [chartType,  setChartType]  = useState("line");
   const [dayIdx,     setDayIdx]     = useState(Math.max(0, history.length - 1));
   const [addCtx,     setAddCtx]     = useState(null);
+  const [editId,     setEditId]     = useState(null);
 
   const toggleM = m => setMetrics(p =>
     p.includes(m) ? (p.length > 1 ? p.filter(x => x !== m) : p) : [...p, m]);
@@ -2706,19 +2792,29 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                       <div style={{ padding:"18px", textAlign:"center", color:"#6e6960", fontSize:13 }}>No foods logged</div>
                     )}
                     {(day.logs || []).map((log, i) => (
-                      <div key={log.id || i} style={{ display:"flex", justifyContent:"space-between",
-                        alignItems:"center", padding:"11px 16px",
-                        borderBottom: i < day.logs.length - 1 ? `1px solid ${BD}` : "none" }}>
-                        <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-                          <div style={{ fontSize:13, color:"#e6e1d7", overflow:"hidden",
-                            textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
-                          <div style={{ fontSize:11, color:"#8b857c", marginTop:2 }}>
-                            P:{log.protein}g C:{log.carbs}g F:{log.fat}g
+                      <div key={log.id || i} style={{ borderBottom: i < day.logs.length - 1 ? `1px solid ${BD}` : "none" }}>
+                        {editId === (log.id || i) ? (
+                          <EntryEditor entry={log} isPremium={isPremium} onPremiumGate={onPremiumGate}
+                            onCancel={() => setEditId(null)}
+                            onSave={p => {
+                              patch({ logs: (day.logs || []).map(l => (l.id || l) === (log.id || log) ? { ...l, ...p } : l) });
+                              setEditId(null);
+                            }}/>
+                        ) : (
+                          <div style={{ display:"flex", justifyContent:"space-between",
+                            alignItems:"center", padding:"11px 16px" }}>
+                            <div onClick={() => setEditId(log.id || i)} style={{ flex:1, minWidth:0, paddingRight:10, cursor:"pointer" }}>
+                              <div style={{ fontSize:13, color:"#e6e1d7", overflow:"hidden",
+                                textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
+                              <div style={{ fontSize:11, color:"#8b857c", marginTop:2 }}>
+                                P:{log.protein}g C:{log.carbs}g F:{log.fat}g <span style={{ color:"#6e6960" }}>✎</span>
+                              </div>
+                            </div>
+                            <span style={{ fontSize:15, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
+                            <button onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
+                              style={{ background:"none", border:"none", color:"#524d46", fontSize:18, padding:"2px 10px" }}>×</button>
                           </div>
-                        </div>
-                        <span style={{ fontSize:15, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
-                        <button onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
-                          style={{ background:"none", border:"none", color:"#524d46", fontSize:18, padding:"2px 10px" }}>×</button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -3135,6 +3231,7 @@ function App() {
     }
   };
   const removeLog    = id => saveLogs(logs.filter(l => l.id !== id));
+  const updateLog    = (id, patch) => saveLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
   const addWorkout   = w  => saveWorkouts([...workouts, w]);
   const removeWorkout = id => saveWorkouts(workouts.filter(w => w.id !== id));
 
@@ -3463,7 +3560,7 @@ function App() {
 
       {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining}
           water={water} setWater={saveWater}
-          mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} addToQA={addToQA}
+          mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} prof={prof}
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}
           coachKey={coachKey}
@@ -3478,7 +3575,7 @@ function App() {
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}

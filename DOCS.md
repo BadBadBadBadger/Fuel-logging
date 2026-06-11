@@ -245,6 +245,7 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `ProfileScreen` | `tdeeAdj, weighIns, aggressiveCutAcked` | Unchanged |
 | `StreakCelebration` | `anim, onDone` | Full-screen emoji overlay; Web Audio whoosh+thud; auto-dismisses after 1.5s |
 | `AILog` | `onAdd` | AI-powered meal breakdown; only reachable when premium (view is never set to `"ai"` for anonymous) |
+| `EntryEditor` | `entry, onSave, onCancel, isPremium, onPremiumGate` | Inline editor for an already-logged entry; shared by Dashboard today-list + History day view. Manual edit for all; ✨ AI re-estimate (`AI_REESTIMATE_PROMPT` + OFF) is premium-gated |
 | `QuickAdd` | `meals, setMeals` | Available to all users |
 | `FoodSearch` | `onAdd` | Available to all users |
 | `History` | `history, onUpdateDay, weighIns` | Available to all users |
@@ -575,7 +576,7 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 | Feature | Type | Notes |
 |---|---|---|
 | **Bug: AI coach ignores goals already met/exceeded** | Bug · quick win | Coach tells you to "drink 2 more glasses" after 10/8, or "eat 25g more protein" after 200/175g. **Cause:** the prompt at `app.jsx` `CoachCard` (~L1180) sends raw `X/Y` ratios but never states over/under, so the model assumes a deficit. **Fix:** compute surplus/deficit per metric and put it in the prompt explicitly (e.g. "protein 200/175g — 25g OVER, goal met ✅"; "water 10/8 — exceeded"), and instruct it not to suggest more of a metric that's already met. |
-| **Edit log entry in place (+ AI re-estimate)** | Enhancement | Currently: delete and re-add. Add in-place edit of an entry's values; plus an AI re-estimate of a single item (premium-gated, like `AILog`). |
+| ~~Edit log entry in place (+ AI re-estimate)~~ | Enhancement | ✅ **Done (v6.1.2).** Inline `EntryEditor` on the dashboard today-list + History day view; manual edit for all, AI re-estimate premium-gated. |
 | **Celebration redesign — one engine** | Polish · decided | Collapse the two celebration systems into one. Daily streak increment = quiet **pop + increment on the header 🔥 chip** (no overlay, no sound). Badges become the **sole** fanfare authority: Bronze/Silver = toast + chip glow; **Gold tier and above = full overlay, slowed to ~2.5s** so it's readable. **Delete** the standalone streak-milestone overlay (old days 7/14/30/50/100, `app.jsx` ~L3112; `StreakCelebration` ~L1048). |
 | **More badge categories** | Feature | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above. |
 | **Notification engine (context-aware)** | Feature · needs-a-plan | Merges the old "weekly weigh-in summary" + "meal/water reminders" into one push system. **Context-aware from the start:** reminders read the day (kcal remaining, last-logged time, water progress, weigh-in done?) and stay quiet once a goal is met. ⚠️ Platform reality: works on installed Android PWA/TWA; iOS Safari push is restricted — degrade gracefully. |
@@ -1292,6 +1293,19 @@ appears after a deploy.
 ---
 
 ## 37. Changelog
+
+### v6.1.2 — Edit log entry in place + AI re-estimate (June 2026)
+- **Edit logged entries in place:** tap any food entry (today's dashboard list
+  *or* a History day) to expand an inline editor and change its name, kcal, and
+  macros — no more delete-and-re-add. Edits recalculate day totals immediately,
+  persist to localStorage, and sync to the cloud for premium users.
+- **AI re-estimate:** the inline editor has a ✨ button that re-estimates an
+  entry's kcal/macros from its (corrected) name, reusing `AI_REESTIMATE_PROMPT`
+  + the Open Food Facts cross-check. Premium-gated — anonymous taps open the
+  `PremiumModal` (manual editing stays free).
+- New reusable `EntryEditor` component shared by the dashboard and History.
+- Files touched: `app.jsx`, `app.js`, `features/fuel-log.feature`, `sw.js`
+  (cache → `fuel-log-v32`).
 
 ### v6.1.1 — Coach goal-awareness fix (June 2026)
 - **Bug fix:** the Daily Coach no longer tells you to consume *more* of a goal

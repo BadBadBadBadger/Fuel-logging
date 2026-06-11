@@ -33,10 +33,12 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 > **Feature track (parallel to legal, 2026-06-11):** a triaged product backlog now exists in
 > `DOCS.md §23` (post-challenge; 2 items cut). Decided + specced: **celebration redesign → one engine**
-> (spec in `features/fuel-log.feature`, `@wip`). **Shipped to the `phase-b-compliance` working tree:**
-> the **Daily Coach goal-awareness fix** (no longer says "drink more" after you hit a goal) — built,
-> `sw` bumped to `v31`, 44/44 tests pass; **not yet merged/deployed**. Other open items: edit-entry +
-> AI re-estimate, more badge categories, context-aware notification engine (`§23`).
+> (spec in `features/fuel-log.feature`, `@wip`). **Shipped to the `phase-b-compliance` working tree
+> (built + tests green, but NOT yet merged/deployed):** (1) **Daily Coach goal-awareness fix** (no
+> longer says "drink more" after you hit a goal); (2) **Edit log entry in place + AI re-estimate**
+> (inline `EntryEditor` on dashboard + History; manual edit for all, AI re-estimate premium-gated;
+> `sw` at `v32`). ⚠️ Both want a quick live eyeball before deploy. Other open items: celebration
+> build, more badge categories, context-aware notification engine (`§23`).
 >
 > **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` (2026-06-10) and tracking it;
 > the remote URL is credential-free (auth via Windows Credential Manager) and the exposed PAT was
