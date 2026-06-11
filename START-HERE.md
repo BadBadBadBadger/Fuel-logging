@@ -44,11 +44,21 @@ Read this first. It never duplicates roadmap detail — it points to it.
 > AI Log feedback, coach no-nag, timeouts). **One NOT eyeballed:** coach "celebrate a hit goal" nod
 > (committed, unobserved — check when a goal >target on next refresh).
 >
-> **Pick-up options:** (a) **build the celebration redesign** (spec ready, `@wip`); (b) knock out
-> quick banked wins — **AI-estimate on new Quick Add**, **re-blink/count on repeat add**, **haptic
-> vibrate**; (c) the bigger banked tracks — **coach intelligence** (variety/state/pacing),
-> **macro model** (protein-priority/fat-floor/carb-flex), **dietary+allergies config**. All in `§23`.
-> **Deploy note:** these feature commits will go live when Phase B merges → `main`.
+> **2026-06-11 (session 2): all 7 backlog features are now BDD-ready and pushed** (`3f38937` on
+> `origin/phase-b-compliance`). Specs live in `features/fuel-log.feature` (`@wip`): #2 AI-estimate on
+> Quick Add, #3 re-blink+count, #4 haptic on every C/U/D, #5/#6 coach intelligence (state-aware +
+> computed pacing, with coach-hat safeguarding rules baked in), #7 macro **floor engine**, #8
+> dietary/allergies. Decisions locked this session (see memory): macro = flat protein floor 2.2/2.0
+> g/kg LBM across modes + fat 0.6 g/kg hard floor + carbs absorb + warn; allergens = prompt-only
+> hard filter; no delete confirms/undo; **invoke the coach persona proactively** on nutrition work.
+>
+> **BUILD STARTED — paused mid-#4 (`115fba9`, WIP).** `haptic()` helper added + wired into core CRUD
+> handlers (addLog/removeLog/updateLog/addToQA/add+removeWorkout). **NOT yet wired:** weigh-in, target
+> override (`commitTarget` app.jsx:1824), profile save (~1263), MealForm save (~1447), QuickAdd
+> delete/reset (~2497/2505), voucher (~674). **⚠️ app.jsx NOT rebuilt to app.js, sw.js NOT bumped** —
+> nothing runs live yet. **Build order next:** finish #4 → #3 → #2 → #7 (extract custom-target at
+> app.jsx:3517 to a pure fn for Jest) → #5/#6 → #8 → rebuild + bump `sw`. Todo list captured the plan.
+> **Deploy note:** these go live when Phase B merges → `main`.
 >
 > **Stray file:** `features/_inbox.feature` (untracked BDD staging placeholder) — keep or bin.
 >
