@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-12 (session 5: shipped **v6.3** — independent per-field units (kg/st+lb/lb · cm/ft+in/in) with contextual-zero handling + allergen auto-select **safety** fix; device-verified, **85/85**, sw v41; merged to `main` (incl. the held v37 app-icon). Next: celebration redesign — fresh session.) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-12 (session 6: shipped **v6.4 — light mode** (system-aware + 3-way 🌙/☀️/🖥️ toggle, warm paper/coal-ink mirror of the dark theme; whole palette moved to CSS variables); device-tested, **85/85**, sw v43; new **design-lead persona** added; merged to `main`. Next: celebration redesign — fresh session.) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -25,7 +25,13 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 ## Next up (in order)
 
-1. **▶ Build: celebration redesign → one engine** — the **sole remaining product backlog feature**,
+0. **✅ DONE — light mode (v6.4, shipped to `main`, session 6).** System-aware + 3-way 🌙/☀️/🖥️ toggle
+   at the bottom of Profile/⚙️; warm paper/coal-ink mirror of the dark theme; whole palette migrated to
+   CSS variables (`index.html` `:root` blocks are the canonical token list); DOCS.md §35 rewritten + v6.4
+   changelog; Appearance feature un-`@wip`'d. **One on-device follow-up:** confirm the *live* OS dark/light
+   flip applies mid-session in the installed PWA (the one scenario not verifiable by trace). New
+   **design-lead persona** added — say **"design hat"** / **"UX hat"**.
+1. **Build: celebration redesign → one engine** — the sole remaining backlog feature,
    decided + specced in `features/fuel-log.feature` (`@wip`, "Logging celebration — quiet daily,
    fanfare for the rare"). Quiet chip-pop on every daily log; badges become the sole "something
    special" authority; the old streak-milestone overlay is removed. **Start a fresh session here.**

@@ -11,23 +11,229 @@
   <title>Fuel Log</title>
   <link rel="manifest" href="manifest.json"/>
   <style>
+    /* ===== THEME VARS — light default, dark via OS or [data-theme]. Generated; see DOCS.md §35. ===== */
+    :root, :root[data-theme="light"] {
+      --bg: #f4f1e9;
+      --surface: #fbf9f3;
+      --surface-b: #faf8f1;
+      --surface-2: #ece8dd;
+      --surface-2b: #eceae4;
+      --border: #ddd8cb;
+      --border-strong: #cfc9ba;
+      --raised: #e6e1d4;
+      --raised-2: #ddd6c6;
+      --text-disabled: #aba496;
+      --text-hi-b: #1f1c17;
+      --text-hi: #26231e;
+      --text-hi-2: #34302a;
+      --text-hi-3: #3a352d;
+      --text-mid: #5c574d;
+      --text-mid-2: #5f5a50;
+      --text-mid-3: #5e594f;
+      --text-label: #5c574d;
+      --text-mid-4: #5f5a50;
+      --text-mid-6: #585349;
+      --text-mid-5: #625d52;
+      --text-lo: #6b655b;
+      --text-lo-2: #6e685e;
+      --text-faint: #736d63;
+      --text-faint-2: #7a746a;
+      --gold-dim: #7a6328;
+      --accent: #2b2824;
+      --cut: #1f63c2;
+      --bulk: #c2410c;
+      --warn: #946400;
+      --over: #c62a22;
+      --over-2: #c64030;
+      --bulk-2: #c2521f;
+      --over-3: #c63a3a;
+      --over-soft: #b34a4a;
+      --bulk-3: #c2531f;
+      --over-4: #c63636;
+      --over-5: #c63030;
+      --over-deep: #8f2f2f;
+      --over-deep-2: #7a3535;
+      --over-muted: #6e4a4a;
+      --over-tint: #faeaea;
+      --over-tint-2: #fcefef;
+      --over-tint-3: #fceee6;
+      --over-tint-4: #f5dcdc;
+      --over-tint-5: #ece2e2;
+      --bulk-tint: #fbe9dd;
+      --over-tint-6: #fae2e2;
+      --over-tint-7: #fdeeee;
+      --warn-tint: #fcf2d8;
+      --warn-tint-2: #fcf3da;
+      --warn-tint-3: #f9f1d6;
+      --cut-tint: #e3edfb;
+      --cut-tint-2: #e8eef7;
+      --cut-tint-3: #eaeef6;
+      --cut-tint-4: #e6eef8;
+      --cut-tint-5: #e3ecf7;
+      --cut-tint-6: #eaecf3;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+      --bg: #0b0d0b;
+      --surface: #141210;
+      --surface-b: #15130f;
+      --surface-2: #1c1a15;
+      --surface-2b: #1a1a1a;
+      --border: #24211b;
+      --border-strong: #2c2820;
+      --raised: #2a2620;
+      --raised-2: #3a352a;
+      --text-disabled: #524d46;
+      --text-hi-b: #efeae0;
+      --text-hi: #e6e1d7;
+      --text-hi-2: #cfc9bd;
+      --text-hi-3: #c2bcb0;
+      --text-mid: #aea79c;
+      --text-mid-2: #a7a197;
+      --text-mid-3: #9f998e;
+      --text-label: #9b958b;
+      --text-mid-4: #9a948a;
+      --text-mid-6: #b6b0a4;
+      --text-mid-5: #948e84;
+      --text-lo: #8b857c;
+      --text-lo-2: #827c73;
+      --text-faint: #7a746a;
+      --text-faint-2: #6e6960;
+      --gold-dim: #8a7030;
+      --accent: #e8e2d4;
+      --cut: #4b9fff;
+      --bulk: #ff7b4b;
+      --warn: #ffb84b;
+      --over: #ff5555;
+      --over-2: #ff7b6b;
+      --bulk-2: #ff8866;
+      --over-3: #ff7a7a;
+      --over-soft: #ffb4b4;
+      --bulk-3: #ff8855;
+      --over-4: #ff7777;
+      --over-5: #ff7070;
+      --over-deep: #aa4444;
+      --over-deep-2: #884444;
+      --over-muted: #7a5555;
+      --over-tint: #3a1a1a;
+      --over-tint-2: #1a0d0d;
+      --over-tint-3: #1a0d08;
+      --over-tint-4: #5a1a1a;
+      --over-tint-5: #443030;
+      --bulk-tint: #3a1a0a;
+      --over-tint-6: #3a0f0f;
+      --over-tint-7: #1a0505;
+      --warn-tint: #1a1000;
+      --warn-tint-2: #1a1200;
+      --warn-tint-3: #151000;
+      --cut-tint: #2a4a7a;
+      --cut-tint-2: #1e2a3a;
+      --cut-tint-3: #131826;
+      --cut-tint-4: #0f1c2e;
+      --cut-tint-5: #2a4060;
+      --cut-tint-6: #161a26;
+        color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0b0d0b;
+      --surface: #141210;
+      --surface-b: #15130f;
+      --surface-2: #1c1a15;
+      --surface-2b: #1a1a1a;
+      --border: #24211b;
+      --border-strong: #2c2820;
+      --raised: #2a2620;
+      --raised-2: #3a352a;
+      --text-disabled: #524d46;
+      --text-hi-b: #efeae0;
+      --text-hi: #e6e1d7;
+      --text-hi-2: #cfc9bd;
+      --text-hi-3: #c2bcb0;
+      --text-mid: #aea79c;
+      --text-mid-2: #a7a197;
+      --text-mid-3: #9f998e;
+      --text-label: #9b958b;
+      --text-mid-4: #9a948a;
+      --text-mid-6: #b6b0a4;
+      --text-mid-5: #948e84;
+      --text-lo: #8b857c;
+      --text-lo-2: #827c73;
+      --text-faint: #7a746a;
+      --text-faint-2: #6e6960;
+      --gold-dim: #8a7030;
+      --accent: #e8e2d4;
+      --cut: #4b9fff;
+      --bulk: #ff7b4b;
+      --warn: #ffb84b;
+      --over: #ff5555;
+      --over-2: #ff7b6b;
+      --bulk-2: #ff8866;
+      --over-3: #ff7a7a;
+      --over-soft: #ffb4b4;
+      --bulk-3: #ff8855;
+      --over-4: #ff7777;
+      --over-5: #ff7070;
+      --over-deep: #aa4444;
+      --over-deep-2: #884444;
+      --over-muted: #7a5555;
+      --over-tint: #3a1a1a;
+      --over-tint-2: #1a0d0d;
+      --over-tint-3: #1a0d08;
+      --over-tint-4: #5a1a1a;
+      --over-tint-5: #443030;
+      --bulk-tint: #3a1a0a;
+      --over-tint-6: #3a0f0f;
+      --over-tint-7: #1a0505;
+      --warn-tint: #1a1000;
+      --warn-tint-2: #1a1200;
+      --warn-tint-3: #151000;
+      --cut-tint: #2a4a7a;
+      --cut-tint-2: #1e2a3a;
+      --cut-tint-3: #131826;
+      --cut-tint-4: #0f1c2e;
+      --cut-tint-5: #2a4060;
+      --cut-tint-6: #161a26;
+      color-scheme: dark;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0b0d0b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-    input::placeholder, textarea::placeholder { color: #6e6960; }
-    select { background: #0b0d0b; color: #e6e1d7; }
+    input::placeholder, textarea::placeholder { color: var(--text-faint-2); }
+    select { background: var(--bg); color: var(--text-hi); }
     #update-banner {
       display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
-      background: #24211b; border-top: 1px solid #e8e2d4;
+      background: var(--border); border-top: 1px solid var(--accent);
       padding: 14px 20px; align-items: center; justify-content: space-between; gap: 12px;
     }
     #update-banner.show { display: flex; }
-    #update-banner span { color: #e6e1d7; font-size: 14px; }
+    #update-banner span { color: var(--text-hi); font-size: 14px; }
     #update-banner button {
-      background: #e8e2d4; color: #0b0d0b; border: none; border-radius: 8px;
+      background: var(--accent); color: var(--bg); border: none; border-radius: 8px;
       padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
     }
   </style>
+  <script>
+    /* Flash-free theme init: apply a saved manual override before first paint, and keep
+       the browser chrome (theme-color) in sync. "system" leaves no attribute so the OS drives it. */
+    (function () {
+      try {
+        var t = localStorage.getItem("fuel_theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+      function syncChrome() {
+        var c = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (c && m) m.setAttribute("content", c);
+      }
+      syncChrome();
+      window.__fuelSyncChrome = syncChrome;
+      try {
+        matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncChrome);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>

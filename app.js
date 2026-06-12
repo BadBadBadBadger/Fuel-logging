@@ -37,10 +37,40 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
 var exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
-var A = "#e8e2d4",
-  BG = "#0b0d0b",
-  CARD = "#141210",
-  BD = "#24211b";
+var A = "var(--accent)",
+  BG = "var(--bg)",
+  CARD = "var(--surface)",
+  BD = "var(--border)";
+// Theme helpers (light mode). mix = alpha via color-mix; aA = accent alpha; rc = resolve a
+// "var(--x)" to a concrete hex for SVG/Recharts attributes (CSS vars don't work there).
+var mix = function mix(c, h) {
+  return "color-mix(in srgb, ".concat(c, " ").concat(Math.round(parseInt(h, 16) / 2.55), "%, transparent)");
+};
+var aA = function aA(h) {
+  return mix(A, h);
+};
+var cssVar = function cssVar(n) {
+  return typeof getComputedStyle === "undefined" ? "" : getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+};
+var rc = function rc(v) {
+  var m = String(v).match(/var\((--[\w-]+)\)/);
+  return m ? cssVar(m[1]) || v : v;
+};
+// Theme choice (per-device, never synced): "system" follows prefers-color-scheme; "light"/"dark" force it.
+var getTheme = function getTheme() {
+  try {
+    return localStorage.getItem("fuel_theme") || "system";
+  } catch (e) {
+    return "system";
+  }
+};
+var applyTheme = function applyTheme(choice) {
+  try {
+    localStorage.setItem("fuel_theme", choice);
+  } catch (e) {}
+  if (choice === "light" || choice === "dark") document.documentElement.setAttribute("data-theme", choice);else document.documentElement.removeAttribute("data-theme");
+  if (typeof window !== "undefined" && window.__fuelSyncChrome) window.__fuelSyncChrome();
+};
 
 // ── Auth / Premium ────────────────────────────────────────────
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
@@ -53,17 +83,17 @@ var GOOGLE_CLIENT_ID = "922818167366-5nl6qfteipui307j1oi7asu7d3bkgvat.apps.googl
 var MODES = {
   cut: {
     label: "CUT",
-    color: "#4b9fff",
+    color: "var(--cut)",
     adj: -500
   },
   maintain: {
     label: "MAINTAIN",
-    color: "#e8e2d4",
+    color: "var(--accent)",
     adj: 0
   },
   bulk: {
     label: "BULK",
-    color: "#ff7b4b",
+    color: "var(--bulk)",
     adj: 500
   }
 };
@@ -1978,7 +2008,7 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
       if (this.state.err) return /*#__PURE__*/React.createElement("div", {
         style: {
           padding: 24,
-          color: "#ff5555",
+          color: "var(--over)",
           fontSize: 13,
           lineHeight: 1.6
         }
@@ -1991,7 +2021,7 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
       }, "\u26A0\uFE0F Render error"), /*#__PURE__*/React.createElement("div", {
         style: {
           fontFamily: "monospace",
-          background: "#1a0d0d",
+          background: "var(--over-tint-2)",
           padding: 12,
           borderRadius: 8,
           wordBreak: "break-all"
@@ -2031,7 +2061,7 @@ function PremiumModal(_ref22) {
       borderRadius: 24,
       padding: "36px 28px",
       textAlign: "center",
-      border: "1px solid ".concat(A, "44"),
+      border: "1px solid ".concat(aA("44")),
       maxWidth: 300,
       width: "100%"
     }
@@ -2052,19 +2082,19 @@ function PremiumModal(_ref22) {
     style: {
       fontSize: 20,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       marginBottom: 8
     }
   }, name), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       lineHeight: 1.6,
       marginBottom: 16
     }
   }, "AI features require a Premium account"), /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#0b0d0b",
+      background: "var(--bg)",
       borderRadius: 12,
       padding: "14px 16px",
       marginBottom: 20,
@@ -2098,14 +2128,14 @@ function PremiumModal(_ref22) {
     }, e), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: "#b6b0a4",
+        color: "var(--text-mid-6)",
         lineHeight: 1.4
       }
     }, t));
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginTop: 10,
       borderTop: "1px solid ".concat(BD),
       paddingTop: 10
@@ -2116,7 +2146,7 @@ function PremiumModal(_ref22) {
       width: "100%",
       padding: "14px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 12,
       fontSize: 14,
@@ -2129,7 +2159,7 @@ function PremiumModal(_ref22) {
       width: "100%",
       padding: "10px",
       background: "none",
-      color: "#9b958b",
+      color: "var(--text-label)",
       border: "none",
       fontSize: 13,
       cursor: "pointer"
@@ -2315,7 +2345,7 @@ function SignInModal(_ref25) {
       background: CARD,
       borderRadius: 24,
       padding: "32px 24px",
-      border: "1px solid ".concat(A, "33"),
+      border: "1px solid ".concat(aA("33")),
       maxWidth: 300,
       width: "100%"
     }
@@ -2329,14 +2359,14 @@ function SignInModal(_ref25) {
     style: {
       fontSize: 16,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       textAlign: "center",
       marginBottom: 6
     }
   }, "Sign in to continue"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#9b958b",
+      color: "var(--text-label)",
       textAlign: "center",
       lineHeight: 1.6,
       marginBottom: 18
@@ -2347,8 +2377,8 @@ function SignInModal(_ref25) {
       gap: 10,
       alignItems: "flex-start",
       cursor: "pointer",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(ageOK ? A + "55" : BD),
+      background: "var(--bg)",
+      border: "1px solid ".concat(ageOK ? aA("55") : BD),
       borderRadius: 10,
       padding: "11px 12px",
       marginBottom: 14
@@ -2370,7 +2400,7 @@ function SignInModal(_ref25) {
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#cfc9bd",
+      color: "var(--text-hi-2)",
       lineHeight: 1.5
     }
   }, "I confirm I am ", /*#__PURE__*/React.createElement("strong", null, "18 or over"), ". Fuel Log is for adults in the UK\xA0and\xA0EEA. I agree to the ", /*#__PURE__*/React.createElement("a", {
@@ -2398,7 +2428,7 @@ function SignInModal(_ref25) {
     style: {
       textAlign: "center",
       fontSize: 12,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       padding: "12px 0",
       marginBottom: 14
     }
@@ -2408,7 +2438,7 @@ function SignInModal(_ref25) {
       width: "100%",
       padding: "10px",
       background: "none",
-      color: "#9b958b",
+      color: "var(--text-label)",
       border: "none",
       fontSize: 13,
       cursor: "pointer"
@@ -2425,12 +2455,12 @@ function SignInModal(_ref25) {
     style: {
       fontSize: 16,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       marginBottom: 14
     }
   }, "Start your free trial"), /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#0b0d0b",
+      background: "var(--bg)",
       borderRadius: 12,
       padding: "14px 16px",
       marginBottom: 14
@@ -2444,13 +2474,13 @@ function SignInModal(_ref25) {
   }, "30 days free"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginTop: 3
     }
   }, "then \xA34.99/month or \xA349.99/year"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginTop: 6
     }
   }, "Cancel anytime before trial ends")), /*#__PURE__*/React.createElement("button", {
@@ -2458,10 +2488,10 @@ function SignInModal(_ref25) {
     style: {
       width: "100%",
       padding: "14px",
-      background: "#24211b",
+      background: "var(--border)",
       border: "1px solid ".concat(BD),
       borderRadius: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       fontSize: 13,
       fontWeight: 700,
       marginBottom: 16,
@@ -2473,8 +2503,8 @@ function SignInModal(_ref25) {
       gap: 10,
       alignItems: "flex-start",
       cursor: "pointer",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(consentOK ? A + "55" : BD),
+      background: "var(--bg)",
+      border: "1px solid ".concat(consentOK ? aA("55") : BD),
       borderRadius: 10,
       padding: "11px 12px",
       marginBottom: 14
@@ -2496,7 +2526,7 @@ function SignInModal(_ref25) {
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#cfc9bd",
+      color: "var(--text-hi-2)",
       lineHeight: 1.5
     }
   }, "I explicitly consent to Fuel Log storing my ", /*#__PURE__*/React.createElement("strong", null, "health data"), " (weight, body\xA0fat, sex, and any dietary\xA0requirements\xA0and\xA0allergies I enter) in the cloud to provide the service. Meal/workout text, body metrics and my dietary needs are sent to our AI provider ", /*#__PURE__*/React.createElement("strong", null, "without anything that identifies me"), ". See the", " ", /*#__PURE__*/React.createElement("a", {
@@ -2509,7 +2539,7 @@ function SignInModal(_ref25) {
   }, "Privacy\xA0Policy"), ".")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       textAlign: "center",
       marginBottom: 8
     }
@@ -2526,11 +2556,11 @@ function SignInModal(_ref25) {
     style: {
       width: "100%",
       boxSizing: "border-box",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(vError ? "#ff5555" : BD),
+      background: "var(--bg)",
+      border: "1px solid ".concat(vError ? "var(--over)" : BD),
       borderRadius: 10,
       padding: "12px 14px",
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       fontSize: 14,
       fontFamily: "inherit",
       outline: "none",
@@ -2539,7 +2569,7 @@ function SignInModal(_ref25) {
   }), vError && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#ff5555",
+      color: "var(--over)",
       marginBottom: 10
     }
   }, vError), /*#__PURE__*/React.createElement("button", {
@@ -2548,10 +2578,10 @@ function SignInModal(_ref25) {
     style: {
       width: "100%",
       padding: "12px",
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 12,
-      color: consentOK ? "#b6b0a4" : "#6e6960",
+      color: consentOK ? "var(--text-mid-6)" : "var(--text-faint-2)",
       fontSize: 13,
       fontWeight: 700,
       marginBottom: 10,
@@ -2563,7 +2593,7 @@ function SignInModal(_ref25) {
       width: "100%",
       padding: "10px",
       background: "none",
-      color: "#9b958b",
+      color: "var(--text-label)",
       border: "none",
       fontSize: 13,
       cursor: "pointer"
@@ -2604,14 +2634,14 @@ function SignOutModal(_ref27) {
     style: {
       fontSize: 16,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       textAlign: "center",
       marginBottom: 10
     }
   }, "Sign out", userName ? ", ".concat(userName.split(" ")[0]) : "", "?"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       lineHeight: 1.7,
       marginBottom: 22,
       textAlign: "center"
@@ -2621,10 +2651,10 @@ function SignOutModal(_ref27) {
     style: {
       width: "100%",
       padding: "13px",
-      background: "#1a0d0d",
-      border: "1px solid #3a1a1a",
+      background: "var(--over-tint-2)",
+      border: "1px solid var(--over-tint)",
       borderRadius: 12,
-      color: "#ff5555",
+      color: "var(--over)",
       fontSize: 14,
       fontWeight: 900,
       marginBottom: 10
@@ -2635,7 +2665,7 @@ function SignOutModal(_ref27) {
       width: "100%",
       padding: "12px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 12,
       fontSize: 14,
@@ -2669,7 +2699,7 @@ function ConsentModal(_ref28) {
       background: CARD,
       borderRadius: 24,
       padding: "28px 24px",
-      border: "1px solid ".concat(A, "33"),
+      border: "1px solid ".concat(aA("33")),
       maxWidth: 320,
       width: "100%"
     }
@@ -2683,14 +2713,14 @@ function ConsentModal(_ref28) {
     style: {
       fontSize: 16,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       textAlign: "center",
       marginBottom: 8
     }
   }, "A quick consent check"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       lineHeight: 1.6,
       marginBottom: 16,
       textAlign: "center"
@@ -2701,8 +2731,8 @@ function ConsentModal(_ref28) {
       gap: 10,
       alignItems: "flex-start",
       cursor: "pointer",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(ok ? A + "55" : BD),
+      background: "var(--bg)",
+      border: "1px solid ".concat(ok ? aA("55") : BD),
       borderRadius: 10,
       padding: "11px 12px",
       marginBottom: 16
@@ -2723,7 +2753,7 @@ function ConsentModal(_ref28) {
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#cfc9bd",
+      color: "var(--text-hi-2)",
       lineHeight: 1.5
     }
   }, "I explicitly consent to Fuel Log storing my ", /*#__PURE__*/React.createElement("strong", null, "health data"), " (weight, body\xA0fat, sex, and any dietary\xA0requirements\xA0and\xA0allergies I enter) to provide the service. See the", " ", /*#__PURE__*/React.createElement("a", {
@@ -2739,8 +2769,8 @@ function ConsentModal(_ref28) {
     style: {
       width: "100%",
       padding: "13px",
-      background: ok ? A : "#24211b",
-      color: ok ? "#0b0d0b" : "#6e6960",
+      background: ok ? A : "var(--border)",
+      color: ok ? "var(--bg)" : "var(--text-faint-2)",
       border: "none",
       borderRadius: 12,
       fontSize: 14,
@@ -2754,7 +2784,7 @@ function ConsentModal(_ref28) {
       width: "100%",
       padding: "10px",
       background: "none",
-      color: "#9b958b",
+      color: "var(--text-label)",
       border: "none",
       fontSize: 13,
       cursor: "pointer"
@@ -2826,17 +2856,17 @@ function AccountScreen(_ref29) {
         justifyContent: "space-between",
         alignItems: "center",
         padding: "13px 14px",
-        background: "#1c1a15",
+        background: "var(--surface-2)",
         border: "1px solid ".concat(BD),
         borderRadius: 12,
-        color: "#cfc9bd",
+        color: "var(--text-hi-2)",
         fontSize: 14,
         textDecoration: "none",
         marginBottom: 8
       }
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("span", {
       style: {
-        color: "#827c73"
+        color: "var(--text-lo-2)"
       }
     }, "\u2197"));
   };
@@ -2865,10 +2895,10 @@ function AccountScreen(_ref29) {
     style: {
       width: 36,
       height: 36,
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 18
     }
   }, "\u2190"), /*#__PURE__*/React.createElement("h1", {
@@ -2900,7 +2930,7 @@ function AccountScreen(_ref29) {
     style: {
       fontSize: 14,
       fontWeight: 800,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis"
@@ -2908,7 +2938,7 @@ function AccountScreen(_ref29) {
   }, (user === null || user === void 0 ? void 0 : user.name) || "Signed in"), (user === null || user === void 0 ? void 0 : user.email) && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis"
@@ -2916,7 +2946,7 @@ function AccountScreen(_ref29) {
   }, user.email))), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       letterSpacing: "0.1em",
       fontWeight: 800,
       marginBottom: 8
@@ -2926,10 +2956,10 @@ function AccountScreen(_ref29) {
     style: {
       width: "100%",
       padding: "13px 14px",
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 12,
-      color: "#cfc9bd",
+      color: "var(--text-hi-2)",
       fontSize: 14,
       fontWeight: 700,
       textAlign: "left",
@@ -2940,20 +2970,20 @@ function AccountScreen(_ref29) {
     }
   }, /*#__PURE__*/React.createElement("span", null, "\u2B07\uFE0F Download my data"), /*#__PURE__*/React.createElement("span", {
     style: {
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       fontSize: 12
     }
   }, "JSON")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       lineHeight: 1.6,
       marginBottom: 20
     }
   }, "A copy of everything stored against your account, in a portable file (GDPR access & portability)."), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       letterSpacing: "0.1em",
       fontWeight: 800,
       marginBottom: 8
@@ -2961,14 +2991,14 @@ function AccountScreen(_ref29) {
   }, "LEGAL"), linkRow("Privacy Policy", LEGAL.privacy), linkRow("Terms of Service", LEGAL.terms), linkRow("Who processes your data", LEGAL.subprocessors), consentDate && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       lineHeight: 1.6,
       margin: "8px 0 20px"
     }
   }, "Health-data consent given ", consentDate, " (policy v", consentInfo.version || POLICY_VERSION, "). To withdraw consent, delete your data below."), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       letterSpacing: "0.1em",
       fontWeight: 800,
       margin: "4px 0 8px"
@@ -2978,10 +3008,10 @@ function AccountScreen(_ref29) {
     style: {
       width: "100%",
       padding: "13px 14px",
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 12,
-      color: "#cfc9bd",
+      color: "var(--text-hi-2)",
       fontSize: 14,
       fontWeight: 700,
       textAlign: "left",
@@ -2990,7 +3020,7 @@ function AccountScreen(_ref29) {
   }, "\uD83D\uDD13 Sign out"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#ff7a7a",
+      color: "var(--over-3)",
       letterSpacing: "0.1em",
       fontWeight: 800,
       marginBottom: 8
@@ -3003,25 +3033,25 @@ function AccountScreen(_ref29) {
     style: {
       width: "100%",
       padding: "13px 14px",
-      background: "#1a0d0d",
-      border: "1px solid #3a1a1a",
+      background: "var(--over-tint-2)",
+      border: "1px solid var(--over-tint)",
       borderRadius: 12,
-      color: "#ff5555",
+      color: "var(--over)",
       fontSize: 14,
       fontWeight: 800,
       textAlign: "left"
     }
   }, "\uD83D\uDDD1\uFE0F Delete my account & all data") : /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#1a0d0d",
-      border: "1px solid #3a1a1a",
+      background: "var(--over-tint-2)",
+      border: "1px solid var(--over-tint)",
       borderRadius: 14,
       padding: "16px"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#ffb4b4",
+      color: "var(--over-soft)",
       lineHeight: 1.6,
       marginBottom: 12
     }
@@ -3035,11 +3065,11 @@ function AccountScreen(_ref29) {
     style: {
       width: "100%",
       boxSizing: "border-box",
-      background: "#0b0d0b",
-      border: "1px solid #3a1a1a",
+      background: "var(--bg)",
+      border: "1px solid var(--over-tint)",
       borderRadius: 10,
       padding: "11px 13px",
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       fontSize: 14,
       fontFamily: "inherit",
       outline: "none",
@@ -3048,7 +3078,7 @@ function AccountScreen(_ref29) {
   }), err && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#ff7a7a",
+      color: "var(--over-3)",
       marginBottom: 10
     }
   }, err), /*#__PURE__*/React.createElement("button", {
@@ -3057,10 +3087,10 @@ function AccountScreen(_ref29) {
     style: {
       width: "100%",
       padding: "13px",
-      background: "#3a0f0f",
-      border: "1px solid #5a1a1a",
+      background: "var(--over-tint-6)",
+      border: "1px solid var(--over-tint-4)",
       borderRadius: 12,
-      color: typed.trim().toUpperCase() === "DELETE" && !busy ? "#ff5555" : "#7a5555",
+      color: typed.trim().toUpperCase() === "DELETE" && !busy ? "var(--over)" : "var(--over-muted)",
       fontSize: 14,
       fontWeight: 900,
       marginBottom: 8,
@@ -3077,21 +3107,21 @@ function AccountScreen(_ref29) {
       width: "100%",
       padding: "11px",
       background: "none",
-      color: "#9b958b",
+      color: "var(--text-label)",
       border: "none",
       fontSize: 13
     }
   }, "Cancel")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       lineHeight: 1.6,
       marginTop: 14
     }
   }, "Prefer email? Contact ", /*#__PURE__*/React.createElement("a", {
     href: "mailto:fuellogadmin@gmail.com",
     style: {
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, "fuellogadmin@gmail.com"), "."));
 }
@@ -3114,7 +3144,7 @@ function LapsedModal(_ref31) {
       background: CARD,
       borderRadius: 24,
       padding: "28px 24px",
-      border: "1px solid #ffb84b44",
+      border: "1px solid color-mix(in srgb, var(--warn) 27%, transparent)",
       maxWidth: 300,
       width: "100%"
     }
@@ -3128,14 +3158,14 @@ function LapsedModal(_ref31) {
     style: {
       fontSize: 16,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       textAlign: "center",
       marginBottom: 10
     }
   }, "Your Premium subscription has ended"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       lineHeight: 1.7,
       marginBottom: 22,
       textAlign: "center"
@@ -3146,7 +3176,7 @@ function LapsedModal(_ref31) {
       width: "100%",
       padding: "13px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 12,
       fontSize: 14,
@@ -3159,7 +3189,7 @@ function LapsedModal(_ref31) {
       width: "100%",
       padding: "11px",
       background: "none",
-      color: "#9b958b",
+      color: "var(--text-label)",
       border: "none",
       fontSize: 13,
       cursor: "pointer"
@@ -3172,11 +3202,11 @@ function LapsedModal(_ref31) {
 var INP = {
   width: "100%",
   boxSizing: "border-box",
-  background: "#0b0d0b",
+  background: "var(--bg)",
   border: "1px solid ".concat(BD),
   borderRadius: 10,
   padding: "12px 14px",
-  color: "#e6e1d7",
+  color: "var(--text-hi)",
   fontSize: 14,
   fontFamily: "inherit",
   outline: "none"
@@ -3202,12 +3232,12 @@ function BackHdr(_ref32) {
   }, /*#__PURE__*/React.createElement("button", {
     onClick: onBack,
     style: {
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
       width: 36,
       height: 36,
-      color: "#a7a197",
+      color: "var(--text-mid-2)",
       fontSize: 18,
       display: "flex",
       alignItems: "center",
@@ -3232,7 +3262,7 @@ function Chip(_ref33) {
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
-      background: "#0b0d0b",
+      background: "var(--bg)",
       borderRadius: 12,
       padding: "10px 6px"
     }
@@ -3245,7 +3275,7 @@ function Chip(_ref33) {
   }, value), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
-      color: "#8b857c",
+      color: "var(--text-lo)",
       marginTop: 2,
       letterSpacing: "0.05em"
     }
@@ -3258,7 +3288,7 @@ function MBar(_ref34) {
     color = _ref34.color;
   var pct = Math.min(100, value / target * 100);
   var overG = value - target;
-  var accent = overG > 15 ? "#ff5555" : overG > 5 ? "#ffb84b" : null;
+  var accent = overG > 15 ? "var(--over)" : overG > 5 ? "var(--warn)" : null;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 10
@@ -3274,16 +3304,16 @@ function MBar(_ref34) {
     style: {
       fontWeight: 800,
       letterSpacing: "0.06em",
-      color: accent || "#b6b0a4"
+      color: accent || "var(--text-mid-6)"
     }
   }, label), /*#__PURE__*/React.createElement("span", {
     style: {
-      color: accent || "#948e84"
+      color: accent || "var(--text-mid-5)"
     }
   }, Math.round(value), "g / ", target, "g")), /*#__PURE__*/React.createElement("div", {
     style: {
       height: 7,
-      background: "#1a1a1a",
+      background: "var(--surface-2b)",
       borderRadius: 99,
       overflow: "hidden"
     }
@@ -3419,7 +3449,7 @@ function StreakCelebration(_ref35) {
       fontSize: isMilestone ? 92 : 78,
       fontWeight: 900,
       color: A,
-      textShadow: "0 0 40px ".concat(A, "99"),
+      textShadow: "0 0 40px ".concat(aA("99")),
       lineHeight: 1,
       marginTop: -10,
       animation: isMilestone ? "sc_pulse 0.55s ease-in-out 0.45s infinite" : "sc_num 0.45s ease-out 0.2s both"
@@ -3431,7 +3461,7 @@ function StreakCelebration(_ref35) {
       fontWeight: 900,
       letterSpacing: "0.14em",
       marginTop: 12,
-      textShadow: "0 0 18px ".concat(A, "66")
+      textShadow: "0 0 18px ".concat(aA("66"))
     }
   }, isMilestone ? "\uD83C\uDFC6 ".concat(newStreak, " DAY MILESTONE!") : "DAY STREAK 🔥"), isMilestone && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3563,7 +3593,7 @@ function CoachCard(_ref36) {
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
-      border: "1px solid ".concat(A, "22"),
+      border: "1px solid ".concat(aA("22")),
       borderRadius: 20,
       padding: "14px 18px",
       marginBottom: 14
@@ -3588,7 +3618,7 @@ function CoachCard(_ref36) {
     style: {
       background: "none",
       border: "none",
-      color: "#aea79c",
+      color: "var(--text-mid)",
       cursor: "pointer",
       fontSize: 13,
       padding: "2px 6px"
@@ -3596,29 +3626,29 @@ function CoachCard(_ref36) {
   }, loading ? "..." : "↺", " ", /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: "#827c73"
+      color: "var(--text-lo-2)"
     }
   }, 3 - refreshes))), loading && !tip && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginTop: 4
     }
   }, "Generating your tip..."), tip && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 14.5,
-      color: "#c2bcb0",
+      color: "var(--text-hi-3)",
       lineHeight: 1.7
     }
   }, tip), tipAllergens.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 8,
-      background: "#1a0d08",
-      border: "1px solid #ff555544",
+      background: "var(--over-tint-3)",
+      border: "1px solid color-mix(in srgb, var(--over) 27%, transparent)",
       borderRadius: 10,
       padding: "8px 12px",
       fontSize: 11,
-      color: "#ff8866",
+      color: "var(--bulk-2)",
       lineHeight: 1.5
     }
   }, "\u26A0\uFE0F This tip may mention ", tipAllergens.join(", "), ", which you've flagged as an allergy \u2014 please double-check before acting on it."));
@@ -3685,7 +3715,7 @@ function TagField(_ref38) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.1em",
       fontWeight: 800,
       marginBottom: 8
@@ -3753,12 +3783,12 @@ function TagField(_ref38) {
         return add(s);
       },
       style: {
-        background: "#1c1a15",
+        background: "var(--surface-2)",
         border: "1px solid ".concat(BD),
         borderRadius: 999,
         padding: "4px 10px",
         fontSize: 12,
-        color: "#aea79c",
+        color: "var(--text-mid)",
         cursor: "pointer",
         fontFamily: "inherit"
       }
@@ -3917,23 +3947,82 @@ function MeasureField(_ref51) {
 
 // Compact segmented control for picking a display unit. Sits inline on the
 // field it controls (weight / height) so the choice is where the value is.
-function UnitSwitch(_ref52) {
-  var value = _ref52.value,
-    options = _ref52.options,
-    onChange = _ref52.onChange;
+// 3-way appearance control: 🌙 Dark · ☀️ Light · 🖥 System. System re-delegates to the OS.
+function ThemeToggle() {
+  var _useState39 = useState(getTheme()),
+    _useState40 = _slicedToArray(_useState39, 2),
+    choice = _useState40[0],
+    setChoice = _useState40[1];
+  var opts = [["dark", "🌙", "Dark"], ["light", "☀️", "Light"], ["system", "🖥️", "System"]];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      background: "var(--bg)",
+      border: "1px solid ".concat(BD),
+      borderRadius: 12,
+      padding: 4
+    }
+  }, opts.map(function (_ref52) {
+    var _ref53 = _slicedToArray(_ref52, 3),
+      v = _ref53[0],
+      icon = _ref53[1],
+      lbl = _ref53[2];
+    var on = choice === v;
+    return /*#__PURE__*/React.createElement("button", {
+      key: v,
+      onClick: function onClick() {
+        applyTheme(v);
+        setChoice(v);
+        haptic();
+      },
+      "aria-label": lbl,
+      "aria-pressed": on,
+      style: {
+        flex: 1,
+        padding: "9px 4px",
+        borderRadius: 9,
+        border: "none",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 3,
+        fontFamily: "inherit",
+        background: on ? A : "transparent",
+        color: on ? "var(--bg)" : "var(--text-label)"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 17,
+        lineHeight: 1
+      }
+    }, icon), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        fontWeight: 800,
+        letterSpacing: "0.04em"
+      }
+    }, lbl));
+  }));
+}
+function UnitSwitch(_ref54) {
+  var value = _ref54.value,
+    options = _ref54.options,
+    onChange = _ref54.onChange;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 2,
-      background: "#0b0d0b",
+      background: "var(--bg)",
       border: "1px solid ".concat(BD),
       borderRadius: 999,
       padding: 2
     }
-  }, options.map(function (_ref53) {
-    var _ref54 = _slicedToArray(_ref53, 2),
-      v = _ref54[0],
-      lbl = _ref54[1];
+  }, options.map(function (_ref55) {
+    var _ref56 = _slicedToArray(_ref55, 2),
+      v = _ref56[0],
+      lbl = _ref56[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -3949,41 +4038,41 @@ function UnitSwitch(_ref52) {
         letterSpacing: "0.02em",
         fontFamily: "inherit",
         background: value === v ? A : "transparent",
-        color: value === v ? "#0b0d0b" : "#9b958b"
+        color: value === v ? "var(--bg)" : "var(--text-label)"
       }
     }, lbl);
   }));
 }
-function ProfileScreen(_ref55) {
-  var profile = _ref55.profile,
-    onSave = _ref55.onSave,
-    onBack = _ref55.onBack,
-    _ref55$tdeeAdj = _ref55.tdeeAdj,
-    tdeeAdj = _ref55$tdeeAdj === void 0 ? 0 : _ref55$tdeeAdj,
-    _ref55$weighIns = _ref55.weighIns,
-    weighIns = _ref55$weighIns === void 0 ? [] : _ref55$weighIns,
-    _ref55$aggressiveCutA = _ref55.aggressiveCutAcked,
-    aggressiveCutAcked = _ref55$aggressiveCutA === void 0 ? false : _ref55$aggressiveCutA;
-  var _useState39 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
-    _useState40 = _slicedToArray(_useState39, 2),
-    f = _useState40[0],
-    setF = _useState40[1];
-  var _useState41 = useState(false),
+function ProfileScreen(_ref57) {
+  var profile = _ref57.profile,
+    onSave = _ref57.onSave,
+    onBack = _ref57.onBack,
+    _ref57$tdeeAdj = _ref57.tdeeAdj,
+    tdeeAdj = _ref57$tdeeAdj === void 0 ? 0 : _ref57$tdeeAdj,
+    _ref57$weighIns = _ref57.weighIns,
+    weighIns = _ref57$weighIns === void 0 ? [] : _ref57$weighIns,
+    _ref57$aggressiveCutA = _ref57.aggressiveCutAcked,
+    aggressiveCutAcked = _ref57$aggressiveCutA === void 0 ? false : _ref57$aggressiveCutA;
+  var _useState41 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState42 = _slicedToArray(_useState41, 2),
-    saved = _useState42[0],
-    setSaved = _useState42[1];
+    f = _useState42[0],
+    setF = _useState42[1];
   var _useState43 = useState(false),
     _useState44 = _slicedToArray(_useState43, 2),
-    bfFocused = _useState44[0],
-    setBfFocused = _useState44[1];
-  var _useState45 = useState(getWUnit()),
+    saved = _useState44[0],
+    setSaved = _useState44[1];
+  var _useState45 = useState(false),
     _useState46 = _slicedToArray(_useState45, 2),
-    wUnit = _useState46[0],
-    setWU = _useState46[1]; // display only — storage stays kg
-  var _useState47 = useState(getHUnit()),
+    bfFocused = _useState46[0],
+    setBfFocused = _useState46[1];
+  var _useState47 = useState(getWUnit()),
     _useState48 = _slicedToArray(_useState47, 2),
-    hUnit = _useState48[0],
-    setHU = _useState48[1]; // display only — storage stays cm
+    wUnit = _useState48[0],
+    setWU = _useState48[1]; // display only — storage stays kg
+  var _useState49 = useState(getHUnit()),
+    _useState50 = _slicedToArray(_useState49, 2),
+    hUnit = _useState50[0],
+    setHU = _useState50[1]; // display only — storage stays cm
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -4022,7 +4111,7 @@ function ProfileScreen(_ref55) {
   }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
 
   var row = function row(label, val, unit) {
-    var color = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : "#e6e1d7";
+    var color = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : "var(--text-hi)";
     return /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
@@ -4033,7 +4122,7 @@ function ProfileScreen(_ref55) {
     }, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: "#aea79c"
+        color: "var(--text-mid)"
       }
     }, label), /*#__PURE__*/React.createElement("span", {
       style: {
@@ -4044,7 +4133,7 @@ function ProfileScreen(_ref55) {
     }, val, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
-        color: "#9b958b",
+        color: "var(--text-label)",
         marginLeft: 3
       }
     }, unit)));
@@ -4067,14 +4156,14 @@ function ProfileScreen(_ref55) {
     }, "\u2713 SAVED")
   }), /*#__PURE__*/React.createElement("p", {
     style: {
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 13,
       lineHeight: 1.6,
       marginBottom: 20
     }
   }, "Targets use ", /*#__PURE__*/React.createElement("strong", {
     style: {
-      color: "#a7a197"
+      color: "var(--text-mid-2)"
     }
   }, "Katch-McArdle"), ". Changes save automatically."), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4087,7 +4176,7 @@ function ProfileScreen(_ref55) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 14
@@ -4165,7 +4254,7 @@ function ProfileScreen(_ref55) {
     }
   }, "BODY FAT ", /*#__PURE__*/React.createElement("span", {
     style: {
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, "(%)")), /*#__PURE__*/React.createElement("input", {
     type: "number",
@@ -4187,14 +4276,14 @@ function ProfileScreen(_ref55) {
   }), bfFocused && !bfImplausible && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#a7a197",
+      color: "var(--text-mid-2)",
       marginBottom: 6,
       lineHeight: 1.5
     }
   }, "Not sure? Use 25% for men or 30% for women as a starting estimate. A more accurate figure improves your calorie and macro targets."), bfImplausible && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#ffb84b",
+      color: "var(--warn)",
       marginBottom: 6,
       lineHeight: 1.5
     }
@@ -4208,7 +4297,7 @@ function ProfileScreen(_ref55) {
     }
   }, "SEX ", /*#__PURE__*/React.createElement("span", {
     style: {
-      color: "#9b958b",
+      color: "var(--text-label)",
       fontSize: 10,
       fontWeight: 400
     }
@@ -4231,29 +4320,29 @@ function ProfileScreen(_ref55) {
         fontWeight: 900,
         fontSize: 12,
         letterSpacing: "0.06em",
-        border: "1px solid ".concat(f.sex === s ? A + "88" : BD),
-        background: f.sex === s ? A + "18" : "#0b0d0b",
-        color: f.sex === s ? A : "#9b958b"
+        border: "1px solid ".concat(f.sex === s ? aA("88") : BD),
+        background: f.sex === s ? aA("18") : "var(--bg)",
+        color: f.sex === s ? A : "var(--text-label)"
       }
     }, s === "male" ? "MALE" : "FEMALE");
   })), !f.sex && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#ffb84b",
+      color: "var(--warn)",
       marginBottom: 10,
       lineHeight: 1.5
     }
   }, "Set your sex for more accurate targets \u2014 defaulting to male calculations."), f.sex === "female" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#a7a197",
+      color: "var(--text-mid-2)",
       marginBottom: 10,
       lineHeight: 1.5
     }
   }, "Targets may need adjusting around your cycle \u2014 override anytime."), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginBottom: 14,
       lineHeight: 1.5
     }
@@ -4268,7 +4357,7 @@ function ProfileScreen(_ref55) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 6
@@ -4276,7 +4365,7 @@ function ProfileScreen(_ref55) {
   }, "DIET & ALLERGIES"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       lineHeight: 1.5,
       marginBottom: 16
     }
@@ -4295,7 +4384,7 @@ function ProfileScreen(_ref55) {
     onChange: function onChange(l) {
       return setDiet("allergens", l);
     },
-    accent: "#ff7b6b",
+    accent: "var(--over-2)",
     placeholder: "e.g. peanuts, milk\u2026"
   }), /*#__PURE__*/React.createElement(TagField, {
     label: "DISLIKES (SOFT \u2014 AVOID WHERE POSSIBLE)",
@@ -4304,7 +4393,7 @@ function ProfileScreen(_ref55) {
     onChange: function onChange(l) {
       return setDiet("dislikes", l);
     },
-    accent: "#aea79c",
+    accent: "var(--text-mid)",
     placeholder: "e.g. coriander, olives\u2026"
   })), valid && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4316,12 +4405,12 @@ function ProfileScreen(_ref55) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 12
     }
-  }, "CALCULATED STATS"), row("Lean Body Mass", prev.lbm, "kg", "#4b9fff"), row("BMR", prev.bmr, "kcal/day", "#ffb84b"), row("Formula TDEE", formulaTDEE, "kcal/day", "#b6b0a4"), tdeeAdj !== 0 && /*#__PURE__*/React.createElement("div", {
+  }, "CALCULATED STATS"), row("Lean Body Mass", prev.lbm, "kg", "var(--cut)"), row("BMR", prev.bmr, "kcal/day", "var(--warn)"), row("Formula TDEE", formulaTDEE, "kcal/day", "var(--text-mid-6)"), tdeeAdj !== 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
@@ -4331,18 +4420,18 @@ function ProfileScreen(_ref55) {
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#aea79c"
+      color: "var(--text-mid)"
     }
   }, "Adaptive adjustment"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       fontWeight: 700,
-      color: tdeeAdj > 0 ? A : "#ff7b4b"
+      color: tdeeAdj > 0 ? A : "var(--bulk)"
     }
   }, tdeeAdj > 0 ? "+" : "", tdeeAdj, " ", /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, "kcal/day"))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4354,12 +4443,12 @@ function ProfileScreen(_ref55) {
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#aea79c"
+      color: "var(--text-mid)"
     }
   }, "Effective TDEE ", confidence && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: tdeeAdj !== 0 ? A : "#9b958b"
+      color: tdeeAdj !== 0 ? A : "var(--text-label)"
     }
   }, "\xB7 ", confidence)), /*#__PURE__*/React.createElement("span", {
     style: {
@@ -4370,12 +4459,12 @@ function ProfileScreen(_ref55) {
   }, adjTDEE, " ", /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, "kcal/day"))), !confidence && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginTop: 6,
       lineHeight: 1.5
     }
@@ -4383,7 +4472,7 @@ function ProfileScreen(_ref55) {
     style: {
       marginTop: 14,
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 10
@@ -4391,7 +4480,7 @@ function ProfileScreen(_ref55) {
   }, "TARGETS BY MODE"), [{
     mode: "cut",
     label: "CUT",
-    color: "#4b9fff"
+    color: "var(--cut)"
   }, {
     mode: "maintain",
     label: "MAINTAIN",
@@ -4399,16 +4488,16 @@ function ProfileScreen(_ref55) {
   }, {
     mode: "bulk",
     label: "BULK",
-    color: "#ff7b4b"
-  }].map(function (_ref56) {
-    var mode = _ref56.mode,
-      label = _ref56.label,
-      color = _ref56.color;
+    color: "var(--bulk)"
+  }].map(function (_ref58) {
+    var mode = _ref58.mode,
+      label = _ref58.label,
+      color = _ref58.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
       style: {
-        background: "#0b0d0b",
+        background: "var(--bg)",
         borderRadius: 10,
         padding: "10px 14px",
         marginBottom: 6
@@ -4426,11 +4515,11 @@ function ProfileScreen(_ref55) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref57) {
-      var _ref58 = _slicedToArray(_ref57, 3),
-        k = _ref58[0],
-        key = _ref58[1],
-        u = _ref58[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref59) {
+      var _ref60 = _slicedToArray(_ref59, 3),
+        k = _ref60[0],
+        key = _ref60[1],
+        u = _ref60[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -4446,7 +4535,7 @@ function ProfileScreen(_ref55) {
       }, t[key], u), /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 9,
-          color: "#827c73",
+          color: "var(--text-lo-2)",
           marginTop: 1
         }
       }, k));
@@ -4454,13 +4543,13 @@ function ProfileScreen(_ref55) {
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginTop: 8
     }
   }, "Workout kcal are added when you log sessions on the dashboard.")), aggressiveCutAcked && /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#1a1000",
-      border: "1px solid #ffb84b33",
+      background: "var(--warn-tint)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
       borderRadius: 12,
       padding: "10px 14px",
       marginTop: 12,
@@ -4475,22 +4564,45 @@ function ProfileScreen(_ref55) {
   }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#8a7030",
+      color: "var(--gold-dim)",
       lineHeight: 1.5
     }
-  }, "You have previously acknowledged an aggressive cut target. Review your profile stats and targets if your circumstances have changed.")));
+  }, "You have previously acknowledged an aggressive cut target. Review your profile stats and targets if your circumstances have changed.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      border: "1px solid ".concat(BD),
+      borderRadius: 18,
+      padding: "20px",
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--text-label)",
+      letterSpacing: "0.12em",
+      fontWeight: 800,
+      marginBottom: 12
+    }
+  }, "APPEARANCE"), /*#__PURE__*/React.createElement(ThemeToggle, null), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--text-mid-2)",
+      marginTop: 10,
+      lineHeight: 1.5
+    }
+  }, "System follows your device\u2019s light/dark setting.")));
 }
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref59) {
-  var meal = _ref59.meal,
-    onSave = _ref59.onSave,
-    onCancel = _ref59.onCancel,
-    _ref59$isPremium = _ref59.isPremium,
-    isPremium = _ref59$isPremium === void 0 ? false : _ref59$isPremium,
-    _ref59$onPremiumGate = _ref59.onPremiumGate,
-    onPremiumGate = _ref59$onPremiumGate === void 0 ? function () {} : _ref59$onPremiumGate;
+function MealForm(_ref61) {
+  var meal = _ref61.meal,
+    onSave = _ref61.onSave,
+    onCancel = _ref61.onCancel,
+    _ref61$isPremium = _ref61.isPremium,
+    isPremium = _ref61$isPremium === void 0 ? false : _ref61$isPremium,
+    _ref61$onPremiumGate = _ref61.onPremiumGate,
+    onPremiumGate = _ref61$onPremiumGate === void 0 ? function () {} : _ref61$onPremiumGate;
   var blank = {
     name: "",
     kcal: "",
@@ -4498,24 +4610,24 @@ function MealForm(_ref59) {
     carbs: "",
     fat: ""
   };
-  var _useState49 = useState(meal ? {
+  var _useState51 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
-    _useState50 = _slicedToArray(_useState49, 2),
-    f = _useState50[0],
-    setF = _useState50[1];
-  var _useState51 = useState(false),
     _useState52 = _slicedToArray(_useState51, 2),
-    reest = _useState52[0],
-    setReest = _useState52[1];
-  var _useState53 = useState(""),
+    f = _useState52[0],
+    setF = _useState52[1];
+  var _useState53 = useState(false),
     _useState54 = _slicedToArray(_useState53, 2),
-    reestMsg = _useState54[0],
-    setReestMsg = _useState54[1]; // "" | "done" | error text
+    reest = _useState54[0],
+    setReest = _useState54[1];
+  var _useState55 = useState(""),
+    _useState56 = _slicedToArray(_useState55, 2),
+    reestMsg = _useState56[0],
+    setReestMsg = _useState56[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -4527,7 +4639,7 @@ function MealForm(_ref59) {
   // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
   // Open Food Facts a bounded background refinement that only wins on confidence.
   var estimate = /*#__PURE__*/function () {
-    var _ref60 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
+    var _ref62 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
       var fill, upd, oft, _t24, _t25;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
@@ -4602,7 +4714,7 @@ function MealForm(_ref59) {
       }, _callee25, null, [[8, 10], [3, 5]]);
     }));
     return function estimate() {
-      return _ref60.apply(this, arguments);
+      return _ref62.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -4647,13 +4759,13 @@ function MealForm(_ref59) {
     style: {
       background: "none",
       border: "none",
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 24
     }
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.1em",
       fontWeight: 800,
       marginBottom: 6
@@ -4681,15 +4793,15 @@ function MealForm(_ref59) {
   }, {
     k: "protein",
     l: "PROTEIN (g)",
-    c: "#4b9fff"
+    c: "var(--cut)"
   }, {
     k: "carbs",
     l: "CARBS (g)",
-    c: "#ffb84b"
+    c: "var(--warn)"
   }, {
     k: "fat",
     l: "FAT (g)",
-    c: "#ff7b4b"
+    c: "var(--bulk)"
   }].map(function (fl) {
     return /*#__PURE__*/React.createElement("div", {
       key: fl.k
@@ -4718,8 +4830,8 @@ function MealForm(_ref59) {
       width: "100%",
       padding: "12px",
       marginBottom: reestMsg && reestMsg !== "done" ? 6 : 12,
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "44"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("44")),
       borderRadius: 11,
       color: A,
       fontSize: 13,
@@ -4730,7 +4842,7 @@ function MealForm(_ref59) {
   }, reest ? "Estimating…" : reestMsg === "done" ? "✓ Filled — estimate again" : "✨ AI estimate from name"), reestMsg && reestMsg !== "done" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#ff7b6b",
+      color: "var(--over-2)",
       marginBottom: 12,
       lineHeight: 1.4
     }
@@ -4748,8 +4860,8 @@ function MealForm(_ref59) {
     style: {
       width: "100%",
       padding: "15px",
-      background: ok ? A : "#1c1a15",
-      color: ok ? "#0b0d0b" : "#2c2820",
+      background: ok ? A : "var(--surface-2)",
+      color: ok ? "var(--bg)" : "var(--text-disabled)",
       border: "none",
       borderRadius: 13,
       fontSize: 14,
@@ -4761,19 +4873,19 @@ function MealForm(_ref59) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref61) {
-  var weighIns = _ref61.weighIns,
-    onWeighIn = _ref61.onWeighIn,
-    tdeeAdj = _ref61.tdeeAdj,
-    baseTDEE = _ref61.baseTDEE;
-  var _useState55 = useState(""),
-    _useState56 = _slicedToArray(_useState55, 2),
-    val = _useState56[0],
-    setVal = _useState56[1]; // kg · lb · or stone (when st mode)
+function WeighInWidget(_ref63) {
+  var weighIns = _ref63.weighIns,
+    onWeighIn = _ref63.onWeighIn,
+    tdeeAdj = _ref63.tdeeAdj,
+    baseTDEE = _ref63.baseTDEE;
   var _useState57 = useState(""),
     _useState58 = _slicedToArray(_useState57, 2),
-    val2 = _useState58[0],
-    setVal2 = _useState58[1]; // pounds (st mode only)
+    val = _useState58[0],
+    setVal = _useState58[1]; // kg · lb · or stone (when st mode)
+  var _useState59 = useState(""),
+    _useState60 = _slicedToArray(_useState59, 2),
+    val2 = _useState60[0],
+    setVal2 = _useState60[1]; // pounds (st mode only)
   var wUnit = getWUnit();
   var entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0) : wUnit === "lb" ? lbToKg(val || 0) : Number(val);
   var today = todayKey();
@@ -4789,7 +4901,7 @@ function WeighInWidget(_ref61) {
     return Math.round((now - old) * 10) / 10;
   }();
   var confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
-  var confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "#ffb84b" : "#aea79c";
+  var confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "var(--warn)" : "var(--text-mid)";
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
@@ -4808,7 +4920,7 @@ function WeighInWidget(_ref61) {
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 4
@@ -4817,7 +4929,7 @@ function WeighInWidget(_ref61) {
     style: {
       fontSize: 22,
       fontWeight: 900,
-      color: "#e6e1d7"
+      color: "var(--text-hi)"
     }
   }, wUnit === "st" ? function () {
     var _kgToStLb2 = kgToStLb(todayEntry.weight),
@@ -4826,20 +4938,20 @@ function WeighInWidget(_ref61) {
     return /*#__PURE__*/React.createElement(React.Fragment, null, st, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: "#9b958b",
+        color: "var(--text-label)",
         marginLeft: 3
       }
     }, "st"), " ", lb, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: "#9b958b",
+        color: "var(--text-label)",
         marginLeft: 3
       }
     }, "lb"));
   }() : /*#__PURE__*/React.createElement(React.Fragment, null, wChartNum(todayEntry.weight, wUnit), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginLeft: 4
     }
   }, wChartUnit(wUnit))), trend7 !== null && function () {
@@ -4847,14 +4959,14 @@ function WeighInWidget(_ref61) {
     return /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b",
+        color: trend7 <= 0 ? "var(--accent)" : "var(--bulk)",
         marginLeft: 10
       }
     }, t > 0 ? "+" : "", t, wUnit === "kg" ? "kg" : "lb", "/wk");
   }()) : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginTop: 2
     }
   }, "Not logged today")), /*#__PURE__*/React.createElement("div", {
@@ -4878,17 +4990,17 @@ function WeighInWidget(_ref61) {
   }, "~", (baseTDEE + tdeeAdj).toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginTop: 1
     }
   }, "est. TDEE", tdeeAdj !== 0 && /*#__PURE__*/React.createElement("span", {
     style: {
-      color: tdeeAdj > 0 ? A : "#ff7b4b"
+      color: tdeeAdj > 0 ? A : "var(--bulk)"
     }
   }, " ", tdeeAdj > 0 ? "+" : "", tdeeAdj))) : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginTop: 4,
       maxWidth: 100,
       textAlign: "right",
@@ -4968,8 +5080,8 @@ function WeighInWidget(_ref61) {
     disabled: !(entryKg > 0),
     style: {
       padding: "10px 18px",
-      background: entryKg > 0 ? A : "#1c1a15",
-      color: entryKg > 0 ? "#0b0d0b" : "#2c2820",
+      background: entryKg > 0 ? A : "var(--surface-2)",
+      color: entryKg > 0 ? "var(--bg)" : "var(--border-strong)",
       border: "none",
       borderRadius: 10,
       fontWeight: 900,
@@ -4978,7 +5090,7 @@ function WeighInWidget(_ref61) {
   }, "LOG")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       lineHeight: 1.5
     }
   }, weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism.", weeks >= 1 && weeks < 2 && "\uD83D\uDD04 ".concat(confidence, " \u2014 ").concat(weighIns.length, " weigh-ins so far. 2+ weeks unlocks calibration."), weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet.", weeks >= 2 && tdeeAdj !== 0 && "Your real TDEE is ".concat(tdeeAdj > 0 ? "higher" : "lower", " than the formula predicts. Targets adjusted accordingly.")));
@@ -4986,41 +5098,41 @@ function WeighInWidget(_ref61) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref62) {
-  var workouts = _ref62.workouts,
-    onAdd = _ref62.onAdd,
-    onRemove = _ref62.onRemove,
-    prof = _ref62.prof,
-    isPremium = _ref62.isPremium,
-    onPremiumGate = _ref62.onPremiumGate;
-  var _useState59 = useState("legs"),
-    _useState60 = _slicedToArray(_useState59, 2),
-    type = _useState60[0],
-    setType = _useState60[1];
-  var _useState61 = useState(45),
+function WorkoutLogger(_ref64) {
+  var workouts = _ref64.workouts,
+    onAdd = _ref64.onAdd,
+    onRemove = _ref64.onRemove,
+    prof = _ref64.prof,
+    isPremium = _ref64.isPremium,
+    onPremiumGate = _ref64.onPremiumGate;
+  var _useState61 = useState("legs"),
     _useState62 = _slicedToArray(_useState61, 2),
-    dur = _useState62[0],
-    setDur = _useState62[1];
-  var _useState63 = useState("moderate"),
+    type = _useState62[0],
+    setType = _useState62[1];
+  var _useState63 = useState(45),
     _useState64 = _slicedToArray(_useState63, 2),
-    intensity = _useState64[0],
-    setIntensity = _useState64[1];
-  var _useState65 = useState(false),
+    dur = _useState64[0],
+    setDur = _useState64[1];
+  var _useState65 = useState("moderate"),
     _useState66 = _slicedToArray(_useState65, 2),
-    hevyMode = _useState66[0],
-    setHevyMode = _useState66[1];
-  var _useState67 = useState(""),
+    intensity = _useState66[0],
+    setIntensity = _useState66[1];
+  var _useState67 = useState(false),
     _useState68 = _slicedToArray(_useState67, 2),
-    hevyText = _useState68[0],
-    setHevyText = _useState68[1];
-  var _useState69 = useState(false),
+    hevyMode = _useState68[0],
+    setHevyMode = _useState68[1];
+  var _useState69 = useState(""),
     _useState70 = _slicedToArray(_useState69, 2),
-    hevyLoading = _useState70[0],
-    setHevyLoading = _useState70[1];
-  var _useState71 = useState(null),
+    hevyText = _useState70[0],
+    setHevyText = _useState70[1];
+  var _useState71 = useState(false),
     _useState72 = _slicedToArray(_useState71, 2),
-    hevyResult = _useState72[0],
-    setHevyResult = _useState72[1];
+    hevyLoading = _useState72[0],
+    setHevyLoading = _useState72[1];
+  var _useState73 = useState(null),
+    _useState74 = _slicedToArray(_useState73, 2),
+    hevyResult = _useState74[0],
+    setHevyResult = _useState74[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -5040,7 +5152,7 @@ function WorkoutLogger(_ref62) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref63 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+    var _ref65 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
       var prompt, _t26, _t27;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
@@ -5076,7 +5188,7 @@ function WorkoutLogger(_ref62) {
       }, _callee26, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref63.apply(this, arguments);
+      return _ref65.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -5115,7 +5227,7 @@ function WorkoutLogger(_ref62) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.1em",
       fontWeight: 800
     }
@@ -5140,7 +5252,7 @@ function WorkoutLogger(_ref62) {
         display: "flex",
         alignItems: "center",
         gap: 8,
-        background: "#0b0d0b",
+        background: "var(--bg)",
         borderRadius: 8,
         padding: "8px 10px",
         marginBottom: 6
@@ -5155,7 +5267,7 @@ function WorkoutLogger(_ref62) {
     }, w.kcal, " kcal"), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
-        color: "#9f998e",
+        color: "var(--text-mid-3)",
         flex: 1,
         overflow: "hidden",
         textOverflow: "ellipsis",
@@ -5164,7 +5276,7 @@ function WorkoutLogger(_ref62) {
     }, w.notes || "".concat(w.type, " \xB7 ").concat(w.duration, "min \xB7 ").concat(w.intensity)), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 10,
-        color: "#827c73",
+        color: "var(--text-lo-2)",
         flexShrink: 0
       }
     }, w.time), /*#__PURE__*/React.createElement("button", {
@@ -5174,7 +5286,7 @@ function WorkoutLogger(_ref62) {
       style: {
         background: "none",
         border: "none",
-        color: "#443030",
+        color: "var(--over-tint-5)",
         fontSize: 16,
         cursor: "pointer",
         padding: "0 4px",
@@ -5222,7 +5334,7 @@ function WorkoutLogger(_ref62) {
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, "min \xB7"), /*#__PURE__*/React.createElement("select", {
     value: intensity,
@@ -5258,7 +5370,7 @@ function WorkoutLogger(_ref62) {
       flex: 1,
       padding: "10px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 10,
       fontSize: 12,
@@ -5275,10 +5387,10 @@ function WorkoutLogger(_ref62) {
     },
     style: {
       padding: "10px 14px",
-      background: "#0b0d0b",
-      border: "1px solid ".concat(isPremium ? A + "33" : BD),
+      background: "var(--bg)",
+      border: "1px solid ".concat(isPremium ? aA("33") : BD),
       borderRadius: 10,
-      color: isPremium ? A : "#9b958b",
+      color: isPremium ? A : "var(--text-label)",
       fontSize: 12,
       fontWeight: 700,
       cursor: "pointer"
@@ -5293,11 +5405,11 @@ function WorkoutLogger(_ref62) {
     style: {
       width: "100%",
       boxSizing: "border-box",
-      background: "#0b0d0b",
+      background: "var(--bg)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
       padding: "10px 12px",
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       fontSize: 12,
       resize: "none",
       fontFamily: "inherit",
@@ -5317,8 +5429,8 @@ function WorkoutLogger(_ref62) {
     style: {
       flex: 1,
       padding: "10px",
-      background: hevyText.trim() && !hevyLoading ? A : "#1c1a15",
-      color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2c2820",
+      background: hevyText.trim() && !hevyLoading ? A : "var(--surface-2)",
+      color: hevyText.trim() && !hevyLoading ? "var(--bg)" : "var(--border-strong)",
       border: "none",
       borderRadius: 10,
       fontSize: 12,
@@ -5337,7 +5449,7 @@ function WorkoutLogger(_ref62) {
       background: "none",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
-      color: "#9b958b",
+      color: "var(--text-label)",
       fontSize: 12,
       cursor: "pointer"
     }
@@ -5346,7 +5458,7 @@ function WorkoutLogger(_ref62) {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      background: "#141210",
+      background: "var(--surface)",
       borderRadius: 8,
       padding: "8px 12px",
       marginBottom: 8
@@ -5354,7 +5466,7 @@ function WorkoutLogger(_ref62) {
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#9f998e",
+      color: "var(--text-mid-3)",
       flex: 1
     }
   }, hevyResult.summary), /*#__PURE__*/React.createElement("span", {
@@ -5370,7 +5482,7 @@ function WorkoutLogger(_ref62) {
       width: "100%",
       padding: "10px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 10,
       fontSize: 12,
@@ -5381,7 +5493,7 @@ function WorkoutLogger(_ref62) {
   }, "\u2713 LOG THIS WORKOUT")), hevyResult && hevyResult.error && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#ff7070",
+      color: "var(--over-5)",
       marginTop: 4
     }
   }, hevyResult.error)));
@@ -5391,14 +5503,14 @@ function WorkoutLogger(_ref62) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref64) {
-  var user = _ref64.user,
-    _ref64$size = _ref64.size,
-    size = _ref64$size === void 0 ? 34 : _ref64$size;
-  var _useState73 = useState(false),
-    _useState74 = _slicedToArray(_useState73, 2),
-    failed = _useState74[0],
-    setFailed = _useState74[1];
+function Avatar(_ref66) {
+  var user = _ref66.user,
+    _ref66$size = _ref66.size,
+    size = _ref66$size === void 0 ? 34 : _ref66$size;
+  var _useState75 = useState(false),
+    _useState76 = _slicedToArray(_useState75, 2),
+    failed = _useState76[0],
+    setFailed = _useState76[1];
   var letter = ((user === null || user === void 0 ? void 0 : user.name) || "P")[0].toUpperCase();
   if (user !== null && user !== void 0 && user.picture && !failed) {
     return /*#__PURE__*/React.createElement("img", {
@@ -5431,30 +5543,30 @@ function Avatar(_ref64) {
 // today-list and the History day view. Every field is editable by all users;
 // the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
 // reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
-function EntryEditor(_ref65) {
-  var entry = _ref65.entry,
-    onSave = _ref65.onSave,
-    onCancel = _ref65.onCancel,
-    isPremium = _ref65.isPremium,
-    onPremiumGate = _ref65.onPremiumGate;
-  var _useState75 = useState({
+function EntryEditor(_ref67) {
+  var entry = _ref67.entry,
+    onSave = _ref67.onSave,
+    onCancel = _ref67.onCancel,
+    isPremium = _ref67.isPremium,
+    onPremiumGate = _ref67.onPremiumGate;
+  var _useState77 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
       protein: String(entry.protein),
       carbs: String(entry.carbs),
       fat: String(entry.fat)
     }),
-    _useState76 = _slicedToArray(_useState75, 2),
-    f = _useState76[0],
-    setF = _useState76[1];
-  var _useState77 = useState(false),
     _useState78 = _slicedToArray(_useState77, 2),
-    reest = _useState78[0],
-    setReest = _useState78[1];
-  var _useState79 = useState(""),
+    f = _useState78[0],
+    setF = _useState78[1];
+  var _useState79 = useState(false),
     _useState80 = _slicedToArray(_useState79, 2),
-    reestMsg = _useState80[0],
-    setReestMsg = _useState80[1]; // "" | "done" | error text
+    reest = _useState80[0],
+    setReest = _useState80[1];
+  var _useState81 = useState(""),
+    _useState82 = _slicedToArray(_useState81, 2),
+    reestMsg = _useState82[0],
+    setReestMsg = _useState82[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -5462,7 +5574,7 @@ function EntryEditor(_ref65) {
     setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref66 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
+    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
       var fill, upd, oft, _t28, _t29;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
@@ -5532,7 +5644,7 @@ function EntryEditor(_ref65) {
       }, _callee27, null, [[7, 9], [3, 5]]);
     }));
     return function reestimate() {
-      return _ref66.apply(this, arguments);
+      return _ref68.apply(this, arguments);
     };
   }();
   var save = function save() {
@@ -5548,7 +5660,7 @@ function EntryEditor(_ref65) {
     background: BG,
     border: "1px solid ".concat(BD),
     borderRadius: 9,
-    color: "#e6e1d7",
+    color: "var(--text-hi)",
     fontSize: 13,
     padding: "8px 10px",
     outline: "none",
@@ -5558,7 +5670,7 @@ function EntryEditor(_ref65) {
   };
   var lbl = {
     fontSize: 10,
-    color: "#827c73",
+    color: "var(--text-lo-2)",
     fontWeight: 700,
     letterSpacing: "0.05em",
     marginBottom: 3,
@@ -5567,7 +5679,7 @@ function EntryEditor(_ref65) {
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "12px 16px 14px",
-      background: "#15130f"
+      background: "var(--surface-b)"
     }
   }, /*#__PURE__*/React.createElement("label", {
     style: lbl
@@ -5648,8 +5760,8 @@ function EntryEditor(_ref65) {
       width: "100%",
       padding: "10px",
       marginBottom: reestMsg ? 6 : 8,
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "44"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("44")),
       borderRadius: 10,
       color: A,
       fontSize: 12.5,
@@ -5660,7 +5772,7 @@ function EntryEditor(_ref65) {
   }, reest ? "Re-estimating…" : reestMsg === "done" ? "✓ Updated — re-estimate again" : "✨ AI re-estimate from name"), reestMsg && reestMsg !== "done" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#ff7b6b",
+      color: "var(--over-2)",
       marginBottom: 8,
       lineHeight: 1.4
     }
@@ -5674,10 +5786,10 @@ function EntryEditor(_ref65) {
     style: {
       flex: 1,
       padding: "10px",
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
-      color: "#9b958b",
+      color: "var(--text-label)",
       fontSize: 13,
       fontWeight: 700,
       cursor: "pointer"
@@ -5690,80 +5802,80 @@ function EntryEditor(_ref65) {
       background: A,
       border: "none",
       borderRadius: 10,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       fontSize: 13,
       fontWeight: 800,
       cursor: "pointer"
     }
   }, "Save")));
 }
-function Dashboard(_ref67) {
-  var logs = _ref67.logs,
-    totals = _ref67.totals,
-    targets = _ref67.targets,
-    remaining = _ref67.remaining,
-    water = _ref67.water,
-    setWater = _ref67.setWater,
-    mode = _ref67.mode,
-    setMode = _ref67.setMode,
-    setView = _ref67.setView,
-    removeLog = _ref67.removeLog,
-    updateLog = _ref67.updateLog,
-    addToQA = _ref67.addToQA,
-    hasProfile = _ref67.hasProfile,
-    streak = _ref67.streak,
-    prof = _ref67.prof,
-    weighIns = _ref67.weighIns,
-    onWeighIn = _ref67.onWeighIn,
-    tdeeAdj = _ref67.tdeeAdj,
-    baseTDEE = _ref67.baseTDEE,
-    coachKey = _ref67.coachKey,
-    workouts = _ref67.workouts,
-    onAddWorkout = _ref67.onAddWorkout,
-    onRemoveWorkout = _ref67.onRemoveWorkout,
-    customKcal = _ref67.customKcal,
-    onSetCustomKcal = _ref67.onSetCustomKcal,
-    isCustomMode = _ref67.isCustomMode,
-    aggressiveCutAcked = _ref67.aggressiveCutAcked,
-    onAckAggressiveCut = _ref67.onAckAggressiveCut,
-    authState = _ref67.authState,
-    authUser = _ref67.authUser,
-    onPremiumGate = _ref67.onPremiumGate,
-    onSignOut = _ref67.onSignOut,
-    isOnline = _ref67.isOnline,
-    syncMsg = _ref67.syncMsg;
+function Dashboard(_ref69) {
+  var logs = _ref69.logs,
+    totals = _ref69.totals,
+    targets = _ref69.targets,
+    remaining = _ref69.remaining,
+    water = _ref69.water,
+    setWater = _ref69.setWater,
+    mode = _ref69.mode,
+    setMode = _ref69.setMode,
+    setView = _ref69.setView,
+    removeLog = _ref69.removeLog,
+    updateLog = _ref69.updateLog,
+    addToQA = _ref69.addToQA,
+    hasProfile = _ref69.hasProfile,
+    streak = _ref69.streak,
+    prof = _ref69.prof,
+    weighIns = _ref69.weighIns,
+    onWeighIn = _ref69.onWeighIn,
+    tdeeAdj = _ref69.tdeeAdj,
+    baseTDEE = _ref69.baseTDEE,
+    coachKey = _ref69.coachKey,
+    workouts = _ref69.workouts,
+    onAddWorkout = _ref69.onAddWorkout,
+    onRemoveWorkout = _ref69.onRemoveWorkout,
+    customKcal = _ref69.customKcal,
+    onSetCustomKcal = _ref69.onSetCustomKcal,
+    isCustomMode = _ref69.isCustomMode,
+    aggressiveCutAcked = _ref69.aggressiveCutAcked,
+    onAckAggressiveCut = _ref69.onAckAggressiveCut,
+    authState = _ref69.authState,
+    authUser = _ref69.authUser,
+    onPremiumGate = _ref69.onPremiumGate,
+    onSignOut = _ref69.onSignOut,
+    isOnline = _ref69.isOnline,
+    syncMsg = _ref69.syncMsg;
   var isPremium = authState === "premium";
-  var _useState81 = useState(null),
-    _useState82 = _slicedToArray(_useState81, 2),
-    editingId = _useState82[0],
-    setEditingId = _useState82[1];
+  var _useState83 = useState(null),
+    _useState84 = _slicedToArray(_useState83, 2),
+    editingId = _useState84[0],
+    setEditingId = _useState84[1];
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
   var isTraining = workouts.length > 0;
   // Graduated calorie status: ok (≤100 over) | amber-soft (100-200) | amber (200-500) | red (500+)
-  var AMBER = "#ffb84b";
-  var RED = "#ff5555";
+  var AMBER = "var(--warn)";
+  var RED = "var(--over)";
   var kcalAccent = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
-  var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
-  var _useState83 = useState({}),
-    _useState84 = _slicedToArray(_useState83, 2),
-    savedIds = _useState84[0],
-    setSavedIds = _useState84[1];
+  var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
   var _useState85 = useState({}),
     _useState86 = _slicedToArray(_useState85, 2),
-    qaBlink = _useState86[0],
-    setQaBlink = _useState86[1]; // log.id -> tap nonce, drives re-blink on every tap
-  var _useState87 = useState(false),
+    savedIds = _useState86[0],
+    setSavedIds = _useState86[1];
+  var _useState87 = useState({}),
     _useState88 = _slicedToArray(_useState87, 2),
-    editingTarget = _useState88[0],
-    setEditingTarget = _useState88[1];
-  var _useState89 = useState(""),
+    qaBlink = _useState88[0],
+    setQaBlink = _useState88[1]; // log.id -> tap nonce, drives re-blink on every tap
+  var _useState89 = useState(false),
     _useState90 = _slicedToArray(_useState89, 2),
-    targetInputVal = _useState90[0],
-    setTargetInputVal = _useState90[1];
+    editingTarget = _useState90[0],
+    setEditingTarget = _useState90[1];
+  var _useState91 = useState(""),
+    _useState92 = _slicedToArray(_useState91, 2),
+    targetInputVal = _useState92[0],
+    setTargetInputVal = _useState92[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) {
@@ -5797,7 +5909,7 @@ function Dashboard(_ref67) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(log) {
+    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(log) {
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.n) {
           case 0:
@@ -5821,7 +5933,7 @@ function Dashboard(_ref67) {
       }, _callee28);
     }));
     return function handleAddToQA(_x38) {
-      return _ref68.apply(this, arguments);
+      return _ref70.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5850,7 +5962,7 @@ function Dashboard(_ref67) {
     style: {
       margin: "4px 0 0",
       fontSize: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.06em"
     }
   }, new Date().toLocaleDateString("en-GB", {
@@ -5861,7 +5973,7 @@ function Dashboard(_ref67) {
     style: {
       marginTop: 4,
       fontSize: 10,
-      color: "#ffb84b",
+      color: "var(--warn)",
       fontWeight: 700,
       letterSpacing: "0.06em"
     }
@@ -5869,7 +5981,7 @@ function Dashboard(_ref67) {
     style: {
       marginTop: 2,
       fontSize: 10,
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, syncMsg)), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5880,7 +5992,7 @@ function Dashboard(_ref67) {
   }, streak > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "7px 10px",
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
       fontSize: 13,
@@ -5894,10 +6006,10 @@ function Dashboard(_ref67) {
     style: {
       width: 34,
       height: 34,
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 14,
       display: "flex",
       alignItems: "center",
@@ -5910,10 +6022,10 @@ function Dashboard(_ref67) {
     style: {
       width: 34,
       height: 34,
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 15,
       display: "flex",
       alignItems: "center",
@@ -5926,10 +6038,10 @@ function Dashboard(_ref67) {
     style: {
       width: 34,
       height: 34,
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       border: "1px solid ".concat(BD),
       borderRadius: 10,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 14,
       display: "flex",
       alignItems: "center",
@@ -5943,8 +6055,8 @@ function Dashboard(_ref67) {
     style: {
       width: 34,
       height: 34,
-      background: "".concat(A, "18"),
-      border: "1px solid ".concat(A, "44"),
+      background: "".concat(aA("18")),
+      border: "1px solid ".concat(aA("44")),
       borderRadius: 10,
       display: "flex",
       alignItems: "center",
@@ -5960,10 +6072,10 @@ function Dashboard(_ref67) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref69) {
-    var _ref70 = _slicedToArray(_ref69, 2),
-      k = _ref70[0],
-      v = _ref70[1];
+  }, Object.entries(MODES).map(function (_ref71) {
+    var _ref72 = _slicedToArray(_ref71, 2),
+      k = _ref72[0],
+      v = _ref72[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -5973,9 +6085,9 @@ function Dashboard(_ref67) {
       style: {
         flex: 1,
         padding: "9px 4px",
-        background: active ? v.color + "22" : "#1c1a15",
-        color: active ? v.color : "#9b958b",
-        border: "1px solid ".concat(active ? v.color + "55" : BD),
+        background: active ? mix(v.color, "22") : "var(--surface-2)",
+        color: active ? v.color : "var(--text-label)",
+        border: "1px solid ".concat(active ? mix(v.color, "55") : BD),
         borderRadius: 10,
         fontSize: 11,
         fontWeight: 900,
@@ -5996,8 +6108,8 @@ function Dashboard(_ref67) {
     style: {
       width: "100%",
       padding: "11px",
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "33"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("33")),
       borderRadius: 12,
       color: A,
       fontSize: 12,
@@ -6011,15 +6123,15 @@ function Dashboard(_ref67) {
     }
   }, targetWarning.level === "red" ? /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#1a0505",
-      border: "1px solid #ff555544",
+      background: "var(--over-tint-7)",
+      border: "1px solid color-mix(in srgb, var(--over) 27%, transparent)",
       borderRadius: 12,
       padding: "12px 14px"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
-      color: "#ff5555",
+      color: "var(--over)",
       fontWeight: 800,
       letterSpacing: "0.06em",
       marginBottom: 6
@@ -6027,17 +6139,17 @@ function Dashboard(_ref67) {
   }, "\u26A0\uFE0F NOT RECOMMENDED"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#aa4444",
+      color: "var(--over-deep)",
       lineHeight: 1.6,
       marginBottom: 10
     }
   }, targetWarning.text), /*#__PURE__*/React.createElement("button", {
     onClick: onAckAggressiveCut,
     style: {
-      background: "#ff555522",
-      border: "1px solid #ff555544",
+      background: "color-mix(in srgb, var(--over) 13%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--over) 27%, transparent)",
       borderRadius: 8,
-      color: "#ff7777",
+      color: "var(--over-4)",
       fontSize: 11,
       fontWeight: 800,
       padding: "7px 14px",
@@ -6045,28 +6157,28 @@ function Dashboard(_ref67) {
     }
   }, "Yes, I understand \u2192")) : targetWarning.level === "amber" ? /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#151000",
-      border: "1px solid #ffb84b33",
+      background: "var(--warn-tint-3)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
       borderRadius: 12,
       padding: "10px 14px",
       fontSize: 11,
-      color: "#8a7030",
+      color: "var(--gold-dim)",
       lineHeight: 1.5
     }
   }, "\u26A0\uFE0F ", targetWarning.text) : /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#141210",
-      border: "1px solid #3a352a",
+      background: "var(--surface)",
+      border: "1px solid var(--raised-2)",
       borderRadius: 12,
       padding: "10px 14px",
       fontSize: 11,
-      color: "#aea79c",
+      color: "var(--text-mid)",
       lineHeight: 1.5
     }
   }, "\u2139 ", targetWarning.text)), targets.safeMinApplied && /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#1a1200",
-      border: "1px solid #ffb84b33",
+      background: "var(--warn-tint-2)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
       borderRadius: 12,
       padding: "10px 14px",
       marginBottom: 12,
@@ -6094,7 +6206,7 @@ function Dashboard(_ref67) {
   }, "SAFE MINIMUM APPLIED"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#8a7030",
+      color: "var(--gold-dim)",
       lineHeight: 1.5
     }
   }, isCustomMode ? "That's below the safe minimum for your body. We've set it to ".concat(targets.kcal.toLocaleString(), " kcal to keep you safe.") : "Your target has been set to the safe minimum.", " ", /*#__PURE__*/React.createElement("button", {
@@ -6113,8 +6225,8 @@ function Dashboard(_ref67) {
     }
   }, "Check your profile stats.")))), targets.floorsExceedKcal && /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#1a1200",
-      border: "1px solid #ffb84b33",
+      background: "var(--warn-tint-2)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
       borderRadius: 12,
       padding: "10px 14px",
       marginBottom: 12,
@@ -6142,7 +6254,7 @@ function Dashboard(_ref67) {
   }, "FLOORS KEPT"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#8a7030",
+      color: "var(--gold-dim)",
       lineHeight: 1.5
     }
   }, "This target's too low to hit your protein and fat floors. We've kept your floors, so your macros add up to a bit more than this number."))), /*#__PURE__*/React.createElement("div", {
@@ -6217,21 +6329,21 @@ function Dashboard(_ref67) {
       display: "flex",
       alignItems: "center",
       gap: 4,
-      background: isCustomMode ? mc + "12" : "#1c1a15",
-      border: "1px solid ".concat(isCustomMode ? mc + "44" : "#2a2620"),
+      background: isCustomMode ? mc + "12" : "var(--surface-2)",
+      border: "1px solid ".concat(isCustomMode ? mc + "44" : "var(--raised)"),
       borderRadius: 8,
       padding: "5px 10px"
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: isCustomMode ? mc : "#9a948a",
+      color: isCustomMode ? mc : "var(--text-mid-4)",
       fontWeight: 700
     }
   }, targets.kcal.toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: isCustomMode ? mc + "99" : "#7a746a"
+      color: isCustomMode ? mc + "99" : "var(--text-faint)"
     }
   }, "\u270E"))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -6243,7 +6355,7 @@ function Dashboard(_ref67) {
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       marginBottom: 4
     }
@@ -6251,14 +6363,14 @@ function Dashboard(_ref67) {
     style: {
       fontSize: 42,
       fontWeight: 900,
-      color: overAmt > 100 ? kcalAccent : "#efeae0",
+      color: overAmt > 100 ? kcalAccent : "var(--text-hi-b)",
       lineHeight: 1,
       letterSpacing: "-0.03em"
     }
   }, Math.round(totals.kcal).toLocaleString(), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 14,
-      color: "#9b958b",
+      color: "var(--text-label)",
       fontWeight: 400,
       marginLeft: 5
     }
@@ -6269,7 +6381,7 @@ function Dashboard(_ref67) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       marginBottom: 4
     }
@@ -6283,14 +6395,14 @@ function Dashboard(_ref67) {
   }, Math.abs(Math.round(remaining)).toLocaleString(), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: overAmt > 100 ? kcalAccent + "99" : "#a7a197",
+      color: overAmt > 100 ? kcalAccent + "99" : "var(--text-mid-2)",
       fontWeight: 400,
       marginLeft: 4
     }
   }, "kcal")))), /*#__PURE__*/React.createElement("div", {
     style: {
       height: 10,
-      background: "#1c1a15",
+      background: "var(--surface-2)",
       borderRadius: 99,
       overflow: "hidden"
     }
@@ -6313,7 +6425,7 @@ function Dashboard(_ref67) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 14
@@ -6322,17 +6434,17 @@ function Dashboard(_ref67) {
     label: "PROTEIN",
     value: totals.protein,
     target: targets.protein,
-    color: "#4b9fff"
+    color: "var(--cut)"
   }), /*#__PURE__*/React.createElement(MBar, {
     label: "CARBS",
     value: totals.carbs,
     target: targets.carbs,
-    color: "#ffb84b"
+    color: "var(--warn)"
   }), /*#__PURE__*/React.createElement(MBar, {
     label: "FAT",
     value: totals.fat,
     target: targets.fat,
-    color: "#ff7b4b"
+    color: "var(--bulk)"
   })), isPremium && /*#__PURE__*/React.createElement(CoachCard, {
     key: coachKey,
     mode: mode,
@@ -6359,7 +6471,7 @@ function Dashboard(_ref67) {
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 3
@@ -6368,12 +6480,12 @@ function Dashboard(_ref67) {
     style: {
       fontSize: 22,
       fontWeight: 900,
-      color: "#4b9fff"
+      color: "var(--cut)"
     }
   }, water, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
-      color: "#2a4060",
+      color: "var(--cut-tint-5)",
       fontWeight: 400,
       marginLeft: 5
     }
@@ -6390,9 +6502,9 @@ function Dashboard(_ref67) {
       width: 36,
       height: 36,
       borderRadius: 10,
-      background: "#131826",
-      border: "1px solid #1e2a3a",
-      color: "#4b9fff",
+      background: "var(--cut-tint-3)",
+      border: "1px solid var(--cut-tint-2)",
+      color: "var(--cut)",
       fontSize: 20,
       display: "flex",
       alignItems: "center",
@@ -6406,9 +6518,9 @@ function Dashboard(_ref67) {
       width: 36,
       height: 36,
       borderRadius: 10,
-      background: "#0f1c2e",
-      border: "1px solid #2a4a7a",
-      color: "#4b9fff",
+      background: "var(--cut-tint-4)",
+      border: "1px solid var(--cut-tint)",
+      color: "var(--cut)",
       fontSize: 20,
       display: "flex",
       alignItems: "center",
@@ -6428,7 +6540,7 @@ function Dashboard(_ref67) {
         flex: 1,
         height: 6,
         borderRadius: 99,
-        background: i < water ? "#4b9fff" : "#161a26",
+        background: i < water ? "var(--cut)" : "var(--cut-tint-6)",
         transition: "background 0.2s"
       }
     });
@@ -6487,13 +6599,13 @@ function Dashboard(_ref67) {
       style: {
         fontSize: 11,
         fontWeight: 900,
-        color: b.premium && !isPremium ? "#9b958b" : A,
+        color: b.premium && !isPremium ? "var(--text-label)" : A,
         letterSpacing: "0.07em"
       }
     }, b.l), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 10,
-        color: "#6e6960",
+        color: "var(--text-faint-2)",
         marginTop: 3
       }
     }, b.s));
@@ -6508,7 +6620,7 @@ function Dashboard(_ref67) {
     style: {
       padding: "13px 20px 11px",
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       borderBottom: "1px solid ".concat(BD)
@@ -6550,7 +6662,7 @@ function Dashboard(_ref67) {
       style: {
         fontSize: 14,
         fontWeight: 600,
-        color: "#e6e1d7",
+        color: "var(--text-hi)",
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
@@ -6558,12 +6670,12 @@ function Dashboard(_ref67) {
     }, log.name), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
-        color: "#8b857c",
+        color: "var(--text-lo)",
         marginTop: 3
       }
     }, log.time, " \xB7 P:", log.protein, "g C:", log.carbs, "g F:", log.fat, "g ", /*#__PURE__*/React.createElement("span", {
       style: {
-        color: "#6e6960"
+        color: "var(--text-faint-2)"
       }
     }, "\u270E"))), /*#__PURE__*/React.createElement("span", {
       style: {
@@ -6580,10 +6692,10 @@ function Dashboard(_ref67) {
       style: {
         flexShrink: 0,
         padding: "7px 12px",
-        background: savedIds[log.id] ? A + "22" : "#1c1a15",
-        border: "1px solid ".concat(savedIds[log.id] ? A + "66" : "#2a2620"),
+        background: savedIds[log.id] ? aA("22") : "var(--surface-2)",
+        border: "1px solid ".concat(savedIds[log.id] ? aA("66") : "var(--raised)"),
         borderRadius: 10,
-        color: savedIds[log.id] ? A : "#827c73",
+        color: savedIds[log.id] ? A : "var(--text-lo-2)",
         animation: savedIds[log.id] ? "blink_add 0.4s ease-out" : "none",
         fontSize: 12,
         fontWeight: 700,
@@ -6597,10 +6709,10 @@ function Dashboard(_ref67) {
         flexShrink: 0,
         width: 32,
         height: 32,
-        background: "#1a0d0d",
-        border: "1px solid #3a1a1a",
+        background: "var(--over-tint-2)",
+        border: "1px solid var(--over-tint)",
         borderRadius: 10,
-        color: "#884444",
+        color: "var(--over-deep-2)",
         fontSize: 16,
         cursor: "pointer",
         display: "flex",
@@ -6612,7 +6724,7 @@ function Dashboard(_ref67) {
     style: {
       textAlign: "center",
       padding: "30px 20px",
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       fontSize: 14
     }
   }, /*#__PURE__*/React.createElement("div", {
@@ -6632,7 +6744,7 @@ var AI_REESTIMATE_PROMPT = function AI_REESTIMATE_PROMPT(item) {
   return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
 };
 var confColor = function confColor(c) {
-  return c <= 33 ? "#ff5555" : c <= 66 ? "#ffb84b" : A;
+  return c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 };
 var confLabel = function confLabel(c) {
   return c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
@@ -6699,18 +6811,18 @@ function _searchOFT() {
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref71) {
-  var item = _ref71.item,
-    onReestimate = _ref71.onReestimate,
-    reestimating = _ref71.reestimating;
-  var _useState91 = useState(false),
-    _useState92 = _slicedToArray(_useState91, 2),
-    editing = _useState92[0],
-    setEditing = _useState92[1];
-  var _useState93 = useState(item.name),
+function ItemRow(_ref73) {
+  var item = _ref73.item,
+    onReestimate = _ref73.onReestimate,
+    reestimating = _ref73.reestimating;
+  var _useState93 = useState(false),
     _useState94 = _slicedToArray(_useState93, 2),
-    draft = _useState94[0],
-    setDraft = _useState94[1];
+    editing = _useState94[0],
+    setEditing = _useState94[1];
+  var _useState95 = useState(item.name),
+    _useState96 = _slicedToArray(_useState95, 2),
+    draft = _useState96[0],
+    setDraft = _useState96[1];
   var cc = confColor(item.confidence);
   var itemAllergens = scanAllergens(item.name, DIETARY.allergens); // zero-token backstop
 
@@ -6720,7 +6832,7 @@ function ItemRow(_ref71) {
   };
   return /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#0b0d0b",
+      background: "var(--bg)",
       borderRadius: 12,
       padding: "12px 14px",
       marginBottom: 8
@@ -6762,7 +6874,7 @@ function ItemRow(_ref71) {
     style: {
       padding: "6px 12px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 8,
       fontSize: 12,
@@ -6773,7 +6885,7 @@ function ItemRow(_ref71) {
     style: {
       fontSize: 13,
       fontWeight: 600,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       cursor: "pointer"
     },
     onClick: function onClick() {
@@ -6782,12 +6894,12 @@ function ItemRow(_ref71) {
   }, item.name, " ", /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
-      color: "#827c73"
+      color: "var(--text-lo-2)"
     }
   }, "\u270F\uFE0F")), item.source === "oft" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
-      color: "#4b9fff",
+      color: "var(--cut)",
       marginTop: 2,
       letterSpacing: "0.06em"
     }
@@ -6812,12 +6924,12 @@ function ItemRow(_ref71) {
   }, item.confidence, "% ", confLabel(item.confidence)))), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#8b857c"
+      color: "var(--text-lo)"
     }
   }, "P:", item.protein, "g \xB7 C:", item.carbs, "g \xB7 F:", item.fat, "g"), item.reasoning && !editing && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       marginTop: 5,
       lineHeight: 1.5,
       fontStyle: "italic"
@@ -6826,43 +6938,43 @@ function ItemRow(_ref71) {
     style: {
       marginTop: 6,
       fontSize: 11,
-      color: "#ff8866",
+      color: "var(--bulk-2)",
       fontWeight: 700,
       lineHeight: 1.4
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref72) {
-  var onAdd = _ref72.onAdd,
-    onBack = _ref72.onBack;
-  var _useState95 = useState(""),
-    _useState96 = _slicedToArray(_useState95, 2),
-    desc = _useState96[0],
-    setDesc = _useState96[1];
-  var _useState97 = useState(false),
+function AILog(_ref74) {
+  var onAdd = _ref74.onAdd,
+    onBack = _ref74.onBack;
+  var _useState97 = useState(""),
     _useState98 = _slicedToArray(_useState97, 2),
-    loading = _useState98[0],
-    setLoading = _useState98[1];
-  var _useState99 = useState(null),
+    desc = _useState98[0],
+    setDesc = _useState98[1];
+  var _useState99 = useState(false),
     _useState100 = _slicedToArray(_useState99, 2),
-    items = _useState100[0],
-    setItems = _useState100[1];
+    loading = _useState100[0],
+    setLoading = _useState100[1];
   var _useState101 = useState(null),
     _useState102 = _slicedToArray(_useState101, 2),
-    reestIdx = _useState102[0],
-    setReestIdx = _useState102[1];
-  var _useState103 = useState(""),
+    items = _useState102[0],
+    setItems = _useState102[1];
+  var _useState103 = useState(null),
     _useState104 = _slicedToArray(_useState103, 2),
-    error = _useState104[0],
-    setError = _useState104[1];
-  var _useState105 = useState(false),
+    reestIdx = _useState104[0],
+    setReestIdx = _useState104[1];
+  var _useState105 = useState(""),
     _useState106 = _slicedToArray(_useState105, 2),
-    loggedAll = _useState106[0],
-    setLoggedAll = _useState106[1];
-  var _useState107 = useState({}),
+    error = _useState106[0],
+    setError = _useState106[1];
+  var _useState107 = useState(false),
     _useState108 = _slicedToArray(_useState107, 2),
-    loggedCount = _useState108[0],
-    setLoggedCount = _useState108[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedAll = _useState108[0],
+    setLoggedAll = _useState108[1];
+  var _useState109 = useState({}),
+    _useState110 = _slicedToArray(_useState109, 2),
+    loggedCount = _useState110[0],
+    setLoggedCount = _useState110[1]; // idx -> times logged (ephemeral; resets on unmount)
 
   var totals = items ? items.reduce(function (a, it) {
     return {
@@ -6881,7 +6993,7 @@ function AILog(_ref72) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
       var parsed, aiItems, oftResults, merged, _t30;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
@@ -6932,11 +7044,11 @@ function AILog(_ref72) {
       }, _callee29, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref73.apply(this, arguments);
+      return _ref75.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(idx, newName) {
+    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(idx, newName) {
       var updated, oft, _final, _t31;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
@@ -6974,7 +7086,7 @@ function AILog(_ref72) {
       }, _callee30, null, [[1, 4]]);
     }));
     return function reestimate(_x40, _x41) {
-      return _ref74.apply(this, arguments);
+      return _ref76.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -7012,7 +7124,7 @@ function AILog(_ref72) {
     onBack: onBack
   }), /*#__PURE__*/React.createElement("p", {
     style: {
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 13,
       lineHeight: 1.6,
       marginBottom: 16
@@ -7031,7 +7143,7 @@ function AILog(_ref72) {
       border: "1px solid ".concat(BD),
       borderRadius: 14,
       padding: "14px 16px",
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       fontSize: 14,
       resize: "none",
       fontFamily: "inherit",
@@ -7041,7 +7153,7 @@ function AILog(_ref72) {
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       lineHeight: 1.5,
       marginTop: 6
     }
@@ -7052,8 +7164,8 @@ function AILog(_ref72) {
       width: "100%",
       marginTop: 12,
       padding: "15px",
-      background: loading || !desc.trim() ? "#1c1a15" : A,
-      color: loading || !desc.trim() ? "#2c2820" : "#0b0d0b",
+      background: loading || !desc.trim() ? "var(--surface-2)" : A,
+      color: loading || !desc.trim() ? "var(--border-strong)" : "var(--bg)",
       border: "none",
       borderRadius: 14,
       fontSize: 14,
@@ -7063,11 +7175,11 @@ function AILog(_ref72) {
     }
   }, loading ? "⚡ ANALYSING..." : "🤖 ANALYSE MEAL"), error && /*#__PURE__*/React.createElement("div", {
     style: {
-      color: "#ff8855",
+      color: "var(--bulk-3)",
       fontSize: 12,
       marginTop: 14,
-      background: "#1a0d08",
-      border: "1px solid #3a1a0a",
+      background: "var(--over-tint-3)",
+      border: "1px solid var(--bulk-tint)",
       borderRadius: 10,
       padding: "12px 14px",
       lineHeight: 1.6
@@ -7090,7 +7202,7 @@ function AILog(_ref72) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.1em",
       fontWeight: 800
     }
@@ -7116,7 +7228,7 @@ function AILog(_ref72) {
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
-      border: "1px solid ".concat(A, "33"),
+      border: "1px solid ".concat(aA("33")),
       borderRadius: 14,
       padding: "14px 16px",
       marginBottom: 16
@@ -7142,22 +7254,22 @@ function AILog(_ref72) {
   }), /*#__PURE__*/React.createElement(Chip, {
     label: "PROTEIN",
     value: Math.round(totals.protein) + "g",
-    color: "#4b9fff"
+    color: "var(--cut)"
   }), /*#__PURE__*/React.createElement(Chip, {
     label: "CARBS",
     value: Math.round(totals.carbs) + "g",
-    color: "#ffb84b"
+    color: "var(--warn)"
   }), /*#__PURE__*/React.createElement(Chip, {
     label: "FAT",
     value: Math.round(totals.fat) + "g",
-    color: "#ff7b4b"
+    color: "var(--bulk)"
   }))), /*#__PURE__*/React.createElement("button", {
     onClick: logAll,
     style: {
       width: "100%",
       padding: "14px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 12,
       fontSize: 14,
@@ -7168,7 +7280,7 @@ function AILog(_ref72) {
   }, "+ LOG ALL AS ONE ENTRY"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#827c73",
+      color: "var(--text-lo-2)",
       textAlign: "center",
       marginBottom: 12
     }
@@ -7187,10 +7299,10 @@ function AILog(_ref72) {
         style: {
           width: "100%",
           padding: "10px 14px",
-          background: added ? A + "1e" : "#1c1a15",
-          border: "1px solid ".concat(added ? A + "66" : BD),
+          background: added ? aA("1e") : "var(--surface-2)",
+          border: "1px solid ".concat(added ? aA("66") : BD),
           borderRadius: 10,
-          color: added ? A : "#b6b0a4",
+          color: added ? A : "var(--text-mid-6)",
           fontSize: 12,
           fontWeight: 600,
           cursor: "pointer",
@@ -7212,25 +7324,25 @@ function AILog(_ref72) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref75) {
-  var onAdd = _ref75.onAdd,
-    onBack = _ref75.onBack,
-    meals = _ref75.meals,
-    setMeals = _ref75.setMeals,
-    _ref75$isPremium = _ref75.isPremium,
-    isPremium = _ref75$isPremium === void 0 ? false : _ref75$isPremium,
-    _ref75$onPremiumGate = _ref75.onPremiumGate,
-    onPremiumGate = _ref75$onPremiumGate === void 0 ? function () {} : _ref75$onPremiumGate;
-  var _useState109 = useState(""),
-    _useState110 = _slicedToArray(_useState109, 2),
-    search = _useState110[0],
-    setSearch = _useState110[1];
-  var _useState111 = useState(null),
+function QuickAdd(_ref77) {
+  var onAdd = _ref77.onAdd,
+    onBack = _ref77.onBack,
+    meals = _ref77.meals,
+    setMeals = _ref77.setMeals,
+    _ref77$isPremium = _ref77.isPremium,
+    isPremium = _ref77$isPremium === void 0 ? false : _ref77$isPremium,
+    _ref77$onPremiumGate = _ref77.onPremiumGate,
+    onPremiumGate = _ref77$onPremiumGate === void 0 ? function () {} : _ref77$onPremiumGate;
+  var _useState111 = useState(""),
     _useState112 = _slicedToArray(_useState111, 2),
-    modal = _useState112[0],
-    setModal = _useState112[1];
+    search = _useState112[0],
+    setSearch = _useState112[1];
+  var _useState113 = useState(null),
+    _useState114 = _slicedToArray(_useState113, 2),
+    modal = _useState114[0],
+    setModal = _useState114[1];
   var save = /*#__PURE__*/function () {
-    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(m) {
+    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(m) {
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.n) {
           case 0:
@@ -7243,7 +7355,7 @@ function QuickAdd(_ref75) {
       }, _callee31);
     }));
     return function save(_x42) {
-      return _ref76.apply(this, arguments);
+      return _ref78.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -7304,8 +7416,8 @@ function QuickAdd(_ref75) {
     },
     style: {
       padding: "12px 18px",
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "44"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("44")),
       borderRadius: 12,
       color: A,
       fontWeight: 900,
@@ -7347,7 +7459,7 @@ function QuickAdd(_ref75) {
       style: {
         fontSize: 14,
         fontWeight: 600,
-        color: "#e6e1d7",
+        color: "var(--text-hi)",
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
@@ -7355,7 +7467,7 @@ function QuickAdd(_ref75) {
     }, m.name), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
-        color: "#8b857c",
+        color: "var(--text-lo)",
         marginTop: 3
       }
     }, "P:", m.protein, "g \xB7 C:", m.carbs, "g \xB7 F:", m.fat, "g")), /*#__PURE__*/React.createElement("span", {
@@ -7397,7 +7509,7 @@ function QuickAdd(_ref75) {
   }), filtered.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       padding: "30px 0",
       fontSize: 14
     }
@@ -7411,9 +7523,9 @@ function QuickAdd(_ref75) {
       width: "100%",
       padding: "11px",
       background: "none",
-      border: "1px dashed #24211b",
+      border: "1px dashed var(--border)",
       borderRadius: 12,
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       fontSize: 12,
       fontFamily: "inherit"
     }
@@ -7422,31 +7534,31 @@ function QuickAdd(_ref75) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref77) {
-  var onAdd = _ref77.onAdd,
-    onBack = _ref77.onBack;
-  var _useState113 = useState(""),
-    _useState114 = _slicedToArray(_useState113, 2),
-    q = _useState114[0],
-    setQ = _useState114[1];
-  var _useState115 = useState([]),
+function FoodSearch(_ref79) {
+  var onAdd = _ref79.onAdd,
+    onBack = _ref79.onBack;
+  var _useState115 = useState(""),
     _useState116 = _slicedToArray(_useState115, 2),
-    results = _useState116[0],
-    setResults = _useState116[1];
-  var _useState117 = useState(false),
+    q = _useState116[0],
+    setQ = _useState116[1];
+  var _useState117 = useState([]),
     _useState118 = _slicedToArray(_useState117, 2),
-    loading = _useState118[0],
-    setLoading = _useState118[1];
-  var _useState119 = useState(""),
+    results = _useState118[0],
+    setResults = _useState118[1];
+  var _useState119 = useState(false),
     _useState120 = _slicedToArray(_useState119, 2),
-    error = _useState120[0],
-    setError = _useState120[1];
-  var _useState121 = useState(false),
+    loading = _useState120[0],
+    setLoading = _useState120[1];
+  var _useState121 = useState(""),
     _useState122 = _slicedToArray(_useState121, 2),
-    done = _useState122[0],
-    setDone = _useState122[1];
+    error = _useState122[0],
+    setError = _useState122[1];
+  var _useState123 = useState(false),
+    _useState124 = _slicedToArray(_useState123, 2),
+    done = _useState124[0],
+    setDone = _useState124[1];
   var search = /*#__PURE__*/function () {
-    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
+    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
       var res, data, parseServing, parseKcal, valid, _t32;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
@@ -7528,7 +7640,7 @@ function FoodSearch(_ref77) {
       }, _callee32, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref78.apply(this, arguments);
+      return _ref80.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -7542,7 +7654,7 @@ function FoodSearch(_ref77) {
     onBack: onBack
   }), /*#__PURE__*/React.createElement("p", {
     style: {
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 13,
       lineHeight: 1.6,
       marginBottom: 16
@@ -7571,8 +7683,8 @@ function FoodSearch(_ref77) {
     disabled: loading || !q.trim(),
     style: {
       padding: "13px 16px",
-      background: q.trim() && !loading ? A : "#1c1a15",
-      color: q.trim() && !loading ? "#0b0d0b" : "#2c2820",
+      background: q.trim() && !loading ? A : "var(--surface-2)",
+      color: q.trim() && !loading ? "var(--bg)" : "var(--border-strong)",
       border: "none",
       borderRadius: 12,
       fontWeight: 900,
@@ -7583,13 +7695,13 @@ function FoodSearch(_ref77) {
   }, loading ? "..." : "SEARCH")), loading && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
-      color: "#9b958b",
+      color: "var(--text-label)",
       padding: 24,
       fontSize: 14
     }
   }, "\uD83D\uDD0D Searching..."), error && /*#__PURE__*/React.createElement("p", {
     style: {
-      color: "#ff5555",
+      color: "var(--over)",
       fontSize: 13,
       textAlign: "center",
       marginBottom: 10
@@ -7628,7 +7740,7 @@ function FoodSearch(_ref77) {
       style: {
         fontSize: 13,
         fontWeight: 600,
-        color: "#e6e1d7",
+        color: "var(--text-hi)",
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
@@ -7636,7 +7748,7 @@ function FoodSearch(_ref77) {
     }, r.name), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
-        color: "#8b857c",
+        color: "var(--text-lo)",
         marginTop: 3
       }
     }, r.notes, " \xB7 P:", r.protein, "g \xB7 C:", r.carbs, "g \xB7 F:", r.fat, "g")), /*#__PURE__*/React.createElement("span", {
@@ -7650,7 +7762,7 @@ function FoodSearch(_ref77) {
   })), done && !results.length && !loading && !error && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       padding: "30px 0"
     }
   }, "No results"));
@@ -7659,21 +7771,21 @@ function FoodSearch(_ref77) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref79) {
+function History(_ref81) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref79.history,
-    onBack = _ref79.onBack,
-    onUpdateDay = _ref79.onUpdateDay,
-    _ref79$weighIns = _ref79.weighIns,
-    weighIns = _ref79$weighIns === void 0 ? [] : _ref79$weighIns,
-    _ref79$meals = _ref79.meals,
-    meals = _ref79$meals === void 0 ? DEF_MEALS : _ref79$meals,
-    _ref79$setMeals = _ref79.setMeals,
-    setMeals = _ref79$setMeals === void 0 ? function () {} : _ref79$setMeals,
-    _ref79$isPremium = _ref79.isPremium,
-    isPremium = _ref79$isPremium === void 0 ? false : _ref79$isPremium,
-    _ref79$onPremiumGate = _ref79.onPremiumGate,
-    onPremiumGate = _ref79$onPremiumGate === void 0 ? function () {} : _ref79$onPremiumGate;
+  var history = _ref81.history,
+    onBack = _ref81.onBack,
+    onUpdateDay = _ref81.onUpdateDay,
+    _ref81$weighIns = _ref81.weighIns,
+    weighIns = _ref81$weighIns === void 0 ? [] : _ref81$weighIns,
+    _ref81$meals = _ref81.meals,
+    meals = _ref81$meals === void 0 ? DEF_MEALS : _ref81$meals,
+    _ref81$setMeals = _ref81.setMeals,
+    setMeals = _ref81$setMeals === void 0 ? function () {} : _ref81$setMeals,
+    _ref81$isPremium = _ref81.isPremium,
+    isPremium = _ref81$isPremium === void 0 ? false : _ref81$isPremium,
+    _ref81$onPremiumGate = _ref81.onPremiumGate,
+    onPremiumGate = _ref81$onPremiumGate === void 0 ? function () {} : _ref81$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -7687,56 +7799,56 @@ function History(_ref79) {
     KCAL: {
       key: "kcal",
       label: "Kcal",
-      color: "#e8e2d4",
+      color: "var(--accent)",
       unit: ""
     },
     PROTEIN: {
       key: "protein",
       label: "Protein",
-      color: "#4b9fff",
+      color: "var(--cut)",
       unit: "g"
     },
     CARBS: {
       key: "carbs",
       label: "Carbs",
-      color: "#ffb84b",
+      color: "var(--warn)",
       unit: "g"
     },
     FAT: {
       key: "fat",
       label: "Fat",
-      color: "#ff7b4b",
+      color: "var(--bulk)",
       unit: "g"
     }
   };
-  var _useState123 = useState("30D"),
-    _useState124 = _slicedToArray(_useState123, 2),
-    range = _useState124[0],
-    setRange = _useState124[1];
-  var _useState125 = useState(["KCAL"]),
+  var _useState125 = useState("30D"),
     _useState126 = _slicedToArray(_useState125, 2),
-    metrics = _useState126[0],
-    setMetrics = _useState126[1];
-  var _useState127 = useState(false),
+    range = _useState126[0],
+    setRange = _useState126[1];
+  var _useState127 = useState(["KCAL"]),
     _useState128 = _slicedToArray(_useState127, 2),
-    showWeight = _useState128[0],
-    setShowWeight = _useState128[1];
-  var _useState129 = useState("line"),
+    metrics = _useState128[0],
+    setMetrics = _useState128[1];
+  var _useState129 = useState(false),
     _useState130 = _slicedToArray(_useState129, 2),
-    chartType = _useState130[0],
-    setChartType = _useState130[1];
-  var _useState131 = useState(Math.max(0, history.length - 1)),
+    showWeight = _useState130[0],
+    setShowWeight = _useState130[1];
+  var _useState131 = useState("line"),
     _useState132 = _slicedToArray(_useState131, 2),
-    dayIdx = _useState132[0],
-    setDayIdx = _useState132[1];
-  var _useState133 = useState(null),
+    chartType = _useState132[0],
+    setChartType = _useState132[1];
+  var _useState133 = useState(Math.max(0, history.length - 1)),
     _useState134 = _slicedToArray(_useState133, 2),
-    addCtx = _useState134[0],
-    setAddCtx = _useState134[1];
+    dayIdx = _useState134[0],
+    setDayIdx = _useState134[1];
   var _useState135 = useState(null),
     _useState136 = _slicedToArray(_useState135, 2),
-    editId = _useState136[0],
-    setEditId = _useState136[1];
+    addCtx = _useState136[0],
+    setAddCtx = _useState136[1];
+  var _useState137 = useState(null),
+    _useState138 = _slicedToArray(_useState137, 2),
+    editId = _useState138[0],
+    setEditId = _useState138[1];
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -7812,15 +7924,15 @@ function History(_ref79) {
   var pieData = dayTots ? [{
     name: "Protein",
     value: Math.round(dayTots.protein),
-    color: "#4b9fff"
+    color: "var(--cut)"
   }, {
     name: "Carbs",
     value: Math.round(dayTots.carbs),
-    color: "#ffb84b"
+    color: "var(--warn)"
   }, {
     name: "Fat",
     value: Math.round(dayTots.fat),
-    color: "#ff7b4b"
+    color: "var(--bulk)"
   }] : [];
   var patch = function patch(p) {
     var u = _objectSpread(_objectSpread({}, day), p);
@@ -7894,8 +8006,8 @@ function History(_ref79) {
       onClick: exportCSV,
       style: {
         padding: "8px 14px",
-        background: "#1c1a15",
-        border: "1px solid ".concat(A, "44"),
+        background: "var(--surface-2)",
+        border: "1px solid ".concat(aA("44")),
         borderRadius: 10,
         color: A,
         fontSize: 11,
@@ -7908,7 +8020,7 @@ function History(_ref79) {
     style: {
       textAlign: "center",
       padding: "60px 20px",
-      color: "#6e6960"
+      color: "var(--text-faint-2)"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -7935,8 +8047,8 @@ function History(_ref79) {
       },
       style: {
         padding: "7px 14px",
-        background: range === r ? A : "#1c1a15",
-        color: range === r ? "#0b0d0b" : "#aea79c",
+        background: range === r ? A : "var(--surface-2)",
+        color: range === r ? "var(--bg)" : "var(--text-mid)",
         border: "1px solid ".concat(range === r ? A : BD),
         borderRadius: 99,
         fontSize: 12,
@@ -7965,7 +8077,7 @@ function History(_ref79) {
     style: {
       background: "none",
       border: "none",
-      color: dayIdx === 0 ? "#524d46" : "#a7a197",
+      color: dayIdx === 0 ? "var(--text-disabled)" : "var(--text-mid-2)",
       fontSize: 24,
       padding: "0 6px",
       lineHeight: 1
@@ -7978,7 +8090,7 @@ function History(_ref79) {
     style: {
       fontSize: 13,
       fontWeight: 800,
-      color: "#e6e1d7"
+      color: "var(--text-hi)"
     }
   }, day ? fmtFull(day.date) : "—"), day && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -8006,9 +8118,9 @@ function History(_ref79) {
       fontSize: 10,
       fontWeight: 900,
       padding: "2px 8px",
-      background: day.training ? A + "22" : "#1c1a15",
-      color: day.training ? A : "#9b958b",
-      border: "1px solid ".concat(day.training ? A + "44" : BD),
+      background: day.training ? aA("22") : "var(--surface-2)",
+      color: day.training ? A : "var(--text-label)",
+      border: "1px solid ".concat(day.training ? aA("44") : BD),
       borderRadius: 99
     }
   }, day.training ? "⚡ TRAINING" : "💤 REST"))), /*#__PURE__*/React.createElement("button", {
@@ -8021,7 +8133,7 @@ function History(_ref79) {
     style: {
       background: "none",
       border: "none",
-      color: dayIdx === history.length - 1 ? "#524d46" : "#a7a197",
+      color: dayIdx === history.length - 1 ? "var(--text-disabled)" : "var(--text-mid-2)",
       fontSize: 24,
       padding: "0 6px",
       lineHeight: 1
@@ -8042,7 +8154,7 @@ function History(_ref79) {
   }, Math.round(dayTots.kcal).toLocaleString()), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 14,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginTop: 4,
       letterSpacing: "0.12em"
     }
@@ -8050,7 +8162,7 @@ function History(_ref79) {
     style: {
       fontSize: 12,
       marginTop: 6,
-      color: "#9b958b"
+      color: "var(--text-label)"
     }
   }, "P:", Math.round(dayTots.protein), "g \xB7 C:", Math.round(dayTots.carbs), "g \xB7 F:", Math.round(dayTots.fat), "g")), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -8063,7 +8175,7 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 14
@@ -8082,7 +8194,7 @@ function History(_ref79) {
   }, pieData.map(function (e, i) {
     return /*#__PURE__*/React.createElement(Cell, {
       key: i,
-      fill: e.color
+      fill: rc(e.color)
     });
   })), /*#__PURE__*/React.createElement(Tooltip, {
     formatter: function formatter(v, n) {
@@ -8091,7 +8203,7 @@ function History(_ref79) {
   }))) : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       padding: "8px 0"
     }
   }, "Charts unavailable \u2014 Recharts CDN failed to load."), /*#__PURE__*/React.createElement("div", {
@@ -8119,11 +8231,11 @@ function History(_ref79) {
     }), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
-        color: "#b6b0a4"
+        color: "var(--text-mid-6)"
       }
     }, p.name, ": ", /*#__PURE__*/React.createElement("strong", {
       style: {
-        color: "#e6e1d7"
+        color: "var(--text-hi)"
       }
     }, p.value, "g")));
   }))), /*#__PURE__*/React.createElement("div", {
@@ -8140,14 +8252,14 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.1em",
       fontWeight: 800
     }
   }, "WATER "), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 14,
-      color: "#4b9fff",
+      color: "var(--cut)",
       fontWeight: 900
     }
   }, day.water, " / 8")), /*#__PURE__*/React.createElement("div", {
@@ -8165,9 +8277,9 @@ function History(_ref79) {
       width: 32,
       height: 32,
       borderRadius: 8,
-      background: "#131826",
-      border: "1px solid #1e2a3a",
-      color: "#4b9fff",
+      background: "var(--cut-tint-3)",
+      border: "1px solid var(--cut-tint-2)",
+      color: "var(--cut)",
       fontSize: 18,
       display: "flex",
       alignItems: "center",
@@ -8183,9 +8295,9 @@ function History(_ref79) {
       width: 32,
       height: 32,
       borderRadius: 8,
-      background: "#0f1c2e",
-      border: "1px solid #2a4a7a",
-      color: "#4b9fff",
+      background: "var(--cut-tint-4)",
+      border: "1px solid var(--cut-tint)",
+      color: "var(--cut)",
       fontSize: 18,
       display: "flex",
       alignItems: "center",
@@ -8203,7 +8315,7 @@ function History(_ref79) {
     style: {
       padding: "12px 18px 10px",
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       borderBottom: "1px solid ".concat(BD),
@@ -8213,13 +8325,13 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement("span", null, "FOODS \xB7 ", (day.logs || []).length, " ITEMS"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: "#827c73"
+      color: "var(--text-lo-2)"
     }
   }, "\xD7 to remove")), (day.logs || []).length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "18px",
       textAlign: "center",
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       fontSize: 13
     }
   }, "No foods logged"), (day.logs || []).map(function (log, i) {
@@ -8263,7 +8375,7 @@ function History(_ref79) {
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 13,
-        color: "#e6e1d7",
+        color: "var(--text-hi)",
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
@@ -8271,12 +8383,12 @@ function History(_ref79) {
     }, log.name), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
-        color: "#8b857c",
+        color: "var(--text-lo)",
         marginTop: 2
       }
     }, "P:", log.protein, "g C:", log.carbs, "g F:", log.fat, "g ", /*#__PURE__*/React.createElement("span", {
       style: {
-        color: "#6e6960"
+        color: "var(--text-faint-2)"
       }
     }, "\u270E"))), /*#__PURE__*/React.createElement("span", {
       style: {
@@ -8296,7 +8408,7 @@ function History(_ref79) {
       style: {
         background: "none",
         border: "none",
-        color: "#524d46",
+        color: "var(--text-disabled)",
         fontSize: 18,
         padding: "2px 10px"
       }
@@ -8313,8 +8425,8 @@ function History(_ref79) {
     style: {
       flex: 1,
       padding: "11px",
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "33"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("33")),
       borderRadius: 12,
       color: A,
       fontSize: 12,
@@ -8328,8 +8440,8 @@ function History(_ref79) {
     style: {
       flex: 1,
       padding: "11px",
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "33"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("33")),
       borderRadius: 12,
       color: A,
       fontSize: 12,
@@ -8343,8 +8455,8 @@ function History(_ref79) {
     style: {
       flex: 1,
       padding: "11px",
-      background: "#1c1a15",
-      border: "1px solid ".concat(A, "33"),
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("33")),
       borderRadius: 12,
       color: A,
       fontSize: 12,
@@ -8359,10 +8471,10 @@ function History(_ref79) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref80) {
-    var _ref81 = _slicedToArray(_ref80, 2),
-      k = _ref81[0],
-      m = _ref81[1];
+  }, Object.entries(MM).map(function (_ref82) {
+    var _ref83 = _slicedToArray(_ref82, 2),
+      k = _ref83[0],
+      m = _ref83[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -8371,9 +8483,9 @@ function History(_ref79) {
       },
       style: {
         padding: "6px 13px",
-        background: !showWeight && metrics.includes(k) ? m.color + "22" : "#1c1a15",
-        color: !showWeight && metrics.includes(k) ? m.color : "#9b958b",
-        border: "1px solid ".concat(!showWeight && metrics.includes(k) ? m.color + "55" : BD),
+        background: !showWeight && metrics.includes(k) ? mix(m.color, "22") : "var(--surface-2)",
+        color: !showWeight && metrics.includes(k) ? m.color : "var(--text-label)",
+        border: "1px solid ".concat(!showWeight && metrics.includes(k) ? mix(m.color, "55") : BD),
         borderRadius: 99,
         fontSize: 11,
         fontWeight: 900
@@ -8387,9 +8499,9 @@ function History(_ref79) {
     },
     style: {
       padding: "6px 13px",
-      background: showWeight ? "#4b9fff22" : "#1c1a15",
-      color: showWeight ? "#4b9fff" : "#9b958b",
-      border: "1px solid ".concat(showWeight ? "#4b9fff55" : BD),
+      background: showWeight ? "color-mix(in srgb, var(--cut) 13%, transparent)" : "var(--surface-2)",
+      color: showWeight ? "var(--cut)" : "var(--text-label)",
+      border: "1px solid ".concat(showWeight ? "color-mix(in srgb, var(--cut) 33%, transparent)" : BD),
       borderRadius: 99,
       fontSize: 11,
       fontWeight: 900
@@ -8400,10 +8512,10 @@ function History(_ref79) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref82) {
-    var _ref83 = _slicedToArray(_ref82, 2),
-      t = _ref83[0],
-      e = _ref83[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref84) {
+    var _ref85 = _slicedToArray(_ref84, 2),
+      t = _ref85[0],
+      e = _ref85[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -8411,9 +8523,9 @@ function History(_ref79) {
       },
       style: {
         padding: "6px 12px",
-        background: chartType === t ? "#24211b" : "#1c1a15",
-        color: chartType === t ? "#e6e1d7" : "#9b958b",
-        border: "1px solid ".concat(chartType === t ? "#3a352a" : BD),
+        background: chartType === t ? "var(--border)" : "var(--surface-2)",
+        color: chartType === t ? "var(--text-hi)" : "var(--text-label)",
+        border: "1px solid ".concat(chartType === t ? "var(--raised-2)" : BD),
         borderRadius: 8,
         fontSize: 12
       }
@@ -8440,14 +8552,14 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement(XAxis, {
     dataKey: "date",
     tick: {
-      fill: "#8b857c",
+      fill: rc("var(--text-lo)"),
       fontSize: 10
     },
     axisLine: false,
     tickLine: false
   }), /*#__PURE__*/React.createElement(YAxis, {
     tick: {
-      fill: "#8b857c",
+      fill: rc("var(--text-lo)"),
       fontSize: 10
     },
     axisLine: false,
@@ -8460,18 +8572,18 @@ function History(_ref79) {
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
     dataKey: "WEIGHT",
-    stroke: "#4b9fff",
+    stroke: rc("var(--cut)"),
     strokeWidth: 1.5,
     dot: {
       r: 2.5,
-      fill: "#4b9fff"
+      fill: rc("var(--cut)")
     },
     name: "Weight",
     connectNulls: false
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
     dataKey: "ROLLING",
-    stroke: A,
+    stroke: rc(A),
     strokeWidth: 2.5,
     dot: false,
     name: "ROLLING",
@@ -8487,14 +8599,14 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement(XAxis, {
     dataKey: "date",
     tick: {
-      fill: "#8b857c",
+      fill: rc("var(--text-lo)"),
       fontSize: 10
     },
     axisLine: false,
     tickLine: false
   }), /*#__PURE__*/React.createElement(YAxis, {
     tick: {
-      fill: "#8b857c",
+      fill: rc("var(--text-lo)"),
       fontSize: 10
     },
     axisLine: false,
@@ -8504,7 +8616,7 @@ function History(_ref79) {
       key: m,
       type: "monotone",
       dataKey: m,
-      stroke: MM[m].color,
+      stroke: rc(MM[m].color),
       strokeWidth: 2.5,
       dot: false,
       name: m
@@ -8520,14 +8632,14 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement(XAxis, {
     dataKey: "date",
     tick: {
-      fill: "#8b857c",
+      fill: rc("var(--text-lo)"),
       fontSize: 10
     },
     axisLine: false,
     tickLine: false
   }), /*#__PURE__*/React.createElement(YAxis, {
     tick: {
-      fill: "#8b857c",
+      fill: rc("var(--text-lo)"),
       fontSize: 10
     },
     axisLine: false,
@@ -8536,7 +8648,7 @@ function History(_ref79) {
     return /*#__PURE__*/React.createElement(Bar, {
       key: m,
       dataKey: m,
-      fill: MM[m].color,
+      fill: rc(MM[m].color),
       radius: [4, 4, 0, 0],
       name: m,
       maxBarSize: 28
@@ -8544,7 +8656,7 @@ function History(_ref79) {
   }))) : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       padding: "12px 8px"
     }
   }, "Charts unavailable \u2014 Recharts CDN failed to load.")), /*#__PURE__*/React.createElement("div", {
@@ -8558,7 +8670,7 @@ function History(_ref79) {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       marginBottom: 12
@@ -8569,10 +8681,10 @@ function History(_ref79) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref84) {
-    var _ref85 = _slicedToArray(_ref84, 2),
-      k = _ref85[0],
-      m = _ref85[1];
+  }, Object.entries(MM).map(function (_ref86) {
+    var _ref87 = _slicedToArray(_ref86, 2),
+      k = _ref87[0],
+      m = _ref87[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -8591,7 +8703,7 @@ function History(_ref79) {
         marginTop: 10,
         display: "flex",
         justifyContent: "space-between",
-        background: "#0b0d0b",
+        background: "var(--bg)",
         borderRadius: 10,
         padding: "10px 14px",
         alignItems: "center"
@@ -8599,21 +8711,21 @@ function History(_ref79) {
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 10,
-        color: "#9b958b",
+        color: "var(--text-label)",
         letterSpacing: "0.08em",
         fontWeight: 800
       }
     }, "\u2696\uFE0F WEIGHT TREND"), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 12,
-        color: "#8b857c",
+        color: "var(--text-lo)",
         marginTop: 2
       }
     }, first, wUnit, " \u2192 ", last, wUnit)), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 15,
         fontWeight: 900,
-        color: diff <= 0 ? A : "#ff7b4b"
+        color: diff <= 0 ? A : "var(--bulk)"
       }
     }, diff > 0 ? "+" : "", diff, " ", wUnit));
   }()), /*#__PURE__*/React.createElement("div", {
@@ -8627,7 +8739,7 @@ function History(_ref79) {
     style: {
       padding: "12px 18px 10px",
       fontSize: 11,
-      color: "#9b958b",
+      color: "var(--text-label)",
       letterSpacing: "0.12em",
       fontWeight: 800,
       borderBottom: "1px solid ".concat(BD)
@@ -8654,7 +8766,7 @@ function History(_ref79) {
       style: {
         fontSize: 13,
         fontWeight: 600,
-        color: "#e6e1d7"
+        color: "var(--text-hi)"
       }
     }, fmtFull(d.date), d.mode && /*#__PURE__*/React.createElement("span", {
       style: {
@@ -8672,7 +8784,7 @@ function History(_ref79) {
     }, "\u26A1")), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
-        color: "#8b857c",
+        color: "var(--text-lo)",
         marginTop: 2
       }
     }, "P:", Math.round(d.protein), "g \xB7 C:", Math.round(d.carbs), "g \xB7 F:", Math.round(d.fat), "g \xB7 \uD83D\uDCA7", d.water)), /*#__PURE__*/React.createElement("div", {
@@ -8690,14 +8802,14 @@ function History(_ref79) {
     }, Math.round(d.kcal)), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: "#827c73"
+        color: "var(--text-lo-2)"
       }
     }, "\u203A")));
   }))), range !== "DAY" && filtered.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: "40px 0",
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       fontSize: 14
     }
   }, "No data for this range yet.")));
@@ -8705,9 +8817,9 @@ function History(_ref79) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref86) {
-  var earnedBdgs = _ref86.earnedBdgs,
-    onBack = _ref86.onBack;
+function Achievements(_ref88) {
+  var earnedBdgs = _ref88.earnedBdgs,
+    onBack = _ref88.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -8719,7 +8831,7 @@ function Achievements(_ref86) {
     onBack: onBack
   }), /*#__PURE__*/React.createElement("p", {
     style: {
-      color: "#aea79c",
+      color: "var(--text-mid)",
       fontSize: 13,
       lineHeight: 1.6,
       marginBottom: 20
@@ -8733,7 +8845,7 @@ function Achievements(_ref86) {
       key: b.id,
       style: {
         background: CARD,
-        border: "1px solid ".concat(top >= 0 ? A + "22" : BD),
+        border: "1px solid ".concat(top >= 0 ? aA("22") : BD),
         borderRadius: 18,
         padding: "16px 20px",
         marginBottom: 12
@@ -8753,12 +8865,12 @@ function Achievements(_ref86) {
       style: {
         fontSize: 16,
         fontWeight: 800,
-        color: "#e6e1d7"
+        color: "var(--text-hi)"
       }
     }, b.name), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 12,
-        color: "#9b958b",
+        color: "var(--text-label)",
         marginTop: 2
       }
     }, top >= 0 ? "".concat(TIER_ICONS[top], " ").concat(TIER_NAMES[top], " \xB7 ").concat(TIERS[top], " ").concat(b.desc) : "Not yet \xB7 first at ".concat(TIERS[0], " ").concat(b.desc)))), /*#__PURE__*/React.createElement("div", {
@@ -8781,7 +8893,7 @@ function Achievements(_ref86) {
       }, TIER_ICONS[i]), /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 9,
-          color: earned[i] ? A : "#827c73",
+          color: earned[i] ? A : "var(--text-lo-2)",
           marginTop: 2,
           fontWeight: earned[i] ? 700 : 400
         }
@@ -8791,7 +8903,7 @@ function Achievements(_ref86) {
     style: {
       textAlign: "center",
       padding: "30px 0",
-      color: "#6e6960",
+      color: "var(--text-faint-2)",
       fontSize: 13
     }
   }, /*#__PURE__*/React.createElement("div", {
@@ -8805,116 +8917,142 @@ function Achievements(_ref86) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState137 = useState("dashboard"),
-    _useState138 = _slicedToArray(_useState137, 2),
-    view = _useState138[0],
-    setView = _useState138[1];
-  var _useState139 = useState([]),
+  var _useState139 = useState("dashboard"),
     _useState140 = _slicedToArray(_useState139, 2),
-    logs = _useState140[0],
-    setLogs = _useState140[1];
-  var _useState141 = useState(0),
+    view = _useState140[0],
+    setView = _useState140[1];
+  var _useState141 = useState([]),
     _useState142 = _slicedToArray(_useState141, 2),
-    water = _useState142[0],
-    setWater = _useState142[1];
-  var _useState143 = useState("cut"),
+    logs = _useState142[0],
+    setLogs = _useState142[1];
+  var _useState143 = useState(0),
     _useState144 = _slicedToArray(_useState143, 2),
-    mode = _useState144[0],
-    setMode = _useState144[1];
-  var _useState145 = useState(null),
+    water = _useState144[0],
+    setWater = _useState144[1];
+  var _useState145 = useState("cut"),
     _useState146 = _slicedToArray(_useState145, 2),
-    prof = _useState146[0],
-    setProf = _useState146[1];
-  var _useState147 = useState([]),
+    mode = _useState146[0],
+    setMode = _useState146[1];
+  var _useState147 = useState(null),
     _useState148 = _slicedToArray(_useState147, 2),
-    hist = _useState148[0],
-    setHist = _useState148[1];
-  var _useState149 = useState([].concat(DEF_MEALS)),
+    prof = _useState148[0],
+    setProf = _useState148[1];
+  var _useState149 = useState([]),
     _useState150 = _slicedToArray(_useState149, 2),
-    meals = _useState150[0],
-    setMeals = _useState150[1];
-  var _useState151 = useState([]),
+    hist = _useState150[0],
+    setHist = _useState150[1];
+  var _useState151 = useState([].concat(DEF_MEALS)),
     _useState152 = _slicedToArray(_useState151, 2),
-    workouts = _useState152[0],
-    setWorkouts = _useState152[1];
+    meals = _useState152[0],
+    setMeals = _useState152[1];
   var _useState153 = useState([]),
     _useState154 = _slicedToArray(_useState153, 2),
-    earnedBdgs = _useState154[0],
-    setEarnedBdgs = _useState154[1];
-  var _useState155 = useState(null),
+    workouts = _useState154[0],
+    setWorkouts = _useState154[1];
+  var _useState155 = useState([]),
     _useState156 = _slicedToArray(_useState155, 2),
-    newBadge = _useState156[0],
-    setNewBadge = _useState156[1];
-  var _useState157 = useState(false),
+    earnedBdgs = _useState156[0],
+    setEarnedBdgs = _useState156[1];
+  var _useState157 = useState(null),
     _useState158 = _slicedToArray(_useState157, 2),
-    ready = _useState158[0],
-    setReady = _useState158[1];
-  var _useState159 = useState([]),
+    newBadge = _useState158[0],
+    setNewBadge = _useState158[1];
+  var _useState159 = useState(false),
     _useState160 = _slicedToArray(_useState159, 2),
-    weighIns = _useState160[0],
-    setWeighIns = _useState160[1];
-  var _useState161 = useState(0),
+    ready = _useState160[0],
+    setReady = _useState160[1];
+  var _useState161 = useState([]),
     _useState162 = _slicedToArray(_useState161, 2),
-    tdeeAdj = _useState162[0],
-    setTdeeAdj = _useState162[1];
+    weighIns = _useState162[0],
+    setWeighIns = _useState162[1];
   var _useState163 = useState(0),
     _useState164 = _slicedToArray(_useState163, 2),
-    coachKey = _useState164[0],
-    setCoachKey = _useState164[1];
-  var _useState165 = useState(null),
+    tdeeAdj = _useState164[0],
+    setTdeeAdj = _useState164[1];
+  var _useState165 = useState(0),
     _useState166 = _slicedToArray(_useState165, 2),
-    streakAnim = _useState166[0],
-    setStreakAnim = _useState166[1];
+    coachKey = _useState166[0],
+    setCoachKey = _useState166[1];
   var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    customKcal = _useState168[0],
-    setCustomKcal = _useState168[1];
-  var _useState169 = useState(false),
+    streakAnim = _useState168[0],
+    setStreakAnim = _useState168[1];
+  var _useState169 = useState(null),
     _useState170 = _slicedToArray(_useState169, 2),
-    aggressiveCutAcked = _useState170[0],
-    setAggressiveCutAcked = _useState170[1];
+    customKcal = _useState170[0],
+    setCustomKcal = _useState170[1];
+  var _useState171 = useState(false),
+    _useState172 = _slicedToArray(_useState171, 2),
+    aggressiveCutAcked = _useState172[0],
+    setAggressiveCutAcked = _useState172[1];
+  var _useState173 = useState(0),
+    _useState174 = _slicedToArray(_useState173, 2),
+    setThemeTick = _useState174[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+
+  // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
+  useEffect(function () {
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    var onChange = function onChange() {
+      if (window.__fuelSyncChrome) window.__fuelSyncChrome();
+      setThemeTick(function (t) {
+        return t + 1;
+      });
+    };
+    try {
+      mq.addEventListener("change", onChange);
+    } catch (e) {
+      mq.addListener(onChange);
+    }
+    return function () {
+      try {
+        mq.removeEventListener("change", onChange);
+      } catch (e) {
+        mq.removeListener(onChange);
+      }
+    };
+  }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState171 = useState("anonymous"),
-    _useState172 = _slicedToArray(_useState171, 2),
-    authState = _useState172[0],
-    setAuthState = _useState172[1];
-  var _useState173 = useState(null),
-    _useState174 = _slicedToArray(_useState173, 2),
-    authUser = _useState174[0],
-    setAuthUser = _useState174[1];
-  var _useState175 = useState(null),
+  var _useState175 = useState("anonymous"),
     _useState176 = _slicedToArray(_useState175, 2),
-    premiumGate = _useState176[0],
-    setPremiumGate = _useState176[1]; // {emoji, name} | null
-  var _useState177 = useState(false),
+    authState = _useState176[0],
+    setAuthState = _useState176[1];
+  var _useState177 = useState(null),
     _useState178 = _slicedToArray(_useState177, 2),
-    showSignIn = _useState178[0],
-    setShowSignIn = _useState178[1];
-  var _useState179 = useState(false),
+    authUser = _useState178[0],
+    setAuthUser = _useState178[1];
+  var _useState179 = useState(null),
     _useState180 = _slicedToArray(_useState179, 2),
-    showSignOut = _useState180[0],
-    setShowSignOut = _useState180[1];
+    premiumGate = _useState180[0],
+    setPremiumGate = _useState180[1]; // {emoji, name} | null
   var _useState181 = useState(false),
     _useState182 = _slicedToArray(_useState181, 2),
-    showLapsed = _useState182[0],
-    setShowLapsed = _useState182[1];
+    showSignIn = _useState182[0],
+    setShowSignIn = _useState182[1];
   var _useState183 = useState(false),
     _useState184 = _slicedToArray(_useState183, 2),
-    needsConsent = _useState184[0],
-    setNeedsConsent = _useState184[1]; // retroactive Art. 9 consent (R2)
-  var _useState185 = useState(null),
+    showSignOut = _useState184[0],
+    setShowSignOut = _useState184[1];
+  var _useState185 = useState(false),
     _useState186 = _slicedToArray(_useState185, 2),
-    consentInfo = _useState186[0],
-    setConsentInfo = _useState186[1]; // parsed local health_consent for display
-  var _useState187 = useState(navigator.onLine),
+    showLapsed = _useState186[0],
+    setShowLapsed = _useState186[1];
+  var _useState187 = useState(false),
     _useState188 = _slicedToArray(_useState187, 2),
-    isOnline = _useState188[0],
-    setIsOnline = _useState188[1];
-  var _useState189 = useState(""),
+    needsConsent = _useState188[0],
+    setNeedsConsent = _useState188[1]; // retroactive Art. 9 consent (R2)
+  var _useState189 = useState(null),
     _useState190 = _slicedToArray(_useState189, 2),
-    syncMsg = _useState190[0],
-    setSyncMsg = _useState190[1];
+    consentInfo = _useState190[0],
+    setConsentInfo = _useState190[1]; // parsed local health_consent for display
+  var _useState191 = useState(navigator.onLine),
+    _useState192 = _slicedToArray(_useState191, 2),
+    isOnline = _useState192[0],
+    setIsOnline = _useState192[1];
+  var _useState193 = useState(""),
+    _useState194 = _slicedToArray(_useState193, 2),
+    syncMsg = _useState194[0],
+    setSyncMsg = _useState194[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -8954,7 +9092,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref87 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
+      var _ref89 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
         var k, lv, wv, mv, pv, pp, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u, hc, hcParsed;
         return _regenerator().w(function (_context33) {
           while (1) switch (_context33.n) {
@@ -9108,7 +9246,7 @@ function App() {
         }, _callee33);
       }));
       return function load() {
-        return _ref87.apply(this, arguments);
+        return _ref89.apply(this, arguments);
       };
     }();
     load();
@@ -9151,7 +9289,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref88 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(l) {
+    var _ref90 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(l) {
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.n) {
           case 0:
@@ -9166,11 +9304,11 @@ function App() {
       }, _callee34);
     }));
     return function saveLogs(_x43) {
-      return _ref88.apply(this, arguments);
+      return _ref90.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref89 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(w) {
+    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(w) {
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.n) {
           case 0:
@@ -9185,11 +9323,11 @@ function App() {
       }, _callee35);
     }));
     return function saveWater(_x44) {
-      return _ref89.apply(this, arguments);
+      return _ref91.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref90 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(m) {
+    var _ref92 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(m) {
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.n) {
           case 0:
@@ -9204,11 +9342,11 @@ function App() {
       }, _callee36);
     }));
     return function saveMode(_x45) {
-      return _ref90.apply(this, arguments);
+      return _ref92.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(p) {
+    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(p) {
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.n) {
           case 0:
@@ -9224,11 +9362,11 @@ function App() {
       }, _callee37);
     }));
     return function saveProf(_x46) {
-      return _ref91.apply(this, arguments);
+      return _ref93.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref92 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(w) {
+    var _ref94 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(w) {
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.n) {
           case 0:
@@ -9243,11 +9381,11 @@ function App() {
       }, _callee38);
     }));
     return function saveWorkouts(_x47) {
-      return _ref92.apply(this, arguments);
+      return _ref94.apply(this, arguments);
     };
   }();
   var addLog = /*#__PURE__*/function () {
-    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(e) {
+    var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(e) {
       var isFirstToday, animKey, today, simulatedHist, newStreak;
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
@@ -9290,7 +9428,7 @@ function App() {
       }, _callee39);
     }));
     return function addLog(_x48) {
-      return _ref93.apply(this, arguments);
+      return _ref95.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -9316,7 +9454,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref94 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(kcal) {
+    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(kcal) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -9341,11 +9479,11 @@ function App() {
       }, _callee40);
     }));
     return function saveCustomKcal(_x49) {
-      return _ref94.apply(this, arguments);
+      return _ref96.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(m) {
+    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(m) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -9363,11 +9501,11 @@ function App() {
       }, _callee41);
     }));
     return function handleSetMode(_x50) {
-      return _ref95.apply(this, arguments);
+      return _ref97.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42() {
+    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42() {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -9382,11 +9520,11 @@ function App() {
       }, _callee42);
     }));
     return function handleAckAggressiveCut() {
-      return _ref96.apply(this, arguments);
+      return _ref98.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(updated) {
+    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(updated) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -9401,11 +9539,11 @@ function App() {
       }, _callee43);
     }));
     return function saveMeals(_x51) {
-      return _ref97.apply(this, arguments);
+      return _ref99.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(entry) {
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(entry) {
       var name, clean;
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
@@ -9435,14 +9573,14 @@ function App() {
       }, _callee44);
     }));
     return function addToQA(_x52) {
-      return _ref98.apply(this, arguments);
+      return _ref100.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(googleUser, grantedBy, consentMeta) {
+    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t33;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.p = _context45.n) {
@@ -9537,13 +9675,13 @@ function App() {
       }, _callee45, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x53, _x54, _x55) {
-      return _ref99.apply(this, arguments);
+      return _ref101.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
+    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
       var meta, rec;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
@@ -9574,11 +9712,11 @@ function App() {
       }, _callee46);
     }));
     return function handleConsent() {
-      return _ref100.apply(this, arguments);
+      return _ref102.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
+    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
       var clearKeys, _i2, _clearKeys, k, i, key, _t34;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
@@ -9643,7 +9781,7 @@ function App() {
       }, _callee47, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref101.apply(this, arguments);
+      return _ref103.apply(this, arguments);
     };
   }();
 
@@ -9700,7 +9838,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
+    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -9715,7 +9853,7 @@ function App() {
       }, _callee48);
     }));
     return function handleDeleteAccount() {
-      return _ref102.apply(this, arguments);
+      return _ref104.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -9744,7 +9882,7 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(upd) {
+    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(upd) {
       var nh;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
@@ -9768,11 +9906,11 @@ function App() {
       }, _callee49);
     }));
     return function updateDay(_x56) {
-      return _ref103.apply(this, arguments);
+      return _ref105.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(weight) {
+    var _ref106 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(weight) {
       var entry, updated, updatedProf, base, result, newAdj;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
@@ -9819,7 +9957,7 @@ function App() {
       }, _callee50);
     }));
     return function onWeighIn(_x57) {
-      return _ref104.apply(this, arguments);
+      return _ref106.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -9873,7 +10011,7 @@ function App() {
       color: "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     }
-  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: #6e6960; }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: #0b0d0b; color: #e6e1d7; }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }\n      "), streakAnim && /*#__PURE__*/React.createElement(StreakCelebration, {
+  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: var(--text-faint-2); }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: var(--bg); color: var(--text-hi); }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }\n      "), streakAnim && /*#__PURE__*/React.createElement(StreakCelebration, {
     anim: streakAnim,
     onDone: function onDone() {
       return setStreakAnim(null);
@@ -9926,7 +10064,7 @@ function App() {
       borderRadius: 24,
       padding: "36px 28px",
       textAlign: "center",
-      border: "1px solid ".concat(A, "44"),
+      border: "1px solid ".concat(aA("44")),
       maxWidth: 300,
       width: "100%"
     }
@@ -9947,13 +10085,13 @@ function App() {
     style: {
       fontSize: 22,
       fontWeight: 900,
-      color: "#e6e1d7",
+      color: "var(--text-hi)",
       marginBottom: 6
     }
   }, newBadge.b.name), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
-      color: "#9b958b",
+      color: "var(--text-label)",
       marginBottom: 24
     }
   }, TIERS[newBadge.i], " ", newBadge.b.desc), /*#__PURE__*/React.createElement("button", {
@@ -9964,7 +10102,7 @@ function App() {
       width: "100%",
       padding: "14px",
       background: A,
-      color: "#0b0d0b",
+      color: "var(--bg)",
       border: "none",
       borderRadius: 12,
       fontSize: 14,

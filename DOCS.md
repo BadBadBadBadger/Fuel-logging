@@ -1189,23 +1189,49 @@ Implemented worker auth gate (Phase 0) + server-authoritative entitlement (Phase
 
 ## 35. Design System & Visual Theme
 
-Fuel Log uses a **dark, warm cream-grey** theme (introduced in v6.1, replacing the
-original neon-lime/black "energy-drink" palette). All styling is inline React
-styles — there is no CSS framework. Colours come from four central constants plus
-a hard-coded cream-grey scale.
+Fuel Log ships **two themes — a dark "cream-on-near-black" and a light "warm
+paper-and-coal-ink"** (light mode added v6.4). They are **mirror images of one
+palette**: every colour is a **CSS custom property** with a dark and a light value,
+so the dark theme is byte-for-byte what it always was and light is its inversion.
+Styling is still inline React styles (no CSS framework) — the inline styles just
+reference `var(--token)` instead of raw hex now.
 
-### Core constants (`app.jsx`, top of file)
+### Theme system (v6.4)
 
-```javascript
-const A = "#e8e2d4", BG = "#0b0d0b", CARD = "#141210", BD = "#24211b";
-```
+- **Source of truth:** the `:root` variable blocks in `index.html` `<style>`. Light
+  values are the `:root` default; `@media (prefers-color-scheme: dark)` supplies the
+  dark set; `:root[data-theme="light"|"dark"]` lets a manual choice override the OS.
+- **The choice** lives in `localStorage["fuel_theme"] ∈ {system, light, dark}`
+  (per-device, **never synced**). `system` removes the `data-theme` attribute so the
+  OS drives it (and live OS flips apply without reload). A tiny pre-paint script in
+  `<head>` applies a saved override before first render (no flash) and keeps the
+  `theme-color` meta in sync via `window.__fuelSyncChrome`.
+- **Control:** the 🌙/☀️/🖥️ `ThemeToggle` at the bottom of the Profile/⚙️ screen.
+- **The four constants are now var aliases:**
+  ```javascript
+  const A = "var(--accent)", BG = "var(--bg)", CARD = "var(--surface)", BD = "var(--border)";
+  ```
+- **JS helpers** (top of `app.jsx`): `mix(c,h)` / `aA(h)` build alpha via
+  `color-mix` (raw `"#hex"+"55"` concatenation no longer works on a `var()`);
+  `cssVar(n)` / `rc(v)` **resolve a `var()` to a concrete hex** for SVG/Recharts
+  attributes — CSS variables do **not** work in SVG presentation attributes
+  (`stroke=`, `fill=`, axis `tick`), so chart colours go through `rc(...)` and the
+  app re-renders on OS theme change to refresh them.
 
-| Constant | Hex | Role |
-|---|---|---|
-| `A`  | `#e8e2d4` | **Accent** — primary buttons, active tabs, calorie ring, MAINTAIN mode, chart rolling-average line, avatar initial. Cream on dark; dark text (`#0b0d0b`) sits on it for buttons. |
-| `BG` | `#0b0d0b` | App background (near-black). Also used as dark text colour on the cream accent. |
-| `CARD` | `#141210` | Card / panel surface (warm near-black). |
-| `BD` | `#24211b` | Borders and dividers (warm dark). |
+### Core tokens — dark / light values
+
+| Constant | `--var` | Dark | Light | Role |
+|---|---|---|---|---|
+| `A`  | `--accent`  | `#e8e2d4` | `#2b2824` | **Accent** — buttons, calorie ring, MAINTAIN, rolling-avg line, avatar. On-accent text = `--bg` (so it inverts with the theme). |
+| `BG` | `--bg`      | `#0b0d0b` | `#f4f1e9` | App background; also the text colour **on** the accent. |
+| `CARD` | `--surface` | `#141210` | `#fbf9f3` | Card / panel surface. |
+| `BD` | `--border`  | `#24211b` | `#ddd8cb` | Borders and dividers. |
+
+> The full ~60-token map (surface scale, text scale, status + tints, all with both
+> values) is generated and lives in the `index.html` `:root` blocks — that file is
+> the canonical list. Light values are contrast-checked to WCAG AA (text ≥4.5:1 on
+> paper; status colours darkened for AA: CUT `#1f63c2`, BULK `#c2410c`, WARN
+> `#946400`, OVER `#c62a22`).
 
 ### Surface scale (warm dark neutrals)
 
@@ -1251,13 +1277,18 @@ Blue-tinted dark surfaces (e.g. `#131826`, `#0f1c2e`, `#1e2a3a`, `#2a4a7a`) are 
 for the water / CUT-mode sections and are **not** part of the cream-grey scale.
 
 ### Rules when changing colours
-- Prefer the constants (`A`/`BG`/`CARD`/`BD`); only reach for raw hex when matching
-  an existing scale value above.
-- Keep body/label text at ≥4.5:1 against `BG`. Use the contrast table as the floor.
-- Placeholders are set globally in `index.html` **and** the in-app `<style>` block in
-  `app.jsx` — update both. The same applies to the `candidate/index.html` harness.
-- The accent is dual-purpose (fill **and** text). If you change `A`, verify both
-  dark-text-on-accent (buttons) and accent-text-on-dark (labels, ring) still read well.
+- **Never hard-code a hex in `app.jsx`.** Use `var(--token)` (or the constants
+  `A`/`BG`/`CARD`/`BD`). A raw hex won't theme-switch and breaks light mode. If you
+  need a new colour, add the token (both values) to the `:root` blocks in
+  `index.html` first.
+- **Both themes, always.** Add a light *and* a dark value, and check body/label text
+  at ≥4.5:1 against the background **in both**. The dark tables above are the dark set.
+- **Alpha:** use `mix(color, "55")` / `aA("55")`, not string concatenation — `var()`
+  can't take a hex-alpha suffix.
+- **SVG / Recharts colours** (`stroke=`, `fill=`, axis `tick`) must be wrapped in
+  `rc(...)` — CSS variables don't resolve in SVG presentation attributes.
+- The accent is dual-purpose (fill **and** text-via-`--bg`); if you change `--accent`,
+  verify on-accent buttons *and* accent-as-ink (labels, ring) read well in both themes.
 
 ---
 
@@ -1310,6 +1341,22 @@ appears after a deploy.
 ---
 
 ## 37. Changelog
+
+### v6.4 — Light mode (system-aware, with manual override) (June 2026)
+Built on branch `feat/light-mode`; device-tested on Pixel 7. Tests 85/85, sw `v42→v43`.
+- **A full light theme** ("warm paper + coal ink") mirroring the dark cream-grey theme.
+  Same app, gravity flipped — the cream accent becomes coal grey, near-black surfaces
+  become warm paper. Contrast-checked to WCAG AA (text ≥4.5:1; status colours darkened
+  for paper).
+- **System-aware by default** via `prefers-color-scheme`, with an in-app **3-way toggle**
+  (🌙 Dark · ☀️ Light · 🖥️ System) at the bottom of the Profile/⚙️ screen. `System`
+  re-delegates to the OS and follows live OS flips; the choice persists per-device in
+  `localStorage["fuel_theme"]` and is never synced.
+- **Under the hood:** the whole palette (~60 tokens) moved from hard-coded hex to **CSS
+  custom properties** with light/dark sets, toggled by a `data-theme` attribute. The four
+  constants are now `var()` aliases; alpha uses `color-mix` (`mix`/`aA` helpers); Recharts
+  colours resolve via `rc()` since CSS vars don't work in SVG attributes. See §35.
+- Replaces the long-standing dark-only design. Dark theme values are unchanged.
 
 ### v6.3 — Imperial units + allergen auto-select fix (June 2026)
 Two changes on branch `feature/units-and-tag-autoselect` (off `phase-b-compliance`).

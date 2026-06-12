@@ -6,7 +6,21 @@
 var exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
-const A = "#e8e2d4", BG = "#0b0d0b", CARD = "#141210", BD = "#24211b";
+const A = "var(--accent)", BG = "var(--bg)", CARD = "var(--surface)", BD = "var(--border)";
+// Theme helpers (light mode). mix = alpha via color-mix; aA = accent alpha; rc = resolve a
+// "var(--x)" to a concrete hex for SVG/Recharts attributes (CSS vars don't work there).
+const mix = (c, h) => `color-mix(in srgb, ${c} ${Math.round(parseInt(h, 16) / 2.55)}%, transparent)`;
+const aA = h => mix(A, h);
+const cssVar = n => (typeof getComputedStyle === "undefined" ? "" : getComputedStyle(document.documentElement).getPropertyValue(n).trim());
+const rc = v => { const m = String(v).match(/var\((--[\w-]+)\)/); return m ? (cssVar(m[1]) || v) : v; };
+// Theme choice (per-device, never synced): "system" follows prefers-color-scheme; "light"/"dark" force it.
+const getTheme = () => { try { return localStorage.getItem("fuel_theme") || "system"; } catch (e) { return "system"; } };
+const applyTheme = choice => {
+  try { localStorage.setItem("fuel_theme", choice); } catch (e) {}
+  if (choice === "light" || choice === "dark") document.documentElement.setAttribute("data-theme", choice);
+  else document.documentElement.removeAttribute("data-theme");
+  if (typeof window !== "undefined" && window.__fuelSyncChrome) window.__fuelSyncChrome();
+};
 
 // ── Auth / Premium ────────────────────────────────────────────
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
@@ -17,9 +31,9 @@ const GOOGLE_CLIENT_ID = "922818167366-5nl6qfteipui307j1oi7asu7d3bkgvat.apps.goo
 // Validation happens server-side in the Cloudflare Worker /redeem endpoint.
 
 const MODES = {
-  cut:      { label:"CUT",      color:"#4b9fff", adj:-500 },
-  maintain: { label:"MAINTAIN", color:"#e8e2d4", adj:0    },
-  bulk:     { label:"BULK",     color:"#ff7b4b", adj:500  },
+  cut:      { label:"CUT",      color:"var(--cut)", adj:-500 },
+  maintain: { label:"MAINTAIN", color:"var(--accent)", adj:0    },
+  bulk:     { label:"BULK",     color:"var(--bulk)", adj:500  },
 };
 
 
@@ -719,9 +733,9 @@ class ErrorBoundary extends React.Component {
   static getDerivedStateFromError(e) { return { err: e }; }
   render() {
     if (this.state.err) return (
-      <div style={{ padding:24, color:"#ff5555", fontSize:13, lineHeight:1.6 }}>
+      <div style={{ padding:24, color:"var(--over)", fontSize:13, lineHeight:1.6 }}>
         <div style={{ fontSize:16, fontWeight:900, marginBottom:8 }}>⚠️ Render error</div>
-        <div style={{ fontFamily:"monospace", background:"#1a0d0d", padding:12, borderRadius:8, wordBreak:"break-all" }}>
+        <div style={{ fontFamily:"monospace", background:"var(--over-tint-2)", padding:12, borderRadius:8, wordBreak:"break-all" }}>
           {this.state.err.message}
         </div>
       </div>
@@ -739,14 +753,14 @@ function PremiumModal({ feature, onUpgrade, onDismiss }) {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
       display:"flex", alignItems:"center", justifyContent:"center", zIndex:1002, padding:24 }}>
       <div style={{ background:CARD, borderRadius:24, padding:"36px 28px", textAlign:"center",
-        border:`1px solid ${A}44`, maxWidth:300, width:"100%" }}>
+        border:`1px solid ${aA("44")}`, maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:64, marginBottom:10 }}>{emoji}</div>
         <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>PREMIUM FEATURE</div>
-        <div style={{ fontSize:20, fontWeight:900, color:"#e6e1d7", marginBottom:8 }}>{name}</div>
-        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.6, marginBottom:16 }}>
+        <div style={{ fontSize:20, fontWeight:900, color:"var(--text-hi)", marginBottom:8 }}>{name}</div>
+        <div style={{ fontSize:13, color:"var(--text-mid)", lineHeight:1.6, marginBottom:16 }}>
           AI features require a Premium account
         </div>
-        <div style={{ background:"#0b0d0b", borderRadius:12, padding:"14px 16px", marginBottom:20, textAlign:"left" }}>
+        <div style={{ background:"var(--bg)", borderRadius:12, padding:"14px 16px", marginBottom:20, textAlign:"left" }}>
           <div style={{ fontSize:10, color:A, fontWeight:800, letterSpacing:"0.1em", marginBottom:10 }}>PREMIUM UNLOCKS</div>
           {[
             ["🤖", "AI Meal Log — describe any meal"],
@@ -756,20 +770,20 @@ function PremiumModal({ feature, onUpgrade, onDismiss }) {
           ].map(([e, t], i) => (
             <div key={i} style={{ display:"flex", gap:10, marginBottom:6, alignItems:"center" }}>
               <span style={{ fontSize:15, flexShrink:0 }}>{e}</span>
-              <span style={{ fontSize:12, color:"#b6b0a4", lineHeight:1.4 }}>{t}</span>
+              <span style={{ fontSize:12, color:"var(--text-mid-6)", lineHeight:1.4 }}>{t}</span>
             </div>
           ))}
-          <div style={{ fontSize:11, color:"#9b958b", marginTop:10, borderTop:`1px solid ${BD}`, paddingTop:10 }}>
+          <div style={{ fontSize:11, color:"var(--text-label)", marginTop:10, borderTop:`1px solid ${BD}`, paddingTop:10 }}>
             £4.99/month · £49.99/year · 30-day free trial
           </div>
         </div>
         <button onClick={onUpgrade}
-          style={{ width:"100%", padding:"14px", background:A, color:"#0b0d0b",
+          style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
             border:"none", borderRadius:12, fontSize:14, fontWeight:900, marginBottom:10 }}>
           Start Free Trial 🚀
         </button>
         <button onClick={onDismiss}
-          style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
+          style={{ width:"100%", padding:"10px", background:"none", color:"var(--text-label)",
             border:"none", fontSize:13, cursor:"pointer" }}>
           Maybe Later
         </button>
@@ -840,26 +854,26 @@ function SignInModal({ onSuccess, onCancel }) {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
       display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24 }}>
       <div style={{ background:CARD, borderRadius:24, padding:"32px 24px",
-        border:`1px solid ${A}33`, maxWidth:300, width:"100%" }}>
+        border:`1px solid ${aA("33")}`, maxWidth:300, width:"100%" }}>
 
         {step === "google" && (
           <>
             <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>🔐</div>
-            <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:6 }}>
+            <div style={{ fontSize:16, fontWeight:900, color:"var(--text-hi)", textAlign:"center", marginBottom:6 }}>
               Sign in to continue
             </div>
-            <div style={{ fontSize:13, color:"#9b958b", textAlign:"center", lineHeight:1.6, marginBottom:18 }}>
+            <div style={{ fontSize:13, color:"var(--text-label)", textAlign:"center", lineHeight:1.6, marginBottom:18 }}>
               We use Google Sign In to protect your account. No separate password needed.
             </div>
 
             {/* 18+ affirmation — must be ticked before the Google button appears (R6) */}
             <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
-              background:"#0b0d0b", border:`1px solid ${ageOK ? A + "55" : BD}`, borderRadius:10,
+              background:"var(--bg)", border:`1px solid ${ageOK ? aA("55") : BD}`, borderRadius:10,
               padding:"11px 12px", marginBottom:14 }}>
               <input type="checkbox" checked={ageOK}
                 onChange={e => { setAgeOK(e.target.checked); if (e.target.checked && !ageAt) setAgeAt(Date.now()); }}
                 style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
-              <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
+              <span style={{ fontSize:12, color:"var(--text-hi-2)", lineHeight:1.5 }}>
                 I confirm I am <strong>18 or over</strong>. Fuel Log is for adults in the UK&nbsp;and&nbsp;EEA.
                 I agree to the <a href={LEGAL.terms} target="_blank" rel="noopener" style={{ color:A }}>Terms</a> and{" "}
                 <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
@@ -868,12 +882,12 @@ function SignInModal({ onSuccess, onCancel }) {
 
             {ageOK
               ? <div id="gsi-btn" style={{ display:"flex", justifyContent:"center", marginBottom:14 }}></div>
-              : <div style={{ textAlign:"center", fontSize:12, color:"#827c73", padding:"12px 0", marginBottom:14 }}>
+              : <div style={{ textAlign:"center", fontSize:12, color:"var(--text-lo-2)", padding:"12px 0", marginBottom:14 }}>
                   Tick the box above to continue with Google.
                 </div>}
 
             <button onClick={onCancel}
-              style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
+              style={{ width:"100%", padding:"10px", background:"none", color:"var(--text-label)",
                 border:"none", fontSize:13, cursor:"pointer" }}>
               Cancel
             </button>
@@ -885,29 +899,29 @@ function SignInModal({ onSuccess, onCancel }) {
             <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
               👋 HI, {((gUser?.name || "").split(" ")[0] || "THERE").toUpperCase()}
             </div>
-            <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", marginBottom:14 }}>
+            <div style={{ fontSize:16, fontWeight:900, color:"var(--text-hi)", marginBottom:14 }}>
               Start your free trial
             </div>
-            <div style={{ background:"#0b0d0b", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+            <div style={{ background:"var(--bg)", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
               <div style={{ fontSize:17, fontWeight:900, color:A }}>30 days free</div>
-              <div style={{ fontSize:12, color:"#9b958b", marginTop:3 }}>then £4.99/month or £49.99/year</div>
-              <div style={{ fontSize:11, color:"#827c73", marginTop:6 }}>Cancel anytime before trial ends</div>
+              <div style={{ fontSize:12, color:"var(--text-label)", marginTop:3 }}>then £4.99/month or £49.99/year</div>
+              <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:6 }}>Cancel anytime before trial ends</div>
             </div>
             <button disabled
-              style={{ width:"100%", padding:"14px", background:"#24211b",
-                border:`1px solid ${BD}`, borderRadius:12, color:"#9b958b",
+              style={{ width:"100%", padding:"14px", background:"var(--border)",
+                border:`1px solid ${BD}`, borderRadius:12, color:"var(--text-label)",
                 fontSize:13, fontWeight:700, marginBottom:16, cursor:"not-allowed" }}>
               Subscribe — Coming Soon
             </button>
 
             {/* Explicit Art. 9 health-data consent — required before the first cloud sync (R2) */}
             <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
-              background:"#0b0d0b", border:`1px solid ${consentOK ? A + "55" : BD}`, borderRadius:10,
+              background:"var(--bg)", border:`1px solid ${consentOK ? aA("55") : BD}`, borderRadius:10,
               padding:"11px 12px", marginBottom:14 }}>
               <input type="checkbox" checked={consentOK}
                 onChange={e => { setConsentOK(e.target.checked); setVError(""); }}
                 style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
-              <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
+              <span style={{ fontSize:12, color:"var(--text-hi-2)", lineHeight:1.5 }}>
                 I explicitly consent to Fuel Log storing my <strong>health data</strong> (weight, body&nbsp;fat,
                 sex, and any dietary&nbsp;requirements&nbsp;and&nbsp;allergies I enter) in the cloud to provide the
                 service. Meal/workout text, body metrics and my dietary needs are sent to our
@@ -916,25 +930,25 @@ function SignInModal({ onSuccess, onCancel }) {
               </span>
             </label>
 
-            <div style={{ fontSize:11, color:"#aea79c", textAlign:"center", marginBottom:8 }}>Have an access code?</div>
+            <div style={{ fontSize:11, color:"var(--text-mid)", textAlign:"center", marginBottom:8 }}>Have an access code?</div>
             <input value={voucher} onChange={e => { setVoucher(e.target.value); setVError(""); }}
               placeholder="Enter code..." onKeyDown={e => e.key === "Enter" && handleVoucher()}
-              style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
-                border:`1px solid ${vError ? "#ff5555" : BD}`, borderRadius:10,
-                padding:"12px 14px", color:"#e6e1d7", fontSize:14,
+              style={{ width:"100%", boxSizing:"border-box", background:"var(--bg)",
+                border:`1px solid ${vError ? "var(--over)" : BD}`, borderRadius:10,
+                padding:"12px 14px", color:"var(--text-hi)", fontSize:14,
                 fontFamily:"inherit", outline:"none", marginBottom: vError ? 6 : 10 }}/>
-            {vError && <div style={{ fontSize:12, color:"#ff5555", marginBottom:10 }}>{vError}</div>}
+            {vError && <div style={{ fontSize:12, color:"var(--over)", marginBottom:10 }}>{vError}</div>}
             <button onClick={handleVoucher} disabled={!consentOK}
-              style={{ width:"100%", padding:"12px", background:"#1c1a15",
+              style={{ width:"100%", padding:"12px", background:"var(--surface-2)",
                 border:`1px solid ${BD}`, borderRadius:12,
-                color: consentOK ? "#b6b0a4" : "#6e6960",
+                color: consentOK ? "var(--text-mid-6)" : "var(--text-faint-2)",
                 fontSize:13, fontWeight:700, marginBottom:10,
                 opacity: consentOK ? 1 : 0.6 }}>
               Redeem Code
             </button>
             <button onClick={onCancel}
               style={{ width:"100%", padding:"10px", background:"none",
-                color:"#9b958b", border:"none", fontSize:13, cursor:"pointer" }}>
+                color:"var(--text-label)", border:"none", fontSize:13, cursor:"pointer" }}>
               Cancel
             </button>
           </>
@@ -951,21 +965,21 @@ function SignOutModal({ userName, onConfirm, onCancel }) {
       <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
         border:`1px solid ${BD}`, maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:36, textAlign:"center", marginBottom:12 }}>🔓</div>
-        <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:10 }}>
+        <div style={{ fontSize:16, fontWeight:900, color:"var(--text-hi)", textAlign:"center", marginBottom:10 }}>
           Sign out{userName ? `, ${userName.split(" ")[0]}` : ""}?
         </div>
-        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
+        <div style={{ fontSize:13, color:"var(--text-mid)", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
           Signing out will remove local data.<br/>
           Your cloud data is safe and will restore on next login.
         </div>
         <button onClick={onConfirm}
-          style={{ width:"100%", padding:"13px", background:"#1a0d0d",
-            border:"1px solid #3a1a1a", borderRadius:12, color:"#ff5555",
+          style={{ width:"100%", padding:"13px", background:"var(--over-tint-2)",
+            border:"1px solid var(--over-tint)", borderRadius:12, color:"var(--over)",
             fontSize:14, fontWeight:900, marginBottom:10 }}>
           Sign Out
         </button>
         <button onClick={onCancel}
-          style={{ width:"100%", padding:"12px", background:A, color:"#0b0d0b",
+          style={{ width:"100%", padding:"12px", background:A, color:"var(--bg)",
             border:"none", borderRadius:12, fontSize:14, fontWeight:900 }}>
           Stay Signed In
         </button>
@@ -982,34 +996,34 @@ function ConsentModal({ onConsent, onSignOut }) {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
       display:"flex", alignItems:"center", justifyContent:"center", zIndex:1001, padding:24 }}>
       <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
-        border:`1px solid ${A}33`, maxWidth:320, width:"100%" }}>
+        border:`1px solid ${aA("33")}`, maxWidth:320, width:"100%" }}>
         <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>🔏</div>
-        <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:8 }}>
+        <div style={{ fontSize:16, fontWeight:900, color:"var(--text-hi)", textAlign:"center", marginBottom:8 }}>
           A quick consent check
         </div>
-        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.6, marginBottom:16, textAlign:"center" }}>
+        <div style={{ fontSize:13, color:"var(--text-mid)", lineHeight:1.6, marginBottom:16, textAlign:"center" }}>
           We've updated how we describe your data. To keep syncing your health data we need your
           explicit consent.
         </div>
         <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
-          background:"#0b0d0b", border:`1px solid ${ok ? A + "55" : BD}`, borderRadius:10,
+          background:"var(--bg)", border:`1px solid ${ok ? aA("55") : BD}`, borderRadius:10,
           padding:"11px 12px", marginBottom:16 }}>
           <input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)}
             style={{ marginTop:2, width:16, height:16, accentColor:A, flexShrink:0 }}/>
-          <span style={{ fontSize:12, color:"#cfc9bd", lineHeight:1.5 }}>
+          <span style={{ fontSize:12, color:"var(--text-hi-2)", lineHeight:1.5 }}>
             I explicitly consent to Fuel Log storing my <strong>health data</strong> (weight, body&nbsp;fat,
             sex, and any dietary&nbsp;requirements&nbsp;and&nbsp;allergies I enter) to provide the service. See the{" "}
             <a href={LEGAL.privacy} target="_blank" rel="noopener" style={{ color:A }}>Privacy&nbsp;Policy</a>.
           </span>
         </label>
         <button onClick={onConsent} disabled={!ok}
-          style={{ width:"100%", padding:"13px", background: ok ? A : "#24211b",
-            color: ok ? "#0b0d0b" : "#6e6960", border:"none", borderRadius:12,
+          style={{ width:"100%", padding:"13px", background: ok ? A : "var(--border)",
+            color: ok ? "var(--bg)" : "var(--text-faint-2)", border:"none", borderRadius:12,
             fontSize:14, fontWeight:900, marginBottom:10, opacity: ok ? 1 : 0.7 }}>
           Agree &amp; continue
         </button>
         <button onClick={onSignOut}
-          style={{ width:"100%", padding:"10px", background:"none", color:"#9b958b",
+          style={{ width:"100%", padding:"10px", background:"none", color:"var(--text-label)",
             border:"none", fontSize:13, cursor:"pointer" }}>
           Sign out instead
         </button>
@@ -1036,9 +1050,9 @@ function AccountScreen({ user, consentInfo, onBack, onExport, onSignOut, onDelet
   const linkRow = (label, href) => (
     <a href={href} target="_blank" rel="noopener"
       style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-        padding:"13px 14px", background:"#1c1a15", border:`1px solid ${BD}`, borderRadius:12,
-        color:"#cfc9bd", fontSize:14, textDecoration:"none", marginBottom:8 }}>
-      <span>{label}</span><span style={{ color:"#827c73" }}>↗</span>
+        padding:"13px 14px", background:"var(--surface-2)", border:`1px solid ${BD}`, borderRadius:12,
+        color:"var(--text-hi-2)", fontSize:14, textDecoration:"none", marginBottom:8 }}>
+      <span>{label}</span><span style={{ color:"var(--text-lo-2)" }}>↗</span>
     </a>
   );
 
@@ -1050,8 +1064,8 @@ function AccountScreen({ user, consentInfo, onBack, onExport, onSignOut, onDelet
     <div style={{ minHeight:"100vh", background:BG, padding:"18px 16px 60px", maxWidth:480, margin:"0 auto" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
         <button onClick={onBack}
-          style={{ width:36, height:36, background:"#1c1a15", border:`1px solid ${BD}`,
-            borderRadius:10, color:"#aea79c", fontSize:18 }}>←</button>
+          style={{ width:36, height:36, background:"var(--surface-2)", border:`1px solid ${BD}`,
+            borderRadius:10, color:"var(--text-mid)", fontSize:18 }}>←</button>
         <h1 style={{ margin:0, fontSize:20, fontWeight:900, color:A }}>Account &amp; Privacy</h1>
       </div>
 
@@ -1060,81 +1074,81 @@ function AccountScreen({ user, consentInfo, onBack, onExport, onSignOut, onDelet
         border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px", marginBottom:20 }}>
         <Avatar user={user} size={40}/>
         <div style={{ minWidth:0 }}>
-          <div style={{ fontSize:14, fontWeight:800, color:"#e6e1d7", whiteSpace:"nowrap",
+          <div style={{ fontSize:14, fontWeight:800, color:"var(--text-hi)", whiteSpace:"nowrap",
             overflow:"hidden", textOverflow:"ellipsis" }}>{user?.name || "Signed in"}</div>
-          {user?.email && <div style={{ fontSize:12, color:"#9b958b", whiteSpace:"nowrap",
+          {user?.email && <div style={{ fontSize:12, color:"var(--text-label)", whiteSpace:"nowrap",
             overflow:"hidden", textOverflow:"ellipsis" }}>{user.email}</div>}
         </div>
       </div>
 
       {/* Your data */}
-      <div style={{ fontSize:11, color:"#827c73", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>YOUR DATA</div>
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>YOUR DATA</div>
       <button onClick={onExport}
-        style={{ width:"100%", padding:"13px 14px", background:"#1c1a15", border:`1px solid ${BD}`,
-          borderRadius:12, color:"#cfc9bd", fontSize:14, fontWeight:700, textAlign:"left",
+        style={{ width:"100%", padding:"13px 14px", background:"var(--surface-2)", border:`1px solid ${BD}`,
+          borderRadius:12, color:"var(--text-hi-2)", fontSize:14, fontWeight:700, textAlign:"left",
           display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-        <span>⬇️ Download my data</span><span style={{ color:"#827c73", fontSize:12 }}>JSON</span>
+        <span>⬇️ Download my data</span><span style={{ color:"var(--text-lo-2)", fontSize:12 }}>JSON</span>
       </button>
-      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.6, marginBottom:20 }}>
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.6, marginBottom:20 }}>
         A copy of everything stored against your account, in a portable file (GDPR access &amp; portability).
       </div>
 
       {/* Legal */}
-      <div style={{ fontSize:11, color:"#827c73", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>LEGAL</div>
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>LEGAL</div>
       {linkRow("Privacy Policy", LEGAL.privacy)}
       {linkRow("Terms of Service", LEGAL.terms)}
       {linkRow("Who processes your data", LEGAL.subprocessors)}
       {consentDate && (
-        <div style={{ fontSize:11, color:"#827c73", lineHeight:1.6, margin:"8px 0 20px" }}>
+        <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.6, margin:"8px 0 20px" }}>
           Health-data consent given {consentDate} (policy v{consentInfo.version || POLICY_VERSION}).
           To withdraw consent, delete your data below.
         </div>
       )}
 
       {/* Session */}
-      <div style={{ fontSize:11, color:"#827c73", letterSpacing:"0.1em", fontWeight:800, margin:"4px 0 8px" }}>SESSION</div>
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", letterSpacing:"0.1em", fontWeight:800, margin:"4px 0 8px" }}>SESSION</div>
       <button onClick={onSignOut}
-        style={{ width:"100%", padding:"13px 14px", background:"#1c1a15", border:`1px solid ${BD}`,
-          borderRadius:12, color:"#cfc9bd", fontSize:14, fontWeight:700, textAlign:"left", marginBottom:24 }}>
+        style={{ width:"100%", padding:"13px 14px", background:"var(--surface-2)", border:`1px solid ${BD}`,
+          borderRadius:12, color:"var(--text-hi-2)", fontSize:14, fontWeight:700, textAlign:"left", marginBottom:24 }}>
         🔓 Sign out
       </button>
 
       {/* Danger zone */}
-      <div style={{ fontSize:11, color:"#ff7a7a", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>DANGER ZONE</div>
+      <div style={{ fontSize:11, color:"var(--over-3)", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>DANGER ZONE</div>
       {!confirm ? (
         <button onClick={() => { setConfirm(true); setErr(""); }}
-          style={{ width:"100%", padding:"13px 14px", background:"#1a0d0d", border:"1px solid #3a1a1a",
-            borderRadius:12, color:"#ff5555", fontSize:14, fontWeight:800, textAlign:"left" }}>
+          style={{ width:"100%", padding:"13px 14px", background:"var(--over-tint-2)", border:"1px solid var(--over-tint)",
+            borderRadius:12, color:"var(--over)", fontSize:14, fontWeight:800, textAlign:"left" }}>
           🗑️ Delete my account &amp; all data
         </button>
       ) : (
-        <div style={{ background:"#1a0d0d", border:"1px solid #3a1a1a", borderRadius:14, padding:"16px" }}>
-          <div style={{ fontSize:13, color:"#ffb4b4", lineHeight:1.6, marginBottom:12 }}>
+        <div style={{ background:"var(--over-tint-2)", border:"1px solid var(--over-tint)", borderRadius:14, padding:"16px" }}>
+          <div style={{ fontSize:13, color:"var(--over-soft)", lineHeight:1.6, marginBottom:12 }}>
             This permanently deletes your account and <strong>all</strong> your data (profile, weigh-ins,
             logs, history, badges). This cannot be undone. Type <strong>DELETE</strong> to confirm.
           </div>
           <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="DELETE"
             disabled={busy}
-            style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b", border:`1px solid #3a1a1a`,
-              borderRadius:10, padding:"11px 13px", color:"#e6e1d7", fontSize:14, fontFamily:"inherit",
+            style={{ width:"100%", boxSizing:"border-box", background:"var(--bg)", border:`1px solid var(--over-tint)`,
+              borderRadius:10, padding:"11px 13px", color:"var(--text-hi)", fontSize:14, fontFamily:"inherit",
               outline:"none", marginBottom:12 }}/>
-          {err && <div style={{ fontSize:12, color:"#ff7a7a", marginBottom:10 }}>{err}</div>}
+          {err && <div style={{ fontSize:12, color:"var(--over-3)", marginBottom:10 }}>{err}</div>}
           <button onClick={runDelete} disabled={busy || typed.trim().toUpperCase() !== "DELETE"}
-            style={{ width:"100%", padding:"13px", background:"#3a0f0f", border:"1px solid #5a1a1a",
-              borderRadius:12, color: (typed.trim().toUpperCase() === "DELETE" && !busy) ? "#ff5555" : "#7a5555",
+            style={{ width:"100%", padding:"13px", background:"var(--over-tint-6)", border:"1px solid var(--over-tint-4)",
+              borderRadius:12, color: (typed.trim().toUpperCase() === "DELETE" && !busy) ? "var(--over)" : "var(--over-muted)",
               fontSize:14, fontWeight:900, marginBottom:8,
               opacity: (typed.trim().toUpperCase() === "DELETE" && !busy) ? 1 : 0.6 }}>
             {busy ? "Deleting…" : "Permanently delete everything"}
           </button>
           <button onClick={() => { setConfirm(false); setTyped(""); setErr(""); }} disabled={busy}
-            style={{ width:"100%", padding:"11px", background:"none", color:"#9b958b",
+            style={{ width:"100%", padding:"11px", background:"none", color:"var(--text-label)",
               border:"none", fontSize:13 }}>
             Cancel
           </button>
         </div>
       )}
-      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.6, marginTop:14 }}>
-        Prefer email? Contact <a href={"mailto:fuellogadmin@gmail.com"} style={{ color:"#9b958b" }}>fuellogadmin@gmail.com</a>.
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.6, marginTop:14 }}>
+        Prefer email? Contact <a href={"mailto:fuellogadmin@gmail.com"} style={{ color:"var(--text-label)" }}>fuellogadmin@gmail.com</a>.
       </div>
     </div>
   );
@@ -1145,23 +1159,23 @@ function LapsedModal({ onRenew, onDismiss }) {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)",
       display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24 }}>
       <div style={{ background:CARD, borderRadius:24, padding:"28px 24px",
-        border:"1px solid #ffb84b44", maxWidth:300, width:"100%" }}>
+        border:"1px solid color-mix(in srgb, var(--warn) 27%, transparent)", maxWidth:300, width:"100%" }}>
         <div style={{ fontSize:40, textAlign:"center", marginBottom:12 }}>⌛</div>
-        <div style={{ fontSize:16, fontWeight:900, color:"#e6e1d7", textAlign:"center", marginBottom:10 }}>
+        <div style={{ fontSize:16, fontWeight:900, color:"var(--text-hi)", textAlign:"center", marginBottom:10 }}>
           Your Premium subscription has ended
         </div>
-        <div style={{ fontSize:13, color:"#aea79c", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
+        <div style={{ fontSize:13, color:"var(--text-mid)", lineHeight:1.7, marginBottom:22, textAlign:"center" }}>
           Your data is safe and still visible. Quick Add and logging still work.
           Renew to unlock AI features and cloud sync.
         </div>
         <button onClick={onRenew}
-          style={{ width:"100%", padding:"13px", background:A, color:"#0b0d0b",
+          style={{ width:"100%", padding:"13px", background:A, color:"var(--bg)",
             border:"none", borderRadius:12, fontSize:14, fontWeight:900, marginBottom:10 }}>
           Renew Premium
         </button>
         <button onClick={onDismiss}
           style={{ width:"100%", padding:"11px", background:"none",
-            color:"#9b958b", border:"none", fontSize:13, cursor:"pointer" }}>
+            color:"var(--text-label)", border:"none", fontSize:13, cursor:"pointer" }}>
           Continue for Free
         </button>
       </div>
@@ -1173,9 +1187,9 @@ function LapsedModal({ onRenew, onDismiss }) {
 
 const INP = {
   width:"100%", boxSizing:"border-box",
-  background:"#0b0d0b", border:`1px solid ${BD}`,
+  background:"var(--bg)", border:`1px solid ${BD}`,
   borderRadius:10, padding:"12px 14px",
-  color:"#e6e1d7", fontSize:14,
+  color:"var(--text-hi)", fontSize:14,
   fontFamily:"inherit", outline:"none",
 };
 
@@ -1184,8 +1198,8 @@ function BackHdr({ title, onBack, right }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:22,
       position:"sticky", top:0, background:BG, zIndex:10, paddingTop:12, paddingBottom:12, marginTop:-12 }}>
-      <button onClick={onBack} style={{ background:"#1c1a15", border:`1px solid ${BD}`,
-        borderRadius:10, width:36, height:36, color:"#a7a197", fontSize:18,
+      <button onClick={onBack} style={{ background:"var(--surface-2)", border:`1px solid ${BD}`,
+        borderRadius:10, width:36, height:36, color:"var(--text-mid-2)", fontSize:18,
         display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>←</button>
       <h2 style={{ margin:0, fontSize:18, fontWeight:900, color:A, letterSpacing:"0.06em", flex:1 }}>{title}</h2>
       {right}
@@ -1195,9 +1209,9 @@ function BackHdr({ title, onBack, right }) {
 
 function Chip({ label, value, color }) {
   return (
-    <div style={{ textAlign:"center", background:"#0b0d0b", borderRadius:12, padding:"10px 6px" }}>
+    <div style={{ textAlign:"center", background:"var(--bg)", borderRadius:12, padding:"10px 6px" }}>
       <div style={{ fontSize:17, fontWeight:900, color }}>{value}</div>
-      <div style={{ fontSize:10, color:"#8b857c", marginTop:2, letterSpacing:"0.05em" }}>{label}</div>
+      <div style={{ fontSize:10, color:"var(--text-lo)", marginTop:2, letterSpacing:"0.05em" }}>{label}</div>
     </div>
   );
 }
@@ -1205,14 +1219,14 @@ function Chip({ label, value, color }) {
 function MBar({ label, value, target, color }) {
   const pct   = Math.min(100, (value / target) * 100);
   const overG = value - target;
-  const accent = overG > 15 ? "#ff5555" : overG > 5 ? "#ffb84b" : null;
+  const accent = overG > 15 ? "var(--over)" : overG > 5 ? "var(--warn)" : null;
   return (
     <div style={{ marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4 }}>
-        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: accent || "#b6b0a4" }}>{label}</span>
-        <span style={{ color: accent || "#948e84" }}>{Math.round(value)}g / {target}g</span>
+        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: accent || "var(--text-mid-6)" }}>{label}</span>
+        <span style={{ color: accent || "var(--text-mid-5)" }}>{Math.round(value)}g / {target}g</span>
       </div>
-      <div style={{ height:7, background:"#1a1a1a", borderRadius:99, overflow:"hidden" }}>
+      <div style={{ height:7, background:"var(--surface-2b)", borderRadius:99, overflow:"hidden" }}>
         <div style={{ height:"100%", width:`${pct}%`, background: accent || color,
           borderRadius:99, transition:"width 0.4s" }}/>
       </div>
@@ -1311,14 +1325,14 @@ function StreakCelebration({ anim, onDone }) {
           💪
         </div>
         <div style={{ fontSize: isMilestone ? 92 : 78, fontWeight:900, color:A,
-          textShadow:`0 0 40px ${A}99`, lineHeight:1, marginTop:-10,
+          textShadow:`0 0 40px ${aA("99")}`, lineHeight:1, marginTop:-10,
           animation: isMilestone
             ? "sc_pulse 0.55s ease-in-out 0.45s infinite"
             : "sc_num 0.45s ease-out 0.2s both" }}>
           {count}
         </div>
         <div style={{ fontSize:14, color:A, fontWeight:900, letterSpacing:"0.14em",
-          marginTop:12, textShadow:`0 0 18px ${A}66` }}>
+          marginTop:12, textShadow:`0 0 18px ${aA("66")}` }}>
           {isMilestone ? `🏆 ${newStreak} DAY MILESTONE!` : "DAY STREAK 🔥"}
         </div>
         {isMilestone && (
@@ -1431,21 +1445,21 @@ ${dietaryPromptBlock(DIETARY)}Write exactly 3 sentences: 1) an honest observatio
   // prompt, flag it before the user acts on it (never silently trust the LLM).
   const tipAllergens = scanAllergens(tip, DIETARY.allergens);
   return (
-    <div style={{ background:CARD, border:`1px solid ${A}22`, borderRadius:20, padding:"14px 18px", marginBottom:14 }}>
+    <div style={{ background:CARD, border:`1px solid ${aA("22")}`, borderRadius:20, padding:"14px 18px", marginBottom:14 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: tip ? 8 : 0 }}>
         <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800 }}>🤖 DAILY COACH</div>
         {refreshes < 3 && (
           <button onClick={gen} disabled={loading}
-            style={{ background:"none", border:"none", color:"#aea79c", cursor:"pointer", fontSize:13, padding:"2px 6px" }}>
-            {loading ? "..." : "↺"} <span style={{ fontSize:10, color:"#827c73" }}>{3 - refreshes}</span>
+            style={{ background:"none", border:"none", color:"var(--text-mid)", cursor:"pointer", fontSize:13, padding:"2px 6px" }}>
+            {loading ? "..." : "↺"} <span style={{ fontSize:10, color:"var(--text-lo-2)" }}>{3 - refreshes}</span>
           </button>
         )}
       </div>
-      {loading && !tip && <div style={{ fontSize:12, color:"#9b958b", marginTop:4 }}>Generating your tip...</div>}
-      {tip && <div style={{ fontSize:14.5, color:"#c2bcb0", lineHeight:1.7 }}>{tip}</div>}
+      {loading && !tip && <div style={{ fontSize:12, color:"var(--text-label)", marginTop:4 }}>Generating your tip...</div>}
+      {tip && <div style={{ fontSize:14.5, color:"var(--text-hi-3)", lineHeight:1.7 }}>{tip}</div>}
       {tipAllergens.length > 0 && (
-        <div style={{ marginTop:8, background:"#1a0d08", border:"1px solid #ff555544", borderRadius:10,
-          padding:"8px 12px", fontSize:11, color:"#ff8866", lineHeight:1.5 }}>
+        <div style={{ marginTop:8, background:"var(--over-tint-3)", border:"1px solid color-mix(in srgb, var(--over) 27%, transparent)", borderRadius:10,
+          padding:"8px 12px", fontSize:11, color:"var(--bulk-2)", lineHeight:1.5 }}>
           ⚠️ This tip may mention {tipAllergens.join(", ")}, which you've flagged as an allergy — please double-check before acting on it.
         </div>
       )}
@@ -1484,7 +1498,7 @@ function TagField({ label, tags, suggestions, onChange, accent = A, placeholder 
 
   return (
     <div style={{ marginBottom:18 }}>
-      <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>{label}</div>
+      <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.1em", fontWeight:800, marginBottom:8 }}>{label}</div>
       {tags.length > 0 && (
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
           {tags.map(t => (
@@ -1504,9 +1518,9 @@ function TagField({ label, tags, suggestions, onChange, accent = A, placeholder 
       {(shown.length > 0 || isCustom) && (
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
           {shown.map(s => (
-            <button key={s} onClick={() => add(s)} style={{ background:"#1c1a15",
+            <button key={s} onClick={() => add(s)} style={{ background:"var(--surface-2)",
               border:`1px solid ${BD}`, borderRadius:999, padding:"4px 10px",
-              fontSize:12, color:"#aea79c", cursor:"pointer", fontFamily:"inherit" }}>+ {s}</button>
+              fontSize:12, color:"var(--text-mid)", cursor:"pointer", fontFamily:"inherit" }}>+ {s}</button>
           ))}
           {isCustom && (
             <button onClick={() => add(input)} style={{ background:"none",
@@ -1567,14 +1581,37 @@ function MeasureField({ metric, unit, onChange }) {
 
 // Compact segmented control for picking a display unit. Sits inline on the
 // field it controls (weight / height) so the choice is where the value is.
+// 3-way appearance control: 🌙 Dark · ☀️ Light · 🖥 System. System re-delegates to the OS.
+function ThemeToggle() {
+  const [choice, setChoice] = useState(getTheme());
+  const opts = [["dark", "🌙", "Dark"], ["light", "☀️", "Light"], ["system", "🖥️", "System"]];
+  return (
+    <div style={{ display:"flex", gap:4, background:"var(--bg)", border:`1px solid ${BD}`, borderRadius:12, padding:4 }}>
+      {opts.map(([v, icon, lbl]) => {
+        const on = choice === v;
+        return (
+          <button key={v} onClick={() => { applyTheme(v); setChoice(v); haptic(); }}
+            aria-label={lbl} aria-pressed={on}
+            style={{ flex:1, padding:"9px 4px", borderRadius:9, border:"none", cursor:"pointer",
+              display:"flex", flexDirection:"column", alignItems:"center", gap:3, fontFamily:"inherit",
+              background: on ? A : "transparent", color: on ? "var(--bg)" : "var(--text-label)" }}>
+            <span style={{ fontSize:17, lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:10, fontWeight:800, letterSpacing:"0.04em" }}>{lbl}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function UnitSwitch({ value, options, onChange }) {
   return (
-    <div style={{ display:"flex", gap:2, background:"#0b0d0b", border:`1px solid ${BD}`, borderRadius:999, padding:2 }}>
+    <div style={{ display:"flex", gap:2, background:"var(--bg)", border:`1px solid ${BD}`, borderRadius:999, padding:2 }}>
       {options.map(([v, lbl]) => (
         <button key={v} onClick={() => onChange(v)}
           style={{ padding:"3px 9px", borderRadius:999, border:"none", cursor:"pointer",
             fontSize:10, fontWeight:800, letterSpacing:"0.02em", fontFamily:"inherit",
-            background: value === v ? A : "transparent", color: value === v ? "#0b0d0b" : "#9b958b" }}>
+            background: value === v ? A : "transparent", color: value === v ? "var(--bg)" : "var(--text-label)" }}>
           {lbl}
         </button>
       ))}
@@ -1617,11 +1654,11 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
     return () => clearTimeout(t);
   }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
 
-  const row = (label, val, unit, color = "#e6e1d7") => (
+  const row = (label, val, unit, color = "var(--text-hi)") => (
     <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
-      <span style={{ fontSize:12, color:"#aea79c" }}>{label}</span>
+      <span style={{ fontSize:12, color:"var(--text-mid)" }}>{label}</span>
       <span style={{ fontSize:13, fontWeight:700, color }}>{val}
-        <span style={{ fontSize:11, color:"#9b958b", marginLeft:3 }}>{unit}</span>
+        <span style={{ fontSize:11, color:"var(--text-label)", marginLeft:3 }}>{unit}</span>
       </span>
     </div>
   );
@@ -1630,11 +1667,11 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="MY PROFILE" onBack={onBack}
         right={saved && <span style={{ fontSize:11, color:A, fontWeight:700 }}>✓ SAVED</span>}/>
-      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
-        Targets use <strong style={{ color:"#a7a197" }}>Katch-McArdle</strong>. Changes save automatically.
+      <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
+        Targets use <strong style={{ color:"var(--text-mid-2)" }}>Katch-McArdle</strong>. Changes save automatically.
       </p>
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
-        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>BODY STATS</div>
+        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>BODY STATS</div>
         <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:14 }}>
           <div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
@@ -1654,132 +1691,141 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
           </div>
         </div>
         <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
-          BODY FAT <span style={{ color:"#9b958b" }}>(%)</span>
+          BODY FAT <span style={{ color:"var(--text-label)" }}>(%)</span>
         </div>
         <input type="number" min="0" max="99" value={f.bodyFat}
           onChange={e => set("bodyFat", e.target.value)}
           onFocus={() => setBfFocused(true)} onBlur={() => setBfFocused(false)}
           style={{ ...INP, marginBottom:4 }}/>
         {bfFocused && !bfImplausible && (
-          <div style={{ fontSize:11, color:"#a7a197", marginBottom:6, lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"var(--text-mid-2)", marginBottom:6, lineHeight:1.5 }}>
             Not sure? Use 25% for men or 30% for women as a starting estimate. A more accurate figure improves your calorie and macro targets.
           </div>
         )}
         {bfImplausible && (
-          <div style={{ fontSize:11, color:"#ffb84b", marginBottom:6, lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"var(--warn)", marginBottom:6, lineHeight:1.5 }}>
             That seems unusual — double-check this number as it affects your calorie targets.
           </div>
         )}
         <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
-          SEX <span style={{ color:"#9b958b", fontSize:10, fontWeight:400 }}>— used to calculate your calorie and macro targets</span>
+          SEX <span style={{ color:"var(--text-label)", fontSize:10, fontWeight:400 }}>— used to calculate your calorie and macro targets</span>
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:6 }}>
           {["male","female"].map(s => (
             <button key={s} onClick={() => set("sex", s)}
               style={{ flex:1, padding:"10px 0", borderRadius:10, fontWeight:900, fontSize:12,
-                letterSpacing:"0.06em", border:`1px solid ${f.sex === s ? A + "88" : BD}`,
-                background: f.sex === s ? A + "18" : "#0b0d0b",
-                color: f.sex === s ? A : "#9b958b" }}>
+                letterSpacing:"0.06em", border:`1px solid ${f.sex === s ? aA("88") : BD}`,
+                background: f.sex === s ? aA("18") : "var(--bg)",
+                color: f.sex === s ? A : "var(--text-label)" }}>
               {s === "male" ? "MALE" : "FEMALE"}
             </button>
           ))}
         </div>
         {!f.sex && (
-          <div style={{ fontSize:11, color:"#ffb84b", marginBottom:10, lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"var(--warn)", marginBottom:10, lineHeight:1.5 }}>
             Set your sex for more accurate targets — defaulting to male calculations.
           </div>
         )}
         {f.sex === "female" && (
-          <div style={{ fontSize:11, color:"#a7a197", marginBottom:10, lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"var(--text-mid-2)", marginBottom:10, lineHeight:1.5 }}>
             Targets may need adjusting around your cycle — override anytime.
           </div>
         )}
-        <div style={{ fontSize:11, color:"#827c73", marginBottom:14, lineHeight:1.5 }}>
+        <div style={{ fontSize:11, color:"var(--text-lo-2)", marginBottom:14, lineHeight:1.5 }}>
           Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
         </div>
       </div>
 
       {/* Dietary requirements & allergies (#8) — steers every AI food suggestion */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
-        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>DIET & ALLERGIES</div>
-        <p style={{ fontSize:11, color:"#827c73", lineHeight:1.5, marginBottom:16 }}>
+        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>DIET & ALLERGIES</div>
+        <p style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginBottom:16 }}>
           These steer every AI suggestion — the coach, AI Meal Log and estimates. Allergies are a
           hard safety filter, applied in the prompt and double-checked on every AI response.
         </p>
         <TagField label="DIET TYPE" tags={diet.diets} suggestions={DIET_SUGGESTIONS}
           onChange={l => setDiet("diets", l)} placeholder="e.g. vegan, halal…"/>
         <TagField label="ALLERGIES (HARD FILTER)" tags={diet.allergens} suggestions={BIG14_ALLERGENS}
-          onChange={l => setDiet("allergens", l)} accent="#ff7b6b" placeholder="e.g. peanuts, milk…"/>
+          onChange={l => setDiet("allergens", l)} accent="var(--over-2)" placeholder="e.g. peanuts, milk…"/>
         <TagField label="DISLIKES (SOFT — AVOID WHERE POSSIBLE)" tags={diet.dislikes} suggestions={[]}
-          onChange={l => setDiet("dislikes", l)} accent="#aea79c" placeholder="e.g. coriander, olives…"/>
+          onChange={l => setDiet("dislikes", l)} accent="var(--text-mid)" placeholder="e.g. coriander, olives…"/>
       </div>
 
       {valid && (
         <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px" }}>
-          <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
             CALCULATED STATS
           </div>
-          {row("Lean Body Mass", prev.lbm, "kg", "#4b9fff")}
-          {row("BMR",           prev.bmr, "kcal/day", "#ffb84b")}
-          {row("Formula TDEE",  formulaTDEE, "kcal/day", "#b6b0a4")}
+          {row("Lean Body Mass", prev.lbm, "kg", "var(--cut)")}
+          {row("BMR",           prev.bmr, "kcal/day", "var(--warn)")}
+          {row("Formula TDEE",  formulaTDEE, "kcal/day", "var(--text-mid-6)")}
           {tdeeAdj !== 0 && (
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
-              <span style={{ fontSize:12, color:"#aea79c" }}>Adaptive adjustment</span>
-              <span style={{ fontSize:13, fontWeight:700, color: tdeeAdj > 0 ? A : "#ff7b4b" }}>
-                {tdeeAdj > 0 ? "+" : ""}{tdeeAdj} <span style={{ fontSize:11, color:"#9b958b" }}>kcal/day</span>
+              <span style={{ fontSize:12, color:"var(--text-mid)" }}>Adaptive adjustment</span>
+              <span style={{ fontSize:13, fontWeight:700, color: tdeeAdj > 0 ? A : "var(--bulk)" }}>
+                {tdeeAdj > 0 ? "+" : ""}{tdeeAdj} <span style={{ fontSize:11, color:"var(--text-label)" }}>kcal/day</span>
               </span>
             </div>
           )}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
-            <span style={{ fontSize:12, color:"#aea79c" }}>
-              Effective TDEE {confidence && <span style={{ fontSize:10, color: tdeeAdj !== 0 ? A : "#9b958b" }}>· {confidence}</span>}
+            <span style={{ fontSize:12, color:"var(--text-mid)" }}>
+              Effective TDEE {confidence && <span style={{ fontSize:10, color: tdeeAdj !== 0 ? A : "var(--text-label)" }}>· {confidence}</span>}
             </span>
             <span style={{ fontSize:13, fontWeight:700, color:A }}>
-              {adjTDEE} <span style={{ fontSize:11, color:"#9b958b" }}>kcal/day</span>
+              {adjTDEE} <span style={{ fontSize:11, color:"var(--text-label)" }}>kcal/day</span>
             </span>
           </div>
           {!confidence && (
-            <div style={{ fontSize:11, color:"#827c73", marginTop:6, lineHeight:1.5 }}>
+            <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:6, lineHeight:1.5 }}>
               Log your weight daily from the dashboard to enable adaptive calibration.
             </div>
           )}
-          <div style={{ marginTop:14, fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:10 }}>
+          <div style={{ marginTop:14, fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:10 }}>
             TARGETS BY MODE
           </div>
           {[
-            { mode:"cut",      label:"CUT",      color:"#4b9fff" },
+            { mode:"cut",      label:"CUT",      color:"var(--cut)" },
             { mode:"maintain", label:"MAINTAIN", color:A         },
-            { mode:"bulk",     label:"BULK",     color:"#ff7b4b" },
+            { mode:"bulk",     label:"BULK",     color:"var(--bulk)" },
           ].map(({ mode, label, color }) => {
             const t = calcTargets(f, mode, 0, tdeeAdj);
             return (
-              <div key={mode} style={{ background:"#0b0d0b", borderRadius:10, padding:"10px 14px", marginBottom:6 }}>
+              <div key={mode} style={{ background:"var(--bg)", borderRadius:10, padding:"10px 14px", marginBottom:6 }}>
                 <div style={{ fontSize:11, fontWeight:900, color, letterSpacing:"0.08em", marginBottom:6 }}>{label}</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[["KCAL","kcal",""],["P","protein","g"],["C","carbs","g"],["F","fat","g"]].map(([k, key, u]) => (
                     <div key={k} style={{ flex:1, textAlign:"center" }}>
                       <div style={{ fontSize:14, fontWeight:900, color }}>{t[key]}{u}</div>
-                      <div style={{ fontSize:9, color:"#827c73", marginTop:1 }}>{k}</div>
+                      <div style={{ fontSize:9, color:"var(--text-lo-2)", marginTop:1 }}>{k}</div>
                     </div>
                   ))}
                 </div>
               </div>
             );
           })}
-          <div style={{ fontSize:11, color:"#827c73", marginTop:8 }}>
+          <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:8 }}>
             Workout kcal are added when you log sessions on the dashboard.
           </div>
         </div>
       )}
       {aggressiveCutAcked && (
-        <div style={{ background:"#1a1000", border:"1px solid #ffb84b33", borderRadius:12,
+        <div style={{ background:"var(--warn-tint)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
           padding:"10px 14px", marginTop:12, display:"flex", gap:10, alignItems:"flex-start" }}>
           <div style={{ fontSize:15 }}>⚠️</div>
-          <div style={{ fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+          <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
             You have previously acknowledged an aggressive cut target. Review your profile stats and targets if your circumstances have changed.
           </div>
         </div>
       )}
+
+      {/* Appearance — placed last; least-frequently-touched setting */}
+      <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginTop:16 }}>
+        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>APPEARANCE</div>
+        <ThemeToggle/>
+        <div style={{ fontSize:11, color:"var(--text-mid-2)", marginTop:10, lineHeight:1.5 }}>
+          System follows your device’s light/dark setting.
+        </div>
+      </div>
     </div>
   );
 }
@@ -1841,17 +1887,17 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
         width:"100%", maxWidth:500, border:`1px solid ${BD}`, borderBottom:"none" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
           <h3 style={{ margin:0, color:A, fontSize:16, fontWeight:900 }}>{meal ? "EDIT MEAL" : "ADD MEAL"}</h3>
-          <button onClick={onCancel} style={{ background:"none", border:"none", color:"#aea79c", fontSize:24 }}>×</button>
+          <button onClick={onCancel} style={{ background:"none", border:"none", color:"var(--text-mid)", fontSize:24 }}>×</button>
         </div>
-        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800, marginBottom:6 }}>MEAL NAME</div>
+        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.1em", fontWeight:800, marginBottom:6 }}>MEAL NAME</div>
         <input value={f.name} onChange={e => set("name", e.target.value)}
           placeholder="e.g. Chicken breast (150g)" style={{ ...INP, marginBottom:16 }}/>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
           {[
             { k:"kcal",    l:"CALORIES",   c:A        },
-            { k:"protein", l:"PROTEIN (g)", c:"#4b9fff"},
-            { k:"carbs",   l:"CARBS (g)",   c:"#ffb84b"},
-            { k:"fat",     l:"FAT (g)",     c:"#ff7b4b"},
+            { k:"protein", l:"PROTEIN (g)", c:"var(--cut)"},
+            { k:"carbs",   l:"CARBS (g)",   c:"var(--warn)"},
+            { k:"fat",     l:"FAT (g)",     c:"var(--bulk)"},
           ].map(fl => (
             <div key={fl.k}>
               <div style={{ fontSize:10, color:fl.c, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>{fl.l}</div>
@@ -1862,19 +1908,19 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
         </div>
         <button onClick={estimate} disabled={reest}
           style={{ width:"100%", padding:"12px", marginBottom: reestMsg && reestMsg !== "done" ? 6 : 12,
-            background:"#1c1a15", border:`1px solid ${A}44`, borderRadius:11, color:A,
+            background:"var(--surface-2)", border:`1px solid ${aA("44")}`, borderRadius:11, color:A,
             fontSize:13, fontWeight:800, cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
           {reest ? "Estimating…" : reestMsg === "done" ? "✓ Filled — estimate again" : "✨ AI estimate from name"}
         </button>
         {reestMsg && reestMsg !== "done" && (
-          <div style={{ fontSize:11, color:"#ff7b6b", marginBottom:12, lineHeight:1.4 }}>{reestMsg}</div>
+          <div style={{ fontSize:11, color:"var(--over-2)", marginBottom:12, lineHeight:1.4 }}>{reestMsg}</div>
         )}
         <button onClick={() => ok && (haptic(), onSave({
           name: f.name.trim(), kcal: Number(f.kcal) || 0,
           protein: Number(f.protein) || 0, carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
         }))} disabled={!ok}
           style={{ width:"100%", padding:"15px",
-            background: ok ? A : "#1c1a15", color: ok ? "#0b0d0b" : "#2c2820",
+            background: ok ? A : "var(--surface-2)", color: ok ? "var(--bg)" : "var(--text-disabled)",
             border:"none", borderRadius:13, fontSize:14, fontWeight:900, letterSpacing:"0.08em" }}>
           {meal ? "SAVE CHANGES" : "ADD MEAL"}
         </button>
@@ -1905,27 +1951,27 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
   })();
 
   const confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
-  const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "#ffb84b" : "#aea79c";
+  const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "var(--warn)" : "var(--text-mid)";
 
   return (
     <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:4 }}>BODY WEIGHT</div>
+          <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:4 }}>BODY WEIGHT</div>
           {todayEntry
-            ? <div style={{ fontSize:22, fontWeight:900, color:"#e6e1d7" }}>
+            ? <div style={{ fontSize:22, fontWeight:900, color:"var(--text-hi)" }}>
                 {wUnit === "st"
                   ? (() => { const { st, lb } = kgToStLb(todayEntry.weight);
-                      return <>{st}<span style={{ fontSize:12, color:"#9b958b", marginLeft:3 }}>st</span> {lb}<span style={{ fontSize:12, color:"#9b958b", marginLeft:3 }}>lb</span></>; })()
-                  : <>{wChartNum(todayEntry.weight, wUnit)}<span style={{ fontSize:12, color:"#9b958b", marginLeft:4 }}>{wChartUnit(wUnit)}</span></>}
+                      return <>{st}<span style={{ fontSize:12, color:"var(--text-label)", marginLeft:3 }}>st</span> {lb}<span style={{ fontSize:12, color:"var(--text-label)", marginLeft:3 }}>lb</span></>; })()
+                  : <>{wChartNum(todayEntry.weight, wUnit)}<span style={{ fontSize:12, color:"var(--text-label)", marginLeft:4 }}>{wChartUnit(wUnit)}</span></>}
                 {trend7 !== null && (() => {
                   const t = wUnit === "kg" ? trend7 : Math.round(trend7 * LB_PER_KG * 10) / 10;
-                  return <span style={{ fontSize:12, color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b", marginLeft:10 }}>
+                  return <span style={{ fontSize:12, color: trend7 <= 0 ? "var(--accent)" : "var(--bulk)", marginLeft:10 }}>
                     {t > 0 ? "+" : ""}{t}{wUnit === "kg" ? "kg" : "lb"}/wk
                   </span>;
                 })()}
               </div>
-            : <div style={{ fontSize:13, color:"#827c73", marginTop:2 }}>Not logged today</div>
+            : <div style={{ fontSize:13, color:"var(--text-lo-2)", marginTop:2 }}>Not logged today</div>
           }
         </div>
         <div style={{ textAlign:"right" }}>
@@ -1933,9 +1979,9 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
           {weeks >= 1
             ? <>
                 <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{(baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
-                <div style={{ fontSize:10, color:"#9b958b", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "#ff7b4b" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
+                <div style={{ fontSize:10, color:"var(--text-label)", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "var(--bulk)" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
               </>
-            : <div style={{ fontSize:11, color:"#827c73", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
+            : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
           }
         </div>
       </div>
@@ -1961,15 +2007,15 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
           )}
           <button onClick={() => { if (entryKg > 0) { onWeighIn(entryKg); setVal(""); setVal2(""); }}}
             disabled={!(entryKg > 0)}
-            style={{ padding:"10px 18px", background: entryKg > 0 ? A : "#1c1a15",
-              color: entryKg > 0 ? "#0b0d0b" : "#2c2820",
+            style={{ padding:"10px 18px", background: entryKg > 0 ? A : "var(--surface-2)",
+              color: entryKg > 0 ? "var(--bg)" : "var(--border-strong)",
               border:"none", borderRadius:10, fontWeight:900, fontSize:13 }}>
             LOG
           </button>
         </div>
       )}
 
-      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.5 }}>
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5 }}>
         {weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism."}
         {weeks >= 1 && weeks < 2 && `🔄 ${confidence} — ${weighIns.length} weigh-ins so far. 2+ weeks unlocks calibration.`}
         {weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet."}
@@ -2023,7 +2069,7 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
   return (
     <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"12px 14px", marginBottom:12 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-        <div style={{ fontSize:10, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800 }}>
+        <div style={{ fontSize:10, color:"var(--text-label)", letterSpacing:"0.1em", fontWeight:800 }}>
           WORKOUTS {workouts.length > 0 && <span style={{ color:A }}>· ⚡{workouts.length}</span>}
         </div>
         {workouts.length > 0 && (
@@ -2035,15 +2081,15 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
         <div style={{ marginBottom:10 }}>
           {workouts.map(w => (
             <div key={w.id} style={{ display:"flex", alignItems:"center", gap:8,
-              background:"#0b0d0b", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
+              background:"var(--bg)", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
               <span style={{ fontSize:12, color:A, fontWeight:900, flexShrink:0 }}>{w.kcal} kcal</span>
-              <span style={{ fontSize:11, color:"#9f998e", flex:1, overflow:"hidden",
+              <span style={{ fontSize:11, color:"var(--text-mid-3)", flex:1, overflow:"hidden",
                 textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                 {w.notes || `${w.type} · ${w.duration}min · ${w.intensity}`}
               </span>
-              <span style={{ fontSize:10, color:"#827c73", flexShrink:0 }}>{w.time}</span>
+              <span style={{ fontSize:10, color:"var(--text-lo-2)", flexShrink:0 }}>{w.time}</span>
               <button onClick={() => onRemove(w.id)}
-                style={{ background:"none", border:"none", color:"#443030", fontSize:16,
+                style={{ background:"none", border:"none", color:"var(--over-tint-5)", fontSize:16,
                   cursor:"pointer", padding:"0 4px", flexShrink:0 }}>×</button>
             </div>
           ))}
@@ -2060,7 +2106,7 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
             <input type="number" min="10" max="180" value={dur}
               onChange={e => setDur(parseInt(e.target.value)||45)}
               style={{ ...INP, width:56, padding:"7px 8px", textAlign:"center", fontSize:12 }}/>
-            <span style={{ fontSize:11, color:"#9b958b" }}>min ·</span>
+            <span style={{ fontSize:11, color:"var(--text-label)" }}>min ·</span>
             <select value={intensity} onChange={e => setIntensity(e.target.value)}
               style={{ ...INP, flex:"none", width:"auto", padding:"7px 10px", fontSize:12 }}>
               {SESS_INT.map(i => <option key={i} value={i}>{i.charAt(0).toUpperCase()+i.slice(1)}</option>)}
@@ -2069,14 +2115,14 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
           </div>
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={logWorkout}
-              style={{ flex:1, padding:"10px", background:A, color:"#0b0d0b",
+              style={{ flex:1, padding:"10px", background:A, color:"var(--bg)",
                 border:"none", borderRadius:10, fontSize:12, fontWeight:900, cursor:"pointer", letterSpacing:"0.06em" }}>
               + LOG WORKOUT
             </button>
             <button onClick={() => isPremium ? setHevyMode(true) : onPremiumGate && onPremiumGate({ emoji:"🏋️", name:"Workout AI Parser" })}
-              style={{ padding:"10px 14px", background:"#0b0d0b",
-                border:`1px solid ${isPremium ? A + "33" : BD}`,
-                borderRadius:10, color: isPremium ? A : "#9b958b", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              style={{ padding:"10px 14px", background:"var(--bg)",
+                border:`1px solid ${isPremium ? aA("33") : BD}`,
+                borderRadius:10, color: isPremium ? A : "var(--text-label)", fontSize:12, fontWeight:700, cursor:"pointer" }}>
               📋 {isPremium ? "Paste log" : "Paste log ⭐"}
             </button>
           </div>
@@ -2085,41 +2131,41 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
         <>
           <textarea value={hevyText} onChange={e => setHevyText(e.target.value)} rows={5}
             placeholder={"Paste your workout log here...\n\nE.g.:\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg"}
-            style={{ width:"100%", boxSizing:"border-box", background:"#0b0d0b",
+            style={{ width:"100%", boxSizing:"border-box", background:"var(--bg)",
               border:`1px solid ${BD}`, borderRadius:10, padding:"10px 12px",
-              color:"#e6e1d7", fontSize:12, resize:"none", fontFamily:"inherit",
+              color:"var(--text-hi)", fontSize:12, resize:"none", fontFamily:"inherit",
               outline:"none", lineHeight:1.6, marginBottom:8 }}/>
           <div style={{ display:"flex", gap:8, marginBottom:6 }}>
             <button onClick={parseWorkout} disabled={hevyLoading || !hevyText.trim()}
               style={{ flex:1, padding:"10px",
-                background: hevyText.trim() && !hevyLoading ? A : "#1c1a15",
-                color: hevyText.trim() && !hevyLoading ? "#0b0d0b" : "#2c2820",
+                background: hevyText.trim() && !hevyLoading ? A : "var(--surface-2)",
+                color: hevyText.trim() && !hevyLoading ? "var(--bg)" : "var(--border-strong)",
                 border:"none", borderRadius:10, fontSize:12, fontWeight:900,
                 cursor: hevyText.trim() && !hevyLoading ? "pointer" : "not-allowed", letterSpacing:"0.07em" }}>
               {hevyLoading ? "PARSING..." : "🤖 PARSE WORKOUT"}
             </button>
             <button onClick={() => { setHevyMode(false); setHevyText(""); setHevyResult(null); }}
               style={{ padding:"10px 14px", background:"none", border:`1px solid ${BD}`,
-                borderRadius:10, color:"#9b958b", fontSize:12, cursor:"pointer" }}>
+                borderRadius:10, color:"var(--text-label)", fontSize:12, cursor:"pointer" }}>
               ← Back
             </button>
           </div>
           {hevyResult && !hevyResult.error && (
             <>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                background:"#141210", borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
-                <span style={{ fontSize:12, color:"#9f998e", flex:1 }}>{hevyResult.summary}</span>
+                background:"var(--surface)", borderRadius:8, padding:"8px 12px", marginBottom:8 }}>
+                <span style={{ fontSize:12, color:"var(--text-mid-3)", flex:1 }}>{hevyResult.summary}</span>
                 <span style={{ fontSize:15, fontWeight:900, color:A, marginLeft:10 }}>{hevyResult.estimatedKcal} kcal</span>
               </div>
               <button onClick={logParsed}
-                style={{ width:"100%", padding:"10px", background:A, color:"#0b0d0b",
+                style={{ width:"100%", padding:"10px", background:A, color:"var(--bg)",
                   border:"none", borderRadius:10, fontSize:12, fontWeight:900, cursor:"pointer", letterSpacing:"0.06em" }}>
                 ✓ LOG THIS WORKOUT
               </button>
             </>
           )}
           {hevyResult && hevyResult.error && (
-            <div style={{ fontSize:12, color:"#ff7070", marginTop:4 }}>{hevyResult.error}</div>
+            <div style={{ fontSize:12, color:"var(--over-5)", marginTop:4 }}>{hevyResult.error}</div>
           )}
         </>
       )}
@@ -2198,12 +2244,12 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
     fat:     Math.round((Number(f.fat)     || 0) * 10) / 10,
   });
 
-  const fld = { background:BG, border:`1px solid ${BD}`, borderRadius:9, color:"#e6e1d7",
+  const fld = { background:BG, border:`1px solid ${BD}`, borderRadius:9, color:"var(--text-hi)",
     fontSize:13, padding:"8px 10px", outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
-  const lbl = { fontSize:10, color:"#827c73", fontWeight:700, letterSpacing:"0.05em", marginBottom:3, display:"block" };
+  const lbl = { fontSize:10, color:"var(--text-lo-2)", fontWeight:700, letterSpacing:"0.05em", marginBottom:3, display:"block" };
 
   return (
-    <div style={{ padding:"12px 16px 14px", background:"#15130f" }}>
+    <div style={{ padding:"12px 16px 14px", background:"var(--surface-b)" }}>
       <label style={lbl}>NAME</label>
       <input value={f.name} onChange={e => set("name", e.target.value)} style={{ ...fld, marginBottom:10 }}/>
       <div style={{ display:"flex", gap:8, marginBottom:12 }}>
@@ -2217,21 +2263,21 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
           <input value={f.fat}     onChange={e => set("fat", e.target.value)}     inputMode="decimal" style={fld}/></div>
       </div>
       <button onClick={reestimate} disabled={reest}
-        style={{ width:"100%", padding:"10px", marginBottom: reestMsg ? 6 : 8, background:"#1c1a15",
-          border:`1px solid ${A}44`, borderRadius:10, color:A, fontSize:12.5, fontWeight:800,
+        style={{ width:"100%", padding:"10px", marginBottom: reestMsg ? 6 : 8, background:"var(--surface-2)",
+          border:`1px solid ${aA("44")}`, borderRadius:10, color:A, fontSize:12.5, fontWeight:800,
           cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
         {reest ? "Re-estimating…" : reestMsg === "done" ? "✓ Updated — re-estimate again" : "✨ AI re-estimate from name"}
       </button>
       {reestMsg && reestMsg !== "done" && (
-        <div style={{ fontSize:11, color:"#ff7b6b", marginBottom:8, lineHeight:1.4 }}>{reestMsg}</div>
+        <div style={{ fontSize:11, color:"var(--over-2)", marginBottom:8, lineHeight:1.4 }}>{reestMsg}</div>
       )}
       <div style={{ display:"flex", gap:8 }}>
         <button onClick={onCancel}
-          style={{ flex:1, padding:"10px", background:"#1c1a15", border:`1px solid ${BD}`,
-            borderRadius:10, color:"#9b958b", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+          style={{ flex:1, padding:"10px", background:"var(--surface-2)", border:`1px solid ${BD}`,
+            borderRadius:10, color:"var(--text-label)", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
         <button onClick={save}
           style={{ flex:1, padding:"10px", background:A, border:"none",
-            borderRadius:10, color:"#0b0d0b", fontSize:13, fontWeight:800, cursor:"pointer" }}>Save</button>
+            borderRadius:10, color:"var(--bg)", fontSize:13, fontWeight:800, cursor:"pointer" }}>Save</button>
       </div>
     </div>
   );
@@ -2255,12 +2301,12 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   const mc         = MODES[mode].color;
   const isTraining = workouts.length > 0;
   // Graduated calorie status: ok (≤100 over) | amber-soft (100-200) | amber (200-500) | red (500+)
-  const AMBER = "#ffb84b";
-  const RED   = "#ff5555";
+  const AMBER = "var(--warn)";
+  const RED   = "var(--over)";
   const kcalAccent  = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
   const kcalLabel   = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mc}88,${mc})`;
-  const kcalBorder  = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
+  const kcalBorder  = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
 
   const [savedIds,      setSavedIds]      = useState({});
   const [qaBlink,       setQaBlink]       = useState({}); // log.id -> tap nonce, drives re-blink on every tap
@@ -2303,30 +2349,30 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
         <div>
           <h1 style={{ margin:0, fontSize:26, fontWeight:900, color:A, letterSpacing:"-0.02em", lineHeight:1 }}>FUEL LOG</h1>
-          <p style={{ margin:"4px 0 0", fontSize:12, color:"#9b958b", letterSpacing:"0.06em" }}>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:"var(--text-label)", letterSpacing:"0.06em" }}>
             {new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"short" }).toUpperCase()}
           </p>
-          {!isOnline && <div style={{ marginTop:4, fontSize:10, color:"#ffb84b", fontWeight:700, letterSpacing:"0.06em" }}>OFFLINE</div>}
-          {syncMsg   && <div style={{ marginTop:2,  fontSize:10, color:"#9b958b" }}>{syncMsg}</div>}
+          {!isOnline && <div style={{ marginTop:4, fontSize:10, color:"var(--warn)", fontWeight:700, letterSpacing:"0.06em" }}>OFFLINE</div>}
+          {syncMsg   && <div style={{ marginTop:2,  fontSize:10, color:"var(--text-label)" }}>{syncMsg}</div>}
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && (
-            <div style={{ padding:"7px 10px", background:"#1c1a15", border:`1px solid ${BD}`,
+            <div style={{ padding:"7px 10px", background:"var(--surface-2)", border:`1px solid ${BD}`,
               borderRadius:10, fontSize:13, fontWeight:900, color:A }}>🔥{streak}</div>
           )}
-          <button onClick={() => setView("profile")} style={{ width:34, height:34, background:"#1c1a15",
-            border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:14,
+          <button onClick={() => setView("profile")} style={{ width:34, height:34, background:"var(--surface-2)",
+            border:`1px solid ${BD}`, borderRadius:10, color:"var(--text-mid)", fontSize:14,
             display:"flex", alignItems:"center", justifyContent:"center" }}>⚙️</button>
-          <button onClick={() => setView("history")} style={{ width:34, height:34, background:"#1c1a15",
-            border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:15,
+          <button onClick={() => setView("history")} style={{ width:34, height:34, background:"var(--surface-2)",
+            border:`1px solid ${BD}`, borderRadius:10, color:"var(--text-mid)", fontSize:15,
             display:"flex", alignItems:"center", justifyContent:"center" }}>📊</button>
-          <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"#1c1a15",
-            border:`1px solid ${BD}`, borderRadius:10, color:"#aea79c", fontSize:14,
+          <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"var(--surface-2)",
+            border:`1px solid ${BD}`, borderRadius:10, color:"var(--text-mid)", fontSize:14,
             display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</button>
           {isPremium && (
             <button onClick={() => setView("account")} aria-label="Account & Privacy"
-              style={{ width:34, height:34, background:`${A}18`,
-                border:`1px solid ${A}44`, borderRadius:10,
+              style={{ width:34, height:34, background:`${aA("18")}`,
+                border:`1px solid ${aA("44")}`, borderRadius:10,
                 display:"flex", alignItems:"center", justifyContent:"center",
                 overflow:"hidden", padding:0 }}>
               <Avatar user={authUser}/>
@@ -2342,9 +2388,9 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           return (
             <button key={k} onClick={() => setMode(k)}
               style={{ flex:1, padding:"9px 4px",
-                background: active ? v.color + "22" : "#1c1a15",
-                color:      active ? v.color : "#9b958b",
-                border:    `1px solid ${active ? v.color + "55" : BD}`,
+                background: active ? mix(v.color, "22") : "var(--surface-2)",
+                color:      active ? v.color : "var(--text-label)",
+                border:    `1px solid ${active ? mix(v.color, "55") : BD}`,
                 borderRadius:10, fontSize:11, fontWeight:900, letterSpacing:"0.06em" }}>
               {v.label}
             </button>
@@ -2358,8 +2404,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {!hasProfile && (
         <button onClick={() => setView("profile")}
-          style={{ width:"100%", padding:"11px", background:"#1c1a15",
-            border:`1px solid ${A}33`, borderRadius:12, color:A,
+          style={{ width:"100%", padding:"11px", background:"var(--surface-2)",
+            border:`1px solid ${aA("33")}`, borderRadius:12, color:A,
             fontSize:12, fontWeight:700, marginBottom:12, letterSpacing:"0.06em" }}>
           👤 Set body stats for personalised targets →
         </button>
@@ -2369,27 +2415,27 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       {targetWarning && (
         <div style={{ marginBottom:10 }}>
           {targetWarning.level === "red" ? (
-            <div style={{ background:"#1a0505", border:"1px solid #ff555544", borderRadius:12, padding:"12px 14px" }}>
-              <div style={{ fontSize:12, color:"#ff5555", fontWeight:800, letterSpacing:"0.06em", marginBottom:6 }}>
+            <div style={{ background:"var(--over-tint-7)", border:"1px solid color-mix(in srgb, var(--over) 27%, transparent)", borderRadius:12, padding:"12px 14px" }}>
+              <div style={{ fontSize:12, color:"var(--over)", fontWeight:800, letterSpacing:"0.06em", marginBottom:6 }}>
                 ⚠️ NOT RECOMMENDED
               </div>
-              <div style={{ fontSize:11, color:"#aa4444", lineHeight:1.6, marginBottom:10 }}>
+              <div style={{ fontSize:11, color:"var(--over-deep)", lineHeight:1.6, marginBottom:10 }}>
                 {targetWarning.text}
               </div>
               <button onClick={onAckAggressiveCut}
-                style={{ background:"#ff555522", border:"1px solid #ff555544", borderRadius:8,
-                  color:"#ff7777", fontSize:11, fontWeight:800, padding:"7px 14px", cursor:"pointer" }}>
+                style={{ background:"color-mix(in srgb, var(--over) 13%, transparent)", border:"1px solid color-mix(in srgb, var(--over) 27%, transparent)", borderRadius:8,
+                  color:"var(--over-4)", fontSize:11, fontWeight:800, padding:"7px 14px", cursor:"pointer" }}>
                 Yes, I understand →
               </button>
             </div>
           ) : targetWarning.level === "amber" ? (
-            <div style={{ background:"#151000", border:"1px solid #ffb84b33", borderRadius:12,
-              padding:"10px 14px", fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+            <div style={{ background:"var(--warn-tint-3)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+              padding:"10px 14px", fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
               ⚠️ {targetWarning.text}
             </div>
           ) : (
-            <div style={{ background:"#141210", border:"1px solid #3a352a", borderRadius:12,
-              padding:"10px 14px", fontSize:11, color:"#aea79c", lineHeight:1.5 }}>
+            <div style={{ background:"var(--surface)", border:"1px solid var(--raised-2)", borderRadius:12,
+              padding:"10px 14px", fontSize:11, color:"var(--text-mid)", lineHeight:1.5 }}>
               ℹ {targetWarning.text}
             </div>
           )}
@@ -2398,14 +2444,14 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Safe minimum warning */}
       {targets.safeMinApplied && (
-        <div style={{ background:"#1a1200", border:"1px solid #ffb84b33", borderRadius:12,
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
           padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
           <div style={{ fontSize:15, marginTop:1 }}>⚠️</div>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
               SAFE MINIMUM APPLIED
             </div>
-            <div style={{ fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
               {isCustomMode
                 ? `That's below the safe minimum for your body. We've set it to ${targets.kcal.toLocaleString()} kcal to keep you safe.`
                 : "Your target has been set to the safe minimum."
@@ -2422,14 +2468,14 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Macro floors too low for the target (#7) — floors kept, never silently broken */}
       {targets.floorsExceedKcal && (
-        <div style={{ background:"#1a1200", border:"1px solid #ffb84b33", borderRadius:12,
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
           padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
           <div style={{ fontSize:15, marginTop:1 }}>⚠️</div>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
               FLOORS KEPT
             </div>
-            <div style={{ fontSize:11, color:"#8a7030", lineHeight:1.5 }}>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
               This target's too low to hit your protein and fat floors. We've kept your floors,
               so your macros add up to a bit more than this number.
             </div>
@@ -2461,38 +2507,38 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           ) : (
             <div onClick={() => { setTargetInputVal(String(targets.kcal)); setEditingTarget(true); }}
               style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:4,
-                background: isCustomMode ? mc + "12" : "#1c1a15",
-                border: `1px solid ${isCustomMode ? mc + "44" : "#2a2620"}`,
+                background: isCustomMode ? mc + "12" : "var(--surface-2)",
+                border: `1px solid ${isCustomMode ? mc + "44" : "var(--raised)"}`,
                 borderRadius:8, padding:"5px 10px" }}>
-              <span style={{ fontSize:12, color: isCustomMode ? mc : "#9a948a", fontWeight:700 }}>
+              <span style={{ fontSize:12, color: isCustomMode ? mc : "var(--text-mid-4)", fontWeight:700 }}>
                 {targets.kcal.toLocaleString()} kcal
               </span>
-              <span style={{ fontSize:10, color: isCustomMode ? mc + "99" : "#7a746a" }}>✎</span>
+              <span style={{ fontSize:10, color: isCustomMode ? mc + "99" : "var(--text-faint)" }}>✎</span>
             </div>
           )}
         </div>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:14 }}>
           <div>
-            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", marginBottom:4 }}>CONSUMED</div>
+            <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", marginBottom:4 }}>CONSUMED</div>
             <div style={{ fontSize:42, fontWeight:900,
-              color: overAmt > 100 ? kcalAccent : "#efeae0",
+              color: overAmt > 100 ? kcalAccent : "var(--text-hi-b)",
               lineHeight:1, letterSpacing:"-0.03em" }}>
               {Math.round(totals.kcal).toLocaleString()}
-              <span style={{ fontSize:14, color:"#9b958b", fontWeight:400, marginLeft:5 }}>kcal</span>
+              <span style={{ fontSize:14, color:"var(--text-label)", fontWeight:400, marginLeft:5 }}>kcal</span>
             </div>
           </div>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", marginBottom:4 }}>
+            <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", marginBottom:4 }}>
               {kcalLabel}
             </div>
             <div style={{ fontSize:30, fontWeight:900, color: kcalAccent, lineHeight:1 }}>
               {Math.abs(Math.round(remaining)).toLocaleString()}
-              <span style={{ fontSize:12, color: overAmt > 100 ? kcalAccent + "99" : "#a7a197",
+              <span style={{ fontSize:12, color: overAmt > 100 ? kcalAccent + "99" : "var(--text-mid-2)",
                 fontWeight:400, marginLeft:4 }}>kcal</span>
             </div>
           </div>
         </div>
-        <div style={{ height:10, background:"#1c1a15", borderRadius:99, overflow:"hidden" }}>
+        <div style={{ height:10, background:"var(--surface-2)", borderRadius:99, overflow:"hidden" }}>
           <div style={{ height:"100%", width:`${pct}%`,
             background: kcalBarBg,
             borderRadius:99, transition:"width 0.5s" }}/>
@@ -2501,10 +2547,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Macros */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"18px 20px", marginBottom:14 }}>
-        <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>MACROS</div>
-        <MBar label="PROTEIN" value={totals.protein} target={targets.protein} color="#4b9fff"/>
-        <MBar label="CARBS"   value={totals.carbs}   target={targets.carbs}   color="#ffb84b"/>
-        <MBar label="FAT"     value={totals.fat}      target={targets.fat}     color="#ff7b4b"/>
+        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>MACROS</div>
+        <MBar label="PROTEIN" value={totals.protein} target={targets.protein} color="var(--cut)"/>
+        <MBar label="CARBS"   value={totals.carbs}   target={targets.carbs}   color="var(--warn)"/>
+        <MBar label="FAT"     value={totals.fat}      target={targets.fat}     color="var(--bulk)"/>
       </div>
 
       {/* Coach tip */}
@@ -2514,26 +2560,26 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div>
-            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:3 }}>WATER</div>
-            <div style={{ fontSize:22, fontWeight:900, color:"#4b9fff" }}>
-              {water}<span style={{ fontSize:13, color:"#2a4060", fontWeight:400, marginLeft:5 }}>/ 8 glasses</span>
+            <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:3 }}>WATER</div>
+            <div style={{ fontSize:22, fontWeight:900, color:"var(--cut)" }}>
+              {water}<span style={{ fontSize:13, color:"var(--cut-tint-5)", fontWeight:400, marginLeft:5 }}>/ 8 glasses</span>
             </div>
           </div>
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={() => setWater(Math.max(0, water - 1))}
-              style={{ width:36, height:36, borderRadius:10, background:"#131826",
-                border:"1px solid #1e2a3a", color:"#4b9fff", fontSize:20,
+              style={{ width:36, height:36, borderRadius:10, background:"var(--cut-tint-3)",
+                border:"1px solid var(--cut-tint-2)", color:"var(--cut)", fontSize:20,
                 display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
             <button onClick={() => setWater(water + 1)}
-              style={{ width:36, height:36, borderRadius:10, background:"#0f1c2e",
-                border:"1px solid #2a4a7a", color:"#4b9fff", fontSize:20,
+              style={{ width:36, height:36, borderRadius:10, background:"var(--cut-tint-4)",
+                border:"1px solid var(--cut-tint)", color:"var(--cut)", fontSize:20,
                 display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
           </div>
         </div>
         <div style={{ display:"flex", gap:5 }}>
           {Array.from({ length:8 }).map((_, i) => (
             <div key={i} style={{ flex:1, height:6, borderRadius:99,
-              background: i < water ? "#4b9fff" : "#161a26", transition:"background 0.2s" }}/>
+              background: i < water ? "var(--cut)" : "var(--cut-tint-6)", transition:"background 0.2s" }}/>
           ))}
         </div>
       </div>
@@ -2558,9 +2604,9 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
               borderRadius:16, padding:"16px 8px", textAlign:"center" }}>
             <div style={{ fontSize:22, marginBottom:5 }}>{b.e}</div>
             <div style={{ fontSize:11, fontWeight:900,
-              color: b.premium && !isPremium ? "#9b958b" : A,
+              color: b.premium && !isPremium ? "var(--text-label)" : A,
               letterSpacing:"0.07em" }}>{b.l}</div>
-            <div style={{ fontSize:10, color:"#6e6960", marginTop:3 }}>{b.s}</div>
+            <div style={{ fontSize:10, color:"var(--text-faint-2)", marginTop:3 }}>{b.s}</div>
           </button>
         ))}
       </div>
@@ -2568,7 +2614,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       {/* Log list */}
       {logs.length > 0 ? (
         <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, overflow:"hidden" }}>
-          <div style={{ padding:"13px 20px 11px", fontSize:11, color:"#9b958b",
+          <div style={{ padding:"13px 20px 11px", fontSize:11, color:"var(--text-label)",
             letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}` }}>
             TODAY'S LOG · {logs.length} ITEM{logs.length !== 1 ? "S" : ""}
           </div>
@@ -2581,25 +2627,25 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
               ) : (
                 <div style={{ display:"flex", alignItems:"center", padding:"13px 16px", gap:10 }}>
                   <div onClick={() => setEditingId(log.id)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
-                    <div style={{ fontSize:14, fontWeight:600, color:"#e6e1d7",
+                    <div style={{ fontSize:14, fontWeight:600, color:"var(--text-hi)",
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
-                    <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
-                      {log.time} · P:{log.protein}g C:{log.carbs}g F:{log.fat}g <span style={{ color:"#6e6960" }}>✎</span>
+                    <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:3 }}>
+                      {log.time} · P:{log.protein}g C:{log.carbs}g F:{log.fat}g <span style={{ color:"var(--text-faint-2)" }}>✎</span>
                     </div>
                   </div>
                   <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
                   <button key={"qa-" + log.id + "-" + (qaBlink[log.id] || 0)} onClick={() => handleAddToQA(log)}
                     style={{ flexShrink:0, padding:"7px 12px",
-                      background: savedIds[log.id] ? A + "22" : "#1c1a15",
-                      border: `1px solid ${savedIds[log.id] ? A + "66" : "#2a2620"}`,
-                      borderRadius:10, color: savedIds[log.id] ? A : "#827c73",
+                      background: savedIds[log.id] ? aA("22") : "var(--surface-2)",
+                      border: `1px solid ${savedIds[log.id] ? aA("66") : "var(--raised)"}`,
+                      borderRadius:10, color: savedIds[log.id] ? A : "var(--text-lo-2)",
                       animation: savedIds[log.id] ? "blink_add 0.4s ease-out" : "none",
                       fontSize:12, fontWeight:700, cursor:"pointer" }}>
                     {savedIds[log.id] ? "✓" : "⚡"}
                   </button>
                   <button onClick={() => removeLog(log.id)}
-                    style={{ flexShrink:0, width:32, height:32, background:"#1a0d0d",
-                      border:"1px solid #3a1a1a", borderRadius:10, color:"#884444",
+                    style={{ flexShrink:0, width:32, height:32, background:"var(--over-tint-2)",
+                      border:"1px solid var(--over-tint)", borderRadius:10, color:"var(--over-deep-2)",
                       fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
                 </div>
               )}
@@ -2607,7 +2653,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           ))}
         </div>
       ) : (
-        <div style={{ textAlign:"center", padding:"30px 20px", color:"#6e6960", fontSize:14 }}>
+        <div style={{ textAlign:"center", padding:"30px 20px", color:"var(--text-faint-2)", fontSize:14 }}>
           <div style={{ fontSize:36, marginBottom:8 }}>🍽️</div>Nothing logged yet today.
         </div>
       )}
@@ -2660,7 +2706,7 @@ Return ONLY valid JSON (no markdown):
   "reasoning": "one sentence explaining source"
 }`;
 
-const confColor = c => c <= 33 ? "#ff5555" : c <= 66 ? "#ffb84b" : A;
+const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
 async function searchOFT(query) {
@@ -2702,7 +2748,7 @@ function ItemRow({ item, onReestimate, reestimating }) {
   const submit = () => { setEditing(false); if (draft.trim() !== item.name) onReestimate(draft.trim()); };
 
   return (
-    <div style={{ background:"#0b0d0b", borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
+    <div style={{ background:"var(--bg)", borderRadius:12, padding:"12px 14px", marginBottom:8 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
         <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
           {editing ? (
@@ -2712,19 +2758,19 @@ function ItemRow({ item, onReestimate, reestimating }) {
                 onKeyDown={e => e.key === "Enter" && submit()}
                 autoFocus/>
               <button onClick={submit}
-                style={{ padding:"6px 12px", background:A, color:"#0b0d0b",
+                style={{ padding:"6px 12px", background:A, color:"var(--bg)",
                   border:"none", borderRadius:8, fontSize:12, fontWeight:900, cursor:"pointer" }}>
                 {reestimating ? "..." : "↺"}
               </button>
             </div>
           ) : (
-            <div style={{ fontSize:13, fontWeight:600, color:"#e6e1d7", cursor:"pointer" }}
+            <div style={{ fontSize:13, fontWeight:600, color:"var(--text-hi)", cursor:"pointer" }}
               onClick={() => setEditing(true)}>
-              {item.name} <span style={{ fontSize:11, color:"#827c73" }}>✏️</span>
+              {item.name} <span style={{ fontSize:11, color:"var(--text-lo-2)" }}>✏️</span>
             </div>
           )}
           {item.source === "oft" && (
-            <div style={{ fontSize:10, color:"#4b9fff", marginTop:2, letterSpacing:"0.06em" }}>📦 LABEL DATA</div>
+            <div style={{ fontSize:10, color:"var(--cut)", marginTop:2, letterSpacing:"0.06em" }}>📦 LABEL DATA</div>
           )}
         </div>
         <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -2734,16 +2780,16 @@ function ItemRow({ item, onReestimate, reestimating }) {
           </div>
         </div>
       </div>
-      <div style={{ fontSize:11, color:"#8b857c" }}>
+      <div style={{ fontSize:11, color:"var(--text-lo)" }}>
         P:{item.protein}g · C:{item.carbs}g · F:{item.fat}g
       </div>
       {item.reasoning && !editing && (
-        <div style={{ fontSize:11, color:"#827c73", marginTop:5, lineHeight:1.5, fontStyle:"italic" }}>
+        <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:5, lineHeight:1.5, fontStyle:"italic" }}>
           {item.reasoning}
         </div>
       )}
       {itemAllergens.length > 0 && (
-        <div style={{ marginTop:6, fontSize:11, color:"#ff8866", fontWeight:700, lineHeight:1.4 }}>
+        <div style={{ marginTop:6, fontSize:11, color:"var(--bulk-2)", fontWeight:700, lineHeight:1.4 }}>
           ⚠️ Contains {itemAllergens.join(", ")} — flagged from your allergies.
         </div>
       )}
@@ -2829,7 +2875,7 @@ function AILog({ onAdd, onBack }) {
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="AI MEAL LOG" onBack={onBack}/>
-      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
+      <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
         Describe your meal — I'll break it down item by item with confidence scores.
         Tap any item to correct it and re-estimate.
       </p>
@@ -2838,24 +2884,24 @@ function AILog({ onAdd, onBack }) {
         placeholder={"e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
         style={{ width:"100%", boxSizing:"border-box", background:CARD,
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
-          color:"#e6e1d7", fontSize:14, resize:"none", fontFamily:"inherit",
+          color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
-      <div style={{ fontSize:11, color:"#827c73", lineHeight:1.5, marginTop:6 }}>
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:6 }}>
         Just describe the food — no personal details needed. This text is sent to our AI to estimate nutrition.
       </div>
 
       <button onClick={estimate} disabled={loading || !desc.trim()}
         style={{ width:"100%", marginTop:12, padding:"15px",
-          background: loading || !desc.trim() ? "#1c1a15" : A,
-          color:      loading || !desc.trim() ? "#2c2820" : "#0b0d0b",
+          background: loading || !desc.trim() ? "var(--surface-2)" : A,
+          color:      loading || !desc.trim() ? "var(--border-strong)" : "var(--bg)",
           border:"none", borderRadius:14, fontSize:14, fontWeight:900,
           letterSpacing:"0.08em", cursor: loading || !desc.trim() ? "not-allowed" : "pointer" }}>
         {loading ? "⚡ ANALYSING..." : "🤖 ANALYSE MEAL"}
       </button>
 
       {error && (
-        <div style={{ color:"#ff8855", fontSize:12, marginTop:14, background:"#1a0d08",
-          border:"1px solid #3a1a0a", borderRadius:10, padding:"12px 14px", lineHeight:1.6 }}>
+        <div style={{ color:"var(--bulk-3)", fontSize:12, marginTop:14, background:"var(--over-tint-3)",
+          border:"1px solid var(--bulk-tint)", borderRadius:10, padding:"12px 14px", lineHeight:1.6 }}>
           {error}
         </div>
       )}
@@ -2867,7 +2913,7 @@ function AILog({ onAdd, onBack }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             background:CARD, border:`1px solid ${BD}`, borderRadius:14,
             padding:"12px 16px", marginBottom:12 }}>
-            <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800 }}>
+            <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.1em", fontWeight:800 }}>
               OVERALL CONFIDENCE
             </div>
             <div style={{ fontSize:18, fontWeight:900, color: confColor(avgConf) }}>
@@ -2883,28 +2929,28 @@ function AILog({ onAdd, onBack }) {
           ))}
 
           {/* Totals */}
-          <div style={{ background:CARD, border:`1px solid ${A}33`, borderRadius:14,
+          <div style={{ background:CARD, border:`1px solid ${aA("33")}`, borderRadius:14,
             padding:"14px 16px", marginBottom:16 }}>
             <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:10 }}>
               TOTAL
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
               <Chip label="KCAL"    value={Math.round(totals.kcal)}          color={A}       />
-              <Chip label="PROTEIN" value={Math.round(totals.protein) + "g"} color="#4b9fff" />
-              <Chip label="CARBS"   value={Math.round(totals.carbs)   + "g"} color="#ffb84b" />
-              <Chip label="FAT"     value={Math.round(totals.fat)     + "g"} color="#ff7b4b" />
+              <Chip label="PROTEIN" value={Math.round(totals.protein) + "g"} color="var(--cut)" />
+              <Chip label="CARBS"   value={Math.round(totals.carbs)   + "g"} color="var(--warn)" />
+              <Chip label="FAT"     value={Math.round(totals.fat)     + "g"} color="var(--bulk)" />
             </div>
           </div>
 
           {/* Actions */}
           <button onClick={logAll}
-            style={{ width:"100%", padding:"14px", background:A, color:"#0b0d0b",
+            style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
               border:"none", borderRadius:12, fontSize:14, fontWeight:900,
               cursor:"pointer", marginBottom:8 }}>
             + LOG ALL AS ONE ENTRY
           </button>
 
-          <div style={{ fontSize:11, color:"#827c73", textAlign:"center", marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"var(--text-lo-2)", textAlign:"center", marginBottom:12 }}>
             or tap individual items to log them separately ↑
           </div>
 
@@ -2916,9 +2962,9 @@ function AILog({ onAdd, onBack }) {
             // key includes the count so each repeat tap remounts the row and re-runs blink_add
             <button key={i + "-" + count} onClick={() => logItem(item, i)}
               style={{ width:"100%", padding:"10px 14px",
-                background: added ? A + "1e" : "#1c1a15",
-                border:`1px solid ${added ? A + "66" : BD}`, borderRadius:10,
-                color: added ? A : "#b6b0a4",
+                background: added ? aA("1e") : "var(--surface-2)",
+                border:`1px solid ${added ? aA("66") : BD}`, borderRadius:10,
+                color: added ? A : "var(--text-mid-6)",
                 fontSize:12, fontWeight:600, cursor:"pointer", marginBottom:6,
                 animation: added ? "blink_add 0.4s ease-out" : "none",
                 textAlign:"left", display:"flex", justifyContent:"space-between" }}>
@@ -2956,7 +3002,7 @@ function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremium
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search meals..." style={{ ...INP, flex:1, padding:"12px 16px" }}/>
         <button onClick={() => setModal({ meal:null, index:null })}
-          style={{ padding:"12px 18px", background:"#1c1a15", border:`1px solid ${A}44`,
+          style={{ padding:"12px 18px", background:"var(--surface-2)", border:`1px solid ${aA("44")}`,
             borderRadius:12, color:A, fontWeight:900, fontSize:16, flexShrink:0 }}>＋</button>
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -2965,9 +3011,9 @@ function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremium
             padding:"13px 14px", display:"flex", alignItems:"center", gap:8 }}>
             <button onClick={() => { onAdd(m); onBack(); }}
               style={{ flex:1, background:"none", border:"none", textAlign:"left", padding:0, minWidth:0 }}>
-              <div style={{ fontSize:14, fontWeight:600, color:"#e6e1d7",
+              <div style={{ fontSize:14, fontWeight:600, color:"var(--text-hi)",
                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.name}</div>
-              <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
+              <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:3 }}>
                 P:{m.protein}g · C:{m.carbs}g · F:{m.fat}g
               </div>
             </button>
@@ -2979,12 +3025,12 @@ function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremium
           </div>
         ))}
         {filtered.length === 0 && (
-          <div style={{ textAlign:"center", color:"#6e6960", padding:"30px 0", fontSize:14 }}>No meals found</div>
+          <div style={{ textAlign:"center", color:"var(--text-faint-2)", padding:"30px 0", fontSize:14 }}>No meals found</div>
         )}
       </div>
       <button onClick={() => { haptic(); save([...DEF_MEALS]); }}
         style={{ marginTop:16, width:"100%", padding:"11px", background:"none",
-          border:`1px dashed #24211b`, borderRadius:12, color:"#6e6960", fontSize:12, fontFamily:"inherit" }}>
+          border:`1px dashed var(--border)`, borderRadius:12, color:"var(--text-faint-2)", fontSize:12, fontFamily:"inherit" }}>
         ↩ Reset to defaults
       </button>
     </div>
@@ -3040,7 +3086,7 @@ function FoodSearch({ onAdd, onBack }) {
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="FOOD SEARCH" onBack={onBack}/>
-      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
+      <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
         Search millions of products via Open Food Facts.
       </p>
       <div style={{ display:"flex", gap:10, marginBottom:20 }}>
@@ -3050,24 +3096,24 @@ function FoodSearch({ onAdd, onBack }) {
           style={{ ...INP, flex:1, padding:"13px 16px" }}/>
         <button onClick={search} disabled={loading || !q.trim()}
           style={{ padding:"13px 16px",
-            background: q.trim() && !loading ? A : "#1c1a15",
-            color:      q.trim() && !loading ? "#0b0d0b" : "#2c2820",
+            background: q.trim() && !loading ? A : "var(--surface-2)",
+            color:      q.trim() && !loading ? "var(--bg)" : "var(--border-strong)",
             border:"none", borderRadius:12, fontWeight:900, fontSize:13,
             flexShrink:0, letterSpacing:"0.06em" }}>
           {loading ? "..." : "SEARCH"}
         </button>
       </div>
-      {loading && <div style={{ textAlign:"center", color:"#9b958b", padding:24, fontSize:14 }}>🔍 Searching...</div>}
-      {error   && <p style={{ color:"#ff5555", fontSize:13, textAlign:"center", marginBottom:10 }}>{error}</p>}
+      {loading && <div style={{ textAlign:"center", color:"var(--text-label)", padding:24, fontSize:14 }}>🔍 Searching...</div>}
+      {error   && <p style={{ color:"var(--over)", fontSize:13, textAlign:"center", marginBottom:10 }}>{error}</p>}
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {results.map((r, i) => (
           <button key={i} onClick={() => { onAdd(r); onBack(); }}
             style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
               textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%" }}>
             <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:"#e6e1d7",
+              <div style={{ fontSize:13, fontWeight:600, color:"var(--text-hi)",
                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name}</div>
-              <div style={{ fontSize:11, color:"#8b857c", marginTop:3 }}>
+              <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:3 }}>
                 {r.notes} · P:{r.protein}g · C:{r.carbs}g · F:{r.fat}g
               </div>
             </div>
@@ -3076,7 +3122,7 @@ function FoodSearch({ onAdd, onBack }) {
         ))}
       </div>
       {done && !results.length && !loading && !error && (
-        <div style={{ textAlign:"center", color:"#6e6960", padding:"30px 0" }}>No results</div>
+        <div style={{ textAlign:"center", color:"var(--text-faint-2)", padding:"30px 0" }}>No results</div>
       )}
     </div>
   );
@@ -3090,10 +3136,10 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
-    KCAL:    { key:"kcal",    label:"Kcal",    color:"#e8e2d4", unit:"" },
-    PROTEIN: { key:"protein", label:"Protein", color:"#4b9fff", unit:"g" },
-    CARBS:   { key:"carbs",   label:"Carbs",   color:"#ffb84b", unit:"g" },
-    FAT:     { key:"fat",     label:"Fat",     color:"#ff7b4b", unit:"g" },
+    KCAL:    { key:"kcal",    label:"Kcal",    color:"var(--accent)", unit:"" },
+    PROTEIN: { key:"protein", label:"Protein", color:"var(--cut)", unit:"g" },
+    CARBS:   { key:"carbs",   label:"Carbs",   color:"var(--warn)", unit:"g" },
+    FAT:     { key:"fat",     label:"Fat",     color:"var(--bulk)", unit:"g" },
   };
 
   const [range,      setRange]      = useState("30D");
@@ -3145,9 +3191,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
   const day     = history[dayIdx] || null;
   const dayTots = day ? sumLogs(day.logs || []) : null;
   const pieData = dayTots ? [
-    { name:"Protein", value: Math.round(dayTots.protein), color:"#4b9fff" },
-    { name:"Carbs",   value: Math.round(dayTots.carbs),   color:"#ffb84b" },
-    { name:"Fat",     value: Math.round(dayTots.fat),     color:"#ff7b4b" },
+    { name:"Protein", value: Math.round(dayTots.protein), color:"var(--cut)" },
+    { name:"Carbs",   value: Math.round(dayTots.carbs),   color:"var(--warn)" },
+    { name:"Fat",     value: Math.round(dayTots.fat),     color:"var(--bulk)" },
   ] : [];
 
   const patch = p => {
@@ -3186,7 +3232,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
       <BackHdr title="HISTORY" onBack={onBack} right={
         history.length > 0 && (
           <button onClick={exportCSV}
-            style={{ padding:"8px 14px", background:"#1c1a15", border:`1px solid ${A}44`,
+            style={{ padding:"8px 14px", background:"var(--surface-2)", border:`1px solid ${aA("44")}`,
               borderRadius:10, color:A, fontSize:11, fontWeight:900, cursor:"pointer", letterSpacing:"0.07em" }}>
             📥 CSV
           </button>
@@ -3194,7 +3240,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
       }/>
 
       {history.length === 0 && (
-        <div style={{ textAlign:"center", padding:"60px 20px", color:"#6e6960" }}>
+        <div style={{ textAlign:"center", padding:"60px 20px", color:"var(--text-faint-2)" }}>
           <div style={{ fontSize:36, marginBottom:10 }}>📊</div>
           <div style={{ fontSize:14 }}>No history yet — days auto-save as you log.</div>
         </div>
@@ -3206,8 +3252,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
             {RANGES.map(r => (
               <button key={r} onClick={() => setRange(r)}
                 style={{ padding:"7px 14px",
-                  background: range === r ? A : "#1c1a15",
-                  color:      range === r ? "#0b0d0b" : "#aea79c",
+                  background: range === r ? A : "var(--surface-2)",
+                  color:      range === r ? "var(--bg)" : "var(--text-mid)",
                   border: `1px solid ${range === r ? A : BD}`,
                   borderRadius:99, fontSize:12, fontWeight:900, flexShrink:0 }}>
                 {RLBL[r]}
@@ -3221,9 +3267,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 marginBottom:18, background:CARD, border:`1px solid ${BD}`, borderRadius:16, padding:"12px 16px" }}>
                 <button onClick={() => setDayIdx(i => Math.max(0, i - 1))} disabled={dayIdx === 0}
                   style={{ background:"none", border:"none",
-                    color: dayIdx === 0 ? "#524d46" : "#a7a197", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</button>
+                    color: dayIdx === 0 ? "var(--text-disabled)" : "var(--text-mid-2)", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</button>
                 <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:13, fontWeight:800, color:"#e6e1d7" }}>{day ? fmtFull(day.date) : "—"}</div>
+                  <div style={{ fontSize:13, fontWeight:800, color:"var(--text-hi)" }}>{day ? fmtFull(day.date) : "—"}</div>
                   {day && (
                     <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:5 }}>
                       {day.mode && (
@@ -3234,9 +3280,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                       )}
                       <button onClick={() => patch({ training: !day.training })}
                         style={{ fontSize:10, fontWeight:900, padding:"2px 8px",
-                          background: day.training ? A + "22" : "#1c1a15",
-                          color: day.training ? A : "#9b958b",
-                          border: `1px solid ${day.training ? A + "44" : BD}`, borderRadius:99 }}>
+                          background: day.training ? aA("22") : "var(--surface-2)",
+                          color: day.training ? A : "var(--text-label)",
+                          border: `1px solid ${day.training ? aA("44") : BD}`, borderRadius:99 }}>
                         {day.training ? "⚡ TRAINING" : "💤 REST"}
                       </button>
                     </div>
@@ -3245,7 +3291,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 <button onClick={() => setDayIdx(i => Math.min(history.length - 1, i + 1))}
                   disabled={dayIdx === history.length - 1}
                   style={{ background:"none", border:"none",
-                    color: dayIdx === history.length - 1 ? "#524d46" : "#a7a197",
+                    color: dayIdx === history.length - 1 ? "var(--text-disabled)" : "var(--text-mid-2)",
                     fontSize:24, padding:"0 6px", lineHeight:1 }}>›</button>
               </div>
 
@@ -3255,14 +3301,14 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                     <div style={{ fontSize:56, fontWeight:900, color:A, lineHeight:1, letterSpacing:"-0.03em" }}>
                       {Math.round(dayTots.kcal).toLocaleString()}
                     </div>
-                    <div style={{ fontSize:14, color:"#9b958b", marginTop:4, letterSpacing:"0.12em" }}>CALORIES</div>
-                    <div style={{ fontSize:12, marginTop:6, color:"#9b958b" }}>
+                    <div style={{ fontSize:14, color:"var(--text-label)", marginTop:4, letterSpacing:"0.12em" }}>CALORIES</div>
+                    <div style={{ fontSize:12, marginTop:6, color:"var(--text-label)" }}>
                       P:{Math.round(dayTots.protein)}g · C:{Math.round(dayTots.carbs)}g · F:{Math.round(dayTots.fat)}g
                     </div>
                   </div>
 
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"20px", marginBottom:14 }}>
-                    <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>
+                    <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>
                       MACRO BREAKDOWN
                     </div>
                     {chartsAvailable ? (
@@ -3270,20 +3316,20 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                         <PieChart>
                           <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70}
                             dataKey="value" paddingAngle={3}>
-                            {pieData.map((e, i) => <Cell key={i} fill={e.color}/>)}
+                            {pieData.map((e, i) => <Cell key={i} fill={rc(e.color)}/>)}
                           </Pie>
                           <Tooltip formatter={(v, n) => [v + "g", n]}/>
                         </PieChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div style={{ fontSize:11, color:"#9b958b", padding:"8px 0" }}>Charts unavailable — Recharts CDN failed to load.</div>
+                      <div style={{ fontSize:11, color:"var(--text-label)", padding:"8px 0" }}>Charts unavailable — Recharts CDN failed to load.</div>
                     )}
                     <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:8 }}>
                       {pieData.map(p => (
                         <div key={p.name} style={{ display:"flex", alignItems:"center", gap:5 }}>
                           <div style={{ width:9, height:9, borderRadius:"50%", background:p.color }}/>
-                          <span style={{ fontSize:11, color:"#b6b0a4" }}>
-                            {p.name}: <strong style={{ color:"#e6e1d7" }}>{p.value}g</strong>
+                          <span style={{ fontSize:11, color:"var(--text-mid-6)" }}>
+                            {p.name}: <strong style={{ color:"var(--text-hi)" }}>{p.value}g</strong>
                           </span>
                         </div>
                       ))}
@@ -3293,30 +3339,30 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:16,
                     padding:"14px 18px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <div>
-                      <span style={{ fontSize:12, color:"#9b958b", letterSpacing:"0.1em", fontWeight:800 }}>WATER </span>
-                      <span style={{ fontSize:14, color:"#4b9fff", fontWeight:900 }}>{day.water} / 8</span>
+                      <span style={{ fontSize:12, color:"var(--text-label)", letterSpacing:"0.1em", fontWeight:800 }}>WATER </span>
+                      <span style={{ fontSize:14, color:"var(--cut)", fontWeight:900 }}>{day.water} / 8</span>
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
                       <button onClick={() => patch({ water: Math.max(0, (day.water || 0) - 1) })}
-                        style={{ width:32, height:32, borderRadius:8, background:"#131826",
-                          border:"1px solid #1e2a3a", color:"#4b9fff", fontSize:18,
+                        style={{ width:32, height:32, borderRadius:8, background:"var(--cut-tint-3)",
+                          border:"1px solid var(--cut-tint-2)", color:"var(--cut)", fontSize:18,
                           display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
                       <button onClick={() => patch({ water: (day.water || 0) + 1 })}
-                        style={{ width:32, height:32, borderRadius:8, background:"#0f1c2e",
-                          border:"1px solid #2a4a7a", color:"#4b9fff", fontSize:18,
+                        style={{ width:32, height:32, borderRadius:8, background:"var(--cut-tint-4)",
+                          border:"1px solid var(--cut-tint)", color:"var(--cut)", fontSize:18,
                           display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
                     </div>
                   </div>
 
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden", marginBottom:12 }}>
-                    <div style={{ padding:"12px 18px 10px", fontSize:11, color:"#9b958b",
+                    <div style={{ padding:"12px 18px 10px", fontSize:11, color:"var(--text-label)",
                       letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}`,
                       display:"flex", justifyContent:"space-between" }}>
                       <span>FOODS · {(day.logs || []).length} ITEMS</span>
-                      <span style={{ fontSize:10, color:"#827c73" }}>× to remove</span>
+                      <span style={{ fontSize:10, color:"var(--text-lo-2)" }}>× to remove</span>
                     </div>
                     {(day.logs || []).length === 0 && (
-                      <div style={{ padding:"18px", textAlign:"center", color:"#6e6960", fontSize:13 }}>No foods logged</div>
+                      <div style={{ padding:"18px", textAlign:"center", color:"var(--text-faint-2)", fontSize:13 }}>No foods logged</div>
                     )}
                     {(day.logs || []).map((log, i) => (
                       <div key={log.id || i} style={{ borderBottom: i < day.logs.length - 1 ? `1px solid ${BD}` : "none" }}>
@@ -3331,15 +3377,15 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                           <div style={{ display:"flex", justifyContent:"space-between",
                             alignItems:"center", padding:"11px 16px" }}>
                             <div onClick={() => setEditId(log.id || i)} style={{ flex:1, minWidth:0, paddingRight:10, cursor:"pointer" }}>
-                              <div style={{ fontSize:13, color:"#e6e1d7", overflow:"hidden",
+                              <div style={{ fontSize:13, color:"var(--text-hi)", overflow:"hidden",
                                 textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
-                              <div style={{ fontSize:11, color:"#8b857c", marginTop:2 }}>
-                                P:{log.protein}g C:{log.carbs}g F:{log.fat}g <span style={{ color:"#6e6960" }}>✎</span>
+                              <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:2 }}>
+                                P:{log.protein}g C:{log.carbs}g F:{log.fat}g <span style={{ color:"var(--text-faint-2)" }}>✎</span>
                               </div>
                             </div>
                             <span style={{ fontSize:15, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
                             <button onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
-                              style={{ background:"none", border:"none", color:"#524d46", fontSize:18, padding:"2px 10px" }}>×</button>
+                              style={{ background:"none", border:"none", color:"var(--text-disabled)", fontSize:18, padding:"2px 10px" }}>×</button>
                           </div>
                         )}
                       </div>
@@ -3348,18 +3394,18 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
 
                   <div style={{ display:"flex", gap:8 }}>
                     <button onClick={() => setAddCtx("quick")}
-                      style={{ flex:1, padding:"11px", background:"#1c1a15",
-                        border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
+                      style={{ flex:1, padding:"11px", background:"var(--surface-2)",
+                        border:`1px solid ${aA("33")}`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ⚡ QUICK ADD
                     </button>
                     <button onClick={() => setAddCtx("ai")}
-                      style={{ flex:1, padding:"11px", background:"#1c1a15",
-                        border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
+                      style={{ flex:1, padding:"11px", background:"var(--surface-2)",
+                        border:`1px solid ${aA("33")}`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       🤖 AI LOG
                     </button>
                     <button onClick={() => setAddCtx("manual")}
-                      style={{ flex:1, padding:"11px", background:"#1c1a15",
-                        border:`1px solid ${A}33`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
+                      style={{ flex:1, padding:"11px", background:"var(--surface-2)",
+                        border:`1px solid ${aA("33")}`, borderRadius:12, color:A, fontSize:12, fontWeight:900, letterSpacing:"0.07em" }}>
                       ＋ MANUAL
                     </button>
                   </div>
@@ -3374,9 +3420,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 {Object.entries(MM).map(([k, m]) => (
                   <button key={k} onClick={() => { setShowWeight(false); toggleM(k); }}
                     style={{ padding:"6px 13px",
-                      background: !showWeight && metrics.includes(k) ? m.color + "22" : "#1c1a15",
-                      color:      !showWeight && metrics.includes(k) ? m.color       : "#9b958b",
-                      border: `1px solid ${!showWeight && metrics.includes(k) ? m.color + "55" : BD}`,
+                      background: !showWeight && metrics.includes(k) ? mix(m.color, "22") : "var(--surface-2)",
+                      color:      !showWeight && metrics.includes(k) ? m.color       : "var(--text-label)",
+                      border: `1px solid ${!showWeight && metrics.includes(k) ? mix(m.color, "55") : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     {m.label}
                   </button>
@@ -3384,9 +3430,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                 {filteredWeighIns.length > 0 && (
                   <button onClick={() => setShowWeight(w => !w)}
                     style={{ padding:"6px 13px",
-                      background: showWeight ? "#4b9fff22" : "#1c1a15",
-                      color:      showWeight ? "#4b9fff"   : "#9b958b",
-                      border: `1px solid ${showWeight ? "#4b9fff55" : BD}`,
+                      background: showWeight ? "color-mix(in srgb, var(--cut) 13%, transparent)" : "var(--surface-2)",
+                      color:      showWeight ? "var(--cut)"   : "var(--text-label)",
+                      border: `1px solid ${showWeight ? "color-mix(in srgb, var(--cut) 33%, transparent)" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     ⚖️ Weight
                   </button>
@@ -3395,9 +3441,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   {[["line","📈"],["bar","📊"]].map(([t, e]) => (
                     <button key={t} onClick={() => setChartType(t)}
                       style={{ padding:"6px 12px",
-                        background: chartType === t ? "#24211b" : "#1c1a15",
-                        color:      chartType === t ? "#e6e1d7" : "#9b958b",
-                        border: `1px solid ${chartType === t ? "#3a352a" : BD}`, borderRadius:8, fontSize:12 }}>
+                        background: chartType === t ? "var(--border)" : "var(--surface-2)",
+                        color:      chartType === t ? "var(--text-hi)" : "var(--text-label)",
+                        border: `1px solid ${chartType === t ? "var(--raised-2)" : BD}`, borderRadius:8, fontSize:12 }}>
                       {e}
                     </button>
                   ))}
@@ -3409,35 +3455,35 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   <ResponsiveContainer width="100%" height={200}>
                     {showWeight ? (
                       <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                        <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
+                        <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
                         <Tooltip formatter={(v, n) => [v + " " + wUnit, n === "ROLLING" ? "7-day avg" : "Weight"]}/>
-                        <Line type="monotone" dataKey="WEIGHT" stroke="#4b9fff" strokeWidth={1.5} dot={{ r:2.5, fill:"#4b9fff" }} name="Weight" connectNulls={false}/>
-                        <Line type="monotone" dataKey="ROLLING" stroke={A} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
+                        <Line type="monotone" dataKey="WEIGHT" stroke={rc("var(--cut)")} strokeWidth={1.5} dot={{ r:2.5, fill:rc("var(--cut)") }} name="Weight" connectNulls={false}/>
+                        <Line type="monotone" dataKey="ROLLING" stroke={rc(A)} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
                       </LineChart>
                     ) : chartType === "line" ? (
                       <LineChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                        <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
                         <Tooltip/>
-                        {metrics.map(m => <Line key={m} type="monotone" dataKey={m} stroke={MM[m].color} strokeWidth={2.5} dot={false} name={m}/>)}
+                        {metrics.map(m => <Line key={m} type="monotone" dataKey={m} stroke={rc(MM[m].color)} strokeWidth={2.5} dot={false} name={m}/>)}
                       </LineChart>
                     ) : (
                       <BarChart data={chartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                        <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
                         <Tooltip/>
-                        {metrics.map(m => <Bar key={m} dataKey={m} fill={MM[m].color} radius={[4,4,0,0]} name={m} maxBarSize={28}/>)}
+                        {metrics.map(m => <Bar key={m} dataKey={m} fill={rc(MM[m].color)} radius={[4,4,0,0]} name={m} maxBarSize={28}/>)}
                       </BarChart>
                     )}
                   </ResponsiveContainer>
                 ) : (
-                  <div style={{ fontSize:11, color:"#9b958b", padding:"12px 8px" }}>Charts unavailable — Recharts CDN failed to load.</div>
+                  <div style={{ fontSize:11, color:"var(--text-label)", padding:"12px 8px" }}>Charts unavailable — Recharts CDN failed to load.</div>
                 )}
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
-                <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
+                <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
                   {RLBL[range].toUpperCase()} AVERAGES · {filtered.length} DAYS
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
@@ -3453,14 +3499,14 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   const diff  = Math.round((last - first) * 10) / 10;
                   return (
                     <div style={{ marginTop:10, display:"flex", justifyContent:"space-between",
-                      background:"#0b0d0b", borderRadius:10, padding:"10px 14px", alignItems:"center" }}>
+                      background:"var(--bg)", borderRadius:10, padding:"10px 14px", alignItems:"center" }}>
                       <div>
-                        <div style={{ fontSize:10, color:"#9b958b", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
-                        <div style={{ fontSize:12, color:"#8b857c", marginTop:2 }}>
+                        <div style={{ fontSize:10, color:"var(--text-label)", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
+                        <div style={{ fontSize:12, color:"var(--text-lo)", marginTop:2 }}>
                           {first}{wUnit} → {last}{wUnit}
                         </div>
                       </div>
-                      <div style={{ fontSize:15, fontWeight:900, color: diff <= 0 ? A : "#ff7b4b" }}>
+                      <div style={{ fontSize:15, fontWeight:900, color: diff <= 0 ? A : "var(--bulk)" }}>
                         {diff > 0 ? "+" : ""}{diff} {wUnit}
                       </div>
                     </div>
@@ -3469,7 +3515,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden" }}>
-                <div style={{ padding:"12px 18px 10px", fontSize:11, color:"#9b958b",
+                <div style={{ padding:"12px 18px 10px", fontSize:11, color:"var(--text-label)",
                   letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}` }}>
                   {filtered.length} DAYS LOGGED
                 </div>
@@ -3478,18 +3524,18 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                     padding:"12px 16px", borderBottom: i < filtered.length - 1 ? `1px solid ${BD}` : "none", cursor:"pointer" }}
                     onClick={() => { setRange("DAY"); setDayIdx(history.findIndex(h => h.date === d.date)); }}>
                     <div>
-                      <div style={{ fontSize:13, fontWeight:600, color:"#e6e1d7" }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:"var(--text-hi)" }}>
                         {fmtFull(d.date)}
                         {d.mode && <span style={{ fontSize:10, fontWeight:900, color: MODES[d.mode]?.color || A, marginLeft:8 }}>{MODES[d.mode]?.label}</span>}
                         {d.training && <span style={{ fontSize:10, color:A, marginLeft:6 }}>⚡</span>}
                       </div>
-                      <div style={{ fontSize:11, color:"#8b857c", marginTop:2 }}>
+                      <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:2 }}>
                         P:{Math.round(d.protein)}g · C:{Math.round(d.carbs)}g · F:{Math.round(d.fat)}g · 💧{d.water}
                       </div>
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <span style={{ fontSize:16, fontWeight:900, color:A }}>{Math.round(d.kcal)}</span>
-                      <span style={{ fontSize:12, color:"#827c73" }}>›</span>
+                      <span style={{ fontSize:12, color:"var(--text-lo-2)" }}>›</span>
                     </div>
                   </div>
                 ))}
@@ -3498,7 +3544,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
           )}
 
           {range !== "DAY" && filtered.length === 0 && (
-            <div style={{ textAlign:"center", padding:"40px 0", color:"#6e6960", fontSize:14 }}>
+            <div style={{ textAlign:"center", padding:"40px 0", color:"var(--text-faint-2)", fontSize:14 }}>
               No data for this range yet.
             </div>
           )}
@@ -3514,20 +3560,20 @@ function Achievements({ earnedBdgs, onBack }) {
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="ACHIEVEMENTS 🏆" onBack={onBack}/>
-      <p style={{ color:"#aea79c", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
+      <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
         ×2 progression: Bronze 3 → Silver 6 → Gold 12 → Platinum 24 → Diamond 48 → Elite 96
       </p>
       {BDGS.map(b => {
         const earned = TIERS.map((_, i) => earnedBdgs.includes(b.id + "_" + i));
         const top    = earned.lastIndexOf(true);
         return (
-          <div key={b.id} style={{ background:CARD, border:`1px solid ${top >= 0 ? A + "22" : BD}`,
+          <div key={b.id} style={{ background:CARD, border:`1px solid ${top >= 0 ? aA("22") : BD}`,
             borderRadius:18, padding:"16px 20px", marginBottom:12 }}>
             <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:12 }}>
               <div style={{ fontSize:36 }}>{b.emoji}</div>
               <div>
-                <div style={{ fontSize:16, fontWeight:800, color:"#e6e1d7" }}>{b.name}</div>
-                <div style={{ fontSize:12, color:"#9b958b", marginTop:2 }}>
+                <div style={{ fontSize:16, fontWeight:800, color:"var(--text-hi)" }}>{b.name}</div>
+                <div style={{ fontSize:12, color:"var(--text-label)", marginTop:2 }}>
                   {top >= 0
                     ? `${TIER_ICONS[top]} ${TIER_NAMES[top]} · ${TIERS[top]} ${b.desc}`
                     : `Not yet · first at ${TIERS[0]} ${b.desc}`}
@@ -3538,7 +3584,7 @@ function Achievements({ earnedBdgs, onBack }) {
               {TIERS.map((t, i) => (
                 <div key={i} style={{ flex:1, textAlign:"center", opacity: earned[i] ? 1 : 0.2 }}>
                   <div style={{ fontSize:16 }}>{TIER_ICONS[i]}</div>
-                  <div style={{ fontSize:9, color: earned[i] ? A : "#827c73", marginTop:2, fontWeight: earned[i] ? 700 : 400 }}>{t}</div>
+                  <div style={{ fontSize:9, color: earned[i] ? A : "var(--text-lo-2)", marginTop:2, fontWeight: earned[i] ? 700 : 400 }}>{t}</div>
                 </div>
               ))}
             </div>
@@ -3546,7 +3592,7 @@ function Achievements({ earnedBdgs, onBack }) {
         );
       })}
       {earnedBdgs.length === 0 && (
-        <div style={{ textAlign:"center", padding:"30px 0", color:"#6e6960", fontSize:13 }}>
+        <div style={{ textAlign:"center", padding:"30px 0", color:"var(--text-faint-2)", fontSize:13 }}>
           <div style={{ fontSize:36, marginBottom:10 }}>🏆</div>
           No badges yet — keep logging!
         </div>
@@ -3575,6 +3621,15 @@ function App() {
   const [streakAnim,       setStreakAnim]       = useState(null);
   const [customKcal,       setCustomKcal]       = useState(null);
   const [aggressiveCutAcked, setAggressiveCutAcked] = useState(false);
+  const [, setThemeTick] = useState(0); // force re-render on live OS theme change (System mode → charts re-resolve)
+
+  // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => { if (window.__fuelSyncChrome) window.__fuelSyncChrome(); setThemeTick(t => t + 1); };
+    try { mq.addEventListener("change", onChange); } catch (e) { mq.addListener(onChange); }
+    return () => { try { mq.removeEventListener("change", onChange); } catch (e) { mq.removeListener(onChange); } };
+  }, []);
 
   // ── Auth state ────────────────────────────────────────────────
   const [authState,   setAuthState]   = useState("anonymous");
@@ -4034,9 +4089,9 @@ function App() {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <style>{`
         * { box-sizing: border-box; }
-        input::placeholder, textarea::placeholder { color: #6e6960; }
+        input::placeholder, textarea::placeholder { color: var(--text-faint-2); }
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-        select { background: #0b0d0b; color: #e6e1d7; }
+        select { background: var(--bg); color: var(--text-hi); }
         button { cursor: pointer; }
         button:disabled { cursor: not-allowed; }
         @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }
@@ -4077,15 +4132,15 @@ function App() {
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, padding:24 }}>
           <div style={{ background:CARD, borderRadius:24, padding:"36px 28px", textAlign:"center",
-            border:`1px solid ${A}44`, maxWidth:300, width:"100%" }}>
+            border:`1px solid ${aA("44")}`, maxWidth:300, width:"100%" }}>
             <div style={{ fontSize:72, marginBottom:12 }}>{newBadge.b.emoji}</div>
             <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>
               {TIER_ICONS[newBadge.i]} {TIER_NAMES[newBadge.i].toUpperCase()} UNLOCKED
             </div>
-            <div style={{ fontSize:22, fontWeight:900, color:"#e6e1d7", marginBottom:6 }}>{newBadge.b.name}</div>
-            <div style={{ fontSize:13, color:"#9b958b", marginBottom:24 }}>{TIERS[newBadge.i]} {newBadge.b.desc}</div>
+            <div style={{ fontSize:22, fontWeight:900, color:"var(--text-hi)", marginBottom:6 }}>{newBadge.b.name}</div>
+            <div style={{ fontSize:13, color:"var(--text-label)", marginBottom:24 }}>{TIERS[newBadge.i]} {newBadge.b.desc}</div>
             <button onClick={() => setNewBadge(null)}
-              style={{ width:"100%", padding:"14px", background:A, color:"#0b0d0b",
+              style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
                 border:"none", borderRadius:12, fontSize:14, fontWeight:900, cursor:"pointer" }}>
               KEEP GOING 🔥
             </button>
