@@ -262,15 +262,6 @@ Feature: Flexible daily calorie target with auto mode detection
     When I set my target to any value above 2,095
     Then the mode label shows BULK and turns orange
 
-  # ⚠️ SUPERSEDED by @wip "Macro targets hold their floors instead of scaling" (below).
-  # This documents current (proportional-scaling) behaviour and is TRUE until #7 ships;
-  # delete this scenario when the floor-based engine lands. — QA, 2026-06-11
-  Scenario: Custom target scales all macros proportionally
-    Given my CUT targets are protein 144g, carbs 200g, fat 64g at 1,595 kcal
-    When I set a custom target of 1,800 kcal
-    Then all three macros scale by the factor 1800 ÷ 1595
-    And the ratios of protein:carbs:fat as percentages of total calories remain the same
-
   Scenario: Manual target within 150 kcal below TDEE — slow cut
     Given my TDEE is 2,095 kcal
     When I set my target between 1,945 and 2,094 kcal
@@ -433,8 +424,8 @@ Feature: Edit a logged entry in place
 # Mirrors EntryEditor's re-estimate exactly: same AI_REESTIMATE_PROMPT + Open Food
 # Facts cross-check (AI shown first, OFF a bounded background refinement), premium-gated.
 # Lives in MealForm (app.jsx ~L1411), so it also covers the History manual one-off
-# entry, which uses the same component. @wip — specced, not yet built.
-@wip
+# entry, which uses the same component. Built + verified on device 2026-06-12 (sw v36
+# fixed the vegan-keto "milk" false-fill; estimate now fills or says "Couldn't estimate that").
 Feature: AI estimate when creating a Quick Add meal
 
   Background:
@@ -488,8 +479,7 @@ Feature: AI estimate when creating a Quick Add meal
 # buttons that STAY on screen after an add — AI Log per-item rows (app.jsx ~L2435)
 # and the dashboard ⚡ quick-add chips (~L2124). Surfaces that navigate away on add
 # (Quick Add list, Food Search) have no second tap to signal and are out of scope.
-# @wip — specced, not yet built.
-@wip
+# Built + verified on device 2026-06-11.
 Feature: Repeat-add feedback — re-blink and count
 
   Scenario: First tap on an AI Log item confirms the add
@@ -533,7 +523,10 @@ Feature: Repeat-add feedback — re-blink and count
 # Haptic confirmation is app-wide and organised by CRUD: every Create, Update and
 # Delete action buzzes. Reads (searches, opening screens, paging History, viewing
 # charts) never buzz. One shared helper, feature-detected, called from every
-# create/update/delete handler. @wip — specced, not yet built.
+# create/update/delete handler. Code BUILT (haptic() helper wired into every CUD,
+# feature-detected). @wip kept on purpose: navigator.vibrate is a silent no-op on
+# mobile Chrome / Pixel 7 (confirmed via isolation test), so the behaviour can't be
+# verified on the web build. Revisit when packaged for Play (native haptics bridge).
 @wip
 Feature: Haptic feedback on every Create, Update and Delete
 
@@ -601,8 +594,7 @@ Feature: Haptic feedback on every Create, Update and Delete
 # foods and re-suggests things you already ate, and (#6) it lets the LLM guess
 # whether you're "behind", which misfires early in the day. The fix for both:
 # compute the facts and hand them to the model; never let the LLM infer them.
-# @wip — specced, not yet built.
-@wip
+# Built + verified on device 2026-06-11.
 Feature: Coach is state-aware and varies its suggestions
 
   Background:
@@ -633,7 +625,7 @@ Feature: Coach is state-aware and varies its suggestions
     And it gives those met goals a brief celebratory nod
 
 
-# @wip — specced, not yet built.
+# Built + verified on device 2026-06-11 (coach avoided re-suggesting logged foods).
 # COACH-HAT REVIEW (2026-06-11): pacing on a calorie tracker is a disordered-eating
 # vector, so two safeguarding rules are baked in below: (1) pace only applies to
 # FLOOR goals you must reach (protein, water, fibre) — NEVER the calorie ceiling,
@@ -641,7 +633,6 @@ Feature: Coach is state-aware and varies its suggestions
 # window is derived from today's first logged meal, not a wall-clock default, so
 # fasting / Ramadan / 16:8 users are not falsely told they're "behind". Nudge copy
 # stays gentle — no "catch up" urgency.
-@wip
 Feature: Coach paces advice to the time of day
 
   # Pace is COMPUTED, not judged by the LLM. The eating window starts at today's
@@ -720,8 +711,8 @@ Feature: Coach paces advice to the time of day
 # scaling in the custom-target path (app.jsx:3517) with ONE unified floor-based engine.
 # EXACT NUMBERS (the 2.2/2.0 coefficients, the 0.6 floor, the carb formula, the warning
 # threshold) are owned by __tests__/logic.test.js — these scenarios assert the
-# user-visible BEHAVIOUR only, so they survive a coefficient tweak. @wip — not built.
-@wip
+# user-visible BEHAVIOUR only, so they survive a coefficient tweak.
+# Built + verified on device 2026-06-12 (low custom target → "FLOORS KEPT" warning shown).
 Feature: Macro targets hold their floors instead of scaling
 
   Background:
@@ -783,8 +774,7 @@ Feature: Macro targets hold their floors instead of scaling
 #   • Diet type = hard filter (never suggest off-diet food). Dislikes = SOFT preference
 #     (avoid when possible; not a safety claim).
 # Allergen backstop scan + prompt-building are pure logic → covered in logic.test.js.
-# @wip — specced, not yet built.
-@wip
+# Built + verified on device 2026-06-12 (declared dairy allergen → milk log flagged ⚠️).
 Feature: Dietary requirements and allergies steer every AI suggestion
 
   Background:

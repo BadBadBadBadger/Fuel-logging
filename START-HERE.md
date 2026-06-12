@@ -1,101 +1,63 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-11 (session 3: features #2–#8 BUILT + DEPLOYED to main, sw v35; coach #5/#6 + #3 verified on Pixel 7; haptics #4 deferred to native) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-12 (session 4: features #2–#8 all VERIFIED on Pixel 7; `@wip` tags flipped, DOCS changelog written; new app icon, sw v37; haptics #4 deferred to native. Next: celebration redesign — fresh session.) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
 
 ## Right now
 
-- **Phase:** B — Compliance & data rights (privacy, consent, export/delete). *Phases 0 & A are deployed.*
-- **State (2026-06-10):** Phase B engineering built, committed, and **branch pushed to `origin`**.
-  **Deploy is part-done on live infra:** ✅ Supabase consent-column migration run & verified;
-  ✅ worker deployed (`/delete-account` + retention sweep live, `SUPABASE_SERVICE_ROLE` set).
-  **Not yet done:** publishing `legal/` pages (= merge `phase-b-compliance` → `main`, which also takes
-  the new app live) and the manual end-to-end test. Cron trigger deferred (optional). All `legal/`
-  docs drafted; Anthropic transfer mechanism **resolved**.
-- **State:** Phase B is **LIVE and working** (`main` @ Phase B, 2026-06-10; rollback point `8622d24`).
-  ✅ Verified on the live site: consent gate fires, consent recorded, **all existing data intact** after
-  consent. Engineering deploy is effectively complete.
-- **No blocking step.** Remaining items are optional/low-priority (see Next up).
+- **Phase:** B — Compliance & data rights — is **LIVE and verified** (`main` @ Phase B, 2026-06-10;
+  rollback point `8622d24`). Consent gate fires, consent recorded, existing data intact. Engineering
+  deploy is effectively complete. *Phases 0 & A deployed before it.*
+- **Product (session 4, 2026-06-12):** session-3 features **#2–#8 are SHIPPED + VERIFIED on device**
+  (see feature-track note below). New **app icon** shipped (`icon-192/512.png` regenerated from
+  `logo-master.png`, sw `v36 → v37`). Tests **70/70 green**.
+- **No blocking step.** The next build is the celebration redesign (below); everything else is
+  optional/pre-Play (see Next up).
 
 ## Next up (in order)
 
-1. **Optional finish-the-test** — `LEGAL_ROADMAP.md §13` step 6: test **"Download my data"** (safe).
-   ⚠️ **Don't test "Delete my account" on your real account** — use a throwaway Google account.
-2. **Optional, deferred:** Cloudflare cron trigger (`§13` step 4 — nothing depends on it yet).
-3. **Before Play submission:** narrow Art. 9 consent-wording review (`§7` tier 7g) + ICO fee/address (R7).
-2. **Narrow legal review** — *one* item left: the Art. 9 consent wording (`LEGAL_ROADMAP §7` tier 7g),
-   before Play submission; downgradeable to a self-assessment + free ICO steer. *The Anthropic transfer
-   mechanism is **resolved** (2026-06-10 — DPA already in force; `§8`).*
-3. **ICO fee + correspondence address** — `LEGAL_ROADMAP.md §13` / risk **R7** (get a PO box / virtual
-   address *before* registering so your home address stays off the public register).
+1. **▶ Build: celebration redesign → one engine** — the **sole remaining product backlog feature**,
+   decided + specced in `features/fuel-log.feature` (`@wip`, "Logging celebration — quiet daily,
+   fanfare for the rare"). Quiet chip-pop on every daily log; badges become the sole "something
+   special" authority; the old streak-milestone overlay is removed. **Start a fresh session here.**
+2. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
+3. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
+   on your real account** — use a throwaway Google account.
+4. **Before Play submission:** narrow Art. 9 consent-wording review (`§7` tier 7g — downgradeable to a
+   self-assessment + free ICO steer; Anthropic transfer mechanism already **resolved**, `§8`) **+**
+   ICO fee & correspondence address (risk **R7**: get a PO box / virtual address *before* registering
+   so your home address stays off the public register).
 
-> **Feature track (parallel to legal, last touched 2026-06-11 session 3):** triaged product backlog
-> lives in `DOCS.md §23`. Still decided + specced but NOT built: **celebration redesign → one engine**
-> (`features/fuel-log.feature`, `@wip`).
+> **Feature track (parallel to legal, last touched 2026-06-12 session 4):** triaged product backlog
+> lives in `DOCS.md §23`.
 >
-> **2026-06-11 (session 3): ALL 6 backlog features #2–#8 BUILT.** `app.jsx` rebuilt → `app.js`, `sw`
-> bumped **v33 → v34**, tests **70/70 green** (added 26: macro floor engine, coach pacing, dietary
-> scan + prompt block). Summary:
-> - **#4 haptic** on every C/U/D (weigh-in, target override, profile save, MealForm save, QuickAdd
->   delete/reset, voucher; shared funnels de-duped to avoid double-buzz).
-> - **#3 repeat-add** — AI Log rows show `✓ Added ×N` + re-blink each tap (remount-keyed `blink_add`);
->   dashboard ⚡ chip re-blinks; count ephemeral.
-> - **#2 AI estimate on Quick Add** — `MealForm` mirrors `EntryEditor` (premium-gated, AI-first, OFF
->   refinement); threaded through QuickAdd + History manual.
-> - **#7 macro floor engine** — new `computeMacros` pure fn (flat protein 2.2/2.0 g/kg LBM across all
->   modes, fat 0.6 g/kg hard floor, carbs absorb, "FLOORS KEPT" warn). Replaced per-mode protein in
->   `calcTargets` AND the proportional scaling in the custom-target path.
-> - **#5/#6 coach** — state-aware (eaten foods by name, prior tips to avoid repeats, variety/fibre)
->   + computed `paceVerdict` (window starts at first meal; only protein/water paced, never calories;
->   no "behind" <25% window; gentle non-shaming nudges). Coach-hat reviewed.
-> - **#8 dietary/allergies** — `TagField` combobox in Profile (diet/allergens/dislikes); module-level
->   `DIETARY` cache feeds `dietaryPromptBlock` into all 4 AI prompts; zero-token `scanAllergens`
->   backstop flags coach tips + AI Log items. Allergen matching biased to over-detect (safety).
->
-> **DEPLOYED LIVE to `origin/main`** (session 3, 2026-06-11). Fast-forwarded `8e24a56 → 1a7f7f2`
-> (rollback point = **`8e24a56`** "Phase B verified live"). Final `sw` = **v35**. Shipped together with
-> a **privacy update** (POLICY_VERSION 1.0→1.2 forces re-consent; `legal/` now discloses dietary &
-> allergy data + the religious-belief nuance of diet choices).
->
-> **On-device verification status (Pixel 7, real device + live worker):**
-> - ✅ **#5/#6 coach** — confirmed: avoided re-suggesting logged foods (greek yog/cottage cheese),
->   suggested edamame (variety/fibre). State-awareness + pacing working end-to-end.
-> - ✅ **#3 repeat-add** — `✓ Added` tick + re-confirm seen working.
+> **Session-3 features #2–#8 are SHIPPED + VERIFIED.** Built session 3 (sw `v33 → v36`), deployed live
+> to `origin/main`, tests **70/70 green**. On-device verification (Pixel 7) **complete 2026-06-12**:
+> - ✅ **#2 Quick Add AI estimate** — milk-while-vegan now fills correctly (v36 fix confirmed; the old
+>   false-"✓ Filled"-with-blanks bug is gone).
+> - ✅ **#3 repeat-add** — `✓ Added` tick + re-blink confirmed.
+> - ✅ **#5/#6 coach** — state-aware (avoided re-suggesting logged foods) + safe pacing confirmed.
+> - ✅ **#7 macro floors** — low custom target shows "FLOORS KEPT" warning (saving not blocked).
+> - ✅ **#8 dietary/allergies** — diet filter keeps suggestions on-diet; declared-allergen log flags ⚠️.
 > - ⏸️ **#4 haptics — DEFERRED to native/Play packaging.** `navigator.vibrate` is a silent no-op on
->   this Pixel 7 / mobile-Chrome (keyboard haptics work, so motor+settings are fine — it's the web
->   Vibration API). Bumped pulse 12→35ms, still nothing; isolation test page confirmed it's the
->   platform, not our code. `haptic()` left in as a graceful feature-detected no-op; revisit when the
->   app is packaged for the Play Store (a basic TWA may still not expose it → native haptics bridge is
->   the fallback). **Do not re-debug web haptics.** (Debug page `haptic-test.html` removed from prod;
->   recoverable at git `9f4b54f`.)
-> - ✅ **#8 diet-type filter** — confirmed: set to *vegan keto*, AI food suggestions stayed on point
->   (hard diet filter via `dietaryPromptBlock` reaching the model). **Allergen backstop still to test.**
-> - 🐛→✅ **#2 Quick Add AI estimate — BUG FOUND & FIXED (deployed, sw v36).** "massive glass of milk"
->   while vegan-keto returned a false "✓ Filled" with blank macros. Cause: the dietary HARD filter was
->   injected into the *estimation* prompts (AI_PROMPT + AI_REESTIMATE_PROMPT), so "estimate milk" vs
->   "never name non-vegan food" conflicted → mangled JSON. Fix: dietary block now ONLY on the coach
->   (suggestion) prompt; estimation prompts estimate unconditionally; allergen OUTPUT scan still covers
->   safety. Added a guard so junk → "Couldn't estimate that" not a false Filled. **Re-verify on device.**
-> - ⬜ **Still to eyeball:** #2 milk estimate now fills, #8 **allergen** scan (declare soya → coach
->   suggests edamame → ⚠️ flag), #7 "FLOORS KEPT" warning on a low custom target.
+>   mobile Chrome / Pixel 7 (confirmed via isolation test — platform, not our code). `haptic()` left in
+>   as a feature-detected no-op. **Do not re-debug web haptics.** (Debug page recoverable at git `9f4b54f`.)
 >
-> **Dev harness IS running** this session at http://localhost:3000 (+ /preview.html). NOTE: localhost
-> Google sign-in may be blocked (origin not authorised) — if so, verify on the live phone instead.
+> **Bookkeeping done this session:** `@wip` tags flipped in `features/fuel-log.feature` (only the
+> celebration redesign + deferred haptics keep `@wip`); superseded proportional-scaling scenario
+> deleted; `DOCS.md` changelog written (new **v6.2** entry). **Not yet committed.**
 >
-> `@wip` tags in the feature file stay ON until the remaining three are eyeballed.
->
-> **Next (feature track):** finish the #8/#7/#2 on-device pass → flip `@wip` tags → update `DOCS.md`
-> changelog → then the celebration-redesign feature.
+> **Next (feature track):** **celebration redesign → one engine** (`features/fuel-log.feature`, `@wip`) —
+> decided + specced, NOT built. The sole remaining backlog feature.
 >
 > **Stray file:** `features/_inbox.feature` (untracked BDD staging placeholder) — keep or bin.
 >
-> **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` (2026-06-10) and tracking it;
-> the remote URL is credential-free (auth via Windows Credential Manager) and the exposed PAT was
-> **deleted on GitHub**. **DB migration + worker deploy are DONE** (consent columns live; worker serves
-> `/delete-account` + sweep). Next: publish `legal/` pages (merge → `main`). **⏳ TODO later (optional):**
-> add the Cloudflare cron trigger `0 3 * * 0` (`§13` step 4) — deferred, nothing depends on it yet.
+> **Housekeeping:** branch `phase-b-compliance` is **pushed** to `origin` and tracking it; the exposed
+> PAT was **deleted on GitHub**. **DB migration + worker deploy are DONE** (consent columns live; worker
+> serves `/delete-account` + sweep). **⏳ TODO later (optional):** Cloudflare cron trigger `0 3 * * 0`
+> (`§13` step 4) — deferred, nothing depends on it yet.
 
 ## Which doc, when
 
