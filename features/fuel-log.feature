@@ -140,20 +140,21 @@ Feature: Body fat % guidance on profile screen
 # ── Celebration model (agreed 2026-06-11): ONE engine, intensity scales with rarity.
 # Daily logging = a quiet chip pop. Badges are the SOLE "something special" authority.
 # The old standalone streak-milestone overlay (days 7/14/30/50/100) is REMOVED.
-# @wip — specced, not yet built. Replaces the former "Streak celebration animation" feature.
-@wip
+# Shipped v6.5 (2026-06-12). Replaces the former "Streak celebration animation" feature.
 Feature: Logging celebration — quiet daily, fanfare for the rare
 
   Background:
     Given badge tiers in ascending order are Bronze, Silver, Gold, Platinum, Diamond, Elite
 
-  Scenario: Daily streak increment is a quiet pop, not an overlay
+  Scenario: Daily streak increment is a quiet pip in the thumb zone, not an overlay
     Given I have an active streak and have not logged today
     When I log my first meal of the day
-    Then the header 🔥 streak chip increments with a brief pop
+    Then a quiet 🔥 streak pip appears near the bottom, where I am logging
+    # the header chip is usually scrolled off when logging, so the pip carries the moment
+    And the header 🔥 streak chip also increments
     And no full-screen overlay appears
     And no celebration sound plays
-    And a flag is saved for today so the pop does not repeat
+    And a flag is saved for today so the pip does not repeat
 
   Scenario: A second log the same day does nothing
     Given today's streak pop has already played
@@ -179,7 +180,7 @@ Feature: Logging celebration — quiet daily, fanfare for the rare
     And the overlay behaviour is "<overlay>"
     Examples:
       | event                          | treatment            | overlay        |
-      | daily streak increment         | chip pop             | no overlay     |
+      | daily streak increment         | thumb-zone pip       | no overlay     |
       | Bronze or Silver badge earned  | toast + chip glow    | no overlay     |
       | Gold+ badge earned             | full fanfare         | overlay ~2.5s  |
 

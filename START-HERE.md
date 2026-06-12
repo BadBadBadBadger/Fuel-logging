@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-12 (session 6: shipped **v6.4 — light mode** (system-aware + 3-way 🌙/☀️/🖥️ toggle, warm paper/coal-ink mirror of the dark theme; whole palette moved to CSS variables); device-tested, **85/85**, sw v43; new **design-lead persona** added; merged to `main`. Next: celebration redesign — fresh session.) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-12 (session 6: shipped **v6.4 light mode** then **v6.5 celebration redesign** — one rarity-scaled engine (quiet 🔥 thumb-zone pip · Bronze/Silver toast+glow · Gold+ fanfare), old streak/milestone overlays deleted, **frozen dashboard/Account headers**, `?dev` test harness; device-tested, **85/85**, sw v48; merged to `main`. Next: more badge categories.) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -25,16 +25,16 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 ## Next up (in order)
 
-0. **✅ DONE — light mode (v6.4, shipped to `main`, session 6).** System-aware + 3-way 🌙/☀️/🖥️ toggle
-   at the bottom of Profile/⚙️; warm paper/coal-ink mirror of the dark theme; whole palette migrated to
-   CSS variables (`index.html` `:root` blocks are the canonical token list); DOCS.md §35 rewritten + v6.4
-   changelog; Appearance feature un-`@wip`'d. **One on-device follow-up:** confirm the *live* OS dark/light
-   flip applies mid-session in the installed PWA (the one scenario not verifiable by trace). New
-   **design-lead persona** added — say **"design hat"** / **"UX hat"**.
-1. **Build: celebration redesign → one engine** — the sole remaining backlog feature,
-   decided + specced in `features/fuel-log.feature` (`@wip`, "Logging celebration — quiet daily,
-   fanfare for the rare"). Quiet chip-pop on every daily log; badges become the sole "something
-   special" authority; the old streak-milestone overlay is removed. **Start a fresh session here.**
+0. **✅ DONE — light mode (v6.4) + celebration redesign (v6.5), shipped to `main`, session 6.**
+   Light: system-aware + 3-way 🌙/☀️/🖥️ toggle, CSS-variable palette (DOCS §35). Celebration: one
+   rarity-scaled engine — quiet 🔥 **thumb-zone pip** on daily log, Bronze/Silver **toast + 🏆 glow**,
+   Gold+ **fanfare** (count-up, ~2.5s, silent); old streak/milestone overlays deleted; **frozen
+   dashboard/Account headers**; **`?dev`** test harness (DOCS §36). New **design-lead persona** ("design
+   hat"/"UX hat"). **One on-device follow-up still open:** confirm the *live* OS dark/light flip applies
+   mid-session in the installed PWA (the one light-mode scenario not verifiable by trace).
+1. **▶ Build: more badge categories** — the sole remaining product backlog feature (`DOCS §23`):
+   Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the v6.5 tier + celebration engine, so it's
+   mostly metric calcs + data. **Natural next build.**
 2. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
 3. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
    on your real account** — use a throwaway Google account.

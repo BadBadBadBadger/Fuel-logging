@@ -21,6 +21,9 @@ const applyTheme = choice => {
   else document.documentElement.removeAttribute("data-theme");
   if (typeof window !== "undefined" && window.__fuelSyncChrome) window.__fuelSyncChrome();
 };
+// Dev harness flag — gates the celebration test panel. Off in the real app; add ?dev to the URL
+// (e.g. http://<host>:3000/?dev) to summon it. Never shown to real users.
+const DEV = typeof location !== "undefined" && new URLSearchParams(location.search).has("dev");
 
 // ── Auth / Premium ────────────────────────────────────────────
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
@@ -1062,7 +1065,9 @@ function AccountScreen({ user, consentInfo, onBack, onExport, onSignOut, onDelet
 
   return (
     <div style={{ minHeight:"100vh", background:BG, padding:"18px 16px 60px", maxWidth:480, margin:"0 auto" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12,
+        position:"sticky", top:0, zIndex:20, background:BG,
+        paddingTop:18, marginTop:-18, paddingBottom:12, marginBottom:10 }}>
         <button onClick={onBack}
           style={{ width:36, height:36, background:"var(--surface-2)", border:`1px solid ${BD}`,
             borderRadius:10, color:"var(--text-mid)", fontSize:18 }}>←</button>
@@ -1229,117 +1234,6 @@ function MBar({ label, value, target, color }) {
       <div style={{ height:7, background:"var(--surface-2b)", borderRadius:99, overflow:"hidden" }}>
         <div style={{ height:"100%", width:`${pct}%`, background: accent || color,
           borderRadius:99, transition:"width 0.4s" }}/>
-      </div>
-    </div>
-  );
-}
-
-// ── Streak Celebration ────────────────────────────────────────
-
-function StreakCelebration({ anim, onDone }) {
-  const { prevStreak, newStreak, isMilestone } = anim;
-  const [count, setCount] = useState(prevStreak);
-
-  // Pre-computed floaters — stable across re-renders via useState initializer
-  const [floaters] = useState(() => {
-    const n = isMilestone ? 26 : 14;
-    return Array.from({ length: n }, (_, i) => ({
-      x:     5  + Math.random() * 90,
-      y:     5  + Math.random() * 90,
-      size:  isMilestone ? 22 + Math.random() * 30 : 16 + Math.random() * 20,
-      delay: Math.random() * 0.7,
-      dur:   0.8 + Math.random() * 0.5,
-      emoji: isMilestone && i % 4 === 0 ? (i % 8 === 0 ? "🎉" : "🎊") : "🔥",
-    }));
-  });
-
-  useEffect(() => {
-    // ── Web Audio: whoosh then heavy thud ──────────────────────
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // Whoosh: sawtooth sweep 800 → 180 Hz
-      const osc = ctx.createOscillator();
-      const g1  = ctx.createGain();
-      osc.connect(g1); g1.connect(ctx.destination);
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(800, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.32);
-      g1.gain.setValueAtTime(0.22, ctx.currentTime);
-      g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.32);
-      // Heavy thud: noise burst at 0.4s
-      const sr  = ctx.sampleRate;
-      const buf = ctx.createBuffer(1, Math.ceil(sr * 0.55), sr);
-      const ch  = buf.getChannelData(0);
-      for (let i = 0; i < ch.length; i++)
-        ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sr * 0.07));
-      const src = ctx.createBufferSource();
-      const g2  = ctx.createGain();
-      src.buffer = buf; src.connect(g2); g2.connect(ctx.destination);
-      g2.gain.setValueAtTime(1.8, ctx.currentTime + 0.42);
-      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
-      src.start(ctx.currentTime + 0.42);
-    } catch(e) {}
-
-    // ── Count up prevStreak → newStreak over 800ms ─────────────
-    const duration = 800;
-    const start    = Date.now();
-    const range    = newStreak - prevStreak;
-    const tick = () => {
-      const p = Math.min(1, (Date.now() - start) / duration);
-      setCount(Math.round(prevStreak + range * p));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-
-    const timer = setTimeout(onDone, 1500);
-    return () => clearTimeout(timer);
-  }, []); // eslint-disable-line
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.93)",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      zIndex:1000, animation:"sc_fade 0.18s ease-out" }}>
-      <style>{`
-        @keyframes sc_fade  { from{opacity:0} to{opacity:1} }
-        @keyframes sc_float { from{transform:translateY(0) rotate(-12deg)} to{transform:translateY(-24px) rotate(12deg)} }
-        @keyframes sc_pop   { 0%{transform:scale(0.25);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }
-        @keyframes sc_pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.14)} }
-        @keyframes sc_num   { 0%{transform:scale(0.4);opacity:0} 100%{transform:scale(1);opacity:1} }
-      `}</style>
-
-      {/* Floating 🔥 / 🎉🎊 */}
-      {floaters.map((f, i) => (
-        <div key={i} style={{ position:"absolute", left:`${f.x}%`, top:`${f.y}%`,
-          fontSize:f.size, pointerEvents:"none", userSelect:"none",
-          animation:`sc_float ${f.dur}s ease-in-out infinite alternate`,
-          animationDelay:`${f.delay}s`, opacity:0.88 }}>
-          {f.emoji}
-        </div>
-      ))}
-
-      {/* Centre content */}
-      <div style={{ textAlign:"center", position:"relative", zIndex:1 }}>
-        <div style={{ fontSize: isMilestone ? 128 : 108, lineHeight:1,
-          animation:"sc_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both" }}>
-          💪
-        </div>
-        <div style={{ fontSize: isMilestone ? 92 : 78, fontWeight:900, color:A,
-          textShadow:`0 0 40px ${aA("99")}`, lineHeight:1, marginTop:-10,
-          animation: isMilestone
-            ? "sc_pulse 0.55s ease-in-out 0.45s infinite"
-            : "sc_num 0.45s ease-out 0.2s both" }}>
-          {count}
-        </div>
-        <div style={{ fontSize:14, color:A, fontWeight:900, letterSpacing:"0.14em",
-          marginTop:12, textShadow:`0 0 18px ${aA("66")}` }}>
-          {isMilestone ? `🏆 ${newStreak} DAY MILESTONE!` : "DAY STREAK 🔥"}
-        </div>
-        {isMilestone && (
-          <div style={{ fontSize:38, marginTop:18, animation:"sc_pop 0.4s ease-out 0.5s both" }}>
-            🎉🎊🎉🎊🎉
-          </div>
-        )}
       </div>
     </div>
   );
@@ -2285,7 +2179,7 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
 
 function Dashboard({ logs, totals, targets, remaining, water, setWater,
   mode, setMode, setView, removeLog, updateLog, addToQA,
-  hasProfile, streak, prof,
+  hasProfile, streak, streakPop, badgeGlow, prof,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
@@ -2345,8 +2239,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
 
-      {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
+      {/* Header — frozen (sticky) so the streak + nav stay visible while logging/scrolling */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start",
+        position:"sticky", top:0, zIndex:20, background:BG,
+        paddingTop:20, marginTop:-20, paddingBottom:12, marginBottom:8 }}>
         <div>
           <h1 style={{ margin:0, fontSize:26, fontWeight:900, color:A, letterSpacing:"-0.02em", lineHeight:1 }}>FUEL LOG</h1>
           <p style={{ margin:"4px 0 0", fontSize:12, color:"var(--text-label)", letterSpacing:"0.06em" }}>
@@ -2358,7 +2254,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           {streak > 0 && (
             <div style={{ padding:"7px 10px", background:"var(--surface-2)", border:`1px solid ${BD}`,
-              borderRadius:10, fontSize:13, fontWeight:900, color:A }}>🔥{streak}</div>
+              borderRadius:10, fontSize:13, fontWeight:900, color:A,
+              animation: streakPop ? "chip_pop 0.6s cubic-bezier(0.34,1.56,0.64,1)" : "none" }}>🔥{streak}</div>
           )}
           <button onClick={() => setView("profile")} style={{ width:34, height:34, background:"var(--surface-2)",
             border:`1px solid ${BD}`, borderRadius:10, color:"var(--text-mid)", fontSize:14,
@@ -2368,7 +2265,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             display:"flex", alignItems:"center", justifyContent:"center" }}>📊</button>
           <button onClick={() => setView("achievements")} style={{ width:34, height:34, background:"var(--surface-2)",
             border:`1px solid ${BD}`, borderRadius:10, color:"var(--text-mid)", fontSize:14,
-            display:"flex", alignItems:"center", justifyContent:"center" }}>🏆</button>
+            display:"flex", alignItems:"center", justifyContent:"center",
+            animation: badgeGlow ? "chip_glow 1.5s ease-out" : "none" }}>🏆</button>
           {isPremium && (
             <button onClick={() => setView("account")} aria-label="Account & Privacy"
               style={{ width:34, height:34, background:`${aA("18")}`,
@@ -3601,6 +3499,108 @@ function Achievements({ earnedBdgs, onBack }) {
   );
 }
 
+// ── Badge celebrations (rarity-scaled) ────────────────────────
+// Gold tier and above earn a full-screen fanfare; the number counts up and the
+// overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
+// quiet chip pop (in the header) — this overlay is reserved for the rare events.
+function BadgeFanfare({ badge, onDone }) {
+  const { b, i } = badge;
+  const target = TIERS[i];
+  const [count, setCount] = useState(0);
+  const [floaters] = useState(() => Array.from({ length: 18 }, (_, k) => ({
+    x: 5 + Math.random() * 90, y: 5 + Math.random() * 90, size: 16 + Math.random() * 22,
+    delay: Math.random() * 0.6, dur: 0.8 + Math.random() * 0.5,
+    emoji: k % 5 === 0 ? "🎉" : k % 5 === 1 ? "🎊" : b.emoji,
+  })));
+  useEffect(() => {
+    const dur = 900, start = Date.now();
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - start) / dur);
+      setCount(Math.round(target * p));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    const t = setTimeout(onDone, 2500);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line
+
+  return (
+    <div onClick={onDone} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
+      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:24,
+      animation:"bf_fade 0.18s ease-out" }}>
+      <style>{`
+        @keyframes bf_fade  { from{opacity:0} to{opacity:1} }
+        @keyframes bf_float { from{transform:translateY(0) rotate(-12deg)} to{transform:translateY(-22px) rotate(12deg)} }
+        @keyframes bf_pop   { 0%{transform:scale(0.3);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }
+      `}</style>
+      {floaters.map((f, k) => (
+        <div key={k} style={{ position:"absolute", left:`${f.x}%`, top:`${f.y}%`, fontSize:f.size,
+          pointerEvents:"none", userSelect:"none", opacity:0.85,
+          animation:`bf_float ${f.dur}s ease-in-out infinite alternate`, animationDelay:`${f.delay}s` }}>
+          {f.emoji}
+        </div>
+      ))}
+      <div style={{ textAlign:"center", position:"relative", zIndex:1 }}>
+        <div style={{ fontSize:96, lineHeight:1, animation:"bf_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both" }}>{b.emoji}</div>
+        <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginTop:8 }}>
+          {TIER_ICONS[i]} {TIER_NAMES[i].toUpperCase()} UNLOCKED
+        </div>
+        <div style={{ fontSize:26, fontWeight:900, color:"var(--text-hi)", marginTop:6 }}>{b.name}</div>
+        <div style={{ fontSize:60, fontWeight:900, color:A, lineHeight:1.1, marginTop:8,
+          textShadow:`0 0 30px ${aA("88")}` }}>{count}</div>
+        <div style={{ fontSize:13, color:"var(--text-label)", marginTop:2 }}>{b.desc}</div>
+        <div style={{ fontSize:11, color:"var(--text-faint)", marginTop:20, letterSpacing:"0.08em" }}>tap to dismiss</div>
+      </div>
+    </div>
+  );
+}
+
+// Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
+// mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
+function StreakPip({ streak, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 1400); return () => clearTimeout(t); }, []); // eslint-disable-line
+  return (
+    <div style={{ position:"fixed", left:0, right:0, bottom:96, display:"flex", justifyContent:"center",
+      zIndex:1000, pointerEvents:"none" }}>
+      <style>{`
+        @keyframes pip_in  { 0%{transform:scale(0.5) translateY(8px);opacity:0} 55%{transform:scale(1.12)} 100%{transform:scale(1) translateY(0);opacity:1} }
+        @keyframes pip_out { to{opacity:0;transform:translateY(-6px)} }
+      `}</style>
+      <div style={{ display:"flex", alignItems:"center", gap:7, background:CARD,
+        border:`1px solid ${aA("44")}`, borderRadius:999, padding:"8px 14px",
+        boxShadow:"0 6px 18px rgba(0,0,0,0.3)",
+        animation:"pip_in 0.32s cubic-bezier(0.34,1.56,0.64,1), pip_out 0.3s ease-in 1.05s forwards" }}>
+        <span style={{ fontSize:18 }}>🔥</span>
+        <span style={{ fontSize:15, fontWeight:900, color:A }}>{streak}</span>
+        <span style={{ fontSize:11, fontWeight:800, color:"var(--text-label)", letterSpacing:"0.08em" }}>DAY STREAK</span>
+      </div>
+    </div>
+  );
+}
+
+// Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
+function BadgeToast({ badge, onDone }) {
+  const { b, i } = badge;
+  useEffect(() => { const t = setTimeout(onDone, 2800); return () => clearTimeout(t); }, []); // eslint-disable-line
+  return (
+    <div onClick={onDone} style={{ position:"fixed", left:0, right:0, bottom:24, display:"flex",
+      justifyContent:"center", zIndex:1000, pointerEvents:"none", padding:"0 16px" }}>
+      <style>{`@keyframes bt_in { 0%{transform:translateY(20px);opacity:0} 100%{transform:translateY(0);opacity:1} }`}</style>
+      <div style={{ pointerEvents:"auto", display:"flex", alignItems:"center", gap:10, background:CARD,
+        border:`1px solid ${aA("44")}`, borderRadius:999, padding:"10px 16px", maxWidth:"100%",
+        boxShadow:"0 8px 24px rgba(0,0,0,0.35)", animation:"bt_in 0.3s ease-out" }}>
+        <span style={{ fontSize:22 }}>{b.emoji}</span>
+        <div style={{ textAlign:"left" }}>
+          <div style={{ fontSize:10, color:A, fontWeight:800, letterSpacing:"0.1em" }}>
+            {TIER_ICONS[i]} {TIER_NAMES[i].toUpperCase()}
+          </div>
+          <div style={{ fontSize:13, fontWeight:900, color:"var(--text-hi)" }}>{b.name}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
@@ -3618,7 +3618,9 @@ function App() {
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
   const [coachKey,         setCoachKey]         = useState(0);
-  const [streakAnim,       setStreakAnim]       = useState(null);
+  const [streakPop,        setStreakPop]        = useState(null);  // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+  const [badgeToast,       setBadgeToast]       = useState(null);  // Bronze/Silver badge → quiet toast + 🏆 glow
+  const [badgeGlow,        setBadgeGlow]        = useState(false); // the 🏆 glow paired with the toast
   const [customKcal,       setCustomKcal]       = useState(null);
   const [aggressiveCutAcked, setAggressiveCutAcked] = useState(false);
   const [, setThemeTick] = useState(0); // force re-render on live OS theme change (System mode → charts re-resolve)
@@ -3751,7 +3753,14 @@ function App() {
       const updated = [...earnedBdgs, ...newlyEarned.map(x => x.key)];
       setEarnedBdgs(updated);
       ss("badges", JSON.stringify(updated));
-      setNewBadge(newlyEarned[0]);
+      const top = newlyEarned[newlyEarned.length - 1]; // celebrate the highest new tier earned
+      if (top.i >= 2) {            // Gold tier and above → full fanfare overlay
+        setNewBadge(top);
+      } else {                     // Bronze / Silver → quiet toast + 🏆 glow, no overlay
+        setBadgeToast(top);
+        setBadgeGlow(true);
+        setTimeout(() => setBadgeGlow(false), 1600);
+      }
       if (authState === "premium" && authUser?.id)
         syncBadges(authUser.id, updated).catch(() => {});
     }
@@ -3795,21 +3804,17 @@ function App() {
     await saveLogs([...logs, { ...e, id:Date.now(),
       time: new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) }]);
     if (isFirstToday) {
-      const animKey = "streak_anim__" + todayKey();
-      if (!localStorage.getItem(animKey)) {
+      const popKey = "streak_pop__" + todayKey();
+      if (!localStorage.getItem(popKey)) {
         const today = todayKey();
         const simulatedHist = [
           ...hist.filter(d => d.date !== today),
           { date: today, logs: [e] }
         ];
-        const newStreak = calcStreak(simulatedHist);
-        if (newStreak > 0) {
-          localStorage.setItem(animKey, "1");
-          setStreakAnim({
-            prevStreak:  Math.max(0, newStreak - 1),
-            newStreak,
-            isMilestone: [7, 14, 30, 50, 100].includes(newStreak),
-          });
+        const ns = calcStreak(simulatedHist);
+        if (ns > 0) {   // quiet pip at the point of action — no overlay, no sound, once per day
+          localStorage.setItem(popKey, "1");
+          setStreakPop(ns);
         }
       }
     }
@@ -3934,7 +3939,7 @@ function App() {
         const key = localStorage.key(i);
         if (key && (key.startsWith("logs__") || key.startsWith("water__") ||
             key.startsWith("workouts__") || key.startsWith("mode__") ||
-            key.startsWith("coach__")    || key.startsWith("streak_anim__") ||
+            key.startsWith("coach__")    || key.startsWith("streak_pop__") ||
             key.startsWith("sync_migrated__"))) {
           localStorage.removeItem(key);
         }
@@ -4095,10 +4100,31 @@ function App() {
         button { cursor: pointer; }
         button:disabled { cursor: not-allowed; }
         @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }
+        @keyframes chip_pop  { 0%{transform:scale(1)} 35%{transform:scale(1.32)} 100%{transform:scale(1)} }
+        @keyframes chip_glow { 0%,100%{box-shadow:0 0 0 0 transparent;transform:scale(1)} 30%{box-shadow:0 0 14px 2px var(--accent);transform:scale(1.14)} 60%{box-shadow:0 0 8px 1px var(--accent);transform:scale(1)} }
       `}</style>
 
-      {/* Streak celebration */}
-      {streakAnim && <StreakCelebration anim={streakAnim} onDone={() => setStreakAnim(null)} />}
+      {/* Dev harness — celebration test triggers; only with ?dev in the URL, never for real users */}
+      {DEV && (
+        <div style={{ position:"fixed", top:6, left:6, zIndex:2000, display:"flex", gap:4, flexWrap:"wrap", maxWidth:160 }}>
+          {[
+            ["pop", () => setStreakPop(3)],
+            ["🥉", () => setBadgeToast({ b: BDGS[0], i: 0 })],
+            ["🥈", () => setBadgeToast({ b: BDGS[1], i: 1 })],
+            ["🥇", () => setNewBadge({ b: BDGS[0], i: 2 })],
+            ["👑", () => setNewBadge({ b: BDGS[1], i: 5 })],
+          ].map(([lbl, fn]) => (
+            <button key={lbl} onClick={fn} style={{ fontSize:11, padding:"4px 7px", background:"var(--surface-2)",
+              border:"1px solid var(--border)", borderRadius:6, color:"var(--text-mid)", opacity:0.85 }}>{lbl}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Daily streak → quiet pip in the thumb zone (the header chip, often scrolled off, also increments) */}
+      {streakPop != null && <StreakPip streak={streakPop} onDone={() => setStreakPop(null)} />}
+
+      {/* Bronze/Silver badge → quiet toast (the paired 🏆 chip glow lives in the header) */}
+      {badgeToast && <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />}
 
       {/* Auth modals */}
       {premiumGate && !showSignIn && (
@@ -4127,31 +4153,13 @@ function App() {
         <ConsentModal onConsent={handleConsent} onSignOut={handleSignOut}/>
       )}
 
-      {/* Badge celebration */}
-      {newBadge && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)",
-          display:"flex", alignItems:"center", justifyContent:"center", zIndex:999, padding:24 }}>
-          <div style={{ background:CARD, borderRadius:24, padding:"36px 28px", textAlign:"center",
-            border:`1px solid ${aA("44")}`, maxWidth:300, width:"100%" }}>
-            <div style={{ fontSize:72, marginBottom:12 }}>{newBadge.b.emoji}</div>
-            <div style={{ fontSize:11, color:A, letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>
-              {TIER_ICONS[newBadge.i]} {TIER_NAMES[newBadge.i].toUpperCase()} UNLOCKED
-            </div>
-            <div style={{ fontSize:22, fontWeight:900, color:"var(--text-hi)", marginBottom:6 }}>{newBadge.b.name}</div>
-            <div style={{ fontSize:13, color:"var(--text-label)", marginBottom:24 }}>{TIERS[newBadge.i]} {newBadge.b.desc}</div>
-            <button onClick={() => setNewBadge(null)}
-              style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
-                border:"none", borderRadius:12, fontSize:14, fontWeight:900, cursor:"pointer" }}>
-              KEEP GOING 🔥
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
+      {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
       {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining}
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
-          hasProfile={!!prof} streak={streak} prof={prof}
+          hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}
           coachKey={coachKey}
           workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}

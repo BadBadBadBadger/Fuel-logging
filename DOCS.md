@@ -580,8 +580,8 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 | ~~AI estimate on new Quick Add item~~ | Enhancement · quick | ✅ **Done (v6.2).** ✨ AI-estimate on the Quick Add meal form (mirrors `EntryEditor`, premium-gated, OFF cross-check). v6.2.1 fix: estimation no longer leaks the dietary filter (off-diet items now estimate cleanly). |
 | ~~Metric / imperial display units~~ | Enhancement · ad-hoc | ✅ **Done (v6.3).** Independent per-field pickers: weight {kg, st+lb, lb}, height {cm, ft+in, in} — beta user flagged UK mixing. Storage stays metric (`fuel_wunit` / `fuel_hunit` local prefs), consistent across profile / weigh-in widget / Trends chart. ⏳ on-device verification pending. |
 | ~~Bug: allergen/preference tags don't auto-select on Enter~~ | Bug · safety | ✅ **Done (v6.3).** `TagField` Enter now resolves to the canonical preset (e.g. `tree nut → tree nuts`) instead of a custom near-duplicate that bypassed the allergen synonym scan. ⏳ on-device verification pending. |
-| **▶ Celebration redesign — one engine** | Polish · decided · **next build** | Collapse the two celebration systems into one. Daily streak increment = quiet **pop + increment on the header 🔥 chip** (no overlay, no sound). Badges become the **sole** fanfare authority: Bronze/Silver = toast + chip glow; **Gold tier and above = full overlay, slowed to ~2.5s** so it's readable. **Delete** the standalone streak-milestone overlay (old days 7/14/30/50/100, `app.jsx` ~L3112; `StreakCelebration` ~L1048). Spec: `features/fuel-log.feature` (`@wip`). |
-| **More badge categories** | Feature | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above. |
+| ~~Celebration redesign — one engine~~ | Polish | ✅ **Done (v6.5).** Daily streak = quiet **🔥 pip in the thumb zone** (header off-screen at log time) + header chip increment; Bronze/Silver = toast + 🏆 glow; Gold+ = full fanfare overlay (count-up, ~2.5s, silent). Old streak overlay + day-7/14/30 milestone fanfare deleted. Frozen dashboard/Account headers added (`StreakPip`/`BadgeToast`/`BadgeFanfare`). |
+| **▶ More badge categories** | Feature · **next build** | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above — plugs straight into the v6.5 engine. |
 | **Notification engine (context-aware)** | Feature · needs-a-plan | Merges the old "weekly weigh-in summary" + "meal/water reminders" into one push system. **Context-aware from the start:** reminders read the day (kcal remaining, last-logged time, water progress, weigh-in done?) and stay quiet once a goal is met. ⚠️ Platform reality: works on installed Android PWA/TWA; iOS Safari push is restricted — degrade gracefully. |
 
 **~~Unrefined — 2026-06-11 feature bucket~~ → ✅ all shipped in v6.2 (2026-06-11) and verified on
@@ -1329,6 +1329,12 @@ appears after a deploy.
 2. Or DevTools → **Application** → **Storage** → **Clear site data**, then `Ctrl+Shift+R`.
 3. During dev, DevTools → Application → Service Workers → tick **Update on reload** + **Bypass for network**.
 
+### Dev harness — celebration test triggers (`?dev`)
+Append **`?dev`** to the URL (e.g. `http://localhost:3000/?dev` or `http://<lan-ip>:8080/?dev`) to show a
+small top-left panel that fires each celebration on demand: **pop** (streak pip), **🥉/🥈** (Bronze/Silver
+toast + 🏆 glow), **🥇/👑** (Gold/Elite fanfare). Gated by the `DEV` flag in `app.jsx`; never shown without
+the param, so it's safe in production. Handy because Gold+ otherwise needs a real 12+ day streak to trigger.
+
 ### Common console noise on localhost (harmless)
 - `[GSI_LOGGER]: The given origin is not allowed for the given client ID` / `403` —
   `http://localhost:3000` isn't an authorized JavaScript origin for the Google OAuth
@@ -1341,6 +1347,24 @@ appears after a deploy.
 ---
 
 ## 37. Changelog
+
+### v6.5 — Celebration redesign + frozen headers (June 2026)
+Built on branch `feat/celebration-redesign`; device-tested on Pixel 7. Tests 85/85, sw `v43→v48`.
+- **One celebration engine, intensity scales with rarity.** The two old systems (a full-screen
+  streak overlay with sound + the day-7/14/30/50/100 milestone fanfare) are **removed**. Now:
+  - **Daily streak** = a quiet **🔥 pip** that springs up in the **bottom thumb zone** where you're
+    logging (the header is usually scrolled off at log time), fades in ~1.4s — no overlay, no sound,
+    once per day. The header chip still increments.
+  - **Bronze / Silver badge** = a quiet bottom **toast** + a glow on the 🏆 button. No overlay.
+  - **Gold tier and above** = a **full-screen fanfare** — number counts up, auto-dismisses ~2.5s,
+    tap to dismiss. Reserved for the rare events (Gold+ needs a 12+ day streak / 12+ days logged /
+    12+ hydrated days). Silent by design (the old aggressive whoosh/thud is gone).
+- **Frozen headers.** The dashboard header (title + 🔥 streak + ⚙️/📊/🏆 nav) and the Account header
+  are now `position: sticky` — the shared back-header was already sticky, so every screen's header now
+  stays put while content scrolls. This is what makes the always-visible streak chip work.
+- **Dev harness:** the celebration test panel (fire pip / each badge tier) is gated behind **`?dev`**
+  in the URL — never shown to real users. See §36.
+- Components: `StreakPip`, `BadgeToast`, `BadgeFanfare` replace the deleted `StreakCelebration`.
 
 ### v6.4 — Light mode (system-aware, with manual override) (June 2026)
 Built on branch `feat/light-mode`; device-tested on Pixel 7. Tests 85/85, sw `v42→v43`.

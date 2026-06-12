@@ -71,6 +71,9 @@ var applyTheme = function applyTheme(choice) {
   if (choice === "light" || choice === "dark") document.documentElement.setAttribute("data-theme", choice);else document.documentElement.removeAttribute("data-theme");
   if (typeof window !== "undefined" && window.__fuelSyncChrome) window.__fuelSyncChrome();
 };
+// Dev harness flag — gates the celebration test panel. Off in the real app; add ?dev to the URL
+// (e.g. http://<host>:3000/?dev) to summon it. Never shown to real users.
+var DEV = typeof location !== "undefined" && new URLSearchParams(location.search).has("dev");
 
 // ── Auth / Premium ────────────────────────────────────────────
 // Fill GOOGLE_CLIENT_ID after Google Cloud Console setup — see DOCS.md §29.
@@ -2888,7 +2891,14 @@ function AccountScreen(_ref29) {
       display: "flex",
       alignItems: "center",
       gap: 12,
-      marginBottom: 20
+      position: "sticky",
+      top: 0,
+      zIndex: 20,
+      background: BG,
+      paddingTop: 18,
+      marginTop: -18,
+      paddingBottom: 12,
+      marginBottom: 10
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: onBack,
@@ -3328,176 +3338,32 @@ function MBar(_ref34) {
   })));
 }
 
-// ── Streak Celebration ────────────────────────────────────────
-
-function StreakCelebration(_ref35) {
-  var anim = _ref35.anim,
-    onDone = _ref35.onDone;
-  var prevStreak = anim.prevStreak,
-    newStreak = anim.newStreak,
-    isMilestone = anim.isMilestone;
-  var _useState23 = useState(prevStreak),
-    _useState24 = _slicedToArray(_useState23, 2),
-    count = _useState24[0],
-    setCount = _useState24[1];
-
-  // Pre-computed floaters — stable across re-renders via useState initializer
-  var _useState25 = useState(function () {
-      var n = isMilestone ? 26 : 14;
-      return Array.from({
-        length: n
-      }, function (_, i) {
-        return {
-          x: 5 + Math.random() * 90,
-          y: 5 + Math.random() * 90,
-          size: isMilestone ? 22 + Math.random() * 30 : 16 + Math.random() * 20,
-          delay: Math.random() * 0.7,
-          dur: 0.8 + Math.random() * 0.5,
-          emoji: isMilestone && i % 4 === 0 ? i % 8 === 0 ? "🎉" : "🎊" : "🔥"
-        };
-      });
-    }),
-    _useState26 = _slicedToArray(_useState25, 1),
-    floaters = _useState26[0];
-  useEffect(function () {
-    // ── Web Audio: whoosh then heavy thud ──────────────────────
-    try {
-      var ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // Whoosh: sawtooth sweep 800 → 180 Hz
-      var osc = ctx.createOscillator();
-      var g1 = ctx.createGain();
-      osc.connect(g1);
-      g1.connect(ctx.destination);
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(800, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.32);
-      g1.gain.setValueAtTime(0.22, ctx.currentTime);
-      g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.32);
-      // Heavy thud: noise burst at 0.4s
-      var sr = ctx.sampleRate;
-      var buf = ctx.createBuffer(1, Math.ceil(sr * 0.55), sr);
-      var ch = buf.getChannelData(0);
-      for (var i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sr * 0.07));
-      var src = ctx.createBufferSource();
-      var g2 = ctx.createGain();
-      src.buffer = buf;
-      src.connect(g2);
-      g2.connect(ctx.destination);
-      g2.gain.setValueAtTime(1.8, ctx.currentTime + 0.42);
-      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
-      src.start(ctx.currentTime + 0.42);
-    } catch (e) {}
-
-    // ── Count up prevStreak → newStreak over 800ms ─────────────
-    var duration = 800;
-    var start = Date.now();
-    var range = newStreak - prevStreak;
-    var _tick = function tick() {
-      var p = Math.min(1, (Date.now() - start) / duration);
-      setCount(Math.round(prevStreak + range * p));
-      if (p < 1) requestAnimationFrame(_tick);
-    };
-    requestAnimationFrame(_tick);
-    var timer = setTimeout(onDone, 1500);
-    return function () {
-      return clearTimeout(timer);
-    };
-  }, []); // eslint-disable-line
-
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.93)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-      animation: "sc_fade 0.18s ease-out"
-    }
-  }, /*#__PURE__*/React.createElement("style", null, "\n        @keyframes sc_fade  { from{opacity:0} to{opacity:1} }\n        @keyframes sc_float { from{transform:translateY(0) rotate(-12deg)} to{transform:translateY(-24px) rotate(12deg)} }\n        @keyframes sc_pop   { 0%{transform:scale(0.25);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }\n        @keyframes sc_pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.14)} }\n        @keyframes sc_num   { 0%{transform:scale(0.4);opacity:0} 100%{transform:scale(1);opacity:1} }\n      "), floaters.map(function (f, i) {
-    return /*#__PURE__*/React.createElement("div", {
-      key: i,
-      style: {
-        position: "absolute",
-        left: "".concat(f.x, "%"),
-        top: "".concat(f.y, "%"),
-        fontSize: f.size,
-        pointerEvents: "none",
-        userSelect: "none",
-        animation: "sc_float ".concat(f.dur, "s ease-in-out infinite alternate"),
-        animationDelay: "".concat(f.delay, "s"),
-        opacity: 0.88
-      }
-    }, f.emoji);
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: "center",
-      position: "relative",
-      zIndex: 1
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: isMilestone ? 128 : 108,
-      lineHeight: 1,
-      animation: "sc_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both"
-    }
-  }, "\uD83D\uDCAA"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: isMilestone ? 92 : 78,
-      fontWeight: 900,
-      color: A,
-      textShadow: "0 0 40px ".concat(aA("99")),
-      lineHeight: 1,
-      marginTop: -10,
-      animation: isMilestone ? "sc_pulse 0.55s ease-in-out 0.45s infinite" : "sc_num 0.45s ease-out 0.2s both"
-    }
-  }, count), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 14,
-      color: A,
-      fontWeight: 900,
-      letterSpacing: "0.14em",
-      marginTop: 12,
-      textShadow: "0 0 18px ".concat(aA("66"))
-    }
-  }, isMilestone ? "\uD83C\uDFC6 ".concat(newStreak, " DAY MILESTONE!") : "DAY STREAK 🔥"), isMilestone && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 38,
-      marginTop: 18,
-      animation: "sc_pop 0.4s ease-out 0.5s both"
-    }
-  }, "\uD83C\uDF89\uD83C\uDF8A\uD83C\uDF89\uD83C\uDF8A\uD83C\uDF89")));
-}
-
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref36) {
-  var mode = _ref36.mode,
-    totals = _ref36.totals,
-    targets = _ref36.targets,
-    streak = _ref36.streak,
-    water = _ref36.water,
-    _ref36$logs = _ref36.logs,
-    logs = _ref36$logs === void 0 ? [] : _ref36$logs;
-  var _useState27 = useState(""),
+function CoachCard(_ref35) {
+  var mode = _ref35.mode,
+    totals = _ref35.totals,
+    targets = _ref35.targets,
+    streak = _ref35.streak,
+    water = _ref35.water,
+    _ref35$logs = _ref35.logs,
+    logs = _ref35$logs === void 0 ? [] : _ref35$logs;
+  var _useState23 = useState(""),
+    _useState24 = _slicedToArray(_useState23, 2),
+    tip = _useState24[0],
+    setTip = _useState24[1];
+  var _useState25 = useState(0),
+    _useState26 = _slicedToArray(_useState25, 2),
+    refreshes = _useState26[0],
+    setRefreshes = _useState26[1];
+  var _useState27 = useState(false),
     _useState28 = _slicedToArray(_useState27, 2),
-    tip = _useState28[0],
-    setTip = _useState28[1];
-  var _useState29 = useState(0),
+    loading = _useState28[0],
+    setLoading = _useState28[1];
+  var _useState29 = useState([]),
     _useState30 = _slicedToArray(_useState29, 2),
-    refreshes = _useState30[0],
-    setRefreshes = _useState30[1];
-  var _useState31 = useState(false),
-    _useState32 = _slicedToArray(_useState31, 2),
-    loading = _useState32[0],
-    setLoading = _useState32[1];
-  var _useState33 = useState([]),
-    _useState34 = _slicedToArray(_useState33, 2),
-    history = _useState34[0],
-    setHistory = _useState34[1]; // tips already given today, so refreshes don't repeat
+    history = _useState30[0],
+    setHistory = _useState30[1]; // tips already given today, so refreshes don't repeat
 
   useEffect(function () {
     sg("coach__" + todayKey()).then(function (v) {
@@ -3514,7 +3380,7 @@ function CoachCard(_ref36) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
+    var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
       var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, foods, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t23;
       return _regenerator().w(function (_context24) {
         while (1) switch (_context24.p = _context24.n) {
@@ -3583,7 +3449,7 @@ function CoachCard(_ref36) {
       }, _callee24, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref37.apply(this, arguments);
+      return _ref36.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -3657,18 +3523,18 @@ function CoachCard(_ref36) {
 // ── Tag input (feature #8) ────────────────────────────────────
 // A hybrid combobox: free-text that surfaces selectable suggestions and also
 // lets the user commit a CUSTOM tag the app didn't suggest. Tags are removable pills.
-function TagField(_ref38) {
-  var label = _ref38.label,
-    tags = _ref38.tags,
-    suggestions = _ref38.suggestions,
-    onChange = _ref38.onChange,
-    _ref38$accent = _ref38.accent,
-    accent = _ref38$accent === void 0 ? A : _ref38$accent,
-    placeholder = _ref38.placeholder;
-  var _useState35 = useState(""),
-    _useState36 = _slicedToArray(_useState35, 2),
-    input = _useState36[0],
-    setInput = _useState36[1];
+function TagField(_ref37) {
+  var label = _ref37.label,
+    tags = _ref37.tags,
+    suggestions = _ref37.suggestions,
+    onChange = _ref37.onChange,
+    _ref37$accent = _ref37.accent,
+    accent = _ref37$accent === void 0 ? A : _ref37$accent,
+    placeholder = _ref37.placeholder;
+  var _useState31 = useState(""),
+    _useState32 = _slicedToArray(_useState31, 2),
+    input = _useState32[0],
+    setInput = _useState32[1];
   var has = function has(t) {
     return tags.some(function (x) {
       return x.toLowerCase() === t.toLowerCase();
@@ -3834,9 +3700,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kg)];
     },
-    build: function build(_ref39) {
-      var _ref40 = _slicedToArray(_ref39, 1),
-        a = _ref40[0];
+    build: function build(_ref38) {
+      var _ref39 = _slicedToArray(_ref38, 1),
+        a = _ref39[0];
       return a;
     }
   },
@@ -3845,9 +3711,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kgToLb(kg))];
     },
-    build: function build(_ref41) {
-      var _ref42 = _slicedToArray(_ref41, 1),
-        a = _ref42[0];
+    build: function build(_ref40) {
+      var _ref41 = _slicedToArray(_ref40, 1),
+        a = _ref41[0];
       return lbToKg(a);
     }
   },
@@ -3858,10 +3724,10 @@ var MEASURE_CFG = {
       var x = kgToStLb(kg);
       return [String(x.st), String(x.lb)];
     },
-    build: function build(_ref43) {
-      var _ref44 = _slicedToArray(_ref43, 2),
-        s = _ref44[0],
-        p = _ref44[1];
+    build: function build(_ref42) {
+      var _ref43 = _slicedToArray(_ref42, 2),
+        s = _ref43[0],
+        p = _ref43[1];
       return stLbToKg(s, p);
     }
   },
@@ -3870,9 +3736,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cm)];
     },
-    build: function build(_ref45) {
-      var _ref46 = _slicedToArray(_ref45, 1),
-        a = _ref46[0];
+    build: function build(_ref44) {
+      var _ref45 = _slicedToArray(_ref44, 1),
+        a = _ref45[0];
       return a;
     }
   },
@@ -3881,9 +3747,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cmToInch(cm))];
     },
-    build: function build(_ref47) {
-      var _ref48 = _slicedToArray(_ref47, 1),
-        a = _ref48[0];
+    build: function build(_ref46) {
+      var _ref47 = _slicedToArray(_ref46, 1),
+        a = _ref47[0];
       return inchToCm(a);
     }
   },
@@ -3894,25 +3760,25 @@ var MEASURE_CFG = {
       var x = cmToFtIn(cm);
       return [String(x.ft), String(x["in"])];
     },
-    build: function build(_ref49) {
-      var _ref50 = _slicedToArray(_ref49, 2),
-        ft = _ref50[0],
-        i = _ref50[1];
+    build: function build(_ref48) {
+      var _ref49 = _slicedToArray(_ref48, 2),
+        ft = _ref49[0],
+        i = _ref49[1];
       return ftInToCm(ft, i);
     }
   }
 };
-function MeasureField(_ref51) {
-  var metric = _ref51.metric,
-    unit = _ref51.unit,
-    onChange = _ref51.onChange;
+function MeasureField(_ref50) {
+  var metric = _ref50.metric,
+    unit = _ref50.unit,
+    onChange = _ref50.onChange;
   var cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
-  var _useState37 = useState(function () {
+  var _useState33 = useState(function () {
       return cfg.seed(metric);
     }),
-    _useState38 = _slicedToArray(_useState37, 2),
-    vals = _useState38[0],
-    setVals = _useState38[1]; // seed once; local thereafter
+    _useState34 = _slicedToArray(_useState33, 2),
+    vals = _useState34[0],
+    setVals = _useState34[1]; // seed once; local thereafter
   var commit = function commit(i, raw) {
     var next = vals.slice();
     next[i] = raw;
@@ -3949,10 +3815,10 @@ function MeasureField(_ref51) {
 // field it controls (weight / height) so the choice is where the value is.
 // 3-way appearance control: 🌙 Dark · ☀️ Light · 🖥 System. System re-delegates to the OS.
 function ThemeToggle() {
-  var _useState39 = useState(getTheme()),
-    _useState40 = _slicedToArray(_useState39, 2),
-    choice = _useState40[0],
-    setChoice = _useState40[1];
+  var _useState35 = useState(getTheme()),
+    _useState36 = _slicedToArray(_useState35, 2),
+    choice = _useState36[0],
+    setChoice = _useState36[1];
   var opts = [["dark", "🌙", "Dark"], ["light", "☀️", "Light"], ["system", "🖥️", "System"]];
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3963,11 +3829,11 @@ function ThemeToggle() {
       borderRadius: 12,
       padding: 4
     }
-  }, opts.map(function (_ref52) {
-    var _ref53 = _slicedToArray(_ref52, 3),
-      v = _ref53[0],
-      icon = _ref53[1],
-      lbl = _ref53[2];
+  }, opts.map(function (_ref51) {
+    var _ref52 = _slicedToArray(_ref51, 3),
+      v = _ref52[0],
+      icon = _ref52[1],
+      lbl = _ref52[2];
     var on = choice === v;
     return /*#__PURE__*/React.createElement("button", {
       key: v,
@@ -4006,10 +3872,10 @@ function ThemeToggle() {
     }, lbl));
   }));
 }
-function UnitSwitch(_ref54) {
-  var value = _ref54.value,
-    options = _ref54.options,
-    onChange = _ref54.onChange;
+function UnitSwitch(_ref53) {
+  var value = _ref53.value,
+    options = _ref53.options,
+    onChange = _ref53.onChange;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -4019,10 +3885,10 @@ function UnitSwitch(_ref54) {
       borderRadius: 999,
       padding: 2
     }
-  }, options.map(function (_ref55) {
-    var _ref56 = _slicedToArray(_ref55, 2),
-      v = _ref56[0],
-      lbl = _ref56[1];
+  }, options.map(function (_ref54) {
+    var _ref55 = _slicedToArray(_ref54, 2),
+      v = _ref55[0],
+      lbl = _ref55[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -4043,36 +3909,36 @@ function UnitSwitch(_ref54) {
     }, lbl);
   }));
 }
-function ProfileScreen(_ref57) {
-  var profile = _ref57.profile,
-    onSave = _ref57.onSave,
-    onBack = _ref57.onBack,
-    _ref57$tdeeAdj = _ref57.tdeeAdj,
-    tdeeAdj = _ref57$tdeeAdj === void 0 ? 0 : _ref57$tdeeAdj,
-    _ref57$weighIns = _ref57.weighIns,
-    weighIns = _ref57$weighIns === void 0 ? [] : _ref57$weighIns,
-    _ref57$aggressiveCutA = _ref57.aggressiveCutAcked,
-    aggressiveCutAcked = _ref57$aggressiveCutA === void 0 ? false : _ref57$aggressiveCutA;
-  var _useState41 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
+function ProfileScreen(_ref56) {
+  var profile = _ref56.profile,
+    onSave = _ref56.onSave,
+    onBack = _ref56.onBack,
+    _ref56$tdeeAdj = _ref56.tdeeAdj,
+    tdeeAdj = _ref56$tdeeAdj === void 0 ? 0 : _ref56$tdeeAdj,
+    _ref56$weighIns = _ref56.weighIns,
+    weighIns = _ref56$weighIns === void 0 ? [] : _ref56$weighIns,
+    _ref56$aggressiveCutA = _ref56.aggressiveCutAcked,
+    aggressiveCutAcked = _ref56$aggressiveCutA === void 0 ? false : _ref56$aggressiveCutA;
+  var _useState37 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
+    _useState38 = _slicedToArray(_useState37, 2),
+    f = _useState38[0],
+    setF = _useState38[1];
+  var _useState39 = useState(false),
+    _useState40 = _slicedToArray(_useState39, 2),
+    saved = _useState40[0],
+    setSaved = _useState40[1];
+  var _useState41 = useState(false),
     _useState42 = _slicedToArray(_useState41, 2),
-    f = _useState42[0],
-    setF = _useState42[1];
-  var _useState43 = useState(false),
+    bfFocused = _useState42[0],
+    setBfFocused = _useState42[1];
+  var _useState43 = useState(getWUnit()),
     _useState44 = _slicedToArray(_useState43, 2),
-    saved = _useState44[0],
-    setSaved = _useState44[1];
-  var _useState45 = useState(false),
+    wUnit = _useState44[0],
+    setWU = _useState44[1]; // display only — storage stays kg
+  var _useState45 = useState(getHUnit()),
     _useState46 = _slicedToArray(_useState45, 2),
-    bfFocused = _useState46[0],
-    setBfFocused = _useState46[1];
-  var _useState47 = useState(getWUnit()),
-    _useState48 = _slicedToArray(_useState47, 2),
-    wUnit = _useState48[0],
-    setWU = _useState48[1]; // display only — storage stays kg
-  var _useState49 = useState(getHUnit()),
-    _useState50 = _slicedToArray(_useState49, 2),
-    hUnit = _useState50[0],
-    setHU = _useState50[1]; // display only — storage stays cm
+    hUnit = _useState46[0],
+    setHU = _useState46[1]; // display only — storage stays cm
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -4489,10 +4355,10 @@ function ProfileScreen(_ref57) {
     mode: "bulk",
     label: "BULK",
     color: "var(--bulk)"
-  }].map(function (_ref58) {
-    var mode = _ref58.mode,
-      label = _ref58.label,
-      color = _ref58.color;
+  }].map(function (_ref57) {
+    var mode = _ref57.mode,
+      label = _ref57.label,
+      color = _ref57.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -4515,11 +4381,11 @@ function ProfileScreen(_ref57) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref59) {
-      var _ref60 = _slicedToArray(_ref59, 3),
-        k = _ref60[0],
-        key = _ref60[1],
-        u = _ref60[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref58) {
+      var _ref59 = _slicedToArray(_ref58, 3),
+        k = _ref59[0],
+        key = _ref59[1],
+        u = _ref59[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -4595,14 +4461,14 @@ function ProfileScreen(_ref57) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref61) {
-  var meal = _ref61.meal,
-    onSave = _ref61.onSave,
-    onCancel = _ref61.onCancel,
-    _ref61$isPremium = _ref61.isPremium,
-    isPremium = _ref61$isPremium === void 0 ? false : _ref61$isPremium,
-    _ref61$onPremiumGate = _ref61.onPremiumGate,
-    onPremiumGate = _ref61$onPremiumGate === void 0 ? function () {} : _ref61$onPremiumGate;
+function MealForm(_ref60) {
+  var meal = _ref60.meal,
+    onSave = _ref60.onSave,
+    onCancel = _ref60.onCancel,
+    _ref60$isPremium = _ref60.isPremium,
+    isPremium = _ref60$isPremium === void 0 ? false : _ref60$isPremium,
+    _ref60$onPremiumGate = _ref60.onPremiumGate,
+    onPremiumGate = _ref60$onPremiumGate === void 0 ? function () {} : _ref60$onPremiumGate;
   var blank = {
     name: "",
     kcal: "",
@@ -4610,24 +4476,24 @@ function MealForm(_ref61) {
     carbs: "",
     fat: ""
   };
-  var _useState51 = useState(meal ? {
+  var _useState47 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
+    _useState48 = _slicedToArray(_useState47, 2),
+    f = _useState48[0],
+    setF = _useState48[1];
+  var _useState49 = useState(false),
+    _useState50 = _slicedToArray(_useState49, 2),
+    reest = _useState50[0],
+    setReest = _useState50[1];
+  var _useState51 = useState(""),
     _useState52 = _slicedToArray(_useState51, 2),
-    f = _useState52[0],
-    setF = _useState52[1];
-  var _useState53 = useState(false),
-    _useState54 = _slicedToArray(_useState53, 2),
-    reest = _useState54[0],
-    setReest = _useState54[1];
-  var _useState55 = useState(""),
-    _useState56 = _slicedToArray(_useState55, 2),
-    reestMsg = _useState56[0],
-    setReestMsg = _useState56[1]; // "" | "done" | error text
+    reestMsg = _useState52[0],
+    setReestMsg = _useState52[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -4639,7 +4505,7 @@ function MealForm(_ref61) {
   // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
   // Open Food Facts a bounded background refinement that only wins on confidence.
   var estimate = /*#__PURE__*/function () {
-    var _ref62 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
+    var _ref61 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
       var fill, upd, oft, _t24, _t25;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
@@ -4714,7 +4580,7 @@ function MealForm(_ref61) {
       }, _callee25, null, [[8, 10], [3, 5]]);
     }));
     return function estimate() {
-      return _ref62.apply(this, arguments);
+      return _ref61.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -4873,19 +4739,19 @@ function MealForm(_ref61) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref63) {
-  var weighIns = _ref63.weighIns,
-    onWeighIn = _ref63.onWeighIn,
-    tdeeAdj = _ref63.tdeeAdj,
-    baseTDEE = _ref63.baseTDEE;
-  var _useState57 = useState(""),
-    _useState58 = _slicedToArray(_useState57, 2),
-    val = _useState58[0],
-    setVal = _useState58[1]; // kg · lb · or stone (when st mode)
-  var _useState59 = useState(""),
-    _useState60 = _slicedToArray(_useState59, 2),
-    val2 = _useState60[0],
-    setVal2 = _useState60[1]; // pounds (st mode only)
+function WeighInWidget(_ref62) {
+  var weighIns = _ref62.weighIns,
+    onWeighIn = _ref62.onWeighIn,
+    tdeeAdj = _ref62.tdeeAdj,
+    baseTDEE = _ref62.baseTDEE;
+  var _useState53 = useState(""),
+    _useState54 = _slicedToArray(_useState53, 2),
+    val = _useState54[0],
+    setVal = _useState54[1]; // kg · lb · or stone (when st mode)
+  var _useState55 = useState(""),
+    _useState56 = _slicedToArray(_useState55, 2),
+    val2 = _useState56[0],
+    setVal2 = _useState56[1]; // pounds (st mode only)
   var wUnit = getWUnit();
   var entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0) : wUnit === "lb" ? lbToKg(val || 0) : Number(val);
   var today = todayKey();
@@ -5098,41 +4964,41 @@ function WeighInWidget(_ref63) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref64) {
-  var workouts = _ref64.workouts,
-    onAdd = _ref64.onAdd,
-    onRemove = _ref64.onRemove,
-    prof = _ref64.prof,
-    isPremium = _ref64.isPremium,
-    onPremiumGate = _ref64.onPremiumGate;
-  var _useState61 = useState("legs"),
+function WorkoutLogger(_ref63) {
+  var workouts = _ref63.workouts,
+    onAdd = _ref63.onAdd,
+    onRemove = _ref63.onRemove,
+    prof = _ref63.prof,
+    isPremium = _ref63.isPremium,
+    onPremiumGate = _ref63.onPremiumGate;
+  var _useState57 = useState("legs"),
+    _useState58 = _slicedToArray(_useState57, 2),
+    type = _useState58[0],
+    setType = _useState58[1];
+  var _useState59 = useState(45),
+    _useState60 = _slicedToArray(_useState59, 2),
+    dur = _useState60[0],
+    setDur = _useState60[1];
+  var _useState61 = useState("moderate"),
     _useState62 = _slicedToArray(_useState61, 2),
-    type = _useState62[0],
-    setType = _useState62[1];
-  var _useState63 = useState(45),
+    intensity = _useState62[0],
+    setIntensity = _useState62[1];
+  var _useState63 = useState(false),
     _useState64 = _slicedToArray(_useState63, 2),
-    dur = _useState64[0],
-    setDur = _useState64[1];
-  var _useState65 = useState("moderate"),
+    hevyMode = _useState64[0],
+    setHevyMode = _useState64[1];
+  var _useState65 = useState(""),
     _useState66 = _slicedToArray(_useState65, 2),
-    intensity = _useState66[0],
-    setIntensity = _useState66[1];
+    hevyText = _useState66[0],
+    setHevyText = _useState66[1];
   var _useState67 = useState(false),
     _useState68 = _slicedToArray(_useState67, 2),
-    hevyMode = _useState68[0],
-    setHevyMode = _useState68[1];
-  var _useState69 = useState(""),
+    hevyLoading = _useState68[0],
+    setHevyLoading = _useState68[1];
+  var _useState69 = useState(null),
     _useState70 = _slicedToArray(_useState69, 2),
-    hevyText = _useState70[0],
-    setHevyText = _useState70[1];
-  var _useState71 = useState(false),
-    _useState72 = _slicedToArray(_useState71, 2),
-    hevyLoading = _useState72[0],
-    setHevyLoading = _useState72[1];
-  var _useState73 = useState(null),
-    _useState74 = _slicedToArray(_useState73, 2),
-    hevyResult = _useState74[0],
-    setHevyResult = _useState74[1];
+    hevyResult = _useState70[0],
+    setHevyResult = _useState70[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -5152,7 +5018,7 @@ function WorkoutLogger(_ref64) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref65 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+    var _ref64 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
       var prompt, _t26, _t27;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
@@ -5188,7 +5054,7 @@ function WorkoutLogger(_ref64) {
       }, _callee26, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref65.apply(this, arguments);
+      return _ref64.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -5503,14 +5369,14 @@ function WorkoutLogger(_ref64) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref66) {
-  var user = _ref66.user,
-    _ref66$size = _ref66.size,
-    size = _ref66$size === void 0 ? 34 : _ref66$size;
-  var _useState75 = useState(false),
-    _useState76 = _slicedToArray(_useState75, 2),
-    failed = _useState76[0],
-    setFailed = _useState76[1];
+function Avatar(_ref65) {
+  var user = _ref65.user,
+    _ref65$size = _ref65.size,
+    size = _ref65$size === void 0 ? 34 : _ref65$size;
+  var _useState71 = useState(false),
+    _useState72 = _slicedToArray(_useState71, 2),
+    failed = _useState72[0],
+    setFailed = _useState72[1];
   var letter = ((user === null || user === void 0 ? void 0 : user.name) || "P")[0].toUpperCase();
   if (user !== null && user !== void 0 && user.picture && !failed) {
     return /*#__PURE__*/React.createElement("img", {
@@ -5543,30 +5409,30 @@ function Avatar(_ref66) {
 // today-list and the History day view. Every field is editable by all users;
 // the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
 // reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
-function EntryEditor(_ref67) {
-  var entry = _ref67.entry,
-    onSave = _ref67.onSave,
-    onCancel = _ref67.onCancel,
-    isPremium = _ref67.isPremium,
-    onPremiumGate = _ref67.onPremiumGate;
-  var _useState77 = useState({
+function EntryEditor(_ref66) {
+  var entry = _ref66.entry,
+    onSave = _ref66.onSave,
+    onCancel = _ref66.onCancel,
+    isPremium = _ref66.isPremium,
+    onPremiumGate = _ref66.onPremiumGate;
+  var _useState73 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
       protein: String(entry.protein),
       carbs: String(entry.carbs),
       fat: String(entry.fat)
     }),
+    _useState74 = _slicedToArray(_useState73, 2),
+    f = _useState74[0],
+    setF = _useState74[1];
+  var _useState75 = useState(false),
+    _useState76 = _slicedToArray(_useState75, 2),
+    reest = _useState76[0],
+    setReest = _useState76[1];
+  var _useState77 = useState(""),
     _useState78 = _slicedToArray(_useState77, 2),
-    f = _useState78[0],
-    setF = _useState78[1];
-  var _useState79 = useState(false),
-    _useState80 = _slicedToArray(_useState79, 2),
-    reest = _useState80[0],
-    setReest = _useState80[1];
-  var _useState81 = useState(""),
-    _useState82 = _slicedToArray(_useState81, 2),
-    reestMsg = _useState82[0],
-    setReestMsg = _useState82[1]; // "" | "done" | error text
+    reestMsg = _useState78[0],
+    setReestMsg = _useState78[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -5574,7 +5440,7 @@ function EntryEditor(_ref67) {
     setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
+    var _ref67 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
       var fill, upd, oft, _t28, _t29;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
@@ -5644,7 +5510,7 @@ function EntryEditor(_ref67) {
       }, _callee27, null, [[7, 9], [3, 5]]);
     }));
     return function reestimate() {
-      return _ref68.apply(this, arguments);
+      return _ref67.apply(this, arguments);
     };
   }();
   var save = function save() {
@@ -5809,46 +5675,48 @@ function EntryEditor(_ref67) {
     }
   }, "Save")));
 }
-function Dashboard(_ref69) {
-  var logs = _ref69.logs,
-    totals = _ref69.totals,
-    targets = _ref69.targets,
-    remaining = _ref69.remaining,
-    water = _ref69.water,
-    setWater = _ref69.setWater,
-    mode = _ref69.mode,
-    setMode = _ref69.setMode,
-    setView = _ref69.setView,
-    removeLog = _ref69.removeLog,
-    updateLog = _ref69.updateLog,
-    addToQA = _ref69.addToQA,
-    hasProfile = _ref69.hasProfile,
-    streak = _ref69.streak,
-    prof = _ref69.prof,
-    weighIns = _ref69.weighIns,
-    onWeighIn = _ref69.onWeighIn,
-    tdeeAdj = _ref69.tdeeAdj,
-    baseTDEE = _ref69.baseTDEE,
-    coachKey = _ref69.coachKey,
-    workouts = _ref69.workouts,
-    onAddWorkout = _ref69.onAddWorkout,
-    onRemoveWorkout = _ref69.onRemoveWorkout,
-    customKcal = _ref69.customKcal,
-    onSetCustomKcal = _ref69.onSetCustomKcal,
-    isCustomMode = _ref69.isCustomMode,
-    aggressiveCutAcked = _ref69.aggressiveCutAcked,
-    onAckAggressiveCut = _ref69.onAckAggressiveCut,
-    authState = _ref69.authState,
-    authUser = _ref69.authUser,
-    onPremiumGate = _ref69.onPremiumGate,
-    onSignOut = _ref69.onSignOut,
-    isOnline = _ref69.isOnline,
-    syncMsg = _ref69.syncMsg;
+function Dashboard(_ref68) {
+  var logs = _ref68.logs,
+    totals = _ref68.totals,
+    targets = _ref68.targets,
+    remaining = _ref68.remaining,
+    water = _ref68.water,
+    setWater = _ref68.setWater,
+    mode = _ref68.mode,
+    setMode = _ref68.setMode,
+    setView = _ref68.setView,
+    removeLog = _ref68.removeLog,
+    updateLog = _ref68.updateLog,
+    addToQA = _ref68.addToQA,
+    hasProfile = _ref68.hasProfile,
+    streak = _ref68.streak,
+    streakPop = _ref68.streakPop,
+    badgeGlow = _ref68.badgeGlow,
+    prof = _ref68.prof,
+    weighIns = _ref68.weighIns,
+    onWeighIn = _ref68.onWeighIn,
+    tdeeAdj = _ref68.tdeeAdj,
+    baseTDEE = _ref68.baseTDEE,
+    coachKey = _ref68.coachKey,
+    workouts = _ref68.workouts,
+    onAddWorkout = _ref68.onAddWorkout,
+    onRemoveWorkout = _ref68.onRemoveWorkout,
+    customKcal = _ref68.customKcal,
+    onSetCustomKcal = _ref68.onSetCustomKcal,
+    isCustomMode = _ref68.isCustomMode,
+    aggressiveCutAcked = _ref68.aggressiveCutAcked,
+    onAckAggressiveCut = _ref68.onAckAggressiveCut,
+    authState = _ref68.authState,
+    authUser = _ref68.authUser,
+    onPremiumGate = _ref68.onPremiumGate,
+    onSignOut = _ref68.onSignOut,
+    isOnline = _ref68.isOnline,
+    syncMsg = _ref68.syncMsg;
   var isPremium = authState === "premium";
-  var _useState83 = useState(null),
-    _useState84 = _slicedToArray(_useState83, 2),
-    editingId = _useState84[0],
-    setEditingId = _useState84[1];
+  var _useState79 = useState(null),
+    _useState80 = _slicedToArray(_useState79, 2),
+    editingId = _useState80[0],
+    setEditingId = _useState80[1];
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -5860,22 +5728,22 @@ function Dashboard(_ref69) {
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
-  var _useState85 = useState({}),
+  var _useState81 = useState({}),
+    _useState82 = _slicedToArray(_useState81, 2),
+    savedIds = _useState82[0],
+    setSavedIds = _useState82[1];
+  var _useState83 = useState({}),
+    _useState84 = _slicedToArray(_useState83, 2),
+    qaBlink = _useState84[0],
+    setQaBlink = _useState84[1]; // log.id -> tap nonce, drives re-blink on every tap
+  var _useState85 = useState(false),
     _useState86 = _slicedToArray(_useState85, 2),
-    savedIds = _useState86[0],
-    setSavedIds = _useState86[1];
-  var _useState87 = useState({}),
+    editingTarget = _useState86[0],
+    setEditingTarget = _useState86[1];
+  var _useState87 = useState(""),
     _useState88 = _slicedToArray(_useState87, 2),
-    qaBlink = _useState88[0],
-    setQaBlink = _useState88[1]; // log.id -> tap nonce, drives re-blink on every tap
-  var _useState89 = useState(false),
-    _useState90 = _slicedToArray(_useState89, 2),
-    editingTarget = _useState90[0],
-    setEditingTarget = _useState90[1];
-  var _useState91 = useState(""),
-    _useState92 = _slicedToArray(_useState91, 2),
-    targetInputVal = _useState92[0],
-    setTargetInputVal = _useState92[1];
+    targetInputVal = _useState88[0],
+    setTargetInputVal = _useState88[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) {
@@ -5909,7 +5777,7 @@ function Dashboard(_ref69) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(log) {
+    var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(log) {
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.n) {
           case 0:
@@ -5933,7 +5801,7 @@ function Dashboard(_ref69) {
       }, _callee28);
     }));
     return function handleAddToQA(_x38) {
-      return _ref70.apply(this, arguments);
+      return _ref69.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5947,7 +5815,14 @@ function Dashboard(_ref69) {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      marginBottom: 16
+      position: "sticky",
+      top: 0,
+      zIndex: 20,
+      background: BG,
+      paddingTop: 20,
+      marginTop: -20,
+      paddingBottom: 12,
+      marginBottom: 8
     }
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
     style: {
@@ -5997,7 +5872,8 @@ function Dashboard(_ref69) {
       borderRadius: 10,
       fontSize: 13,
       fontWeight: 900,
-      color: A
+      color: A,
+      animation: streakPop ? "chip_pop 0.6s cubic-bezier(0.34,1.56,0.64,1)" : "none"
     }
   }, "\uD83D\uDD25", streak), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
@@ -6045,7 +5921,8 @@ function Dashboard(_ref69) {
       fontSize: 14,
       display: "flex",
       alignItems: "center",
-      justifyContent: "center"
+      justifyContent: "center",
+      animation: badgeGlow ? "chip_glow 1.5s ease-out" : "none"
     }
   }, "\uD83C\uDFC6"), isPremium && /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
@@ -6072,10 +5949,10 @@ function Dashboard(_ref69) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref71) {
-    var _ref72 = _slicedToArray(_ref71, 2),
-      k = _ref72[0],
-      v = _ref72[1];
+  }, Object.entries(MODES).map(function (_ref70) {
+    var _ref71 = _slicedToArray(_ref70, 2),
+      k = _ref71[0],
+      v = _ref71[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -6811,18 +6688,18 @@ function _searchOFT() {
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref73) {
-  var item = _ref73.item,
-    onReestimate = _ref73.onReestimate,
-    reestimating = _ref73.reestimating;
-  var _useState93 = useState(false),
-    _useState94 = _slicedToArray(_useState93, 2),
-    editing = _useState94[0],
-    setEditing = _useState94[1];
-  var _useState95 = useState(item.name),
-    _useState96 = _slicedToArray(_useState95, 2),
-    draft = _useState96[0],
-    setDraft = _useState96[1];
+function ItemRow(_ref72) {
+  var item = _ref72.item,
+    onReestimate = _ref72.onReestimate,
+    reestimating = _ref72.reestimating;
+  var _useState89 = useState(false),
+    _useState90 = _slicedToArray(_useState89, 2),
+    editing = _useState90[0],
+    setEditing = _useState90[1];
+  var _useState91 = useState(item.name),
+    _useState92 = _slicedToArray(_useState91, 2),
+    draft = _useState92[0],
+    setDraft = _useState92[1];
   var cc = confColor(item.confidence);
   var itemAllergens = scanAllergens(item.name, DIETARY.allergens); // zero-token backstop
 
@@ -6944,37 +6821,37 @@ function ItemRow(_ref73) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref74) {
-  var onAdd = _ref74.onAdd,
-    onBack = _ref74.onBack;
-  var _useState97 = useState(""),
+function AILog(_ref73) {
+  var onAdd = _ref73.onAdd,
+    onBack = _ref73.onBack;
+  var _useState93 = useState(""),
+    _useState94 = _slicedToArray(_useState93, 2),
+    desc = _useState94[0],
+    setDesc = _useState94[1];
+  var _useState95 = useState(false),
+    _useState96 = _slicedToArray(_useState95, 2),
+    loading = _useState96[0],
+    setLoading = _useState96[1];
+  var _useState97 = useState(null),
     _useState98 = _slicedToArray(_useState97, 2),
-    desc = _useState98[0],
-    setDesc = _useState98[1];
-  var _useState99 = useState(false),
+    items = _useState98[0],
+    setItems = _useState98[1];
+  var _useState99 = useState(null),
     _useState100 = _slicedToArray(_useState99, 2),
-    loading = _useState100[0],
-    setLoading = _useState100[1];
-  var _useState101 = useState(null),
+    reestIdx = _useState100[0],
+    setReestIdx = _useState100[1];
+  var _useState101 = useState(""),
     _useState102 = _slicedToArray(_useState101, 2),
-    items = _useState102[0],
-    setItems = _useState102[1];
-  var _useState103 = useState(null),
+    error = _useState102[0],
+    setError = _useState102[1];
+  var _useState103 = useState(false),
     _useState104 = _slicedToArray(_useState103, 2),
-    reestIdx = _useState104[0],
-    setReestIdx = _useState104[1];
-  var _useState105 = useState(""),
+    loggedAll = _useState104[0],
+    setLoggedAll = _useState104[1];
+  var _useState105 = useState({}),
     _useState106 = _slicedToArray(_useState105, 2),
-    error = _useState106[0],
-    setError = _useState106[1];
-  var _useState107 = useState(false),
-    _useState108 = _slicedToArray(_useState107, 2),
-    loggedAll = _useState108[0],
-    setLoggedAll = _useState108[1];
-  var _useState109 = useState({}),
-    _useState110 = _slicedToArray(_useState109, 2),
-    loggedCount = _useState110[0],
-    setLoggedCount = _useState110[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedCount = _useState106[0],
+    setLoggedCount = _useState106[1]; // idx -> times logged (ephemeral; resets on unmount)
 
   var totals = items ? items.reduce(function (a, it) {
     return {
@@ -6993,7 +6870,7 @@ function AILog(_ref74) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
       var parsed, aiItems, oftResults, merged, _t30;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
@@ -7044,11 +6921,11 @@ function AILog(_ref74) {
       }, _callee29, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref75.apply(this, arguments);
+      return _ref74.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(idx, newName) {
+    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(idx, newName) {
       var updated, oft, _final, _t31;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
@@ -7086,7 +6963,7 @@ function AILog(_ref74) {
       }, _callee30, null, [[1, 4]]);
     }));
     return function reestimate(_x40, _x41) {
-      return _ref76.apply(this, arguments);
+      return _ref75.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -7324,25 +7201,25 @@ function AILog(_ref74) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref77) {
-  var onAdd = _ref77.onAdd,
-    onBack = _ref77.onBack,
-    meals = _ref77.meals,
-    setMeals = _ref77.setMeals,
-    _ref77$isPremium = _ref77.isPremium,
-    isPremium = _ref77$isPremium === void 0 ? false : _ref77$isPremium,
-    _ref77$onPremiumGate = _ref77.onPremiumGate,
-    onPremiumGate = _ref77$onPremiumGate === void 0 ? function () {} : _ref77$onPremiumGate;
-  var _useState111 = useState(""),
-    _useState112 = _slicedToArray(_useState111, 2),
-    search = _useState112[0],
-    setSearch = _useState112[1];
-  var _useState113 = useState(null),
-    _useState114 = _slicedToArray(_useState113, 2),
-    modal = _useState114[0],
-    setModal = _useState114[1];
+function QuickAdd(_ref76) {
+  var onAdd = _ref76.onAdd,
+    onBack = _ref76.onBack,
+    meals = _ref76.meals,
+    setMeals = _ref76.setMeals,
+    _ref76$isPremium = _ref76.isPremium,
+    isPremium = _ref76$isPremium === void 0 ? false : _ref76$isPremium,
+    _ref76$onPremiumGate = _ref76.onPremiumGate,
+    onPremiumGate = _ref76$onPremiumGate === void 0 ? function () {} : _ref76$onPremiumGate;
+  var _useState107 = useState(""),
+    _useState108 = _slicedToArray(_useState107, 2),
+    search = _useState108[0],
+    setSearch = _useState108[1];
+  var _useState109 = useState(null),
+    _useState110 = _slicedToArray(_useState109, 2),
+    modal = _useState110[0],
+    setModal = _useState110[1];
   var save = /*#__PURE__*/function () {
-    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(m) {
+    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(m) {
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.n) {
           case 0:
@@ -7355,7 +7232,7 @@ function QuickAdd(_ref77) {
       }, _callee31);
     }));
     return function save(_x42) {
-      return _ref78.apply(this, arguments);
+      return _ref77.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -7534,31 +7411,31 @@ function QuickAdd(_ref77) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref79) {
-  var onAdd = _ref79.onAdd,
-    onBack = _ref79.onBack;
-  var _useState115 = useState(""),
+function FoodSearch(_ref78) {
+  var onAdd = _ref78.onAdd,
+    onBack = _ref78.onBack;
+  var _useState111 = useState(""),
+    _useState112 = _slicedToArray(_useState111, 2),
+    q = _useState112[0],
+    setQ = _useState112[1];
+  var _useState113 = useState([]),
+    _useState114 = _slicedToArray(_useState113, 2),
+    results = _useState114[0],
+    setResults = _useState114[1];
+  var _useState115 = useState(false),
     _useState116 = _slicedToArray(_useState115, 2),
-    q = _useState116[0],
-    setQ = _useState116[1];
-  var _useState117 = useState([]),
+    loading = _useState116[0],
+    setLoading = _useState116[1];
+  var _useState117 = useState(""),
     _useState118 = _slicedToArray(_useState117, 2),
-    results = _useState118[0],
-    setResults = _useState118[1];
+    error = _useState118[0],
+    setError = _useState118[1];
   var _useState119 = useState(false),
     _useState120 = _slicedToArray(_useState119, 2),
-    loading = _useState120[0],
-    setLoading = _useState120[1];
-  var _useState121 = useState(""),
-    _useState122 = _slicedToArray(_useState121, 2),
-    error = _useState122[0],
-    setError = _useState122[1];
-  var _useState123 = useState(false),
-    _useState124 = _slicedToArray(_useState123, 2),
-    done = _useState124[0],
-    setDone = _useState124[1];
+    done = _useState120[0],
+    setDone = _useState120[1];
   var search = /*#__PURE__*/function () {
-    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
+    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
       var res, data, parseServing, parseKcal, valid, _t32;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
@@ -7640,7 +7517,7 @@ function FoodSearch(_ref79) {
       }, _callee32, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref80.apply(this, arguments);
+      return _ref79.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -7771,21 +7648,21 @@ function FoodSearch(_ref79) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref81) {
+function History(_ref80) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref81.history,
-    onBack = _ref81.onBack,
-    onUpdateDay = _ref81.onUpdateDay,
-    _ref81$weighIns = _ref81.weighIns,
-    weighIns = _ref81$weighIns === void 0 ? [] : _ref81$weighIns,
-    _ref81$meals = _ref81.meals,
-    meals = _ref81$meals === void 0 ? DEF_MEALS : _ref81$meals,
-    _ref81$setMeals = _ref81.setMeals,
-    setMeals = _ref81$setMeals === void 0 ? function () {} : _ref81$setMeals,
-    _ref81$isPremium = _ref81.isPremium,
-    isPremium = _ref81$isPremium === void 0 ? false : _ref81$isPremium,
-    _ref81$onPremiumGate = _ref81.onPremiumGate,
-    onPremiumGate = _ref81$onPremiumGate === void 0 ? function () {} : _ref81$onPremiumGate;
+  var history = _ref80.history,
+    onBack = _ref80.onBack,
+    onUpdateDay = _ref80.onUpdateDay,
+    _ref80$weighIns = _ref80.weighIns,
+    weighIns = _ref80$weighIns === void 0 ? [] : _ref80$weighIns,
+    _ref80$meals = _ref80.meals,
+    meals = _ref80$meals === void 0 ? DEF_MEALS : _ref80$meals,
+    _ref80$setMeals = _ref80.setMeals,
+    setMeals = _ref80$setMeals === void 0 ? function () {} : _ref80$setMeals,
+    _ref80$isPremium = _ref80.isPremium,
+    isPremium = _ref80$isPremium === void 0 ? false : _ref80$isPremium,
+    _ref80$onPremiumGate = _ref80.onPremiumGate,
+    onPremiumGate = _ref80$onPremiumGate === void 0 ? function () {} : _ref80$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -7821,34 +7698,34 @@ function History(_ref81) {
       unit: "g"
     }
   };
-  var _useState125 = useState("30D"),
+  var _useState121 = useState("30D"),
+    _useState122 = _slicedToArray(_useState121, 2),
+    range = _useState122[0],
+    setRange = _useState122[1];
+  var _useState123 = useState(["KCAL"]),
+    _useState124 = _slicedToArray(_useState123, 2),
+    metrics = _useState124[0],
+    setMetrics = _useState124[1];
+  var _useState125 = useState(false),
     _useState126 = _slicedToArray(_useState125, 2),
-    range = _useState126[0],
-    setRange = _useState126[1];
-  var _useState127 = useState(["KCAL"]),
+    showWeight = _useState126[0],
+    setShowWeight = _useState126[1];
+  var _useState127 = useState("line"),
     _useState128 = _slicedToArray(_useState127, 2),
-    metrics = _useState128[0],
-    setMetrics = _useState128[1];
-  var _useState129 = useState(false),
+    chartType = _useState128[0],
+    setChartType = _useState128[1];
+  var _useState129 = useState(Math.max(0, history.length - 1)),
     _useState130 = _slicedToArray(_useState129, 2),
-    showWeight = _useState130[0],
-    setShowWeight = _useState130[1];
-  var _useState131 = useState("line"),
+    dayIdx = _useState130[0],
+    setDayIdx = _useState130[1];
+  var _useState131 = useState(null),
     _useState132 = _slicedToArray(_useState131, 2),
-    chartType = _useState132[0],
-    setChartType = _useState132[1];
-  var _useState133 = useState(Math.max(0, history.length - 1)),
+    addCtx = _useState132[0],
+    setAddCtx = _useState132[1];
+  var _useState133 = useState(null),
     _useState134 = _slicedToArray(_useState133, 2),
-    dayIdx = _useState134[0],
-    setDayIdx = _useState134[1];
-  var _useState135 = useState(null),
-    _useState136 = _slicedToArray(_useState135, 2),
-    addCtx = _useState136[0],
-    setAddCtx = _useState136[1];
-  var _useState137 = useState(null),
-    _useState138 = _slicedToArray(_useState137, 2),
-    editId = _useState138[0],
-    setEditId = _useState138[1];
+    editId = _useState134[0],
+    setEditId = _useState134[1];
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -8471,10 +8348,10 @@ function History(_ref81) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref82) {
-    var _ref83 = _slicedToArray(_ref82, 2),
-      k = _ref83[0],
-      m = _ref83[1];
+  }, Object.entries(MM).map(function (_ref81) {
+    var _ref82 = _slicedToArray(_ref81, 2),
+      k = _ref82[0],
+      m = _ref82[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -8512,10 +8389,10 @@ function History(_ref81) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref84) {
-    var _ref85 = _slicedToArray(_ref84, 2),
-      t = _ref85[0],
-      e = _ref85[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref83) {
+    var _ref84 = _slicedToArray(_ref83, 2),
+      t = _ref84[0],
+      e = _ref84[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -8681,10 +8558,10 @@ function History(_ref81) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref86) {
-    var _ref87 = _slicedToArray(_ref86, 2),
-      k = _ref87[0],
-      m = _ref87[1];
+  }, Object.entries(MM).map(function (_ref85) {
+    var _ref86 = _slicedToArray(_ref85, 2),
+      k = _ref86[0],
+      m = _ref86[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -8817,9 +8694,9 @@ function History(_ref81) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref88) {
-  var earnedBdgs = _ref88.earnedBdgs,
-    onBack = _ref88.onBack;
+function Achievements(_ref87) {
+  var earnedBdgs = _ref87.earnedBdgs,
+    onBack = _ref87.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -8914,6 +8791,248 @@ function Achievements(_ref88) {
   }, "\uD83C\uDFC6"), "No badges yet \u2014 keep logging!"));
 }
 
+// ── Badge celebrations (rarity-scaled) ────────────────────────
+// Gold tier and above earn a full-screen fanfare; the number counts up and the
+// overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
+// quiet chip pop (in the header) — this overlay is reserved for the rare events.
+function BadgeFanfare(_ref88) {
+  var badge = _ref88.badge,
+    onDone = _ref88.onDone;
+  var b = badge.b,
+    i = badge.i;
+  var target = TIERS[i];
+  var _useState135 = useState(0),
+    _useState136 = _slicedToArray(_useState135, 2),
+    count = _useState136[0],
+    setCount = _useState136[1];
+  var _useState137 = useState(function () {
+      return Array.from({
+        length: 18
+      }, function (_, k) {
+        return {
+          x: 5 + Math.random() * 90,
+          y: 5 + Math.random() * 90,
+          size: 16 + Math.random() * 22,
+          delay: Math.random() * 0.6,
+          dur: 0.8 + Math.random() * 0.5,
+          emoji: k % 5 === 0 ? "🎉" : k % 5 === 1 ? "🎊" : b.emoji
+        };
+      });
+    }),
+    _useState138 = _slicedToArray(_useState137, 1),
+    floaters = _useState138[0];
+  useEffect(function () {
+    var dur = 900,
+      start = Date.now();
+    var _tick = function tick() {
+      var p = Math.min(1, (Date.now() - start) / dur);
+      setCount(Math.round(target * p));
+      if (p < 1) requestAnimationFrame(_tick);
+    };
+    requestAnimationFrame(_tick);
+    var t = setTimeout(onDone, 2500);
+    return function () {
+      return clearTimeout(t);
+    };
+  }, []); // eslint-disable-line
+
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onDone,
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.92)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      padding: 24,
+      animation: "bf_fade 0.18s ease-out"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, "\n        @keyframes bf_fade  { from{opacity:0} to{opacity:1} }\n        @keyframes bf_float { from{transform:translateY(0) rotate(-12deg)} to{transform:translateY(-22px) rotate(12deg)} }\n        @keyframes bf_pop   { 0%{transform:scale(0.3);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }\n      "), floaters.map(function (f, k) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: k,
+      style: {
+        position: "absolute",
+        left: "".concat(f.x, "%"),
+        top: "".concat(f.y, "%"),
+        fontSize: f.size,
+        pointerEvents: "none",
+        userSelect: "none",
+        opacity: 0.85,
+        animation: "bf_float ".concat(f.dur, "s ease-in-out infinite alternate"),
+        animationDelay: "".concat(f.delay, "s")
+      }
+    }, f.emoji);
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      position: "relative",
+      zIndex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 96,
+      lineHeight: 1,
+      animation: "bf_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both"
+    }
+  }, b.emoji), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: A,
+      letterSpacing: "0.12em",
+      fontWeight: 800,
+      marginTop: 8
+    }
+  }, TIER_ICONS[i], " ", TIER_NAMES[i].toUpperCase(), " UNLOCKED"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 26,
+      fontWeight: 900,
+      color: "var(--text-hi)",
+      marginTop: 6
+    }
+  }, b.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 60,
+      fontWeight: 900,
+      color: A,
+      lineHeight: 1.1,
+      marginTop: 8,
+      textShadow: "0 0 30px ".concat(aA("88"))
+    }
+  }, count), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "var(--text-label)",
+      marginTop: 2
+    }
+  }, b.desc), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--text-faint)",
+      marginTop: 20,
+      letterSpacing: "0.08em"
+    }
+  }, "tap to dismiss")));
+}
+
+// Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
+// mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
+function StreakPip(_ref89) {
+  var streak = _ref89.streak,
+    onDone = _ref89.onDone;
+  useEffect(function () {
+    var t = setTimeout(onDone, 1400);
+    return function () {
+      return clearTimeout(t);
+    };
+  }, []); // eslint-disable-line
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 96,
+      display: "flex",
+      justifyContent: "center",
+      zIndex: 1000,
+      pointerEvents: "none"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, "\n        @keyframes pip_in  { 0%{transform:scale(0.5) translateY(8px);opacity:0} 55%{transform:scale(1.12)} 100%{transform:scale(1) translateY(0);opacity:1} }\n        @keyframes pip_out { to{opacity:0;transform:translateY(-6px)} }\n      "), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 7,
+      background: CARD,
+      border: "1px solid ".concat(aA("44")),
+      borderRadius: 999,
+      padding: "8px 14px",
+      boxShadow: "0 6px 18px rgba(0,0,0,0.3)",
+      animation: "pip_in 0.32s cubic-bezier(0.34,1.56,0.64,1), pip_out 0.3s ease-in 1.05s forwards"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 18
+    }
+  }, "\uD83D\uDD25"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 15,
+      fontWeight: 900,
+      color: A
+    }
+  }, streak), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 800,
+      color: "var(--text-label)",
+      letterSpacing: "0.08em"
+    }
+  }, "DAY STREAK")));
+}
+
+// Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
+function BadgeToast(_ref90) {
+  var badge = _ref90.badge,
+    onDone = _ref90.onDone;
+  var b = badge.b,
+    i = badge.i;
+  useEffect(function () {
+    var t = setTimeout(onDone, 2800);
+    return function () {
+      return clearTimeout(t);
+    };
+  }, []); // eslint-disable-line
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onDone,
+    style: {
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 24,
+      display: "flex",
+      justifyContent: "center",
+      zIndex: 1000,
+      pointerEvents: "none",
+      padding: "0 16px"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, "@keyframes bt_in { 0%{transform:translateY(20px);opacity:0} 100%{transform:translateY(0);opacity:1} }"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      pointerEvents: "auto",
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      background: CARD,
+      border: "1px solid ".concat(aA("44")),
+      borderRadius: 999,
+      padding: "10px 16px",
+      maxWidth: "100%",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+      animation: "bt_in 0.3s ease-out"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 22
+    }
+  }, b.emoji), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: A,
+      fontWeight: 800,
+      letterSpacing: "0.1em"
+    }
+  }, TIER_ICONS[i], " ", TIER_NAMES[i].toUpperCase()), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 900,
+      color: "var(--text-hi)"
+    }
+  }, b.name))));
+}
+
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
@@ -8975,19 +9094,27 @@ function App() {
     setCoachKey = _useState166[1];
   var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    streakAnim = _useState168[0],
-    setStreakAnim = _useState168[1];
+    streakPop = _useState168[0],
+    setStreakPop = _useState168[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState169 = useState(null),
     _useState170 = _slicedToArray(_useState169, 2),
-    customKcal = _useState170[0],
-    setCustomKcal = _useState170[1];
+    badgeToast = _useState170[0],
+    setBadgeToast = _useState170[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
   var _useState171 = useState(false),
     _useState172 = _slicedToArray(_useState171, 2),
-    aggressiveCutAcked = _useState172[0],
-    setAggressiveCutAcked = _useState172[1];
-  var _useState173 = useState(0),
+    badgeGlow = _useState172[0],
+    setBadgeGlow = _useState172[1]; // the 🏆 glow paired with the toast
+  var _useState173 = useState(null),
     _useState174 = _slicedToArray(_useState173, 2),
-    setThemeTick = _useState174[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    customKcal = _useState174[0],
+    setCustomKcal = _useState174[1];
+  var _useState175 = useState(false),
+    _useState176 = _slicedToArray(_useState175, 2),
+    aggressiveCutAcked = _useState176[0],
+    setAggressiveCutAcked = _useState176[1];
+  var _useState177 = useState(0),
+    _useState178 = _slicedToArray(_useState177, 2),
+    setThemeTick = _useState178[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -9013,46 +9140,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState175 = useState("anonymous"),
-    _useState176 = _slicedToArray(_useState175, 2),
-    authState = _useState176[0],
-    setAuthState = _useState176[1];
-  var _useState177 = useState(null),
-    _useState178 = _slicedToArray(_useState177, 2),
-    authUser = _useState178[0],
-    setAuthUser = _useState178[1];
-  var _useState179 = useState(null),
+  var _useState179 = useState("anonymous"),
     _useState180 = _slicedToArray(_useState179, 2),
-    premiumGate = _useState180[0],
-    setPremiumGate = _useState180[1]; // {emoji, name} | null
-  var _useState181 = useState(false),
+    authState = _useState180[0],
+    setAuthState = _useState180[1];
+  var _useState181 = useState(null),
     _useState182 = _slicedToArray(_useState181, 2),
-    showSignIn = _useState182[0],
-    setShowSignIn = _useState182[1];
-  var _useState183 = useState(false),
+    authUser = _useState182[0],
+    setAuthUser = _useState182[1];
+  var _useState183 = useState(null),
     _useState184 = _slicedToArray(_useState183, 2),
-    showSignOut = _useState184[0],
-    setShowSignOut = _useState184[1];
+    premiumGate = _useState184[0],
+    setPremiumGate = _useState184[1]; // {emoji, name} | null
   var _useState185 = useState(false),
     _useState186 = _slicedToArray(_useState185, 2),
-    showLapsed = _useState186[0],
-    setShowLapsed = _useState186[1];
+    showSignIn = _useState186[0],
+    setShowSignIn = _useState186[1];
   var _useState187 = useState(false),
     _useState188 = _slicedToArray(_useState187, 2),
-    needsConsent = _useState188[0],
-    setNeedsConsent = _useState188[1]; // retroactive Art. 9 consent (R2)
-  var _useState189 = useState(null),
+    showSignOut = _useState188[0],
+    setShowSignOut = _useState188[1];
+  var _useState189 = useState(false),
     _useState190 = _slicedToArray(_useState189, 2),
-    consentInfo = _useState190[0],
-    setConsentInfo = _useState190[1]; // parsed local health_consent for display
-  var _useState191 = useState(navigator.onLine),
+    showLapsed = _useState190[0],
+    setShowLapsed = _useState190[1];
+  var _useState191 = useState(false),
     _useState192 = _slicedToArray(_useState191, 2),
-    isOnline = _useState192[0],
-    setIsOnline = _useState192[1];
-  var _useState193 = useState(""),
+    needsConsent = _useState192[0],
+    setNeedsConsent = _useState192[1]; // retroactive Art. 9 consent (R2)
+  var _useState193 = useState(null),
     _useState194 = _slicedToArray(_useState193, 2),
-    syncMsg = _useState194[0],
-    setSyncMsg = _useState194[1];
+    consentInfo = _useState194[0],
+    setConsentInfo = _useState194[1]; // parsed local health_consent for display
+  var _useState195 = useState(navigator.onLine),
+    _useState196 = _slicedToArray(_useState195, 2),
+    isOnline = _useState196[0],
+    setIsOnline = _useState196[1];
+  var _useState197 = useState(""),
+    _useState198 = _slicedToArray(_useState197, 2),
+    syncMsg = _useState198[0],
+    setSyncMsg = _useState198[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -9092,7 +9219,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref89 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
+      var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
         var k, lv, wv, mv, pv, pp, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u, hc, hcParsed;
         return _regenerator().w(function (_context33) {
           while (1) switch (_context33.n) {
@@ -9246,7 +9373,7 @@ function App() {
         }, _callee33);
       }));
       return function load() {
-        return _ref89.apply(this, arguments);
+        return _ref91.apply(this, arguments);
       };
     }();
     load();
@@ -9283,13 +9410,24 @@ function App() {
       })));
       setEarnedBdgs(updated);
       ss("badges", JSON.stringify(updated));
-      setNewBadge(newlyEarned[0]);
+      var top = newlyEarned[newlyEarned.length - 1]; // celebrate the highest new tier earned
+      if (top.i >= 2) {
+        // Gold tier and above → full fanfare overlay
+        setNewBadge(top);
+      } else {
+        // Bronze / Silver → quiet toast + 🏆 glow, no overlay
+        setBadgeToast(top);
+        setBadgeGlow(true);
+        setTimeout(function () {
+          return setBadgeGlow(false);
+        }, 1600);
+      }
       if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncBadges(authUser.id, updated)["catch"](function () {});
     }
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref90 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(l) {
+    var _ref92 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(l) {
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.n) {
           case 0:
@@ -9304,11 +9442,11 @@ function App() {
       }, _callee34);
     }));
     return function saveLogs(_x43) {
-      return _ref90.apply(this, arguments);
+      return _ref92.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(w) {
+    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(w) {
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.n) {
           case 0:
@@ -9323,11 +9461,11 @@ function App() {
       }, _callee35);
     }));
     return function saveWater(_x44) {
-      return _ref91.apply(this, arguments);
+      return _ref93.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref92 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(m) {
+    var _ref94 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(m) {
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.n) {
           case 0:
@@ -9342,11 +9480,11 @@ function App() {
       }, _callee36);
     }));
     return function saveMode(_x45) {
-      return _ref92.apply(this, arguments);
+      return _ref94.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(p) {
+    var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(p) {
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.n) {
           case 0:
@@ -9362,11 +9500,11 @@ function App() {
       }, _callee37);
     }));
     return function saveProf(_x46) {
-      return _ref93.apply(this, arguments);
+      return _ref95.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref94 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(w) {
+    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(w) {
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.n) {
           case 0:
@@ -9381,12 +9519,12 @@ function App() {
       }, _callee38);
     }));
     return function saveWorkouts(_x47) {
-      return _ref94.apply(this, arguments);
+      return _ref96.apply(this, arguments);
     };
   }();
   var addLog = /*#__PURE__*/function () {
-    var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(e) {
-      var isFirstToday, animKey, today, simulatedHist, newStreak;
+    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(e) {
+      var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
           case 0:
@@ -9402,8 +9540,8 @@ function App() {
             })]));
           case 1:
             if (isFirstToday) {
-              animKey = "streak_anim__" + todayKey();
-              if (!localStorage.getItem(animKey)) {
+              popKey = "streak_pop__" + todayKey();
+              if (!localStorage.getItem(popKey)) {
                 today = todayKey();
                 simulatedHist = [].concat(_toConsumableArray(hist.filter(function (d) {
                   return d.date !== today;
@@ -9411,14 +9549,11 @@ function App() {
                   date: today,
                   logs: [e]
                 }]);
-                newStreak = calcStreak(simulatedHist);
-                if (newStreak > 0) {
-                  localStorage.setItem(animKey, "1");
-                  setStreakAnim({
-                    prevStreak: Math.max(0, newStreak - 1),
-                    newStreak: newStreak,
-                    isMilestone: [7, 14, 30, 50, 100].includes(newStreak)
-                  });
+                ns = calcStreak(simulatedHist);
+                if (ns > 0) {
+                  // quiet pip at the point of action — no overlay, no sound, once per day
+                  localStorage.setItem(popKey, "1");
+                  setStreakPop(ns);
                 }
               }
             }
@@ -9428,7 +9563,7 @@ function App() {
       }, _callee39);
     }));
     return function addLog(_x48) {
-      return _ref95.apply(this, arguments);
+      return _ref97.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -9454,7 +9589,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(kcal) {
+    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(kcal) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -9479,11 +9614,11 @@ function App() {
       }, _callee40);
     }));
     return function saveCustomKcal(_x49) {
-      return _ref96.apply(this, arguments);
+      return _ref98.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(m) {
+    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(m) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -9501,11 +9636,11 @@ function App() {
       }, _callee41);
     }));
     return function handleSetMode(_x50) {
-      return _ref97.apply(this, arguments);
+      return _ref99.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42() {
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42() {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -9520,11 +9655,11 @@ function App() {
       }, _callee42);
     }));
     return function handleAckAggressiveCut() {
-      return _ref98.apply(this, arguments);
+      return _ref100.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(updated) {
+    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(updated) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -9539,11 +9674,11 @@ function App() {
       }, _callee43);
     }));
     return function saveMeals(_x51) {
-      return _ref99.apply(this, arguments);
+      return _ref101.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(entry) {
+    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(entry) {
       var name, clean;
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
@@ -9573,14 +9708,14 @@ function App() {
       }, _callee44);
     }));
     return function addToQA(_x52) {
-      return _ref100.apply(this, arguments);
+      return _ref102.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(googleUser, grantedBy, consentMeta) {
+    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t33;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.p = _context45.n) {
@@ -9675,13 +9810,13 @@ function App() {
       }, _callee45, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x53, _x54, _x55) {
-      return _ref101.apply(this, arguments);
+      return _ref103.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
+    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
       var meta, rec;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
@@ -9712,11 +9847,11 @@ function App() {
       }, _callee46);
     }));
     return function handleConsent() {
-      return _ref102.apply(this, arguments);
+      return _ref104.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
+    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
       var clearKeys, _i2, _clearKeys, k, i, key, _t34;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
@@ -9753,7 +9888,7 @@ function App() {
             try {
               for (i = localStorage.length - 1; i >= 0; i--) {
                 key = localStorage.key(i);
-                if (key && (key.startsWith("logs__") || key.startsWith("water__") || key.startsWith("workouts__") || key.startsWith("mode__") || key.startsWith("coach__") || key.startsWith("streak_anim__") || key.startsWith("sync_migrated__"))) {
+                if (key && (key.startsWith("logs__") || key.startsWith("water__") || key.startsWith("workouts__") || key.startsWith("mode__") || key.startsWith("coach__") || key.startsWith("streak_pop__") || key.startsWith("sync_migrated__"))) {
                   localStorage.removeItem(key);
                 }
               }
@@ -9781,7 +9916,7 @@ function App() {
       }, _callee47, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref103.apply(this, arguments);
+      return _ref105.apply(this, arguments);
     };
   }();
 
@@ -9838,7 +9973,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
+    var _ref106 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -9853,7 +9988,7 @@ function App() {
       }, _callee48);
     }));
     return function handleDeleteAccount() {
-      return _ref104.apply(this, arguments);
+      return _ref106.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -9882,7 +10017,7 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(upd) {
+    var _ref107 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(upd) {
       var nh;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
@@ -9906,11 +10041,11 @@ function App() {
       }, _callee49);
     }));
     return function updateDay(_x56) {
-      return _ref105.apply(this, arguments);
+      return _ref107.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref106 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(weight) {
+    var _ref108 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(weight) {
       var entry, updated, updatedProf, base, result, newAdj;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
@@ -9957,7 +10092,7 @@ function App() {
       }, _callee50);
     }));
     return function onWeighIn(_x57) {
-      return _ref106.apply(this, arguments);
+      return _ref108.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -10011,10 +10146,65 @@ function App() {
       color: "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     }
-  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: var(--text-faint-2); }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: var(--bg); color: var(--text-hi); }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }\n      "), streakAnim && /*#__PURE__*/React.createElement(StreakCelebration, {
-    anim: streakAnim,
+  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: var(--text-faint-2); }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: var(--bg); color: var(--text-hi); }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }\n        @keyframes chip_pop  { 0%{transform:scale(1)} 35%{transform:scale(1.32)} 100%{transform:scale(1)} }\n        @keyframes chip_glow { 0%,100%{box-shadow:0 0 0 0 transparent;transform:scale(1)} 30%{box-shadow:0 0 14px 2px var(--accent);transform:scale(1.14)} 60%{box-shadow:0 0 8px 1px var(--accent);transform:scale(1)} }\n      "), DEV && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      top: 6,
+      left: 6,
+      zIndex: 2000,
+      display: "flex",
+      gap: 4,
+      flexWrap: "wrap",
+      maxWidth: 160
+    }
+  }, [["pop", function () {
+    return setStreakPop(3);
+  }], ["🥉", function () {
+    return setBadgeToast({
+      b: BDGS[0],
+      i: 0
+    });
+  }], ["🥈", function () {
+    return setBadgeToast({
+      b: BDGS[1],
+      i: 1
+    });
+  }], ["🥇", function () {
+    return setNewBadge({
+      b: BDGS[0],
+      i: 2
+    });
+  }], ["👑", function () {
+    return setNewBadge({
+      b: BDGS[1],
+      i: 5
+    });
+  }]].map(function (_ref109) {
+    var _ref110 = _slicedToArray(_ref109, 2),
+      lbl = _ref110[0],
+      fn = _ref110[1];
+    return /*#__PURE__*/React.createElement("button", {
+      key: lbl,
+      onClick: fn,
+      style: {
+        fontSize: 11,
+        padding: "4px 7px",
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+        color: "var(--text-mid)",
+        opacity: 0.85
+      }
+    }, lbl);
+  })), streakPop != null && /*#__PURE__*/React.createElement(StreakPip, {
+    streak: streakPop,
     onDone: function onDone() {
-      return setStreakAnim(null);
+      return setStreakPop(null);
+    }
+  }), badgeToast && /*#__PURE__*/React.createElement(BadgeToast, {
+    badge: badgeToast,
+    onDone: function onDone() {
+      return setBadgeToast(null);
     }
   }), premiumGate && !showSignIn && /*#__PURE__*/React.createElement(PremiumModal, {
     feature: premiumGate,
@@ -10047,69 +10237,12 @@ function App() {
   }), needsConsent && authState === "premium" && /*#__PURE__*/React.createElement(ConsentModal, {
     onConsent: handleConsent,
     onSignOut: handleSignOut
-  }), newBadge && /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.92)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 999,
-      padding: 24
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: CARD,
-      borderRadius: 24,
-      padding: "36px 28px",
-      textAlign: "center",
-      border: "1px solid ".concat(aA("44")),
-      maxWidth: 300,
-      width: "100%"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 72,
-      marginBottom: 12
-    }
-  }, newBadge.b.emoji), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: A,
-      letterSpacing: "0.12em",
-      fontWeight: 800,
-      marginBottom: 6
-    }
-  }, TIER_ICONS[newBadge.i], " ", TIER_NAMES[newBadge.i].toUpperCase(), " UNLOCKED"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 22,
-      fontWeight: 900,
-      color: "var(--text-hi)",
-      marginBottom: 6
-    }
-  }, newBadge.b.name), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 13,
-      color: "var(--text-label)",
-      marginBottom: 24
-    }
-  }, TIERS[newBadge.i], " ", newBadge.b.desc), /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
+  }), newBadge && /*#__PURE__*/React.createElement(BadgeFanfare, {
+    badge: newBadge,
+    onDone: function onDone() {
       return setNewBadge(null);
-    },
-    style: {
-      width: "100%",
-      padding: "14px",
-      background: A,
-      color: "var(--bg)",
-      border: "none",
-      borderRadius: 12,
-      fontSize: 14,
-      fontWeight: 900,
-      cursor: "pointer"
     }
-  }, "KEEP GOING \uD83D\uDD25"))), view === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
+  }), view === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
     logs: logs,
     totals: totals,
     targets: targets,
@@ -10124,6 +10257,8 @@ function App() {
     addToQA: addToQA,
     hasProfile: !!prof,
     streak: streak,
+    streakPop: streakPop != null,
+    badgeGlow: badgeGlow,
     prof: prof,
     weighIns: weighIns,
     onWeighIn: onWeighIn,
