@@ -682,3 +682,146 @@ describe("runMigrations", () => {
     expect(storage.store["fuel_schema_v"]).toBe("1");
   });
 });
+
+// ── Unit conversions (display only; storage stays metric kg/cm) ──────
+const LB_PER_KG = 2.2046226218;
+const IN_PER_CM = 0.3937007874;
+const kgToStLb = kg => { const tot = Math.round((Number(kg) || 0) * LB_PER_KG); return { st: Math.floor(tot / 14), lb: tot % 14 }; };
+const stLbToKg = (st, lb) => Math.round(((Number(st) || 0) * 14 + (Number(lb) || 0)) / LB_PER_KG * 10) / 10;
+const kgToLb   = kg => Math.round((Number(kg) || 0) * LB_PER_KG * 10) / 10;
+const lbToKg   = lb => Math.round((Number(lb) || 0) / LB_PER_KG * 100) / 100;
+const cmToFtIn = cm => { const tot = Math.round((Number(cm) || 0) * IN_PER_CM); return { ft: Math.floor(tot / 12), in: tot % 12 }; };
+const ftInToCm = (ft, inch) => Math.round(((Number(ft) || 0) * 12 + (Number(inch) || 0)) / IN_PER_CM);
+const cmToInch = cm => Math.round((Number(cm) || 0) * IN_PER_CM);
+const inchToCm = inch => Math.round((Number(inch) || 0) / IN_PER_CM);
+
+describe("unit conversions", () => {
+  test("kg → stone+pounds is in range", () => {
+    expect(kgToStLb(80)).toEqual({ st: 12, lb: 8 });
+    expect(kgToStLb(0)).toEqual({ st: 0, lb: 0 });
+    const { lb } = kgToStLb(83);
+    expect(lb).toBeLessThan(14); // pounds never spill past a stone
+  });
+
+  test("stone+pounds round-trips back to a stable stone+pounds (no drift on unit switch)", () => {
+    for (let s = 5; s <= 25; s++) {
+      for (let p = 0; p < 14; p++) {
+        const kg = stLbToKg(s, p);
+        expect(kgToStLb(kg)).toEqual({ st: s, lb: p });
+      }
+    }
+  });
+
+  test("cm → feet+inches is in range", () => {
+    expect(cmToFtIn(178)).toEqual({ ft: 5, in: 10 });
+    const { in: inch } = cmToFtIn(183);
+    expect(inch).toBeLessThan(12);
+  });
+
+  test("feet+inches round-trips back to a stable feet+inches", () => {
+    for (let ft = 3; ft <= 7; ft++) {
+      for (let inch = 0; inch < 12; inch++) {
+        const cm = ftInToCm(ft, inch);
+        expect(cmToFtIn(cm)).toEqual({ ft, in: inch });
+      }
+    }
+  });
+
+  test("pounds-only round-trips back to the same integer pounds (2dp kg storage)", () => {
+    for (let lb = 60; lb <= 660; lb++) {
+      expect(kgToLb(lbToKg(lb))).toBe(lb); // what you type in lb is what you see back
+    }
+  });
+
+  test("inches-only round-trips back to the same integer inches", () => {
+    for (let inch = 36; inch <= 90; inch++) {
+      expect(cmToInch(inchToCm(inch))).toBe(inch);
+    }
+  });
+});
+
+// ── MeasureField seed/build (the "stuck 0" regression) ──────────────
+// The field seeds local text from the stored metric ONCE, then edits locally.
+// A 0/empty stored value must seed BLANK strings — never "0" — so a cleared
+// field never shows a literal 0 to fight, including after a unit switch.
+const emptyMetric = m => m === "" || m == null || Number(m) === 0;
+const MEASURE_CFG = {
+  kg:   { seed: kg => emptyMetric(kg) ? [""] : [String(kg)],                                  build: ([a])     => a },
+  lb:   { seed: kg => emptyMetric(kg) ? [""] : [String(kgToLb(kg))],                          build: ([a])     => lbToKg(a) },
+  st:   { seed: kg => { if (emptyMetric(kg)) return ["", ""]; const x = kgToStLb(kg); return [String(x.st), String(x.lb)]; },     build: ([s, p])  => stLbToKg(s, p) },
+  cm:   { seed: cm => emptyMetric(cm) ? [""] : [String(cm)],                                  build: ([a])     => a },
+  in:   { seed: cm => emptyMetric(cm) ? [""] : [String(cmToInch(cm))],                        build: ([a])     => inchToCm(a) },
+  ftin: { seed: cm => { if (emptyMetric(cm)) return ["", ""]; const x = cmToFtIn(cm); return [String(x.ft), String(x.in)]; },     build: ([ft, i]) => ftInToCm(ft, i) },
+};
+
+describe("MeasureField seed/build", () => {
+  test("an unset / fully-cleared value seeds blank in every unit (no stray 0)", () => {
+    for (const u of Object.keys(MEASURE_CFG)) {
+      for (const empty of [0, "", null]) {
+        expect(MEASURE_CFG[u].seed(empty).every(s => s === "")).toBe(true);
+      }
+    }
+  });
+
+  test("a genuine zero sub-part of a REAL measurement is shown, not blanked", () => {
+    expect(MEASURE_CFG.st.seed(76.2)).toEqual(["12", "0"]);  // 12 st 0 lb — pounds box shows 0
+    expect(MEASURE_CFG.ftin.seed(152)).toEqual(["5", "0"]);  // 5 ft 0 in — inches box shows 0
+  });
+
+  test("a non-zero value still shows both real parts", () => {
+    expect(MEASURE_CFG.st.seed(80)).toEqual(["12", "8"]);
+    expect(MEASURE_CFG.ftin.seed(178)).toEqual(["5", "10"]);
+  });
+
+  test("seed → build → seed is stable (the displayed numbers don't drift on re-render)", () => {
+    // kg→display→kg is inherently lossy (kg is finer than whole lb), but the
+    // direction that governs UX — display → kg → display — must be stable.
+    const cases = { st: 80, lb: 80, ftin: 178, in: 178 };
+    for (const [u, metric] of Object.entries(cases)) {
+      const seeded = MEASURE_CFG[u].seed(metric);
+      const kg = MEASURE_CFG[u].build(seeded);
+      expect(MEASURE_CFG[u].seed(kg)).toEqual(seeded);
+    }
+  });
+
+  test("a blank sub-field builds as if it were zero (clearing a box is safe)", () => {
+    expect(MEASURE_CFG.st.build(["12", ""])).toBe(stLbToKg(12, 0));  // cleared the lb box
+    expect(MEASURE_CFG.ftin.build(["", "10"])).toBe(ftInToCm(0, 10)); // cleared the ft box
+    expect(MEASURE_CFG.lb.build([""])).toBe(0);
+  });
+});
+
+// ── TagField suggestion resolution (allergy SAFETY: typed text should
+// resolve to the canonical preset so synonym expansion isn't lost) ──────
+const BIG14 = ["celery","gluten","crustaceans","eggs","fish","lupin","milk",
+  "molluscs","mustard","peanuts","sesame","soya","sulphites","tree nuts"];
+const resolveTag = (raw, suggestions, tags = []) => {
+  const has = t => tags.some(x => x.toLowerCase() === t.toLowerCase());
+  const t = raw.trim().toLowerCase();
+  if (!t) return "";
+  const exact = suggestions.find(s => s.toLowerCase() === t);
+  if (exact) return exact;
+  const partial = suggestions.filter(s => s.toLowerCase().includes(t) && !has(s));
+  return partial.length === 1 ? partial[0] : raw.trim();
+};
+
+describe("tag suggestion resolution", () => {
+  test("exact typed match resolves to the canonical preset", () => {
+    expect(resolveTag("milk", BIG14)).toBe("milk");
+    expect(resolveTag("MILK", BIG14)).toBe("milk");
+  });
+
+  test("typing the singular resolves to the canonical plural preset (safety)", () => {
+    // 'tree nut' must become 'tree nuts' or synonym expansion (almond, walnut…) is lost
+    expect(resolveTag("tree nut", BIG14)).toBe("tree nuts");
+    expect(resolveTag("peanut", BIG14)).toBe("peanuts");
+  });
+
+  test("ambiguous input stays as a custom tag", () => {
+    expect(resolveTag("nut", BIG14)).toBe("nut"); // matches peanuts AND tree nuts
+  });
+
+  test("genuinely novel input stays as a custom tag", () => {
+    expect(resolveTag("kiwi", BIG14)).toBe("kiwi");
+  });
+});

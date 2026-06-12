@@ -578,6 +578,8 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 | ~~Bug: AI coach ignores goals already met/exceeded~~ | Bug · quick win | ✅ **Done (v6.1.1).** `CoachCard` prompt now states over/under per metric and marks met goals ✅, so the coach never suggests more of a goal already hit. |
 | ~~Edit log entry in place (+ AI re-estimate)~~ | Enhancement | ✅ **Done (v6.1.2).** Inline `EntryEditor` on the dashboard today-list + History day view; manual edit for all, AI re-estimate premium-gated. |
 | ~~AI estimate on new Quick Add item~~ | Enhancement · quick | ✅ **Done (v6.2).** ✨ AI-estimate on the Quick Add meal form (mirrors `EntryEditor`, premium-gated, OFF cross-check). v6.2.1 fix: estimation no longer leaks the dietary filter (off-diet items now estimate cleanly). |
+| ~~Metric / imperial display units~~ | Enhancement · ad-hoc | ✅ **Done (v6.3).** Independent per-field pickers: weight {kg, st+lb, lb}, height {cm, ft+in, in} — beta user flagged UK mixing. Storage stays metric (`fuel_wunit` / `fuel_hunit` local prefs), consistent across profile / weigh-in widget / Trends chart. ⏳ on-device verification pending. |
+| ~~Bug: allergen/preference tags don't auto-select on Enter~~ | Bug · safety | ✅ **Done (v6.3).** `TagField` Enter now resolves to the canonical preset (e.g. `tree nut → tree nuts`) instead of a custom near-duplicate that bypassed the allergen synonym scan. ⏳ on-device verification pending. |
 | **▶ Celebration redesign — one engine** | Polish · decided · **next build** | Collapse the two celebration systems into one. Daily streak increment = quiet **pop + increment on the header 🔥 chip** (no overlay, no sound). Badges become the **sole** fanfare authority: Bronze/Silver = toast + chip glow; **Gold tier and above = full overlay, slowed to ~2.5s** so it's readable. **Delete** the standalone streak-milestone overlay (old days 7/14/30/50/100, `app.jsx` ~L3112; `StreakCelebration` ~L1048). Spec: `features/fuel-log.feature` (`@wip`). |
 | **More badge categories** | Feature | Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the tier + celebration model above. |
 | **Notification engine (context-aware)** | Feature · needs-a-plan | Merges the old "weekly weigh-in summary" + "meal/water reminders" into one push system. **Context-aware from the start:** reminders read the day (kcal remaining, last-logged time, water progress, weigh-in done?) and stay quiet once a goal is met. ⚠️ Platform reality: works on installed Android PWA/TWA; iOS Safari push is restricted — degrade gracefully. |
@@ -1308,6 +1310,51 @@ appears after a deploy.
 ---
 
 ## 37. Changelog
+
+### v6.3 — Imperial units + allergen auto-select fix (June 2026)
+Two changes on branch `feature/units-and-tag-autoselect` (off `phase-b-compliance`).
+Built + unit-tested (78/78); **on-device verification still pending**, so the new
+Gherkin scenarios are tagged `@wip`.
+- **Independent metric / imperial display units:** per-field unit pickers on the
+  Profile body-stats card — **weight** ∈ {`kg`, `st+lb`, `lb`}, **height** ∈
+  {`cm`, `ft+in`, `in`}, chosen **independently** (UK users routinely mix, e.g.
+  height in cm but weight in stone). **Storage is always metric** — units are a
+  per-device display preference (`localStorage` keys `fuel_wunit` / `fuel_hunit`),
+  never synced and never written back to the stored value unless the user edits a
+  field. Round-trips are provably stable (st+lb and ft+in at whole units; `lb` uses
+  2-dp kg storage so an integer pound reads back unchanged), so switching units and
+  saving never nudges stored data. The weight unit applies across the **profile
+  inputs, the weigh-in widget** (entry + today/trend), and the **Trends chart**
+  (axis is a single number, so stone mode plots in pounds; weekly trend in lb/wk).
+  Helpers: `kgToStLb`/`stLbToKg`/`kgToLb`/`lbToKg`/`cmToFtIn`/`ftInToCm`/`cmToInch`/
+  `inchToCm`, plus `fmtW` / `wChartNum` / `wChartUnit`. (Falls back to the earlier
+  single `fuel_units` key so an initial tester's imperial choice maps to st / ft+in.)
+- **Allergen / preference auto-select (SAFETY fix):** in `TagField`, pressing Enter
+  now resolves typed text to the matching preset instead of always committing the
+  raw text. Previously typing e.g. `tree nut` and hitting Enter created a custom
+  `"tree nut"` tag that bypassed the `ALLERGEN_SYNONYMS` expansion keyed on the
+  canonical `"tree nuts"` — silently weakening the output allergen scan (a meal
+  naming "almond" would no longer flag). Now: exact or sole-partial match → the
+  canonical preset; genuinely ambiguous/novel input → still a custom tag.
+- **`MeasureField` inputs (stuck-0 fix):** the body-stat fields go through a
+  self-contained `MeasureField` that converts the stored metric to the chosen unit
+  **once at mount**, then edits purely in local string buffers — typing, clearing a
+  box, and trailing decimals are never fought by a re-derived value. It recomputes
+  the metric on every keystroke and pushes it up, but never reads it back; the parent
+  keys it by unit so a unit switch remounts with a fresh seed.
+  **Zero handling has context**, decided once at the whole-measurement level: an unset
+  or fully-cleared value seeds **blank with a placeholder** (no stray "0"); a real value
+  shows its true parts **including a legitimate 0** — the pounds in 12 st 0 lb, the
+  inches in 5 ft 0 in — even when produced by a unit switch. A "0" therefore appears only
+  as a real sub-part of a measurement the user has actually set.
+  (Two earlier attempts treated the symptom: direct binding re-derived a "0" from the
+  cleared value; a `DerivedInput` focus-buffer lost its buffer on the remount a unit
+  switch causes, leaving a stuck 0. The seed-once `MeasureField` + context rule fixes
+  the class — see the zero-handling scenarios in `features/fuel-log.feature`.)
+- Tests: **85/85 green** (+15: kg/cm/lb/in round-trips, `MeasureField` seed/build incl.
+  contextual-zero vs blank-when-unset, `resolveTag` resolution).
+- Files touched: `app.jsx`, `app.js`, `sw.js` (cache → `fuel-log-v41`),
+  `features/fuel-log.feature`, `__tests__/logic.test.js`.
 
 ### v6.2.1 — New app icon (June 2026)
 - **New Fuel Log icon** (fuel pump + flexing arm) replacing the placeholder.

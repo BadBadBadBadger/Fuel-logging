@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-12 (session 4: features #2–#8 all VERIFIED on Pixel 7; `@wip` tags flipped, DOCS changelog written; new app icon, sw v37; haptics #4 deferred to native. Next: celebration redesign — fresh session.) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-12 (session 5: shipped **v6.3** — independent per-field units (kg/st+lb/lb · cm/ft+in/in) with contextual-zero handling + allergen auto-select **safety** fix; device-verified, **85/85**, sw v41; merged to `main` (incl. the held v37 app-icon). Next: celebration redesign — fresh session.) · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -13,8 +13,15 @@ Read this first. It never duplicates roadmap detail — it points to it.
 - **Product (session 4, 2026-06-12):** session-3 features **#2–#8 are SHIPPED + VERIFIED on device**
   (see feature-track note below). New **app icon** shipped (`icon-192/512.png` regenerated from
   `logo-master.png`, sw `v36 → v37`). Tests **70/70 green**.
-- **No blocking step.** The next build is the celebration redesign (below); everything else is
-  optional/pre-Play (see Next up).
+- **Shipped v6.3 (session 5, 2026-06-12, device-verified + merged to `main`):** **independent
+  per-field display units** on Profile (weight {kg, st+lb, lb}, height {cm, ft+in, in} — chosen
+  separately per beta feedback that UK users mix; storage stays metric) + an **allergen/preference
+  auto-select safety fix** (`TagField` Enter resolves to the canonical preset, restoring the allergen
+  synonym scan). Unit fields use a self-contained `MeasureField` (seed-once local buffers,
+  remount-on-unit-switch) with **contextual-zero** handling — blank when a measurement is unset, but a
+  real 0 (12 st 0 lb / 5 ft 0 in) is shown. Tests **85/85**, sw `v37 → v41`, BDD scenarios verified,
+  DOCS **v6.3**. The previously-held **v37 app-icon** commit went to `main` in the same merge.
+- **No blocking step.** Next build is the celebration redesign.
 
 ## Next up (in order)
 

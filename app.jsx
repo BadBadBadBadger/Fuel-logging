@@ -44,6 +44,40 @@ const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
 const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null };
 
+// ── Display units ─────────────────────────────────────────────────
+// Storage is ALWAYS metric (weight kg, height cm). These are per-device
+// DISPLAY preferences only — never synced, and never written back to the
+// stored value unless the user actually edits a field. Weight and height
+// are chosen INDEPENDENTLY (UK users routinely mix, e.g. height in cm but
+// weight in stone): weight ∈ {kg, st (stone+pounds), lb}; height ∈
+// {cm, ftin (feet+inches), in}. The whole-number round-trips are stable,
+// so switching units and saving never nudges the stored value.
+const LB_PER_KG = 2.2046226218;
+const IN_PER_CM = 0.3937007874;
+const WUNITS = ["kg", "st", "lb"];
+const HUNITS = ["cm", "ftin", "in"];
+// Independent getters/setters. Fall back to the old single `fuel_units` key
+// (imperial → st / ftin) so an early tester's choice maps sensibly.
+const getWUnit = () => { try { const v = localStorage.getItem("fuel_wunit"); if (WUNITS.includes(v)) return v; if (localStorage.getItem("fuel_units") === "imperial") return "st"; } catch(e) {} return "kg"; };
+const setWUnit = u => { try { localStorage.setItem("fuel_wunit", WUNITS.includes(u) ? u : "kg"); } catch(e) {} };
+const getHUnit = () => { try { const v = localStorage.getItem("fuel_hunit"); if (HUNITS.includes(v)) return v; if (localStorage.getItem("fuel_units") === "imperial") return "ftin"; } catch(e) {} return "cm"; };
+const setHUnit = u => { try { localStorage.setItem("fuel_hunit", HUNITS.includes(u) ? u : "cm"); } catch(e) {} };
+const kgToStLb = kg => { const tot = Math.round((Number(kg) || 0) * LB_PER_KG); return { st: Math.floor(tot / 14), lb: tot % 14 }; };
+const stLbToKg = (st, lb) => Math.round(((Number(st) || 0) * 14 + (Number(lb) || 0)) / LB_PER_KG * 10) / 10;
+const kgToLb   = kg => Math.round((Number(kg) || 0) * LB_PER_KG * 10) / 10;
+const lbToKg   = lb => Math.round((Number(lb) || 0) / LB_PER_KG * 100) / 100; // 2dp so kgToLb round-trips an integer lb back unchanged
+const cmToFtIn = cm => { const tot = Math.round((Number(cm) || 0) * IN_PER_CM); return { ft: Math.floor(tot / 12), in: tot % 12 }; };
+const ftInToCm = (ft, inch) => Math.round(((Number(ft) || 0) * 12 + (Number(inch) || 0)) / IN_PER_CM);
+const cmToInch = cm => Math.round((Number(cm) || 0) * IN_PER_CM);
+const inchToCm = inch => Math.round((Number(inch) || 0) / IN_PER_CM);
+// Read-only formatting of a stored kg weight in the active weight unit.
+const fmtW = (kg, u) => { if (u === "st") { const { st, lb } = kgToStLb(kg); return `${st} st ${lb} lb`; } if (u === "lb") return `${kgToLb(kg)} lb`; return `${kg} kg`; };
+// Chart/trend representation: kg stays kg; both imperial weights plot in lb
+// (a numeric axis can't carry compound st+lb, and stone users track change
+// in pounds anyway). Returns { num, unit } for a stored kg value.
+const wChartNum  = (kg, u) => u === "kg" ? Number(kg) : kgToLb(kg);
+const wChartUnit = u => u === "kg" ? "kg" : "lb";
+
 // ── Dietary requirements & allergies (feature #8) ─────────────────
 // Suggestion lists for the profile tag-input. Allergens are the UK/EEA 'Big 14'
 // (FIC regulated). The user can also commit a custom tag not in these lists.
@@ -1425,8 +1459,21 @@ ${dietaryPromptBlock(DIETARY)}Write exactly 3 sentences: 1) an honest observatio
 function TagField({ label, tags, suggestions, onChange, accent = A, placeholder }) {
   const [input, setInput] = useState("");
   const has = t => tags.some(x => x.toLowerCase() === t.toLowerCase());
-  const add = raw => {
+  // Resolve typed text to a canonical suggestion when it clearly maps to one,
+  // so committing with Enter doesn't create a near-duplicate custom tag that
+  // bypasses preset handling. For allergies this is a SAFETY fix: a custom
+  // "tree nut" tag misses the synonym expansion (almond, walnut…) that the
+  // canonical "tree nuts" preset drives in scanAllergens.
+  const resolve = raw => {
     const t = raw.trim().toLowerCase();
+    if (!t) return "";
+    const exact = suggestions.find(s => s.toLowerCase() === t);
+    if (exact) return exact;
+    const partial = suggestions.filter(s => s.toLowerCase().includes(t) && !has(s));
+    return partial.length === 1 ? partial[0] : raw.trim();
+  };
+  const add = raw => {
+    const t = resolve(raw).toLowerCase();
     if (t && !has(t)) onChange([...tags, t]);
     setInput("");
   };
@@ -1474,10 +1521,73 @@ function TagField({ label, tags, suggestions, onChange, accent = A, placeholder 
 
 // ── Profile ───────────────────────────────────────────────────
 
+// Self-contained body-stat editor. Converts the stored METRIC value (kg or cm)
+// to the chosen display unit ONCE at mount, then edits purely in local string
+// buffers — so typing, clearing a box, and trailing decimals are never fought by
+// a re-derived value (the root cause of the old "stuck 0"). Recomputes the metric
+// on every keystroke and pushes it up. The parent keys this by unit, so switching
+// unit remounts it with a fresh seed.
+//
+// Zero handling has CONTEXT, decided once at the whole-measurement level: if the
+// measurement holds no value (never set or fully cleared) every box seeds blank
+// (placeholder) — no stray "0". If it holds a real value, the true parts are
+// shown INCLUDING a legitimate 0 (the pounds in 12 st 0 lb, the inches in 5 ft
+// 0 in) — even when that 0 is produced by a unit switch. So a 0 only ever appears
+// as a real sub-part of a measurement the user has actually set.
+const emptyMetric = m => m === "" || m == null || Number(m) === 0;
+const MEASURE_CFG = {
+  kg:   { f: ["kg"],        seed: kg => emptyMetric(kg) ? [""] : [String(kg)],                    build: ([a])    => a },
+  lb:   { f: ["lb"],        seed: kg => emptyMetric(kg) ? [""] : [String(kgToLb(kg))],            build: ([a])    => lbToKg(a) },
+  st:   { f: ["st", "lb"],  seed: kg => { if (emptyMetric(kg)) return ["", ""]; const x = kgToStLb(kg); return [String(x.st), String(x.lb)]; }, build: ([s, p]) => stLbToKg(s, p) },
+  cm:   { f: ["cm"],        seed: cm => emptyMetric(cm) ? [""] : [String(cm)],                    build: ([a])    => a },
+  in:   { f: ["in"],        seed: cm => emptyMetric(cm) ? [""] : [String(cmToInch(cm))],          build: ([a])    => inchToCm(a) },
+  ftin: { f: ["ft", "in"],  seed: cm => { if (emptyMetric(cm)) return ["", ""]; const x = cmToFtIn(cm); return [String(x.ft), String(x.in)]; }, build: ([ft, i]) => ftInToCm(ft, i) },
+};
+function MeasureField({ metric, unit, onChange }) {
+  const cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
+  const [vals, setVals] = useState(() => cfg.seed(metric)); // seed once; local thereafter
+  const commit = (i, raw) => {
+    const next = vals.slice(); next[i] = raw;
+    setVals(next);
+    onChange(cfg.build(next));
+  };
+  const compound = cfg.f.length > 1;
+  return (
+    <div style={{ display:"flex", gap:6 }}>
+      {cfg.f.map((label, i) => (
+        <input key={i} type="number" min="0" max={label === "lb" && compound ? "13" : label === "in" && compound ? "11" : undefined}
+          inputMode={label === "kg" || label === "lb" ? "decimal" : "numeric"}
+          aria-label={label} placeholder={label} value={vals[i]}
+          onChange={e => commit(i, e.target.value)}
+          style={compound ? { ...INP, textAlign:"center" } : INP}/>
+      ))}
+    </div>
+  );
+}
+
+// Compact segmented control for picking a display unit. Sits inline on the
+// field it controls (weight / height) so the choice is where the value is.
+function UnitSwitch({ value, options, onChange }) {
+  return (
+    <div style={{ display:"flex", gap:2, background:"#0b0d0b", border:`1px solid ${BD}`, borderRadius:999, padding:2 }}>
+      {options.map(([v, lbl]) => (
+        <button key={v} onClick={() => onChange(v)}
+          style={{ padding:"3px 9px", borderRadius:999, border:"none", cursor:"pointer",
+            fontSize:10, fontWeight:800, letterSpacing:"0.02em", fontFamily:"inherit",
+            background: value === v ? A : "transparent", color: value === v ? "#0b0d0b" : "#9b958b" }}>
+          {lbl}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false }) {
   const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
   const [bfFocused, setBfFocused] = useState(false);
+  const [wUnit, setWU]    = useState(getWUnit()); // display only — storage stays kg
+  const [hUnit, setHU]    = useState(getHUnit()); // display only — storage stays cm
   const set = (k, v) => setF(p => ({ ...p, [k]:v }));
   // Dietary config (#8) persists immediately on change — the body-stats auto-save
   // effect only watches weight/height/bf/sex, so tag edits save themselves here.
@@ -1525,16 +1635,23 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
       </p>
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
         <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>BODY STATS</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-          {[{ k:"weight", l:"WEIGHT", u:"kg" }, { k:"height", l:"HEIGHT", u:"cm" }].map(fl => (
-            <div key={fl.k}>
-              <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
-                {fl.l} <span style={{ color:"#9b958b" }}>({fl.u})</span>
-              </div>
-              <input type="number" min="0" value={f[fl.k]}
-                onChange={e => set(fl.k, e.target.value)} style={INP}/>
+        <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:14 }}>
+          <div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800 }}>WEIGHT</div>
+              <UnitSwitch value={wUnit} options={[["kg","kg"], ["st","st+lb"], ["lb","lb"]]}
+                onChange={u => { setWU(u); setWUnit(u); }}/>
             </div>
-          ))}
+            <MeasureField key={wUnit} metric={f.weight} unit={wUnit} onChange={v => set("weight", v)}/>
+          </div>
+          <div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800 }}>HEIGHT</div>
+              <UnitSwitch value={hUnit} options={[["cm","cm"], ["ftin","ft+in"], ["in","in"]]}
+                onChange={u => { setHU(u); setHUnit(u); }}/>
+            </div>
+            <MeasureField key={hUnit} metric={f.height} unit={hUnit} onChange={v => set("height", v)}/>
+          </div>
         </div>
         <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
           BODY FAT <span style={{ color:"#9b958b" }}>(%)</span>
@@ -1769,7 +1886,12 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
 // ── Weigh-In Widget ───────────────────────────────────────────
 
 function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
-  const [val, setVal] = useState("");
+  const [val, setVal]   = useState(""); // kg · lb · or stone (when st mode)
+  const [val2, setVal2] = useState(""); // pounds (st mode only)
+  const wUnit = getWUnit();
+  const entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0)
+                : wUnit === "lb" ? lbToKg(val || 0)
+                : Number(val);
   const today       = todayKey();
   const todayEntry  = weighIns.find(w => w.date === today);
   const weeks       = Math.floor(weighIns.length / 7);
@@ -1791,10 +1913,17 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
         <div>
           <div style={{ fontSize:11, color:"#9b958b", letterSpacing:"0.12em", fontWeight:800, marginBottom:4 }}>BODY WEIGHT</div>
           {todayEntry
-            ? <div style={{ fontSize:22, fontWeight:900, color:"#e6e1d7" }}>{todayEntry.weight}<span style={{ fontSize:12, color:"#9b958b", marginLeft:4 }}>kg</span>
-                {trend7 !== null && <span style={{ fontSize:12, color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b", marginLeft:10 }}>
-                  {trend7 > 0 ? "+" : ""}{trend7}kg/wk
-                </span>}
+            ? <div style={{ fontSize:22, fontWeight:900, color:"#e6e1d7" }}>
+                {wUnit === "st"
+                  ? (() => { const { st, lb } = kgToStLb(todayEntry.weight);
+                      return <>{st}<span style={{ fontSize:12, color:"#9b958b", marginLeft:3 }}>st</span> {lb}<span style={{ fontSize:12, color:"#9b958b", marginLeft:3 }}>lb</span></>; })()
+                  : <>{wChartNum(todayEntry.weight, wUnit)}<span style={{ fontSize:12, color:"#9b958b", marginLeft:4 }}>{wChartUnit(wUnit)}</span></>}
+                {trend7 !== null && (() => {
+                  const t = wUnit === "kg" ? trend7 : Math.round(trend7 * LB_PER_KG * 10) / 10;
+                  return <span style={{ fontSize:12, color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b", marginLeft:10 }}>
+                    {t > 0 ? "+" : ""}{t}{wUnit === "kg" ? "kg" : "lb"}/wk
+                  </span>;
+                })()}
               </div>
             : <div style={{ fontSize:13, color:"#827c73", marginTop:2 }}>Not logged today</div>
           }
@@ -1813,14 +1942,27 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
 
       {!todayEntry && (
         <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-          <input type="number" step="0.1" min="30" max="300" value={val}
-            onChange={e => setVal(e.target.value)} placeholder="kg today..."
-            style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13 }}
-            onKeyDown={e => e.key === "Enter" && Number(val) > 0 && (onWeighIn(Number(val)), setVal(""))}/>
-          <button onClick={() => { if (Number(val) > 0) { onWeighIn(Number(val)); setVal(""); }}}
-            disabled={!Number(val)}
-            style={{ padding:"10px 18px", background: Number(val) > 0 ? A : "#1c1a15",
-              color: Number(val) > 0 ? "#0b0d0b" : "#2c2820",
+          {wUnit === "st" ? (
+            <>
+              <input type="number" min="0" inputMode="numeric" value={val} aria-label="stone today"
+                onChange={e => setVal(e.target.value)} placeholder="st"
+                style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13, textAlign:"center" }}
+                onKeyDown={e => e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""), setVal2(""))}/>
+              <input type="number" min="0" max="13" inputMode="numeric" value={val2} aria-label="pounds today"
+                onChange={e => setVal2(e.target.value)} placeholder="lb"
+                style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13, textAlign:"center" }}
+                onKeyDown={e => e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""), setVal2(""))}/>
+            </>
+          ) : (
+            <input type="number" step="0.1" min="0" max={wUnit === "lb" ? 660 : 300} value={val}
+              onChange={e => setVal(e.target.value)} placeholder={wUnit === "lb" ? "lb today..." : "kg today..."}
+              style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13 }}
+              onKeyDown={e => e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""))}/>
+          )}
+          <button onClick={() => { if (entryKg > 0) { onWeighIn(entryKg); setVal(""); setVal2(""); }}}
+            disabled={!(entryKg > 0)}
+            style={{ padding:"10px 18px", background: entryKg > 0 ? A : "#1c1a15",
+              color: entryKg > 0 ? "#0b0d0b" : "#2c2820",
               border:"none", borderRadius:10, fontWeight:900, fontSize:13 }}>
             LOG
           </button>
@@ -2961,6 +3103,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
   const [dayIdx,     setDayIdx]     = useState(Math.max(0, history.length - 1));
   const [addCtx,     setAddCtx]     = useState(null);
   const [editId,     setEditId]     = useState(null);
+  const wPref = getWUnit();                    // kg · st · lb
+  const wUnit = wChartUnit(wPref);             // chart axis label: kg, else lb (st plots in lb)
+  const wConv = kg => wChartNum(kg, wPref);    // stored kg → chart number
 
   const toggleM = m => setMetrics(p =>
     p.includes(m) ? (p.length > 1 ? p.filter(x => x !== m) : p) : [...p, m]);
@@ -2992,8 +3137,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
     const win = arr.slice(Math.max(0, i - 6), i + 1);
     const avg = win.reduce((s, x) => s + x.weight, 0) / win.length;
     return {
-      date: fmtShort(w.date), WEIGHT: w.weight,
-      ROLLING: win.length >= 3 ? Math.round(avg * 10) / 10 : null,
+      date: fmtShort(w.date), WEIGHT: wConv(w.weight),
+      ROLLING: win.length >= 3 ? Math.round(wConv(avg) * 10) / 10 : null,
     };
   });
 
@@ -3266,7 +3411,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                       <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
                         <XAxis dataKey="date" tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false}/>
                         <YAxis tick={{ fill:"#8b857c", fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
-                        <Tooltip formatter={(v, n) => [v + " kg", n === "ROLLING" ? "7-day avg" : "Weight"]}/>
+                        <Tooltip formatter={(v, n) => [v + " " + wUnit, n === "ROLLING" ? "7-day avg" : "Weight"]}/>
                         <Line type="monotone" dataKey="WEIGHT" stroke="#4b9fff" strokeWidth={1.5} dot={{ r:2.5, fill:"#4b9fff" }} name="Weight" connectNulls={false}/>
                         <Line type="monotone" dataKey="ROLLING" stroke={A} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
                       </LineChart>
@@ -3303,8 +3448,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   })}
                 </div>
                 {filteredWeighIns.length >= 2 && (() => {
-                  const first = filteredWeighIns[0].weight;
-                  const last  = filteredWeighIns[filteredWeighIns.length - 1].weight;
+                  const first = wConv(filteredWeighIns[0].weight);
+                  const last  = wConv(filteredWeighIns[filteredWeighIns.length - 1].weight);
                   const diff  = Math.round((last - first) * 10) / 10;
                   return (
                     <div style={{ marginTop:10, display:"flex", justifyContent:"space-between",
@@ -3312,11 +3457,11 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                       <div>
                         <div style={{ fontSize:10, color:"#9b958b", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
                         <div style={{ fontSize:12, color:"#8b857c", marginTop:2 }}>
-                          {filteredWeighIns[0].weight}kg → {last}kg
+                          {first}{wUnit} → {last}{wUnit}
                         </div>
                       </div>
                       <div style={{ fontSize:15, fontWeight:900, color: diff <= 0 ? A : "#ff7b4b" }}>
-                        {diff > 0 ? "+" : ""}{diff} kg
+                        {diff > 0 ? "+" : ""}{diff} {wUnit}
                       </div>
                     </div>
                   );

@@ -122,6 +122,99 @@ var DEF_PROFILE = {
   sex: null
 };
 
+// ── Display units ─────────────────────────────────────────────────
+// Storage is ALWAYS metric (weight kg, height cm). These are per-device
+// DISPLAY preferences only — never synced, and never written back to the
+// stored value unless the user actually edits a field. Weight and height
+// are chosen INDEPENDENTLY (UK users routinely mix, e.g. height in cm but
+// weight in stone): weight ∈ {kg, st (stone+pounds), lb}; height ∈
+// {cm, ftin (feet+inches), in}. The whole-number round-trips are stable,
+// so switching units and saving never nudges the stored value.
+var LB_PER_KG = 2.2046226218;
+var IN_PER_CM = 0.3937007874;
+var WUNITS = ["kg", "st", "lb"];
+var HUNITS = ["cm", "ftin", "in"];
+// Independent getters/setters. Fall back to the old single `fuel_units` key
+// (imperial → st / ftin) so an early tester's choice maps sensibly.
+var getWUnit = function getWUnit() {
+  try {
+    var v = localStorage.getItem("fuel_wunit");
+    if (WUNITS.includes(v)) return v;
+    if (localStorage.getItem("fuel_units") === "imperial") return "st";
+  } catch (e) {}
+  return "kg";
+};
+var setWUnit = function setWUnit(u) {
+  try {
+    localStorage.setItem("fuel_wunit", WUNITS.includes(u) ? u : "kg");
+  } catch (e) {}
+};
+var getHUnit = function getHUnit() {
+  try {
+    var v = localStorage.getItem("fuel_hunit");
+    if (HUNITS.includes(v)) return v;
+    if (localStorage.getItem("fuel_units") === "imperial") return "ftin";
+  } catch (e) {}
+  return "cm";
+};
+var setHUnit = function setHUnit(u) {
+  try {
+    localStorage.setItem("fuel_hunit", HUNITS.includes(u) ? u : "cm");
+  } catch (e) {}
+};
+var kgToStLb = function kgToStLb(kg) {
+  var tot = Math.round((Number(kg) || 0) * LB_PER_KG);
+  return {
+    st: Math.floor(tot / 14),
+    lb: tot % 14
+  };
+};
+var stLbToKg = function stLbToKg(st, lb) {
+  return Math.round(((Number(st) || 0) * 14 + (Number(lb) || 0)) / LB_PER_KG * 10) / 10;
+};
+var kgToLb = function kgToLb(kg) {
+  return Math.round((Number(kg) || 0) * LB_PER_KG * 10) / 10;
+};
+var lbToKg = function lbToKg(lb) {
+  return Math.round((Number(lb) || 0) / LB_PER_KG * 100) / 100;
+}; // 2dp so kgToLb round-trips an integer lb back unchanged
+var cmToFtIn = function cmToFtIn(cm) {
+  var tot = Math.round((Number(cm) || 0) * IN_PER_CM);
+  return {
+    ft: Math.floor(tot / 12),
+    "in": tot % 12
+  };
+};
+var ftInToCm = function ftInToCm(ft, inch) {
+  return Math.round(((Number(ft) || 0) * 12 + (Number(inch) || 0)) / IN_PER_CM);
+};
+var cmToInch = function cmToInch(cm) {
+  return Math.round((Number(cm) || 0) * IN_PER_CM);
+};
+var inchToCm = function inchToCm(inch) {
+  return Math.round((Number(inch) || 0) / IN_PER_CM);
+};
+// Read-only formatting of a stored kg weight in the active weight unit.
+var fmtW = function fmtW(kg, u) {
+  if (u === "st") {
+    var _kgToStLb = kgToStLb(kg),
+      st = _kgToStLb.st,
+      lb = _kgToStLb.lb;
+    return "".concat(st, " st ").concat(lb, " lb");
+  }
+  if (u === "lb") return "".concat(kgToLb(kg), " lb");
+  return "".concat(kg, " kg");
+};
+// Chart/trend representation: kg stays kg; both imperial weights plot in lb
+// (a numeric axis can't carry compound st+lb, and stone users track change
+// in pounds anyway). Returns { num, unit } for a stored kg value.
+var wChartNum = function wChartNum(kg, u) {
+  return u === "kg" ? Number(kg) : kgToLb(kg);
+};
+var wChartUnit = function wChartUnit(u) {
+  return u === "kg" ? "kg" : "lb";
+};
+
 // ── Dietary requirements & allergies (feature #8) ─────────────────
 // Suggestion lists for the profile tag-input. Allergens are the UK/EEA 'Big 14'
 // (FIC regulated). The user can also commit a custom tag not in these lists.
@@ -3551,8 +3644,25 @@ function TagField(_ref38) {
       return x.toLowerCase() === t.toLowerCase();
     });
   };
-  var add = function add(raw) {
+  // Resolve typed text to a canonical suggestion when it clearly maps to one,
+  // so committing with Enter doesn't create a near-duplicate custom tag that
+  // bypasses preset handling. For allergies this is a SAFETY fix: a custom
+  // "tree nut" tag misses the synonym expansion (almond, walnut…) that the
+  // canonical "tree nuts" preset drives in scanAllergens.
+  var resolve = function resolve(raw) {
     var t = raw.trim().toLowerCase();
+    if (!t) return "";
+    var exact = suggestions.find(function (s) {
+      return s.toLowerCase() === t;
+    });
+    if (exact) return exact;
+    var partial = suggestions.filter(function (s) {
+      return s.toLowerCase().includes(t) && !has(s);
+    });
+    return partial.length === 1 ? partial[0] : raw.trim();
+  };
+  var add = function add(raw) {
+    var t = resolve(raw).toLowerCase();
     if (t && !has(t)) onChange([].concat(_toConsumableArray(tags), [t]));
     setInput("");
   };
@@ -3672,28 +3782,208 @@ function TagField(_ref38) {
 
 // ── Profile ───────────────────────────────────────────────────
 
-function ProfileScreen(_ref39) {
-  var profile = _ref39.profile,
-    onSave = _ref39.onSave,
-    onBack = _ref39.onBack,
-    _ref39$tdeeAdj = _ref39.tdeeAdj,
-    tdeeAdj = _ref39$tdeeAdj === void 0 ? 0 : _ref39$tdeeAdj,
-    _ref39$weighIns = _ref39.weighIns,
-    weighIns = _ref39$weighIns === void 0 ? [] : _ref39$weighIns,
-    _ref39$aggressiveCutA = _ref39.aggressiveCutAcked,
-    aggressiveCutAcked = _ref39$aggressiveCutA === void 0 ? false : _ref39$aggressiveCutA;
-  var _useState37 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
+// Self-contained body-stat editor. Converts the stored METRIC value (kg or cm)
+// to the chosen display unit ONCE at mount, then edits purely in local string
+// buffers — so typing, clearing a box, and trailing decimals are never fought by
+// a re-derived value (the root cause of the old "stuck 0"). Recomputes the metric
+// on every keystroke and pushes it up. The parent keys this by unit, so switching
+// unit remounts it with a fresh seed.
+//
+// Zero handling has CONTEXT, decided once at the whole-measurement level: if the
+// measurement holds no value (never set or fully cleared) every box seeds blank
+// (placeholder) — no stray "0". If it holds a real value, the true parts are
+// shown INCLUDING a legitimate 0 (the pounds in 12 st 0 lb, the inches in 5 ft
+// 0 in) — even when that 0 is produced by a unit switch. So a 0 only ever appears
+// as a real sub-part of a measurement the user has actually set.
+var emptyMetric = function emptyMetric(m) {
+  return m === "" || m == null || Number(m) === 0;
+};
+var MEASURE_CFG = {
+  kg: {
+    f: ["kg"],
+    seed: function seed(kg) {
+      return emptyMetric(kg) ? [""] : [String(kg)];
+    },
+    build: function build(_ref39) {
+      var _ref40 = _slicedToArray(_ref39, 1),
+        a = _ref40[0];
+      return a;
+    }
+  },
+  lb: {
+    f: ["lb"],
+    seed: function seed(kg) {
+      return emptyMetric(kg) ? [""] : [String(kgToLb(kg))];
+    },
+    build: function build(_ref41) {
+      var _ref42 = _slicedToArray(_ref41, 1),
+        a = _ref42[0];
+      return lbToKg(a);
+    }
+  },
+  st: {
+    f: ["st", "lb"],
+    seed: function seed(kg) {
+      if (emptyMetric(kg)) return ["", ""];
+      var x = kgToStLb(kg);
+      return [String(x.st), String(x.lb)];
+    },
+    build: function build(_ref43) {
+      var _ref44 = _slicedToArray(_ref43, 2),
+        s = _ref44[0],
+        p = _ref44[1];
+      return stLbToKg(s, p);
+    }
+  },
+  cm: {
+    f: ["cm"],
+    seed: function seed(cm) {
+      return emptyMetric(cm) ? [""] : [String(cm)];
+    },
+    build: function build(_ref45) {
+      var _ref46 = _slicedToArray(_ref45, 1),
+        a = _ref46[0];
+      return a;
+    }
+  },
+  "in": {
+    f: ["in"],
+    seed: function seed(cm) {
+      return emptyMetric(cm) ? [""] : [String(cmToInch(cm))];
+    },
+    build: function build(_ref47) {
+      var _ref48 = _slicedToArray(_ref47, 1),
+        a = _ref48[0];
+      return inchToCm(a);
+    }
+  },
+  ftin: {
+    f: ["ft", "in"],
+    seed: function seed(cm) {
+      if (emptyMetric(cm)) return ["", ""];
+      var x = cmToFtIn(cm);
+      return [String(x.ft), String(x["in"])];
+    },
+    build: function build(_ref49) {
+      var _ref50 = _slicedToArray(_ref49, 2),
+        ft = _ref50[0],
+        i = _ref50[1];
+      return ftInToCm(ft, i);
+    }
+  }
+};
+function MeasureField(_ref51) {
+  var metric = _ref51.metric,
+    unit = _ref51.unit,
+    onChange = _ref51.onChange;
+  var cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
+  var _useState37 = useState(function () {
+      return cfg.seed(metric);
+    }),
     _useState38 = _slicedToArray(_useState37, 2),
-    f = _useState38[0],
-    setF = _useState38[1];
-  var _useState39 = useState(false),
+    vals = _useState38[0],
+    setVals = _useState38[1]; // seed once; local thereafter
+  var commit = function commit(i, raw) {
+    var next = vals.slice();
+    next[i] = raw;
+    setVals(next);
+    onChange(cfg.build(next));
+  };
+  var compound = cfg.f.length > 1;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6
+    }
+  }, cfg.f.map(function (label, i) {
+    return /*#__PURE__*/React.createElement("input", {
+      key: i,
+      type: "number",
+      min: "0",
+      max: label === "lb" && compound ? "13" : label === "in" && compound ? "11" : undefined,
+      inputMode: label === "kg" || label === "lb" ? "decimal" : "numeric",
+      "aria-label": label,
+      placeholder: label,
+      value: vals[i],
+      onChange: function onChange(e) {
+        return commit(i, e.target.value);
+      },
+      style: compound ? _objectSpread(_objectSpread({}, INP), {}, {
+        textAlign: "center"
+      }) : INP
+    });
+  }));
+}
+
+// Compact segmented control for picking a display unit. Sits inline on the
+// field it controls (weight / height) so the choice is where the value is.
+function UnitSwitch(_ref52) {
+  var value = _ref52.value,
+    options = _ref52.options,
+    onChange = _ref52.onChange;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 2,
+      background: "#0b0d0b",
+      border: "1px solid ".concat(BD),
+      borderRadius: 999,
+      padding: 2
+    }
+  }, options.map(function (_ref53) {
+    var _ref54 = _slicedToArray(_ref53, 2),
+      v = _ref54[0],
+      lbl = _ref54[1];
+    return /*#__PURE__*/React.createElement("button", {
+      key: v,
+      onClick: function onClick() {
+        return onChange(v);
+      },
+      style: {
+        padding: "3px 9px",
+        borderRadius: 999,
+        border: "none",
+        cursor: "pointer",
+        fontSize: 10,
+        fontWeight: 800,
+        letterSpacing: "0.02em",
+        fontFamily: "inherit",
+        background: value === v ? A : "transparent",
+        color: value === v ? "#0b0d0b" : "#9b958b"
+      }
+    }, lbl);
+  }));
+}
+function ProfileScreen(_ref55) {
+  var profile = _ref55.profile,
+    onSave = _ref55.onSave,
+    onBack = _ref55.onBack,
+    _ref55$tdeeAdj = _ref55.tdeeAdj,
+    tdeeAdj = _ref55$tdeeAdj === void 0 ? 0 : _ref55$tdeeAdj,
+    _ref55$weighIns = _ref55.weighIns,
+    weighIns = _ref55$weighIns === void 0 ? [] : _ref55$weighIns,
+    _ref55$aggressiveCutA = _ref55.aggressiveCutAcked,
+    aggressiveCutAcked = _ref55$aggressiveCutA === void 0 ? false : _ref55$aggressiveCutA;
+  var _useState39 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState40 = _slicedToArray(_useState39, 2),
-    saved = _useState40[0],
-    setSaved = _useState40[1];
+    f = _useState40[0],
+    setF = _useState40[1];
   var _useState41 = useState(false),
     _useState42 = _slicedToArray(_useState41, 2),
-    bfFocused = _useState42[0],
-    setBfFocused = _useState42[1];
+    saved = _useState42[0],
+    setSaved = _useState42[1];
+  var _useState43 = useState(false),
+    _useState44 = _slicedToArray(_useState43, 2),
+    bfFocused = _useState44[0],
+    setBfFocused = _useState44[1];
+  var _useState45 = useState(getWUnit()),
+    _useState46 = _slicedToArray(_useState45, 2),
+    wUnit = _useState46[0],
+    setWU = _useState46[1]; // display only — storage stays kg
+  var _useState47 = useState(getHUnit()),
+    _useState48 = _slicedToArray(_useState47, 2),
+    hUnit = _useState48[0],
+    setHU = _useState48[1]; // display only — storage stays cm
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -3804,44 +4094,68 @@ function ProfileScreen(_ref39) {
     }
   }, "BODY STATS"), /*#__PURE__*/React.createElement("div", {
     style: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
       marginBottom: 14
     }
-  }, [{
-    k: "weight",
-    l: "WEIGHT",
-    u: "kg"
-  }, {
-    k: "height",
-    l: "HEIGHT",
-    u: "cm"
-  }].map(function (fl) {
-    return /*#__PURE__*/React.createElement("div", {
-      key: fl.k
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 10,
-        color: A,
-        letterSpacing: "0.1em",
-        fontWeight: 800,
-        marginBottom: 5
-      }
-    }, fl.l, " ", /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: "#9b958b"
-      }
-    }, "(", fl.u, ")")), /*#__PURE__*/React.createElement("input", {
-      type: "number",
-      min: "0",
-      value: f[fl.k],
-      onChange: function onChange(e) {
-        return set(fl.k, e.target.value);
-      },
-      style: INP
-    }));
-  })), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: A,
+      letterSpacing: "0.1em",
+      fontWeight: 800
+    }
+  }, "WEIGHT"), /*#__PURE__*/React.createElement(UnitSwitch, {
+    value: wUnit,
+    options: [["kg", "kg"], ["st", "st+lb"], ["lb", "lb"]],
+    onChange: function onChange(u) {
+      setWU(u);
+      setWUnit(u);
+    }
+  })), /*#__PURE__*/React.createElement(MeasureField, {
+    key: wUnit,
+    metric: f.weight,
+    unit: wUnit,
+    onChange: function onChange(v) {
+      return set("weight", v);
+    }
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: A,
+      letterSpacing: "0.1em",
+      fontWeight: 800
+    }
+  }, "HEIGHT"), /*#__PURE__*/React.createElement(UnitSwitch, {
+    value: hUnit,
+    options: [["cm", "cm"], ["ftin", "ft+in"], ["in", "in"]],
+    onChange: function onChange(u) {
+      setHU(u);
+      setHUnit(u);
+    }
+  })), /*#__PURE__*/React.createElement(MeasureField, {
+    key: hUnit,
+    metric: f.height,
+    unit: hUnit,
+    onChange: function onChange(v) {
+      return set("height", v);
+    }
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
       color: A,
@@ -4086,10 +4400,10 @@ function ProfileScreen(_ref39) {
     mode: "bulk",
     label: "BULK",
     color: "#ff7b4b"
-  }].map(function (_ref40) {
-    var mode = _ref40.mode,
-      label = _ref40.label,
-      color = _ref40.color;
+  }].map(function (_ref56) {
+    var mode = _ref56.mode,
+      label = _ref56.label,
+      color = _ref56.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -4112,11 +4426,11 @@ function ProfileScreen(_ref39) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref41) {
-      var _ref42 = _slicedToArray(_ref41, 3),
-        k = _ref42[0],
-        key = _ref42[1],
-        u = _ref42[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref57) {
+      var _ref58 = _slicedToArray(_ref57, 3),
+        k = _ref58[0],
+        key = _ref58[1],
+        u = _ref58[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -4169,14 +4483,14 @@ function ProfileScreen(_ref39) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref43) {
-  var meal = _ref43.meal,
-    onSave = _ref43.onSave,
-    onCancel = _ref43.onCancel,
-    _ref43$isPremium = _ref43.isPremium,
-    isPremium = _ref43$isPremium === void 0 ? false : _ref43$isPremium,
-    _ref43$onPremiumGate = _ref43.onPremiumGate,
-    onPremiumGate = _ref43$onPremiumGate === void 0 ? function () {} : _ref43$onPremiumGate;
+function MealForm(_ref59) {
+  var meal = _ref59.meal,
+    onSave = _ref59.onSave,
+    onCancel = _ref59.onCancel,
+    _ref59$isPremium = _ref59.isPremium,
+    isPremium = _ref59$isPremium === void 0 ? false : _ref59$isPremium,
+    _ref59$onPremiumGate = _ref59.onPremiumGate,
+    onPremiumGate = _ref59$onPremiumGate === void 0 ? function () {} : _ref59$onPremiumGate;
   var blank = {
     name: "",
     kcal: "",
@@ -4184,24 +4498,24 @@ function MealForm(_ref43) {
     carbs: "",
     fat: ""
   };
-  var _useState43 = useState(meal ? {
+  var _useState49 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
-    _useState44 = _slicedToArray(_useState43, 2),
-    f = _useState44[0],
-    setF = _useState44[1];
-  var _useState45 = useState(false),
-    _useState46 = _slicedToArray(_useState45, 2),
-    reest = _useState46[0],
-    setReest = _useState46[1];
-  var _useState47 = useState(""),
-    _useState48 = _slicedToArray(_useState47, 2),
-    reestMsg = _useState48[0],
-    setReestMsg = _useState48[1]; // "" | "done" | error text
+    _useState50 = _slicedToArray(_useState49, 2),
+    f = _useState50[0],
+    setF = _useState50[1];
+  var _useState51 = useState(false),
+    _useState52 = _slicedToArray(_useState51, 2),
+    reest = _useState52[0],
+    setReest = _useState52[1];
+  var _useState53 = useState(""),
+    _useState54 = _slicedToArray(_useState53, 2),
+    reestMsg = _useState54[0],
+    setReestMsg = _useState54[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -4213,7 +4527,7 @@ function MealForm(_ref43) {
   // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
   // Open Food Facts a bounded background refinement that only wins on confidence.
   var estimate = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
+    var _ref60 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
       var fill, upd, oft, _t24, _t25;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
@@ -4288,7 +4602,7 @@ function MealForm(_ref43) {
       }, _callee25, null, [[8, 10], [3, 5]]);
     }));
     return function estimate() {
-      return _ref44.apply(this, arguments);
+      return _ref60.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -4447,15 +4761,21 @@ function MealForm(_ref43) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref45) {
-  var weighIns = _ref45.weighIns,
-    onWeighIn = _ref45.onWeighIn,
-    tdeeAdj = _ref45.tdeeAdj,
-    baseTDEE = _ref45.baseTDEE;
-  var _useState49 = useState(""),
-    _useState50 = _slicedToArray(_useState49, 2),
-    val = _useState50[0],
-    setVal = _useState50[1];
+function WeighInWidget(_ref61) {
+  var weighIns = _ref61.weighIns,
+    onWeighIn = _ref61.onWeighIn,
+    tdeeAdj = _ref61.tdeeAdj,
+    baseTDEE = _ref61.baseTDEE;
+  var _useState55 = useState(""),
+    _useState56 = _slicedToArray(_useState55, 2),
+    val = _useState56[0],
+    setVal = _useState56[1]; // kg · lb · or stone (when st mode)
+  var _useState57 = useState(""),
+    _useState58 = _slicedToArray(_useState57, 2),
+    val2 = _useState58[0],
+    setVal2 = _useState58[1]; // pounds (st mode only)
+  var wUnit = getWUnit();
+  var entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0) : wUnit === "lb" ? lbToKg(val || 0) : Number(val);
   var today = todayKey();
   var todayEntry = weighIns.find(function (w) {
     return w.date === today;
@@ -4499,19 +4819,39 @@ function WeighInWidget(_ref45) {
       fontWeight: 900,
       color: "#e6e1d7"
     }
-  }, todayEntry.weight, /*#__PURE__*/React.createElement("span", {
+  }, wUnit === "st" ? function () {
+    var _kgToStLb2 = kgToStLb(todayEntry.weight),
+      st = _kgToStLb2.st,
+      lb = _kgToStLb2.lb;
+    return /*#__PURE__*/React.createElement(React.Fragment, null, st, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: "#9b958b",
+        marginLeft: 3
+      }
+    }, "st"), " ", lb, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: "#9b958b",
+        marginLeft: 3
+      }
+    }, "lb"));
+  }() : /*#__PURE__*/React.createElement(React.Fragment, null, wChartNum(todayEntry.weight, wUnit), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
       color: "#9b958b",
       marginLeft: 4
     }
-  }, "kg"), trend7 !== null && /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 12,
-      color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b",
-      marginLeft: 10
-    }
-  }, trend7 > 0 ? "+" : "", trend7, "kg/wk")) : /*#__PURE__*/React.createElement("div", {
+  }, wChartUnit(wUnit))), trend7 !== null && function () {
+    var t = wUnit === "kg" ? trend7 : Math.round(trend7 * LB_PER_KG * 10) / 10;
+    return /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: trend7 <= 0 ? "#e8e2d4" : "#ff7b4b",
+        marginLeft: 10
+      }
+    }, t > 0 ? "+" : "", t, wUnit === "kg" ? "kg" : "lb", "/wk");
+  }()) : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
       color: "#827c73",
@@ -4560,36 +4900,76 @@ function WeighInWidget(_ref45) {
       gap: 8,
       marginBottom: 8
     }
-  }, /*#__PURE__*/React.createElement("input", {
+  }, wUnit === "st" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "0",
+    inputMode: "numeric",
+    value: val,
+    "aria-label": "stone today",
+    onChange: function onChange(e) {
+      return setVal(e.target.value);
+    },
+    placeholder: "st",
+    style: _objectSpread(_objectSpread({}, INP), {}, {
+      flex: 1,
+      padding: "10px 12px",
+      fontSize: 13,
+      textAlign: "center"
+    }),
+    onKeyDown: function onKeyDown(e) {
+      return e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""), setVal2(""));
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "0",
+    max: "13",
+    inputMode: "numeric",
+    value: val2,
+    "aria-label": "pounds today",
+    onChange: function onChange(e) {
+      return setVal2(e.target.value);
+    },
+    placeholder: "lb",
+    style: _objectSpread(_objectSpread({}, INP), {}, {
+      flex: 1,
+      padding: "10px 12px",
+      fontSize: 13,
+      textAlign: "center"
+    }),
+    onKeyDown: function onKeyDown(e) {
+      return e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""), setVal2(""));
+    }
+  })) : /*#__PURE__*/React.createElement("input", {
     type: "number",
     step: "0.1",
-    min: "30",
-    max: "300",
+    min: "0",
+    max: wUnit === "lb" ? 660 : 300,
     value: val,
     onChange: function onChange(e) {
       return setVal(e.target.value);
     },
-    placeholder: "kg today...",
+    placeholder: wUnit === "lb" ? "lb today..." : "kg today...",
     style: _objectSpread(_objectSpread({}, INP), {}, {
       flex: 1,
       padding: "10px 12px",
       fontSize: 13
     }),
     onKeyDown: function onKeyDown(e) {
-      return e.key === "Enter" && Number(val) > 0 && (onWeighIn(Number(val)), setVal(""));
+      return e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""));
     }
   }), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
-      if (Number(val) > 0) {
-        onWeighIn(Number(val));
+      if (entryKg > 0) {
+        onWeighIn(entryKg);
         setVal("");
+        setVal2("");
       }
     },
-    disabled: !Number(val),
+    disabled: !(entryKg > 0),
     style: {
       padding: "10px 18px",
-      background: Number(val) > 0 ? A : "#1c1a15",
-      color: Number(val) > 0 ? "#0b0d0b" : "#2c2820",
+      background: entryKg > 0 ? A : "#1c1a15",
+      color: entryKg > 0 ? "#0b0d0b" : "#2c2820",
       border: "none",
       borderRadius: 10,
       fontWeight: 900,
@@ -4606,41 +4986,41 @@ function WeighInWidget(_ref45) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref46) {
-  var workouts = _ref46.workouts,
-    onAdd = _ref46.onAdd,
-    onRemove = _ref46.onRemove,
-    prof = _ref46.prof,
-    isPremium = _ref46.isPremium,
-    onPremiumGate = _ref46.onPremiumGate;
-  var _useState51 = useState("legs"),
-    _useState52 = _slicedToArray(_useState51, 2),
-    type = _useState52[0],
-    setType = _useState52[1];
-  var _useState53 = useState(45),
-    _useState54 = _slicedToArray(_useState53, 2),
-    dur = _useState54[0],
-    setDur = _useState54[1];
-  var _useState55 = useState("moderate"),
-    _useState56 = _slicedToArray(_useState55, 2),
-    intensity = _useState56[0],
-    setIntensity = _useState56[1];
-  var _useState57 = useState(false),
-    _useState58 = _slicedToArray(_useState57, 2),
-    hevyMode = _useState58[0],
-    setHevyMode = _useState58[1];
-  var _useState59 = useState(""),
+function WorkoutLogger(_ref62) {
+  var workouts = _ref62.workouts,
+    onAdd = _ref62.onAdd,
+    onRemove = _ref62.onRemove,
+    prof = _ref62.prof,
+    isPremium = _ref62.isPremium,
+    onPremiumGate = _ref62.onPremiumGate;
+  var _useState59 = useState("legs"),
     _useState60 = _slicedToArray(_useState59, 2),
-    hevyText = _useState60[0],
-    setHevyText = _useState60[1];
-  var _useState61 = useState(false),
+    type = _useState60[0],
+    setType = _useState60[1];
+  var _useState61 = useState(45),
     _useState62 = _slicedToArray(_useState61, 2),
-    hevyLoading = _useState62[0],
-    setHevyLoading = _useState62[1];
-  var _useState63 = useState(null),
+    dur = _useState62[0],
+    setDur = _useState62[1];
+  var _useState63 = useState("moderate"),
     _useState64 = _slicedToArray(_useState63, 2),
-    hevyResult = _useState64[0],
-    setHevyResult = _useState64[1];
+    intensity = _useState64[0],
+    setIntensity = _useState64[1];
+  var _useState65 = useState(false),
+    _useState66 = _slicedToArray(_useState65, 2),
+    hevyMode = _useState66[0],
+    setHevyMode = _useState66[1];
+  var _useState67 = useState(""),
+    _useState68 = _slicedToArray(_useState67, 2),
+    hevyText = _useState68[0],
+    setHevyText = _useState68[1];
+  var _useState69 = useState(false),
+    _useState70 = _slicedToArray(_useState69, 2),
+    hevyLoading = _useState70[0],
+    setHevyLoading = _useState70[1];
+  var _useState71 = useState(null),
+    _useState72 = _slicedToArray(_useState71, 2),
+    hevyResult = _useState72[0],
+    setHevyResult = _useState72[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -4660,7 +5040,7 @@ function WorkoutLogger(_ref46) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref47 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+    var _ref63 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
       var prompt, _t26, _t27;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
@@ -4696,7 +5076,7 @@ function WorkoutLogger(_ref46) {
       }, _callee26, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref47.apply(this, arguments);
+      return _ref63.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -5011,14 +5391,14 @@ function WorkoutLogger(_ref46) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref48) {
-  var user = _ref48.user,
-    _ref48$size = _ref48.size,
-    size = _ref48$size === void 0 ? 34 : _ref48$size;
-  var _useState65 = useState(false),
-    _useState66 = _slicedToArray(_useState65, 2),
-    failed = _useState66[0],
-    setFailed = _useState66[1];
+function Avatar(_ref64) {
+  var user = _ref64.user,
+    _ref64$size = _ref64.size,
+    size = _ref64$size === void 0 ? 34 : _ref64$size;
+  var _useState73 = useState(false),
+    _useState74 = _slicedToArray(_useState73, 2),
+    failed = _useState74[0],
+    setFailed = _useState74[1];
   var letter = ((user === null || user === void 0 ? void 0 : user.name) || "P")[0].toUpperCase();
   if (user !== null && user !== void 0 && user.picture && !failed) {
     return /*#__PURE__*/React.createElement("img", {
@@ -5051,30 +5431,30 @@ function Avatar(_ref48) {
 // today-list and the History day view. Every field is editable by all users;
 // the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
 // reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
-function EntryEditor(_ref49) {
-  var entry = _ref49.entry,
-    onSave = _ref49.onSave,
-    onCancel = _ref49.onCancel,
-    isPremium = _ref49.isPremium,
-    onPremiumGate = _ref49.onPremiumGate;
-  var _useState67 = useState({
+function EntryEditor(_ref65) {
+  var entry = _ref65.entry,
+    onSave = _ref65.onSave,
+    onCancel = _ref65.onCancel,
+    isPremium = _ref65.isPremium,
+    onPremiumGate = _ref65.onPremiumGate;
+  var _useState75 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
       protein: String(entry.protein),
       carbs: String(entry.carbs),
       fat: String(entry.fat)
     }),
-    _useState68 = _slicedToArray(_useState67, 2),
-    f = _useState68[0],
-    setF = _useState68[1];
-  var _useState69 = useState(false),
-    _useState70 = _slicedToArray(_useState69, 2),
-    reest = _useState70[0],
-    setReest = _useState70[1];
-  var _useState71 = useState(""),
-    _useState72 = _slicedToArray(_useState71, 2),
-    reestMsg = _useState72[0],
-    setReestMsg = _useState72[1]; // "" | "done" | error text
+    _useState76 = _slicedToArray(_useState75, 2),
+    f = _useState76[0],
+    setF = _useState76[1];
+  var _useState77 = useState(false),
+    _useState78 = _slicedToArray(_useState77, 2),
+    reest = _useState78[0],
+    setReest = _useState78[1];
+  var _useState79 = useState(""),
+    _useState80 = _slicedToArray(_useState79, 2),
+    reestMsg = _useState80[0],
+    setReestMsg = _useState80[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -5082,7 +5462,7 @@ function EntryEditor(_ref49) {
     setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
+    var _ref66 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
       var fill, upd, oft, _t28, _t29;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
@@ -5152,7 +5532,7 @@ function EntryEditor(_ref49) {
       }, _callee27, null, [[7, 9], [3, 5]]);
     }));
     return function reestimate() {
-      return _ref50.apply(this, arguments);
+      return _ref66.apply(this, arguments);
     };
   }();
   var save = function save() {
@@ -5317,46 +5697,46 @@ function EntryEditor(_ref49) {
     }
   }, "Save")));
 }
-function Dashboard(_ref51) {
-  var logs = _ref51.logs,
-    totals = _ref51.totals,
-    targets = _ref51.targets,
-    remaining = _ref51.remaining,
-    water = _ref51.water,
-    setWater = _ref51.setWater,
-    mode = _ref51.mode,
-    setMode = _ref51.setMode,
-    setView = _ref51.setView,
-    removeLog = _ref51.removeLog,
-    updateLog = _ref51.updateLog,
-    addToQA = _ref51.addToQA,
-    hasProfile = _ref51.hasProfile,
-    streak = _ref51.streak,
-    prof = _ref51.prof,
-    weighIns = _ref51.weighIns,
-    onWeighIn = _ref51.onWeighIn,
-    tdeeAdj = _ref51.tdeeAdj,
-    baseTDEE = _ref51.baseTDEE,
-    coachKey = _ref51.coachKey,
-    workouts = _ref51.workouts,
-    onAddWorkout = _ref51.onAddWorkout,
-    onRemoveWorkout = _ref51.onRemoveWorkout,
-    customKcal = _ref51.customKcal,
-    onSetCustomKcal = _ref51.onSetCustomKcal,
-    isCustomMode = _ref51.isCustomMode,
-    aggressiveCutAcked = _ref51.aggressiveCutAcked,
-    onAckAggressiveCut = _ref51.onAckAggressiveCut,
-    authState = _ref51.authState,
-    authUser = _ref51.authUser,
-    onPremiumGate = _ref51.onPremiumGate,
-    onSignOut = _ref51.onSignOut,
-    isOnline = _ref51.isOnline,
-    syncMsg = _ref51.syncMsg;
+function Dashboard(_ref67) {
+  var logs = _ref67.logs,
+    totals = _ref67.totals,
+    targets = _ref67.targets,
+    remaining = _ref67.remaining,
+    water = _ref67.water,
+    setWater = _ref67.setWater,
+    mode = _ref67.mode,
+    setMode = _ref67.setMode,
+    setView = _ref67.setView,
+    removeLog = _ref67.removeLog,
+    updateLog = _ref67.updateLog,
+    addToQA = _ref67.addToQA,
+    hasProfile = _ref67.hasProfile,
+    streak = _ref67.streak,
+    prof = _ref67.prof,
+    weighIns = _ref67.weighIns,
+    onWeighIn = _ref67.onWeighIn,
+    tdeeAdj = _ref67.tdeeAdj,
+    baseTDEE = _ref67.baseTDEE,
+    coachKey = _ref67.coachKey,
+    workouts = _ref67.workouts,
+    onAddWorkout = _ref67.onAddWorkout,
+    onRemoveWorkout = _ref67.onRemoveWorkout,
+    customKcal = _ref67.customKcal,
+    onSetCustomKcal = _ref67.onSetCustomKcal,
+    isCustomMode = _ref67.isCustomMode,
+    aggressiveCutAcked = _ref67.aggressiveCutAcked,
+    onAckAggressiveCut = _ref67.onAckAggressiveCut,
+    authState = _ref67.authState,
+    authUser = _ref67.authUser,
+    onPremiumGate = _ref67.onPremiumGate,
+    onSignOut = _ref67.onSignOut,
+    isOnline = _ref67.isOnline,
+    syncMsg = _ref67.syncMsg;
   var isPremium = authState === "premium";
-  var _useState73 = useState(null),
-    _useState74 = _slicedToArray(_useState73, 2),
-    editingId = _useState74[0],
-    setEditingId = _useState74[1];
+  var _useState81 = useState(null),
+    _useState82 = _slicedToArray(_useState81, 2),
+    editingId = _useState82[0],
+    setEditingId = _useState82[1];
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -5368,22 +5748,22 @@ function Dashboard(_ref51) {
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "#ff555322" : overAmt > 100 ? "#ffb84b22" : "#24211b";
-  var _useState75 = useState({}),
-    _useState76 = _slicedToArray(_useState75, 2),
-    savedIds = _useState76[0],
-    setSavedIds = _useState76[1];
-  var _useState77 = useState({}),
-    _useState78 = _slicedToArray(_useState77, 2),
-    qaBlink = _useState78[0],
-    setQaBlink = _useState78[1]; // log.id -> tap nonce, drives re-blink on every tap
-  var _useState79 = useState(false),
-    _useState80 = _slicedToArray(_useState79, 2),
-    editingTarget = _useState80[0],
-    setEditingTarget = _useState80[1];
-  var _useState81 = useState(""),
-    _useState82 = _slicedToArray(_useState81, 2),
-    targetInputVal = _useState82[0],
-    setTargetInputVal = _useState82[1];
+  var _useState83 = useState({}),
+    _useState84 = _slicedToArray(_useState83, 2),
+    savedIds = _useState84[0],
+    setSavedIds = _useState84[1];
+  var _useState85 = useState({}),
+    _useState86 = _slicedToArray(_useState85, 2),
+    qaBlink = _useState86[0],
+    setQaBlink = _useState86[1]; // log.id -> tap nonce, drives re-blink on every tap
+  var _useState87 = useState(false),
+    _useState88 = _slicedToArray(_useState87, 2),
+    editingTarget = _useState88[0],
+    setEditingTarget = _useState88[1];
+  var _useState89 = useState(""),
+    _useState90 = _slicedToArray(_useState89, 2),
+    targetInputVal = _useState90[0],
+    setTargetInputVal = _useState90[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) {
@@ -5417,7 +5797,7 @@ function Dashboard(_ref51) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref52 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(log) {
+    var _ref68 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28(log) {
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.n) {
           case 0:
@@ -5441,7 +5821,7 @@ function Dashboard(_ref51) {
       }, _callee28);
     }));
     return function handleAddToQA(_x38) {
-      return _ref52.apply(this, arguments);
+      return _ref68.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5580,10 +5960,10 @@ function Dashboard(_ref51) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref53) {
-    var _ref54 = _slicedToArray(_ref53, 2),
-      k = _ref54[0],
-      v = _ref54[1];
+  }, Object.entries(MODES).map(function (_ref69) {
+    var _ref70 = _slicedToArray(_ref69, 2),
+      k = _ref70[0],
+      v = _ref70[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -6319,18 +6699,18 @@ function _searchOFT() {
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref55) {
-  var item = _ref55.item,
-    onReestimate = _ref55.onReestimate,
-    reestimating = _ref55.reestimating;
-  var _useState83 = useState(false),
-    _useState84 = _slicedToArray(_useState83, 2),
-    editing = _useState84[0],
-    setEditing = _useState84[1];
-  var _useState85 = useState(item.name),
-    _useState86 = _slicedToArray(_useState85, 2),
-    draft = _useState86[0],
-    setDraft = _useState86[1];
+function ItemRow(_ref71) {
+  var item = _ref71.item,
+    onReestimate = _ref71.onReestimate,
+    reestimating = _ref71.reestimating;
+  var _useState91 = useState(false),
+    _useState92 = _slicedToArray(_useState91, 2),
+    editing = _useState92[0],
+    setEditing = _useState92[1];
+  var _useState93 = useState(item.name),
+    _useState94 = _slicedToArray(_useState93, 2),
+    draft = _useState94[0],
+    setDraft = _useState94[1];
   var cc = confColor(item.confidence);
   var itemAllergens = scanAllergens(item.name, DIETARY.allergens); // zero-token backstop
 
@@ -6452,37 +6832,37 @@ function ItemRow(_ref55) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref56) {
-  var onAdd = _ref56.onAdd,
-    onBack = _ref56.onBack;
-  var _useState87 = useState(""),
-    _useState88 = _slicedToArray(_useState87, 2),
-    desc = _useState88[0],
-    setDesc = _useState88[1];
-  var _useState89 = useState(false),
-    _useState90 = _slicedToArray(_useState89, 2),
-    loading = _useState90[0],
-    setLoading = _useState90[1];
-  var _useState91 = useState(null),
-    _useState92 = _slicedToArray(_useState91, 2),
-    items = _useState92[0],
-    setItems = _useState92[1];
-  var _useState93 = useState(null),
-    _useState94 = _slicedToArray(_useState93, 2),
-    reestIdx = _useState94[0],
-    setReestIdx = _useState94[1];
+function AILog(_ref72) {
+  var onAdd = _ref72.onAdd,
+    onBack = _ref72.onBack;
   var _useState95 = useState(""),
     _useState96 = _slicedToArray(_useState95, 2),
-    error = _useState96[0],
-    setError = _useState96[1];
+    desc = _useState96[0],
+    setDesc = _useState96[1];
   var _useState97 = useState(false),
     _useState98 = _slicedToArray(_useState97, 2),
-    loggedAll = _useState98[0],
-    setLoggedAll = _useState98[1];
-  var _useState99 = useState({}),
+    loading = _useState98[0],
+    setLoading = _useState98[1];
+  var _useState99 = useState(null),
     _useState100 = _slicedToArray(_useState99, 2),
-    loggedCount = _useState100[0],
-    setLoggedCount = _useState100[1]; // idx -> times logged (ephemeral; resets on unmount)
+    items = _useState100[0],
+    setItems = _useState100[1];
+  var _useState101 = useState(null),
+    _useState102 = _slicedToArray(_useState101, 2),
+    reestIdx = _useState102[0],
+    setReestIdx = _useState102[1];
+  var _useState103 = useState(""),
+    _useState104 = _slicedToArray(_useState103, 2),
+    error = _useState104[0],
+    setError = _useState104[1];
+  var _useState105 = useState(false),
+    _useState106 = _slicedToArray(_useState105, 2),
+    loggedAll = _useState106[0],
+    setLoggedAll = _useState106[1];
+  var _useState107 = useState({}),
+    _useState108 = _slicedToArray(_useState107, 2),
+    loggedCount = _useState108[0],
+    setLoggedCount = _useState108[1]; // idx -> times logged (ephemeral; resets on unmount)
 
   var totals = items ? items.reduce(function (a, it) {
     return {
@@ -6501,7 +6881,7 @@ function AILog(_ref56) {
     return a + it.confidence;
   }, 0) / items.length) : 0;
   var estimate = /*#__PURE__*/function () {
-    var _ref57 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
       var parsed, aiItems, oftResults, merged, _t30;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
@@ -6552,11 +6932,11 @@ function AILog(_ref56) {
       }, _callee29, null, [[2, 5]]);
     }));
     return function estimate() {
-      return _ref57.apply(this, arguments);
+      return _ref73.apply(this, arguments);
     };
   }();
   var reestimate = /*#__PURE__*/function () {
-    var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(idx, newName) {
+    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(idx, newName) {
       var updated, oft, _final, _t31;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
@@ -6594,7 +6974,7 @@ function AILog(_ref56) {
       }, _callee30, null, [[1, 4]]);
     }));
     return function reestimate(_x40, _x41) {
-      return _ref58.apply(this, arguments);
+      return _ref74.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -6832,25 +7212,25 @@ function AILog(_ref56) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref59) {
-  var onAdd = _ref59.onAdd,
-    onBack = _ref59.onBack,
-    meals = _ref59.meals,
-    setMeals = _ref59.setMeals,
-    _ref59$isPremium = _ref59.isPremium,
-    isPremium = _ref59$isPremium === void 0 ? false : _ref59$isPremium,
-    _ref59$onPremiumGate = _ref59.onPremiumGate,
-    onPremiumGate = _ref59$onPremiumGate === void 0 ? function () {} : _ref59$onPremiumGate;
-  var _useState101 = useState(""),
-    _useState102 = _slicedToArray(_useState101, 2),
-    search = _useState102[0],
-    setSearch = _useState102[1];
-  var _useState103 = useState(null),
-    _useState104 = _slicedToArray(_useState103, 2),
-    modal = _useState104[0],
-    setModal = _useState104[1];
+function QuickAdd(_ref75) {
+  var onAdd = _ref75.onAdd,
+    onBack = _ref75.onBack,
+    meals = _ref75.meals,
+    setMeals = _ref75.setMeals,
+    _ref75$isPremium = _ref75.isPremium,
+    isPremium = _ref75$isPremium === void 0 ? false : _ref75$isPremium,
+    _ref75$onPremiumGate = _ref75.onPremiumGate,
+    onPremiumGate = _ref75$onPremiumGate === void 0 ? function () {} : _ref75$onPremiumGate;
+  var _useState109 = useState(""),
+    _useState110 = _slicedToArray(_useState109, 2),
+    search = _useState110[0],
+    setSearch = _useState110[1];
+  var _useState111 = useState(null),
+    _useState112 = _slicedToArray(_useState111, 2),
+    modal = _useState112[0],
+    setModal = _useState112[1];
   var save = /*#__PURE__*/function () {
-    var _ref60 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(m) {
+    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(m) {
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.n) {
           case 0:
@@ -6863,7 +7243,7 @@ function QuickAdd(_ref59) {
       }, _callee31);
     }));
     return function save(_x42) {
-      return _ref60.apply(this, arguments);
+      return _ref76.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -7042,31 +7422,31 @@ function QuickAdd(_ref59) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref61) {
-  var onAdd = _ref61.onAdd,
-    onBack = _ref61.onBack;
-  var _useState105 = useState(""),
-    _useState106 = _slicedToArray(_useState105, 2),
-    q = _useState106[0],
-    setQ = _useState106[1];
-  var _useState107 = useState([]),
-    _useState108 = _slicedToArray(_useState107, 2),
-    results = _useState108[0],
-    setResults = _useState108[1];
-  var _useState109 = useState(false),
-    _useState110 = _slicedToArray(_useState109, 2),
-    loading = _useState110[0],
-    setLoading = _useState110[1];
-  var _useState111 = useState(""),
-    _useState112 = _slicedToArray(_useState111, 2),
-    error = _useState112[0],
-    setError = _useState112[1];
-  var _useState113 = useState(false),
+function FoodSearch(_ref77) {
+  var onAdd = _ref77.onAdd,
+    onBack = _ref77.onBack;
+  var _useState113 = useState(""),
     _useState114 = _slicedToArray(_useState113, 2),
-    done = _useState114[0],
-    setDone = _useState114[1];
+    q = _useState114[0],
+    setQ = _useState114[1];
+  var _useState115 = useState([]),
+    _useState116 = _slicedToArray(_useState115, 2),
+    results = _useState116[0],
+    setResults = _useState116[1];
+  var _useState117 = useState(false),
+    _useState118 = _slicedToArray(_useState117, 2),
+    loading = _useState118[0],
+    setLoading = _useState118[1];
+  var _useState119 = useState(""),
+    _useState120 = _slicedToArray(_useState119, 2),
+    error = _useState120[0],
+    setError = _useState120[1];
+  var _useState121 = useState(false),
+    _useState122 = _slicedToArray(_useState121, 2),
+    done = _useState122[0],
+    setDone = _useState122[1];
   var search = /*#__PURE__*/function () {
-    var _ref62 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
+    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
       var res, data, parseServing, parseKcal, valid, _t32;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
@@ -7148,7 +7528,7 @@ function FoodSearch(_ref61) {
       }, _callee32, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref62.apply(this, arguments);
+      return _ref78.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -7279,21 +7659,21 @@ function FoodSearch(_ref61) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref63) {
+function History(_ref79) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref63.history,
-    onBack = _ref63.onBack,
-    onUpdateDay = _ref63.onUpdateDay,
-    _ref63$weighIns = _ref63.weighIns,
-    weighIns = _ref63$weighIns === void 0 ? [] : _ref63$weighIns,
-    _ref63$meals = _ref63.meals,
-    meals = _ref63$meals === void 0 ? DEF_MEALS : _ref63$meals,
-    _ref63$setMeals = _ref63.setMeals,
-    setMeals = _ref63$setMeals === void 0 ? function () {} : _ref63$setMeals,
-    _ref63$isPremium = _ref63.isPremium,
-    isPremium = _ref63$isPremium === void 0 ? false : _ref63$isPremium,
-    _ref63$onPremiumGate = _ref63.onPremiumGate,
-    onPremiumGate = _ref63$onPremiumGate === void 0 ? function () {} : _ref63$onPremiumGate;
+  var history = _ref79.history,
+    onBack = _ref79.onBack,
+    onUpdateDay = _ref79.onUpdateDay,
+    _ref79$weighIns = _ref79.weighIns,
+    weighIns = _ref79$weighIns === void 0 ? [] : _ref79$weighIns,
+    _ref79$meals = _ref79.meals,
+    meals = _ref79$meals === void 0 ? DEF_MEALS : _ref79$meals,
+    _ref79$setMeals = _ref79.setMeals,
+    setMeals = _ref79$setMeals === void 0 ? function () {} : _ref79$setMeals,
+    _ref79$isPremium = _ref79.isPremium,
+    isPremium = _ref79$isPremium === void 0 ? false : _ref79$isPremium,
+    _ref79$onPremiumGate = _ref79.onPremiumGate,
+    onPremiumGate = _ref79$onPremiumGate === void 0 ? function () {} : _ref79$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -7329,34 +7709,40 @@ function History(_ref63) {
       unit: "g"
     }
   };
-  var _useState115 = useState("30D"),
-    _useState116 = _slicedToArray(_useState115, 2),
-    range = _useState116[0],
-    setRange = _useState116[1];
-  var _useState117 = useState(["KCAL"]),
-    _useState118 = _slicedToArray(_useState117, 2),
-    metrics = _useState118[0],
-    setMetrics = _useState118[1];
-  var _useState119 = useState(false),
-    _useState120 = _slicedToArray(_useState119, 2),
-    showWeight = _useState120[0],
-    setShowWeight = _useState120[1];
-  var _useState121 = useState("line"),
-    _useState122 = _slicedToArray(_useState121, 2),
-    chartType = _useState122[0],
-    setChartType = _useState122[1];
-  var _useState123 = useState(Math.max(0, history.length - 1)),
+  var _useState123 = useState("30D"),
     _useState124 = _slicedToArray(_useState123, 2),
-    dayIdx = _useState124[0],
-    setDayIdx = _useState124[1];
-  var _useState125 = useState(null),
+    range = _useState124[0],
+    setRange = _useState124[1];
+  var _useState125 = useState(["KCAL"]),
     _useState126 = _slicedToArray(_useState125, 2),
-    addCtx = _useState126[0],
-    setAddCtx = _useState126[1];
-  var _useState127 = useState(null),
+    metrics = _useState126[0],
+    setMetrics = _useState126[1];
+  var _useState127 = useState(false),
     _useState128 = _slicedToArray(_useState127, 2),
-    editId = _useState128[0],
-    setEditId = _useState128[1];
+    showWeight = _useState128[0],
+    setShowWeight = _useState128[1];
+  var _useState129 = useState("line"),
+    _useState130 = _slicedToArray(_useState129, 2),
+    chartType = _useState130[0],
+    setChartType = _useState130[1];
+  var _useState131 = useState(Math.max(0, history.length - 1)),
+    _useState132 = _slicedToArray(_useState131, 2),
+    dayIdx = _useState132[0],
+    setDayIdx = _useState132[1];
+  var _useState133 = useState(null),
+    _useState134 = _slicedToArray(_useState133, 2),
+    addCtx = _useState134[0],
+    setAddCtx = _useState134[1];
+  var _useState135 = useState(null),
+    _useState136 = _slicedToArray(_useState135, 2),
+    editId = _useState136[0],
+    setEditId = _useState136[1];
+  var wPref = getWUnit(); // kg · st · lb
+  var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
+  var wConv = function wConv(kg) {
+    return wChartNum(kg, wPref);
+  }; // stored kg → chart number
+
   var toggleM = function toggleM(m) {
     return setMetrics(function (p) {
       return p.includes(m) ? p.length > 1 ? p.filter(function (x) {
@@ -7417,8 +7803,8 @@ function History(_ref63) {
     }, 0) / win.length;
     return {
       date: fmtShort(w.date),
-      WEIGHT: w.weight,
-      ROLLING: win.length >= 3 ? Math.round(avg * 10) / 10 : null
+      WEIGHT: wConv(w.weight),
+      ROLLING: win.length >= 3 ? Math.round(wConv(avg) * 10) / 10 : null
     };
   });
   var day = history[dayIdx] || null;
@@ -7973,10 +8359,10 @@ function History(_ref63) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref64) {
-    var _ref65 = _slicedToArray(_ref64, 2),
-      k = _ref65[0],
-      m = _ref65[1];
+  }, Object.entries(MM).map(function (_ref80) {
+    var _ref81 = _slicedToArray(_ref80, 2),
+      k = _ref81[0],
+      m = _ref81[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -8014,10 +8400,10 @@ function History(_ref63) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref66) {
-    var _ref67 = _slicedToArray(_ref66, 2),
-      t = _ref67[0],
-      e = _ref67[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref82) {
+    var _ref83 = _slicedToArray(_ref82, 2),
+      t = _ref83[0],
+      e = _ref83[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -8069,7 +8455,7 @@ function History(_ref63) {
     domain: ["auto", "auto"]
   }), /*#__PURE__*/React.createElement(Tooltip, {
     formatter: function formatter(v, n) {
-      return [v + " kg", n === "ROLLING" ? "7-day avg" : "Weight"];
+      return [v + " " + wUnit, n === "ROLLING" ? "7-day avg" : "Weight"];
     }
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
@@ -8183,10 +8569,10 @@ function History(_ref63) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref68) {
-    var _ref69 = _slicedToArray(_ref68, 2),
-      k = _ref69[0],
-      m = _ref69[1];
+  }, Object.entries(MM).map(function (_ref84) {
+    var _ref85 = _slicedToArray(_ref84, 2),
+      k = _ref85[0],
+      m = _ref85[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -8197,8 +8583,8 @@ function History(_ref63) {
       color: m.color
     });
   })), filteredWeighIns.length >= 2 && function () {
-    var first = filteredWeighIns[0].weight;
-    var last = filteredWeighIns[filteredWeighIns.length - 1].weight;
+    var first = wConv(filteredWeighIns[0].weight);
+    var last = wConv(filteredWeighIns[filteredWeighIns.length - 1].weight);
     var diff = Math.round((last - first) * 10) / 10;
     return /*#__PURE__*/React.createElement("div", {
       style: {
@@ -8223,13 +8609,13 @@ function History(_ref63) {
         color: "#8b857c",
         marginTop: 2
       }
-    }, filteredWeighIns[0].weight, "kg \u2192 ", last, "kg")), /*#__PURE__*/React.createElement("div", {
+    }, first, wUnit, " \u2192 ", last, wUnit)), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 15,
         fontWeight: 900,
         color: diff <= 0 ? A : "#ff7b4b"
       }
-    }, diff > 0 ? "+" : "", diff, " kg"));
+    }, diff > 0 ? "+" : "", diff, " ", wUnit));
   }()), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
@@ -8319,9 +8705,9 @@ function History(_ref63) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref70) {
-  var earnedBdgs = _ref70.earnedBdgs,
-    onBack = _ref70.onBack;
+function Achievements(_ref86) {
+  var earnedBdgs = _ref86.earnedBdgs,
+    onBack = _ref86.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -8419,116 +8805,116 @@ function Achievements(_ref70) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState129 = useState("dashboard"),
-    _useState130 = _slicedToArray(_useState129, 2),
-    view = _useState130[0],
-    setView = _useState130[1];
-  var _useState131 = useState([]),
-    _useState132 = _slicedToArray(_useState131, 2),
-    logs = _useState132[0],
-    setLogs = _useState132[1];
-  var _useState133 = useState(0),
-    _useState134 = _slicedToArray(_useState133, 2),
-    water = _useState134[0],
-    setWater = _useState134[1];
-  var _useState135 = useState("cut"),
-    _useState136 = _slicedToArray(_useState135, 2),
-    mode = _useState136[0],
-    setMode = _useState136[1];
-  var _useState137 = useState(null),
+  var _useState137 = useState("dashboard"),
     _useState138 = _slicedToArray(_useState137, 2),
-    prof = _useState138[0],
-    setProf = _useState138[1];
+    view = _useState138[0],
+    setView = _useState138[1];
   var _useState139 = useState([]),
     _useState140 = _slicedToArray(_useState139, 2),
-    hist = _useState140[0],
-    setHist = _useState140[1];
-  var _useState141 = useState([].concat(DEF_MEALS)),
+    logs = _useState140[0],
+    setLogs = _useState140[1];
+  var _useState141 = useState(0),
     _useState142 = _slicedToArray(_useState141, 2),
-    meals = _useState142[0],
-    setMeals = _useState142[1];
-  var _useState143 = useState([]),
+    water = _useState142[0],
+    setWater = _useState142[1];
+  var _useState143 = useState("cut"),
     _useState144 = _slicedToArray(_useState143, 2),
-    workouts = _useState144[0],
-    setWorkouts = _useState144[1];
-  var _useState145 = useState([]),
+    mode = _useState144[0],
+    setMode = _useState144[1];
+  var _useState145 = useState(null),
     _useState146 = _slicedToArray(_useState145, 2),
-    earnedBdgs = _useState146[0],
-    setEarnedBdgs = _useState146[1];
-  var _useState147 = useState(null),
+    prof = _useState146[0],
+    setProf = _useState146[1];
+  var _useState147 = useState([]),
     _useState148 = _slicedToArray(_useState147, 2),
-    newBadge = _useState148[0],
-    setNewBadge = _useState148[1];
-  var _useState149 = useState(false),
+    hist = _useState148[0],
+    setHist = _useState148[1];
+  var _useState149 = useState([].concat(DEF_MEALS)),
     _useState150 = _slicedToArray(_useState149, 2),
-    ready = _useState150[0],
-    setReady = _useState150[1];
+    meals = _useState150[0],
+    setMeals = _useState150[1];
   var _useState151 = useState([]),
     _useState152 = _slicedToArray(_useState151, 2),
-    weighIns = _useState152[0],
-    setWeighIns = _useState152[1];
-  var _useState153 = useState(0),
+    workouts = _useState152[0],
+    setWorkouts = _useState152[1];
+  var _useState153 = useState([]),
     _useState154 = _slicedToArray(_useState153, 2),
-    tdeeAdj = _useState154[0],
-    setTdeeAdj = _useState154[1];
-  var _useState155 = useState(0),
+    earnedBdgs = _useState154[0],
+    setEarnedBdgs = _useState154[1];
+  var _useState155 = useState(null),
     _useState156 = _slicedToArray(_useState155, 2),
-    coachKey = _useState156[0],
-    setCoachKey = _useState156[1];
-  var _useState157 = useState(null),
+    newBadge = _useState156[0],
+    setNewBadge = _useState156[1];
+  var _useState157 = useState(false),
     _useState158 = _slicedToArray(_useState157, 2),
-    streakAnim = _useState158[0],
-    setStreakAnim = _useState158[1];
-  var _useState159 = useState(null),
+    ready = _useState158[0],
+    setReady = _useState158[1];
+  var _useState159 = useState([]),
     _useState160 = _slicedToArray(_useState159, 2),
-    customKcal = _useState160[0],
-    setCustomKcal = _useState160[1];
-  var _useState161 = useState(false),
+    weighIns = _useState160[0],
+    setWeighIns = _useState160[1];
+  var _useState161 = useState(0),
     _useState162 = _slicedToArray(_useState161, 2),
-    aggressiveCutAcked = _useState162[0],
-    setAggressiveCutAcked = _useState162[1];
-
-  // ── Auth state ────────────────────────────────────────────────
-  var _useState163 = useState("anonymous"),
+    tdeeAdj = _useState162[0],
+    setTdeeAdj = _useState162[1];
+  var _useState163 = useState(0),
     _useState164 = _slicedToArray(_useState163, 2),
-    authState = _useState164[0],
-    setAuthState = _useState164[1];
+    coachKey = _useState164[0],
+    setCoachKey = _useState164[1];
   var _useState165 = useState(null),
     _useState166 = _slicedToArray(_useState165, 2),
-    authUser = _useState166[0],
-    setAuthUser = _useState166[1];
+    streakAnim = _useState166[0],
+    setStreakAnim = _useState166[1];
   var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    premiumGate = _useState168[0],
-    setPremiumGate = _useState168[1]; // {emoji, name} | null
+    customKcal = _useState168[0],
+    setCustomKcal = _useState168[1];
   var _useState169 = useState(false),
     _useState170 = _slicedToArray(_useState169, 2),
-    showSignIn = _useState170[0],
-    setShowSignIn = _useState170[1];
-  var _useState171 = useState(false),
+    aggressiveCutAcked = _useState170[0],
+    setAggressiveCutAcked = _useState170[1];
+
+  // ── Auth state ────────────────────────────────────────────────
+  var _useState171 = useState("anonymous"),
     _useState172 = _slicedToArray(_useState171, 2),
-    showSignOut = _useState172[0],
-    setShowSignOut = _useState172[1];
-  var _useState173 = useState(false),
+    authState = _useState172[0],
+    setAuthState = _useState172[1];
+  var _useState173 = useState(null),
     _useState174 = _slicedToArray(_useState173, 2),
-    showLapsed = _useState174[0],
-    setShowLapsed = _useState174[1];
-  var _useState175 = useState(false),
+    authUser = _useState174[0],
+    setAuthUser = _useState174[1];
+  var _useState175 = useState(null),
     _useState176 = _slicedToArray(_useState175, 2),
-    needsConsent = _useState176[0],
-    setNeedsConsent = _useState176[1]; // retroactive Art. 9 consent (R2)
-  var _useState177 = useState(null),
+    premiumGate = _useState176[0],
+    setPremiumGate = _useState176[1]; // {emoji, name} | null
+  var _useState177 = useState(false),
     _useState178 = _slicedToArray(_useState177, 2),
-    consentInfo = _useState178[0],
-    setConsentInfo = _useState178[1]; // parsed local health_consent for display
-  var _useState179 = useState(navigator.onLine),
+    showSignIn = _useState178[0],
+    setShowSignIn = _useState178[1];
+  var _useState179 = useState(false),
     _useState180 = _slicedToArray(_useState179, 2),
-    isOnline = _useState180[0],
-    setIsOnline = _useState180[1];
-  var _useState181 = useState(""),
+    showSignOut = _useState180[0],
+    setShowSignOut = _useState180[1];
+  var _useState181 = useState(false),
     _useState182 = _slicedToArray(_useState181, 2),
-    syncMsg = _useState182[0],
-    setSyncMsg = _useState182[1];
+    showLapsed = _useState182[0],
+    setShowLapsed = _useState182[1];
+  var _useState183 = useState(false),
+    _useState184 = _slicedToArray(_useState183, 2),
+    needsConsent = _useState184[0],
+    setNeedsConsent = _useState184[1]; // retroactive Art. 9 consent (R2)
+  var _useState185 = useState(null),
+    _useState186 = _slicedToArray(_useState185, 2),
+    consentInfo = _useState186[0],
+    setConsentInfo = _useState186[1]; // parsed local health_consent for display
+  var _useState187 = useState(navigator.onLine),
+    _useState188 = _slicedToArray(_useState187, 2),
+    isOnline = _useState188[0],
+    setIsOnline = _useState188[1];
+  var _useState189 = useState(""),
+    _useState190 = _slicedToArray(_useState189, 2),
+    syncMsg = _useState190[0],
+    setSyncMsg = _useState190[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -8568,7 +8954,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref71 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
+      var _ref87 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
         var k, lv, wv, mv, pv, pp, mv2, wkv, bv, hv, wiv, tav, ckv, n, acv, asv, auv, u, hc, hcParsed;
         return _regenerator().w(function (_context33) {
           while (1) switch (_context33.n) {
@@ -8722,7 +9108,7 @@ function App() {
         }, _callee33);
       }));
       return function load() {
-        return _ref71.apply(this, arguments);
+        return _ref87.apply(this, arguments);
       };
     }();
     load();
@@ -8765,7 +9151,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(l) {
+    var _ref88 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(l) {
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.n) {
           case 0:
@@ -8780,11 +9166,11 @@ function App() {
       }, _callee34);
     }));
     return function saveLogs(_x43) {
-      return _ref72.apply(this, arguments);
+      return _ref88.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref73 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(w) {
+    var _ref89 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(w) {
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.n) {
           case 0:
@@ -8799,11 +9185,11 @@ function App() {
       }, _callee35);
     }));
     return function saveWater(_x44) {
-      return _ref73.apply(this, arguments);
+      return _ref89.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(m) {
+    var _ref90 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(m) {
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.n) {
           case 0:
@@ -8818,11 +9204,11 @@ function App() {
       }, _callee36);
     }));
     return function saveMode(_x45) {
-      return _ref74.apply(this, arguments);
+      return _ref90.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(p) {
+    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(p) {
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.n) {
           case 0:
@@ -8838,11 +9224,11 @@ function App() {
       }, _callee37);
     }));
     return function saveProf(_x46) {
-      return _ref75.apply(this, arguments);
+      return _ref91.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(w) {
+    var _ref92 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(w) {
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.n) {
           case 0:
@@ -8857,11 +9243,11 @@ function App() {
       }, _callee38);
     }));
     return function saveWorkouts(_x47) {
-      return _ref76.apply(this, arguments);
+      return _ref92.apply(this, arguments);
     };
   }();
   var addLog = /*#__PURE__*/function () {
-    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(e) {
+    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(e) {
       var isFirstToday, animKey, today, simulatedHist, newStreak;
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
@@ -8904,7 +9290,7 @@ function App() {
       }, _callee39);
     }));
     return function addLog(_x48) {
-      return _ref77.apply(this, arguments);
+      return _ref93.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -8930,7 +9316,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(kcal) {
+    var _ref94 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(kcal) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -8955,11 +9341,11 @@ function App() {
       }, _callee40);
     }));
     return function saveCustomKcal(_x49) {
-      return _ref78.apply(this, arguments);
+      return _ref94.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(m) {
+    var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(m) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -8977,11 +9363,11 @@ function App() {
       }, _callee41);
     }));
     return function handleSetMode(_x50) {
-      return _ref79.apply(this, arguments);
+      return _ref95.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42() {
+    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42() {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -8996,11 +9382,11 @@ function App() {
       }, _callee42);
     }));
     return function handleAckAggressiveCut() {
-      return _ref80.apply(this, arguments);
+      return _ref96.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(updated) {
+    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(updated) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -9015,11 +9401,11 @@ function App() {
       }, _callee43);
     }));
     return function saveMeals(_x51) {
-      return _ref81.apply(this, arguments);
+      return _ref97.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref82 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(entry) {
+    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(entry) {
       var name, clean;
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
@@ -9049,14 +9435,14 @@ function App() {
       }, _callee44);
     }));
     return function addToQA(_x52) {
-      return _ref82.apply(this, arguments);
+      return _ref98.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(googleUser, grantedBy, consentMeta) {
+    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t33;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.p = _context45.n) {
@@ -9151,13 +9537,13 @@ function App() {
       }, _callee45, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x53, _x54, _x55) {
-      return _ref83.apply(this, arguments);
+      return _ref99.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref84 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
       var meta, rec;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
@@ -9188,11 +9574,11 @@ function App() {
       }, _callee46);
     }));
     return function handleConsent() {
-      return _ref84.apply(this, arguments);
+      return _ref100.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref85 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
+    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47() {
       var clearKeys, _i2, _clearKeys, k, i, key, _t34;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
@@ -9257,7 +9643,7 @@ function App() {
       }, _callee47, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref85.apply(this, arguments);
+      return _ref101.apply(this, arguments);
     };
   }();
 
@@ -9314,7 +9700,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
+    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -9329,7 +9715,7 @@ function App() {
       }, _callee48);
     }));
     return function handleDeleteAccount() {
-      return _ref86.apply(this, arguments);
+      return _ref102.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -9358,7 +9744,7 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref87 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(upd) {
+    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(upd) {
       var nh;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
@@ -9382,11 +9768,11 @@ function App() {
       }, _callee49);
     }));
     return function updateDay(_x56) {
-      return _ref87.apply(this, arguments);
+      return _ref103.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref88 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(weight) {
+    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(weight) {
       var entry, updated, updatedProf, base, result, newAdj;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
@@ -9433,7 +9819,7 @@ function App() {
       }, _callee50);
     }));
     return function onWeighIn(_x57) {
-      return _ref88.apply(this, arguments);
+      return _ref104.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
