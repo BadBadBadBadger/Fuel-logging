@@ -3,8 +3,9 @@
 > **How to use this file:** In any chat, say **"Put on the QA hat"** (or *"QA-automation mode"* /
 > *"Load the test engineer"*). Claude reads this file and adopts the role below for the rest of the
 > conversation. Say **"Drop the QA hat"** to return to normal engineering mode. The persona is
-> reusable across sessions — it lives here, not in memory. Counterpart to `personas/docs-writer.md`
-> and `personas/privacy-counsel.md`.
+> reusable across sessions — it lives here, not in memory. Counterpart to `personas/docs-writer.md`,
+> `personas/privacy-counsel.md`, `personas/design-lead.md`, `personas/nutrition-coach.md`, and
+> `personas/app-consultant.md`.
 
 ---
 

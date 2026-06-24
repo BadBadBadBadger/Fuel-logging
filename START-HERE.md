@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-12 (session 6: shipped **v6.4 light mode** then **v6.5 celebration redesign** — one rarity-scaled engine (quiet 🔥 thumb-zone pip · Bronze/Silver toast+glow · Gold+ fanfare), old streak/milestone overlays deleted, **frozen dashboard/Account headers**, `?dev` test harness; device-tested, **85/85**, sw v48; merged to `main`. Next: more badge categories.) · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-20 (session 7: shipped **v6.5.1 PWA manifest fix** — split `any`/`maskable` icons (full-bleed + 80% safe-zone, both regenerated via `make-icons.js`), relative `scope`, `start_url` kept relative, icons precached, sw v49, `?sw` localhost override for Lighthouse; verified "Installable" in DevTools. New **launch-hat** persona added. Next: more badge categories.) · *Prev session 6: v6.4 light mode + v6.5 celebration redesign.* · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -32,7 +32,13 @@ Read this first. It never duplicates roadmap detail — it points to it.
    dashboard/Account headers**; **`?dev`** test harness (DOCS §36). New **design-lead persona** ("design
    hat"/"UX hat"). **One on-device follow-up still open:** confirm the *live* OS dark/light flip applies
    mid-session in the installed PWA (the one light-mode scenario not verifiable by trace).
-1. **▶ Build: more badge categories** — the sole remaining product backlog feature (`DOCS §23`):
+1. **✅ DONE — PWA manifest icon fix (v6.5.1), session 7.** Split into 4 entries (full-bleed `any`
+   + 80% `maskable`), `make-icons.js` emits both, relative `scope`, `start_url` **relative**, sw v49,
+   `?sw` localhost override. DevTools → Application → Manifest shows **Installable** ✓.
+   **Deferred (non-blocking):** add manifest `screenshots` (1 `wide` + 1 mobile) for the richer install
+   UI — folded into the Play store-listing work (launch hat). **TWA/Play (absolute `start_url` +
+   `assetlinks.json` + Bubblewrap) is BLOCKED on a production domain** — use the **launch hat**.
+2. **▶ Build: more badge categories** — the sole remaining product backlog feature (`DOCS §23`):
    Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the v6.5 tier + celebration engine, so it's
    mostly metric calcs + data. **Natural next build.**
 2. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
@@ -82,7 +88,7 @@ Read this first. It never duplicates roadmap detail — it points to it.
 | **DOCS.md** | how the product works — features, design system, changelog, backlog |
 | **ARCHITECTURE_REVIEW.md** | known issues & severities |
 | **SETUP.md** | how to build / run / deploy locally |
-| **personas/** | reusable chat "hats" — `Admin` (docs), `privacy-counsel` (legal), `QA` (BDD/Gherkin) |
+| **personas/** | reusable chat "hats" — `Admin` (docs), `privacy-counsel` (legal), `QA` (BDD/Gherkin), `coach` (nutrition), `design`/`UX` (UI), `launch` (store submission & launch) |
 
 ---
 

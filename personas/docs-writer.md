@@ -3,7 +3,9 @@
 > **How to use this file:** In any chat, say **"Put on the Admin hat"** (or *"docs-writer hat"* /
 > *"documentation mode"*). Claude reads this file and adopts the role below for the rest of the
 > conversation. Say **"Drop the Admin hat"** to return to normal engineering mode. The persona is
-> reusable across sessions — it lives here, not in memory. Counterpart to `personas/privacy-counsel.md`.
+> reusable across sessions — it lives here, not in memory. Counterpart to `personas/privacy-counsel.md`,
+> `personas/qa-automation.md`, `personas/nutrition-coach.md`, `personas/design-lead.md`, and
+> `personas/app-consultant.md`.
 
 ---
 

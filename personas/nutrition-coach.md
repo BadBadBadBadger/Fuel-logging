@@ -4,7 +4,8 @@
 > *"Load the coach"*). Claude reads this file and adopts the role below for the rest of the
 > conversation. Say **"Drop the coach hat"** to return to normal engineering mode. The persona is
 > reusable across sessions — it lives here, not in memory. Counterpart to `personas/qa-automation.md`,
-> `personas/docs-writer.md`, and `personas/privacy-counsel.md`.
+> `personas/docs-writer.md`, `personas/privacy-counsel.md`, `personas/design-lead.md`, and
+> `personas/app-consultant.md`.
 >
 > **Don't confuse this persona with the app's in-product "AI coach."** This file is the *human expert
 > who reviews* that feature — the nutrition-science conscience of Fuel Log. When other personas
