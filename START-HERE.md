@@ -38,9 +38,16 @@ Read this first. It never duplicates roadmap detail — it points to it.
    **Deferred (non-blocking):** add manifest `screenshots` (1 `wide` + 1 mobile) for the richer install
    UI — folded into the Play store-listing work (launch hat). **TWA/Play (absolute `start_url` +
    `assetlinks.json` + Bubblewrap) is BLOCKED on a production domain** — use the **launch hat**.
-2. **▶ Build: more badge categories** — the sole remaining product backlog feature (`DOCS §23`):
+2. **✅ DONE — v6.6 bugfixes (session 7), shipped to `main` (`03fb831`), DB migration applied.**
+   (1) Meal **data integrity**: AI "Log all" stores full **`elements[]`** (name+kcal+macros+`conf`) as
+   truth; coach reads structured elements, not the truncated display string. (2) **Confidence "Separated"**:
+   `EST. BUDGET · N%` on the budget only (50/65/80/92 by weigh-in tier), intake exact, quiet flag on
+   guess-heavy days (<80%), coach never sees confidence. Tests **90/90**, sw v50, DOCS v6.6. **Open
+   follow-up:** device-verify on `:8080` then flip the `@wip` on the two new Gherkin features (data
+   integrity + confidence) in `features/fuel-log.feature`.
+3. **▶ Build: more badge categories** — the sole remaining product backlog feature (`DOCS §23`):
    Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the v6.5 tier + celebration engine, so it's
-   mostly metric calcs + data. **Natural next build.**
+   mostly metric calcs + data. **Natural next build (start here next session).**
 2. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
 3. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
    on your real account** — use a throwaway Google account.
