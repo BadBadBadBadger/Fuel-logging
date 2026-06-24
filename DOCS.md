@@ -1348,6 +1348,16 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### v6.5.1 — PWA manifest: split any/maskable icons (June 2026)
+Play/PWA-readiness fix. `manifest.json` now declares **four** icon entries, each pointing at the right
+asset: full-bleed `icon-{192,512}.png` for `purpose:any` and 80%-safe-zone `icon-{192,512}-maskable.png`
+for `purpose:maskable` (one shared `"any maskable"` PNG can't be optimal for both). `make-icons.js`
+emits both variants. Added relative `scope: "."`; `start_url` left **relative** (absolute URL + Digital
+Asset Links + TWA deferred to the production-domain milestone — launch hat). Icons added to the SW
+precache; sw `v48→v49`. `?sw` in the URL force-registers the SW on localhost for a Lighthouse audit.
+**Deferred (non-blocking warning):** manifest `screenshots` (1 `wide` + 1 mobile) for the richer install
+UI — folded into the Play store-listing work.
+
 ### v6.5 — Celebration redesign + frozen headers (June 2026)
 Built on branch `feat/celebration-redesign`; device-tested on Pixel 7. Tests 85/85, sw `v43→v48`.
 - **One celebration engine, intensity scales with rarity.** The two old systems (a full-screen

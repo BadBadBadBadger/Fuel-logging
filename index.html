@@ -273,7 +273,10 @@
     // Service worker — register in PRODUCTION only.
     // On localhost/127.0.0.1 (or file://) the SW is skipped, and any existing
     // registration is removed, so local dev never serves a stale cached bundle.
-    var SW_HOST_OK = !["localhost", "127.0.0.1", ""].includes(location.hostname);
+    // Opt-in override: add ?sw to the URL to force-register on localhost (e.g. for a
+    // Lighthouse installability/PWA audit). Default localhost behaviour is unchanged.
+    var SW_FORCE = /[?&]sw\b/.test(location.search);
+    var SW_HOST_OK = SW_FORCE || !["localhost", "127.0.0.1", ""].includes(location.hostname);
     if ("serviceWorker" in navigator && !SW_HOST_OK) {
       navigator.serviceWorker.getRegistrations()
         .then(regs => regs.forEach(r => r.unregister())).catch(() => {});

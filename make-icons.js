@@ -1,10 +1,15 @@
 // Regenerate the PWA / Play icons from logo-master.png.
 // Requires jimp (pure-JS, no native build):  npm install jimp@0.22
-//   node make-icons.js   →   icon-512.png + icon-192.png
+//   node make-icons.js  →  icon-{192,512}.png (purpose:any, full-bleed)
+//                       +  icon-{192,512}-maskable.png (purpose:maskable, 80% safe zone)
+// Two variants on purpose: an "any" icon should fill the canvas; a "maskable" icon must
+// keep its art inside the inner 80% so Android's adaptive mask never clips it. One PNG
+// can't be optimal for both, so we emit both and the manifest points each purpose at the right file.
 const Jimp = require('jimp');
 
 const SRC = 'logo-master.png';
-const SCALE = 0.8;            // artwork fills 80% → safe for maskable circular crop
+const ANY_SCALE  = 1.0;       // full-bleed for purpose:any
+const MASK_SCALE = 0.8;       // artwork fills 80% → safe for maskable circular crop
 const BG = 0x000000ff;        // pure black, matches the logo's own background
 
 // The source badge sits on a WHITE background. Flood-fill white inward from the
@@ -37,9 +42,9 @@ function master() {
   return masterPromise;
 }
 
-async function make(size, out) {
+async function make(size, out, scale) {
   const src = (await master()).clone();
-  const art = Math.round(size * SCALE);
+  const art = Math.round(size * scale);
   src.resize(art, art, Jimp.RESIZE_BICUBIC);
   const canvas = new Jimp(size, size, BG);
   const off = Math.round((size - art) / 2);
@@ -49,6 +54,8 @@ async function make(size, out) {
 }
 
 (async () => {
-  await make(512, 'icon-512.png');
-  await make(192, 'icon-192.png');
+  await make(512, 'icon-512.png',          ANY_SCALE);   // purpose:any
+  await make(192, 'icon-192.png',          ANY_SCALE);
+  await make(512, 'icon-512-maskable.png', MASK_SCALE);  // purpose:maskable
+  await make(192, 'icon-192-maskable.png', MASK_SCALE);
 })().catch(e => { console.error(e); process.exit(1); });
