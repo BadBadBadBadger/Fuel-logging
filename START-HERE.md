@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-20 (session 7: shipped **v6.5.1 PWA manifest fix** — split `any`/`maskable` icons (full-bleed + 80% safe-zone, both regenerated via `make-icons.js`), relative `scope`, `start_url` kept relative, icons precached, sw v49, `?sw` localhost override for Lighthouse; verified "Installable" in DevTools. New **launch-hat** persona added. Next: more badge categories.) · *Prev session 6: v6.4 light mode + v6.5 celebration redesign.* · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-24 (session 7: shipped **v6.6 bugfixes** — (1) meal **data integrity**: AI "Log all" no longer truncates the meal to a lossy string; it stores full **`elements[]`** (name+kcal+macros+`conf`) and the coach reads those, not the display string; (2) **confidence model "Separated"**: `EST. BUDGET · N%` on the budget only (50/65/80/92 by weigh-in tier), intake stays exact, quiet flag on guess-heavy days, coach never sees confidence. **DB migration applied** (`food_logs.elements`+`conf`). Tests **90/90**, sw v50. Earlier session 7: v6.5.1 PWA manifest fix + launch-hat persona. Next: more badge categories.) · *Prev session 6: v6.4 light mode + v6.5 celebration.* · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---

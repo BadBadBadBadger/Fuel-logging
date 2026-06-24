@@ -1348,6 +1348,25 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### v6.6 — Meal data integrity + confidence model (June 2026)
+Two bug clusters. Tests **90/90**, sw `v49→v50`.
+- **Data integrity (the truncation bug):** "Log all as one meal" in the AI Meal Log used to store the
+  user's typed description **truncated to 37 chars + "…"** as the entry name and **threw away the parsed
+  per-element data** — so the coach read "6 medium eggs + …" and mis-inferred composition. Now a grouped
+  meal stores its full **`elements[]`** (each with name + kcal + macros + `conf`) as the source of truth,
+  keeps the **full** description (truncation is CSS-only), and the **coach reads the structured elements**
+  (names + per-element macros), never the display string. Totals were always summed from stored macros, so
+  intake numbers were already exact. Terminology: meal **elements**, not "ingredients".
+- **Confidence model ("Separated"):** the calorie summary now shows **`EST. BUDGET · N%`** — confidence in
+  the **estimated energy budget only** (TDEE maturity from weigh-ins: **50/65/80/92%** for
+  formula/Estimating/Learning/Calibrated). **Logged food stays exact** (consumed figure unlabelled). A
+  per-entry estimation confidence (`conf`, 0–100; AI estimates carry the model's, everything reviewed/typed
+  = 100) is impact-weighted by kcal into an **intake confidence**, surfaced only as a quiet flag on
+  guess-heavy days (< 80%). **The coach never receives or references confidence.**
+- **Cloud:** food-log sync now carries `elements` + `conf`. ⚠️ **Run the DB migration first** (adds
+  `food_logs.elements jsonb` + `food_logs.conf numeric`) **before deploying** or premium upserts will reject
+  the unknown columns. Old rows/entries default to `conf 100` (exact) at read time — no backfill needed.
+
 ### v6.5.1 — PWA manifest: split any/maskable icons (June 2026)
 Play/PWA-readiness fix. `manifest.json` now declares **four** icon entries, each pointing at the right
 asset: full-bleed `icon-{192,512}.png` for `purpose:any` and 80%-safe-zone `icon-{192,512}-maskable.png`

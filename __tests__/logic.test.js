@@ -29,6 +29,16 @@ const sumLogs = logs => logs.reduce((a, l) => ({
   fat:     a.fat     + (l.fat     || 0),
 }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 
+// Confidence model (Separated) — mirror of app.jsx
+const tdeeConfidence = weighInCount =>
+  weighInCount >= 28 ? 92 : weighInCount >= 14 ? 80 : weighInCount >= 7 ? 65 : 50;
+const intakeConfidence = logs => {
+  const kcal = logs.reduce((a, l) => a + (l.kcal || 0), 0);
+  if (kcal <= 0) return 100;
+  const weighted = logs.reduce((a, l) => a + (l.conf == null ? 100 : l.conf) * (l.kcal || 0), 0);
+  return Math.round(weighted / kcal);
+};
+
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
@@ -823,5 +833,41 @@ describe("tag suggestion resolution", () => {
 
   test("genuinely novel input stays as a custom tag", () => {
     expect(resolveTag("kiwi", BIG14)).toBe("kiwi");
+  });
+});
+
+describe("confidence model (separated)", () => {
+  test("tdeeConfidence maps weigh-in tiers to the conservative bands", () => {
+    expect(tdeeConfidence(0)).toBe(50);   // formula only
+    expect(tdeeConfidence(6)).toBe(50);
+    expect(tdeeConfidence(7)).toBe(65);   // Estimating
+    expect(tdeeConfidence(13)).toBe(65);
+    expect(tdeeConfidence(14)).toBe(80);  // Learning
+    expect(tdeeConfidence(27)).toBe(80);
+    expect(tdeeConfidence(28)).toBe(92);  // Calibrated
+    expect(tdeeConfidence(200)).toBe(92);
+  });
+
+  test("intakeConfidence treats entries without conf as exact (100)", () => {
+    expect(intakeConfidence([{ kcal: 500 }, { kcal: 300 }])).toBe(100);
+    expect(intakeConfidence([])).toBe(100);
+  });
+
+  test("intakeConfidence is impact-weighted by kcal share", () => {
+    // 1400 kcal exact (100%) + 600 kcal at 60% => (1400*100 + 600*60)/2000 = 88
+    expect(intakeConfidence([
+      { kcal: 1400, conf: 100 },
+      { kcal: 600,  conf: 60 },
+    ])).toBe(88);
+  });
+
+  test("a fuzzy big meal hurts more than a fuzzy snack", () => {
+    const bigFuzzy   = intakeConfidence([{ kcal: 900, conf: 50 }, { kcal: 100, conf: 100 }]);
+    const smallFuzzy = intakeConfidence([{ kcal: 100, conf: 50 }, { kcal: 900, conf: 100 }]);
+    expect(bigFuzzy).toBeLessThan(smallFuzzy);
+  });
+
+  test("zero-kcal day is fully confident (no division by zero)", () => {
+    expect(intakeConfidence([{ kcal: 0, conf: 30 }])).toBe(100);
   });
 });

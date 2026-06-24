@@ -1052,3 +1052,70 @@ Feature: Appearance — light, dark or system theme
       | theme |
       | dark  |
       | light |
+
+
+# ── Data integrity + confidence (bugfix, 2026-06): meal ELEMENTS are the source of
+# truth; the coach/totals never read truncated UI strings. Energy budget is ESTIMATED
+# (own confidence); logged food is exact. Confidence model = "Separated" (DOCS §35-ish).
+# @wip — built, device-verification pending.
+@wip
+Feature: Meal data integrity — structured elements are the source of truth
+
+  Scenario: Logging a multi-element meal as one entry preserves every element
+    Given I describe a meal with several elements (ham, egg, salad, chicken)
+    When I log them all as a single meal
+    Then the entry stores each element in full structured form (name + kcal + macros)
+    And the stored entry name keeps my full description
+    But no element data is lost to a truncated or summarised string
+
+  Scenario: The coach reads structured elements, never the display string
+    Given a logged meal whose display name is long and visually truncated
+    When the nutrition coach generates advice
+    Then it reads the meal's stored elements (names + per-element kcal and macros)
+    And it never infers meal composition from the truncated UI text
+
+  Scenario: Daily totals come only from persisted structured data
+    Given meals are stored with per-element macros
+    When daily totals are computed
+    Then the totals are summed from the persisted values
+    And are unaffected by any UI grouping or summarisation
+
+  Scenario: Elements persist to the cloud for premium users
+    Given I am signed in and log a multi-element meal
+    When the entry syncs
+    Then the elements and the meal's estimation confidence are stored in the backend
+    # requires the food_logs.elements (jsonb) + food_logs.conf columns — run the migration first
+
+
+Feature: Calorie-budget confidence — exact intake, estimated budget (Separated model)
+
+  Background:
+    Given logged food is treated as exact ground truth
+    And the maintenance/TDEE energy budget is an estimate that calibrates with weigh-ins
+
+  Scenario Outline: The budget confidence headline reflects TDEE maturity
+    Given I have logged "<weighins>" weigh-ins
+    Then the calorie summary shows an estimated budget confidence of "<percent>"
+    Examples:
+      | weighins | percent |
+      | 0        | 50%     |
+      | 7        | 65%     |
+      | 14       | 80%     |
+      | 28       | 92%     |
+
+  Scenario: Intake is never shown as estimated
+    Given my logged food for today
+    Then the consumed-calories figure is presented as exact
+    And only the remaining/budget figure carries the estimated label and confidence
+
+  Scenario: A guess-heavy day surfaces a quiet intake flag
+    Given more than 20% of today's calories come from low-confidence AI estimates
+    When I view the calorie summary
+    Then a quiet note says today's intake is mostly AI-estimated, with an approximate confidence
+    And the note never appears on a day logged from exact entries
+
+  Scenario: Coaching is independent of the confidence layer
+    Given a budget confidence and an intake confidence both exist
+    When the coach produces advice
+    Then it uses the logged food directly, unqualified by any confidence value
+    And it never displays or references confidence scoring

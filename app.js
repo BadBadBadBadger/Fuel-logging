@@ -513,6 +513,31 @@ var sumLogs = function sumLogs(logs) {
     fat: 0
   });
 };
+
+// ── Confidence model (Separated) ──────────────────────────────
+// Two SEPARATE uncertainties, never blended into one number:
+//  • tdeeConfidence — maturity of the ESTIMATED energy budget, from weigh-in
+//    calibration. This is the headline % on the calorie summary.
+//  • intakeConfidence — how exact the logged food is. Each entry carries a
+//    `conf` (0–100): AI-Meal-Log estimates use the model's confidence; anything
+//    reviewed/typed/preset is treated as exact (100, via the ?? default below).
+//    Impact-weighted by each entry's kcal share — a fuzzy big meal hurts more
+//    than a fuzzy snack. Only SURFACED when low; never sent to the coach.
+var tdeeConfidence = function tdeeConfidence(weighInCount) {
+  return weighInCount >= 28 ? 92 : weighInCount >= 14 ? 80 : weighInCount >= 7 ? 65 : 50;
+};
+var intakeConfidence = function intakeConfidence(logs) {
+  var kcal = logs.reduce(function (a, l) {
+    return a + (l.kcal || 0);
+  }, 0);
+  if (kcal <= 0) return 100;
+  var weighted = logs.reduce(function (a, l) {
+    return a + (l.conf == null ? 100 : l.conf) * (l.kcal || 0);
+  }, 0);
+  return Math.round(weighted / kcal);
+};
+var INTAKE_FLAG_BELOW = 80; // surface "mostly estimated" only under this
+
 var calcStreak = function calcStreak(hist) {
   var s = 0;
   var d = new Date(Date.now() + getDevDateOffset() * 86400000);
@@ -845,6 +870,8 @@ var syncFoodLogs = /*#__PURE__*/function () {
               protein: l.protein,
               carbs: l.carbs,
               fat: l.fat,
+              conf: l.conf == null ? 100 : l.conf,
+              elements: l.elements || null,
               time: l.time || null,
               updated_at: now
             };
@@ -1546,6 +1573,8 @@ var pullFromSupabase = /*#__PURE__*/function () {
                   protein: Number(f.protein),
                   carbs: Number(f.carbs),
                   fat: Number(f.fat),
+                  conf: f.conf == null ? 100 : Number(f.conf),
+                  elements: f.elements || null,
                   time: f.time
                 });
               }
@@ -3381,7 +3410,7 @@ function CoachCard(_ref35) {
 
   var gen = /*#__PURE__*/function () {
     var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
-      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, foods, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t23;
+      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, eaten, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t23;
       return _regenerator().w(function (_context24) {
         while (1) switch (_context24.p = _context24.n) {
           case 0:
@@ -3402,12 +3431,16 @@ function CoachCard(_ref35) {
             protNum = Math.round(totals.protein);
             protDelta = protNum - targets.protein;
             protLine = protDelta >= 0 ? "protein ".concat(protNum, "/").concat(targets.protein, "g \u2014 ").concat(protDelta, "g OVER, goal met \u2705 (do NOT suggest more protein)") : "protein ".concat(protNum, "/").concat(targets.protein, "g \u2014 ").concat(Math.abs(protDelta), "g under");
-            waterLine = water >= 8 ? "water ".concat(water, "/8 glasses \u2014 goal met \u2705 (do NOT suggest more water)") : "water ".concat(water, "/8 glasses \u2014 ").concat(8 - water, " under"); // (#5) State-awareness: tell the coach exactly what's been eaten so it neither
-            // re-suggests it nor guesses. Names only — no quantities needed for variety.
-            foods = _toConsumableArray(new Set(logs.map(function (l) {
-              return l && l.name;
-            }).filter(Boolean)));
-            foodsLine = foods.length ? "Already eaten today (do NOT suggest any of these again): ".concat(foods.join(", "), ".") : "Nothing logged yet today."; // (#6) Pace is COMPUTED here, never judged by the LLM. Window starts at the
+            waterLine = water >= 8 ? "water ".concat(water, "/8 glasses \u2014 goal met \u2705 (do NOT suggest more water)") : "water ".concat(water, "/8 glasses \u2014 ").concat(8 - water, " under"); // (#5) State-awareness from STRUCTURED data only: expand any grouped meal into
+            // its stored elements — never the truncated display name. Element names + per-element
+            // macros so the coach reasons about composition, not just variety. (No confidence is
+            // ever sent: coaching stays independent of the estimation-confidence layer — nc5.)
+            eaten = (logs || []).flatMap(function (l) {
+              return l && l.elements && l.elements.length ? l.elements : l ? [l] : [];
+            });
+            foodsLine = eaten.length ? "Already eaten today (do NOT suggest any of these again):\n" + eaten.map(function (e) {
+              return "- ".concat(e.name, " (").concat(Math.round(e.kcal || 0), " kcal, P").concat(Math.round(e.protein || 0), " C").concat(Math.round(e.carbs || 0), " F").concat(Math.round(e.fat || 0), ")");
+            }).join("\n") : "Nothing logged yet today."; // (#6) Pace is COMPUTED here, never judged by the LLM. Window starts at the
             // first logged meal; only floor goals (protein, water) are paced — never calories.
             firstMealHour = logs.length ? new Date(Math.min.apply(Math, _toConsumableArray(logs.map(function (l) {
               return Number(l.id) || Date.now();
@@ -5726,6 +5759,10 @@ function Dashboard(_ref68) {
   var RED = "var(--over)";
   var kcalAccent = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
   var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
+  // Confidence model (Separated): headline = ESTIMATED energy-budget maturity; intake stays exact.
+  var tdeeConf = tdeeConfidence((weighIns || []).length);
+  var intakeConf = intakeConfidence(logs);
+  var intakeShaky = logs.length > 0 && intakeConf < INTAKE_FLAG_BELOW;
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
   var _useState81 = useState({}),
@@ -6272,11 +6309,20 @@ function Dashboard(_ref68) {
   }, Math.abs(Math.round(remaining)).toLocaleString(), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: overAmt > 100 ? kcalAccent + "99" : "var(--text-mid-2)",
+      color: overAmt > 100 ? mix(kcalAccent, "99") : "var(--text-mid-2)",
       fontWeight: 400,
       marginLeft: 4
     }
-  }, "kcal")))), /*#__PURE__*/React.createElement("div", {
+  }, "kcal")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: "var(--text-faint-2)",
+      letterSpacing: "0.07em",
+      fontWeight: 700,
+      marginTop: 5
+    },
+    title: "Your energy budget (maintenance/TDEE) is estimated and improves as you log weigh-ins. Logged food is exact."
+  }, "EST. BUDGET \xB7 ", tdeeConf, "%"))), /*#__PURE__*/React.createElement("div", {
     style: {
       height: 10,
       background: "var(--surface-2)",
@@ -6291,7 +6337,19 @@ function Dashboard(_ref68) {
       borderRadius: 99,
       transition: "width 0.5s"
     }
-  }))), /*#__PURE__*/React.createElement("div", {
+  })), intakeShaky && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "var(--text-lo-2)",
+      marginTop: 7,
+      display: "flex",
+      gap: 5,
+      alignItems: "flex-start",
+      lineHeight: 1.4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    "aria-hidden": "true"
+  }, "\u2248"), /*#__PURE__*/React.createElement("span", null, "Today's intake is mostly AI-estimated (~", intakeConf, "% confident) \u2014 review elements for accuracy."))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -6968,13 +7026,30 @@ function AILog(_ref73) {
   }();
   var logAll = function logAll() {
     if (!totals) return;
-    var name = desc.length > 40 ? desc.slice(0, 37) + "..." : desc;
+    // Preserve the structured meal ELEMENTS as the source of truth, plus an
+    // impact-weighted estimation confidence. The display name keeps the FULL
+    // description — truncation is presentation-only (CSS), never in the data.
+    var elements = items.map(function (it) {
+      return {
+        name: it.name,
+        kcal: Math.round(it.kcal),
+        protein: Math.round(it.protein * 10) / 10,
+        carbs: Math.round(it.carbs * 10) / 10,
+        fat: Math.round(it.fat * 10) / 10,
+        conf: it.confidence
+      };
+    });
+    var conf = totals.kcal > 0 ? Math.round(elements.reduce(function (a, e) {
+      return a + e.conf * e.kcal;
+    }, 0) / totals.kcal) : avgConf;
     onAdd({
-      name: name,
+      name: desc.trim(),
       kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs: Math.round(totals.carbs * 10) / 10,
-      fat: Math.round(totals.fat * 10) / 10
+      fat: Math.round(totals.fat * 10) / 10,
+      conf: conf,
+      elements: elements
     });
     onBack();
   };
@@ -6984,7 +7059,8 @@ function AILog(_ref73) {
       kcal: Math.round(item.kcal),
       protein: Math.round(item.protein * 10) / 10,
       carbs: Math.round(item.carbs * 10) / 10,
-      fat: Math.round(item.fat * 10) / 10
+      fat: Math.round(item.fat * 10) / 10,
+      conf: item.confidence
     });
     setLoggedCount(function (prev) {
       return _objectSpread(_objectSpread({}, prev), {}, _defineProperty({}, idx, (prev[idx] || 0) + 1));

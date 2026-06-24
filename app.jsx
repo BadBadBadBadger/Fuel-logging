@@ -231,6 +231,26 @@ const sumLogs = logs => logs.reduce((a, l) => ({
   fat:     a.fat     + (l.fat     || 0),
 }), { kcal:0, protein:0, carbs:0, fat:0 });
 
+// ── Confidence model (Separated) ──────────────────────────────
+// Two SEPARATE uncertainties, never blended into one number:
+//  • tdeeConfidence — maturity of the ESTIMATED energy budget, from weigh-in
+//    calibration. This is the headline % on the calorie summary.
+//  • intakeConfidence — how exact the logged food is. Each entry carries a
+//    `conf` (0–100): AI-Meal-Log estimates use the model's confidence; anything
+//    reviewed/typed/preset is treated as exact (100, via the ?? default below).
+//    Impact-weighted by each entry's kcal share — a fuzzy big meal hurts more
+//    than a fuzzy snack. Only SURFACED when low; never sent to the coach.
+const tdeeConfidence = weighInCount =>
+  weighInCount >= 28 ? 92 : weighInCount >= 14 ? 80 : weighInCount >= 7 ? 65 : 50;
+
+const intakeConfidence = logs => {
+  const kcal = logs.reduce((a, l) => a + (l.kcal || 0), 0);
+  if (kcal <= 0) return 100;
+  const weighted = logs.reduce((a, l) => a + (l.conf == null ? 100 : l.conf) * (l.kcal || 0), 0);
+  return Math.round(weighted / kcal);
+};
+const INTAKE_FLAG_BELOW = 80; // surface "mostly estimated" only under this
+
 const calcStreak = hist => {
   let s = 0;
   const d = new Date(Date.now() + getDevDateOffset() * 86400000);
@@ -395,6 +415,7 @@ const syncFoodLogs = async (uid, date, logs) => {
   await syncUpsert("food_logs",
     logs.map(l => ({ user_id:uid, date, entry_id:l.id, name:l.name,
       kcal:l.kcal, protein:l.protein, carbs:l.carbs, fat:l.fat,
+      conf: l.conf == null ? 100 : l.conf, elements: l.elements || null,
       time:l.time||null, updated_at:now })),
     "user_id,entry_id");
 };
@@ -586,7 +607,8 @@ const pullFromSupabase = async uid => {
       for (const f of foodR.data) {
         if (!foodByDate[f.date]) foodByDate[f.date] = [];
         foodByDate[f.date].push({ id:f.entry_id, name:f.name, kcal:Number(f.kcal),
-          protein:Number(f.protein), carbs:Number(f.carbs), fat:Number(f.fat), time:f.time });
+          protein:Number(f.protein), carbs:Number(f.carbs), fat:Number(f.fat),
+          conf: f.conf == null ? 100 : Number(f.conf), elements: f.elements || null, time:f.time });
       }
     }
     const waterByDate = {};
@@ -1282,11 +1304,15 @@ function CoachCard({ mode, totals, targets, streak, water, logs = [] }) {
         ? `water ${water}/8 glasses — goal met ✅ (do NOT suggest more water)`
         : `water ${water}/8 glasses — ${8 - water} under`;
 
-      // (#5) State-awareness: tell the coach exactly what's been eaten so it neither
-      // re-suggests it nor guesses. Names only — no quantities needed for variety.
-      const foods = [...new Set(logs.map(l => l && l.name).filter(Boolean))];
-      const foodsLine = foods.length
-        ? `Already eaten today (do NOT suggest any of these again): ${foods.join(", ")}.`
+      // (#5) State-awareness from STRUCTURED data only: expand any grouped meal into
+      // its stored elements — never the truncated display name. Element names + per-element
+      // macros so the coach reasons about composition, not just variety. (No confidence is
+      // ever sent: coaching stays independent of the estimation-confidence layer — nc5.)
+      const eaten = (logs || []).flatMap(l =>
+        l && l.elements && l.elements.length ? l.elements : (l ? [l] : []));
+      const foodsLine = eaten.length
+        ? `Already eaten today (do NOT suggest any of these again):\n` +
+          eaten.map(e => `- ${e.name} (${Math.round(e.kcal || 0)} kcal, P${Math.round(e.protein || 0)} C${Math.round(e.carbs || 0)} F${Math.round(e.fat || 0)})`).join("\n")
         : `Nothing logged yet today.`;
 
       // (#6) Pace is COMPUTED here, never judged by the LLM. Window starts at the
@@ -2199,6 +2225,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   const RED   = "var(--over)";
   const kcalAccent  = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
   const kcalLabel   = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
+  // Confidence model (Separated): headline = ESTIMATED energy-budget maturity; intake stays exact.
+  const tdeeConf    = tdeeConfidence((weighIns || []).length);
+  const intakeConf  = intakeConfidence(logs);
+  const intakeShaky = logs.length > 0 && intakeConf < INTAKE_FLAG_BELOW;
   const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mc}88,${mc})`;
   const kcalBorder  = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
 
@@ -2431,8 +2461,12 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             </div>
             <div style={{ fontSize:30, fontWeight:900, color: kcalAccent, lineHeight:1 }}>
               {Math.abs(Math.round(remaining)).toLocaleString()}
-              <span style={{ fontSize:12, color: overAmt > 100 ? kcalAccent + "99" : "var(--text-mid-2)",
+              <span style={{ fontSize:12, color: overAmt > 100 ? mix(kcalAccent, "99") : "var(--text-mid-2)",
                 fontWeight:400, marginLeft:4 }}>kcal</span>
+            </div>
+            <div style={{ fontSize:9, color:"var(--text-faint-2)", letterSpacing:"0.07em", fontWeight:700, marginTop:5 }}
+              title="Your energy budget (maintenance/TDEE) is estimated and improves as you log weigh-ins. Logged food is exact.">
+              EST. BUDGET · {tdeeConf}%
             </div>
           </div>
         </div>
@@ -2441,6 +2475,12 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             background: kcalBarBg,
             borderRadius:99, transition:"width 0.5s" }}/>
         </div>
+        {intakeShaky && (
+          <div style={{ fontSize:10, color:"var(--text-lo-2)", marginTop:7, display:"flex", gap:5, alignItems:"flex-start", lineHeight:1.4 }}>
+            <span aria-hidden="true">≈</span>
+            <span>Today's intake is mostly AI-estimated (~{intakeConf}% confident) — review elements for accuracy.</span>
+          </div>
+        )}
       </div>
 
       {/* Macros */}
@@ -2754,11 +2794,24 @@ function AILog({ onAdd, onBack }) {
 
   const logAll = () => {
     if (!totals) return;
-    const name = desc.length > 40 ? desc.slice(0, 37) + "..." : desc;
-    onAdd({ name, kcal: Math.round(totals.kcal),
+    // Preserve the structured meal ELEMENTS as the source of truth, plus an
+    // impact-weighted estimation confidence. The display name keeps the FULL
+    // description — truncation is presentation-only (CSS), never in the data.
+    const elements = items.map(it => ({
+      name: it.name, kcal: Math.round(it.kcal),
+      protein: Math.round(it.protein * 10) / 10,
+      carbs:   Math.round(it.carbs   * 10) / 10,
+      fat:     Math.round(it.fat     * 10) / 10,
+      conf: it.confidence,
+    }));
+    const conf = totals.kcal > 0
+      ? Math.round(elements.reduce((a, e) => a + e.conf * e.kcal, 0) / totals.kcal)
+      : avgConf;
+    onAdd({ name: desc.trim(), kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs:   Math.round(totals.carbs   * 10) / 10,
-      fat:     Math.round(totals.fat     * 10) / 10 });
+      fat:     Math.round(totals.fat     * 10) / 10,
+      conf, elements });
     onBack();
   };
 
@@ -2766,7 +2819,8 @@ function AILog({ onAdd, onBack }) {
     onAdd({ name: item.name, kcal: Math.round(item.kcal),
       protein: Math.round(item.protein * 10) / 10,
       carbs:   Math.round(item.carbs   * 10) / 10,
-      fat:     Math.round(item.fat     * 10) / 10 });
+      fat:     Math.round(item.fat     * 10) / 10,
+      conf: item.confidence });
     setLoggedCount(prev => ({ ...prev, [idx]: (prev[idx] || 0) + 1 }));
   };
 
