@@ -2679,6 +2679,18 @@ Return ONLY valid JSON (no markdown):
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
+// Normalise a model-supplied confidence to an integer 0–100. Vision models
+// sometimes hand back a 0–1 fraction (e.g. 0.72) despite the prompt asking for
+// 0–100 — without this, 0.72 renders as "0.72%", mis-gates follow-ups, and gets
+// stored as ~1% confident (wrongly flagging the day + dropping it from
+// calibration). A bare value <=1 is treated as a fraction; everything is clamped.
+const normConf = c => {
+  let n = Number(c);
+  if (!isFinite(n)) return 50;
+  if (n > 0 && n <= 1) n = n * 100;
+  return Math.round(Math.max(0, Math.min(100, n)));
+};
+
 // ── AI capture: confidence-gated follow-ups (coach hat, 2026-06-25) ──────────
 // Threshold reuses INTAKE_FLAG_BELOW (80) — the same kcal-weighted bar that
 // intakeConfidence already calls "guess-heavy". No new magic number.
@@ -2950,10 +2962,12 @@ function AILog({ onAdd, onBack }) {
       const oftResults = await Promise.all(aiItems.map(it => searchOFT(it.name)));
       const merged = aiItems.map((it, i) => {
         const oft = oftResults[i];
+        // Normalise the AI confidence (vision models may return a 0–1 fraction).
+        const ai  = { ...it, confidence: normConf(it.confidence) };
         // Use OFT data if found AND it has higher confidence than AI estimate.
         // Carry the AI's `ask` reason across (OFT doesn't set it).
-        if (oft && oft.confidence > it.confidence) return { ...oft, name: it.name, ask: null };
-        return it;
+        if (oft && oft.confidence > ai.confidence) return { ...oft, name: it.name, ask: null };
+        return ai;
       });
 
       setItems(merged);
@@ -3001,9 +3015,10 @@ function AILog({ onAdd, onBack }) {
 
       // Try OFT for the new name too
       const oft = await searchOFT(newName);
-      const final = (oft && oft.confidence > updated.confidence)
+      const u   = { ...updated, confidence: normConf(updated.confidence) };
+      const final = (oft && oft.confidence > u.confidence)
         ? { ...oft, name: newName }
-        : { ...updated, name: newName };
+        : { ...u, name: newName };
 
       setItems(prev => prev.map((it, i) => i === idx ? final : it));
     } catch(e) {}

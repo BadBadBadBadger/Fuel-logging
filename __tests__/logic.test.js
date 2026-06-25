@@ -884,6 +884,13 @@ describe("confidence model (separated)", () => {
 
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
+const normConf = c => {
+  let n = Number(c);
+  if (!isFinite(n)) return 50;
+  if (n > 0 && n <= 1) n = n * 100;
+  return Math.round(Math.max(0, Math.min(100, n)));
+};
+
 const FOLLOWUP_BELOW = 80; // = INTAKE_FLAG_BELOW
 const FOLLOWUP_BANK = { fat: {}, portion: {}, version: {} }; // keys gate pickFollowups
 
@@ -904,6 +911,25 @@ const pickFollowups = items => (items || [])
   .filter(x => x.ask && FOLLOWUP_BANK[x.ask])
   .sort((a, b) => b.impact - a.impact)
   .slice(0, 2);
+
+describe("normConf — model confidence normalised to 0–100", () => {
+  test("a 0–1 fraction is scaled up (the quiche bug)", () => {
+    expect(normConf(0.72)).toBe(72);
+    expect(normConf(0.5)).toBe(50);
+    expect(normConf(1)).toBe(100);   // bare 1 read as fully confident
+  });
+  test("a proper 0–100 value passes through", () => {
+    expect(normConf(72)).toBe(72);
+    expect(normConf(98)).toBe(98);
+    expect(normConf(0)).toBe(0);
+  });
+  test("out-of-range is clamped and junk defaults to 50", () => {
+    expect(normConf(150)).toBe(100);
+    expect(normConf(-5)).toBe(0);
+    expect(normConf(undefined)).toBe(50);
+    expect(normConf("nope")).toBe(50);
+  });
+});
 
 describe("confLabel — score → tier", () => {
   test("bands at 33 and 66", () => {

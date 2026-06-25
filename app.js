@@ -6708,6 +6708,18 @@ var confLabel = function confLabel(c) {
   return c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 };
 
+// Normalise a model-supplied confidence to an integer 0–100. Vision models
+// sometimes hand back a 0–1 fraction (e.g. 0.72) despite the prompt asking for
+// 0–100 — without this, 0.72 renders as "0.72%", mis-gates follow-ups, and gets
+// stored as ~1% confident (wrongly flagging the day + dropping it from
+// calibration). A bare value <=1 is treated as a fraction; everything is clamped.
+var normConf = function normConf(c) {
+  var n = Number(c);
+  if (!isFinite(n)) return 50;
+  if (n > 0 && n <= 1) n = n * 100;
+  return Math.round(Math.max(0, Math.min(100, n)));
+};
+
 // ── AI capture: confidence-gated follow-ups (coach hat, 2026-06-25) ──────────
 // Threshold reuses INTAKE_FLAG_BELOW (80) — the same kcal-weighted bar that
 // intakeConfidence already calls "guess-heavy". No new magic number.
@@ -7309,13 +7321,17 @@ function AILog(_ref73) {
             oftResults = _context30.v;
             merged = aiItems.map(function (it, i) {
               var oft = oftResults[i];
+              // Normalise the AI confidence (vision models may return a 0–1 fraction).
+              var ai = _objectSpread(_objectSpread({}, it), {}, {
+                confidence: normConf(it.confidence)
+              });
               // Use OFT data if found AND it has higher confidence than AI estimate.
               // Carry the AI's `ask` reason across (OFT doesn't set it).
-              if (oft && oft.confidence > it.confidence) return _objectSpread(_objectSpread({}, oft), {}, {
+              if (oft && oft.confidence > ai.confidence) return _objectSpread(_objectSpread({}, oft), {}, {
                 name: it.name,
                 ask: null
               });
-              return it;
+              return ai;
             });
             setItems(merged);
             // Confidence-gated: only ask when the kcal-weighted estimate is below the
@@ -7391,7 +7407,7 @@ function AILog(_ref73) {
   };
   var reestimate = /*#__PURE__*/function () {
     var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(idx, newName) {
-      var updated, oft, _final, _t34;
+      var updated, oft, u, _final, _t34;
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.p = _context31.n) {
           case 0:
@@ -7405,9 +7421,12 @@ function AILog(_ref73) {
             return searchOFT(newName);
           case 3:
             oft = _context31.v;
-            _final = oft && oft.confidence > updated.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
+            u = _objectSpread(_objectSpread({}, updated), {}, {
+              confidence: normConf(updated.confidence)
+            });
+            _final = oft && oft.confidence > u.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
               name: newName
-            }) : _objectSpread(_objectSpread({}, updated), {}, {
+            }) : _objectSpread(_objectSpread({}, u), {}, {
               name: newName
             });
             setItems(function (prev) {
