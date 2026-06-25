@@ -2702,10 +2702,12 @@ const FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
 // change between animal/plant versions — a faked offline swap would be a guess
 // dressed as a fact, which the coach hat forbids).
 const FOLLOWUP_BANK = {
-  fat: { mode:"fat", q: f => `How was the ${f} cooked?`, chips: [
-    { label:"Dry / grilled",       factor:0.9, conf:85 },
-    { label:"Some oil or butter",  factor:1.0, conf:85 },
-    { label:"Fried / lots of fat", factor:1.3, conf:82 },
+  // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
+  // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
+  fat: { mode:"fat", q: f => `Any oil or butter on the ${f}?`, chips: [
+    { label:"None / dry (boiled, poached, grilled)", factor:0.9, conf:85 },
+    { label:"A little",            factor:1.0, conf:85 },
+    { label:"Fried / generous",    factor:1.3, conf:82 },
     { label:"Not sure",            factor:1.0, conf:null },
   ]},
   portion: { mode:"scale", q: f => `Roughly how much ${f}?`, chips: [

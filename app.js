@@ -6731,21 +6731,23 @@ var FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
 // change between animal/plant versions — a faked offline swap would be a guess
 // dressed as a fact, which the coach hat forbids).
 var FOLLOWUP_BANK = {
+  // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
+  // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
   fat: {
     mode: "fat",
     q: function q(f) {
-      return "How was the ".concat(f, " cooked?");
+      return "Any oil or butter on the ".concat(f, "?");
     },
     chips: [{
-      label: "Dry / grilled",
+      label: "None / dry (boiled, poached, grilled)",
       factor: 0.9,
       conf: 85
     }, {
-      label: "Some oil or butter",
+      label: "A little",
       factor: 1.0,
       conf: 85
     }, {
-      label: "Fried / lots of fat",
+      label: "Fried / generous",
       factor: 1.3,
       conf: 82
     }, {
