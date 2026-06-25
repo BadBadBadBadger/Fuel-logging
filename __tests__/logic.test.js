@@ -164,7 +164,14 @@ const runCalibration = (history, weighIns, baseTDEE) => {
   const recentHist   = history.filter(d => d.date >= weekAgoKey && d.kcal > 0);
   if (recentHist.length < 4) return null;
 
-  const avgKcal      = recentHist.reduce((a, d) => a + d.kcal, 0) / recentHist.length;
+  // Confidence-weight intake; drop near-guess days (<50%) so a biased AI estimate
+  // can't silently retrain TDEE. Days without inspectable logs default to 100%.
+  const trusted = recentHist
+    .map(d => ({ kcal: d.kcal, w: (d.logs ? intakeConfidence(d.logs) : 100) / 100 }))
+    .filter(x => x.w >= 0.5);
+  if (trusted.length < 4) return null;
+  const wSum         = trusted.reduce((a, x) => a + x.w, 0);
+  const avgKcal      = trusted.reduce((a, x) => a + x.kcal * x.w, 0) / wSum;
   const avgDeficit   = baseTDEE - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
@@ -869,5 +876,133 @@ describe("confidence model (separated)", () => {
 
   test("zero-kcal day is fully confident (no division by zero)", () => {
     expect(intakeConfidence([{ kcal: 0, conf: 30 }])).toBe(100);
+  });
+});
+
+// ── AI capture: confidence tiers, follow-up selection & refinement ────────────
+// Mirror of app.jsx helpers (confLabel / pickFollowups / refineElement).
+
+const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
+
+const FOLLOWUP_BELOW = 80; // = INTAKE_FLAG_BELOW
+const FOLLOWUP_BANK = { fat: {}, portion: {}, version: {} }; // keys gate pickFollowups
+
+const refineElement = (el, mode, factor, conf) => {
+  if (conf == null) return el;
+  const r1 = n => Math.round(n * 10) / 10;
+  const out = mode === "fat"
+    ? { ...el, kcal: Math.round(el.kcal * factor), fat: r1(el.fat * factor) }
+    : { ...el, kcal: Math.round(el.kcal * factor), protein: r1(el.protein * factor),
+        carbs: r1(el.carbs * factor), fat: r1(el.fat * factor) };
+  out.confidence = Math.max(el.confidence, conf);
+  return out;
+};
+
+const pickFollowups = items => (items || [])
+  .map((it, idx) => ({ idx, ask: it.ask, name: it.name,
+    impact: (it.kcal || 0) * (100 - (it.confidence || 0)) }))
+  .filter(x => x.ask && FOLLOWUP_BANK[x.ask])
+  .sort((a, b) => b.impact - a.impact)
+  .slice(0, 2);
+
+describe("confLabel — score → tier", () => {
+  test("bands at 33 and 66", () => {
+    expect(confLabel(0)).toBe("Low");
+    expect(confLabel(33)).toBe("Low");
+    expect(confLabel(34)).toBe("Medium");
+    expect(confLabel(66)).toBe("Medium");
+    expect(confLabel(67)).toBe("High");
+    expect(confLabel(100)).toBe("High");
+  });
+});
+
+describe("pickFollowups — highest-leverage unknowns, max 2", () => {
+  test("only elements with a known ask code qualify", () => {
+    const items = [
+      { name: "rice",    kcal: 200, confidence: 95, ask: null },
+      { name: "chicken", kcal: 300, confidence: 50, ask: "fat" },
+      { name: "side",    kcal: 100, confidence: 40, ask: "mystery" }, // unknown code → ignored
+    ];
+    const fu = pickFollowups(items);
+    expect(fu).toHaveLength(1);
+    expect(fu[0].name).toBe("chicken");
+  });
+
+  test("ranks by impact = kcal*(100-conf) and caps at 2", () => {
+    const items = [
+      { name: "garnish", kcal: 30,  confidence: 20, ask: "portion" }, // impact 2400
+      { name: "main",    kcal: 700, confidence: 50, ask: "fat" },     // impact 35000
+      { name: "drink",   kcal: 250, confidence: 40, ask: "portion" }, // impact 15000
+    ];
+    const fu = pickFollowups(items);
+    expect(fu.map(x => x.name)).toEqual(["main", "drink"]); // top 2 by impact, garnish dropped
+  });
+
+  test("returns empty when nothing is asked", () => {
+    expect(pickFollowups([{ name: "x", kcal: 100, confidence: 90, ask: null }])).toEqual([]);
+    expect(pickFollowups([])).toEqual([]);
+  });
+});
+
+describe("refineElement — follow-up answers refine deterministically", () => {
+  const base = { name: "stir fry", kcal: 400, protein: 30, carbs: 20, fat: 18, confidence: 50 };
+
+  test("portion (scale) multiplies every macro and kcal", () => {
+    const out = refineElement(base, "scale", 1.5, 85);
+    expect(out.kcal).toBe(600);
+    expect(out.protein).toBe(45);
+    expect(out.carbs).toBe(30);
+    expect(out.fat).toBe(27);
+  });
+
+  test("fat mode scales kcal + fat only; protein/carbs held", () => {
+    const out = refineElement(base, "fat", 1.3, 82);
+    expect(out.kcal).toBe(520);
+    expect(out.fat).toBe(23.4);
+    expect(out.protein).toBe(30); // unchanged
+    expect(out.carbs).toBe(20);   // unchanged
+  });
+
+  test("answering raises confidence but never lowers it", () => {
+    expect(refineElement(base, "scale", 1.0, 85).confidence).toBe(85);
+    const already = { ...base, confidence: 90 };
+    expect(refineElement(already, "scale", 1.0, 85).confidence).toBe(90); // not dropped
+  });
+
+  test("\"Not sure\" (conf null) leaves the element untouched", () => {
+    expect(refineElement(base, "scale", 1.0, null)).toEqual(base);
+  });
+});
+
+describe("runCalibration — AI-estimated days can't silently retrain TDEE", () => {
+  const today = new Date();
+  const dkey  = d => d.toISOString().split("T")[0];
+  const weighIns = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - 13 + i);
+    return { date: dkey(d), weight: 80 - i * 0.2 }; // steady loss
+  });
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoKey = dkey(weekAgo);
+  const recentDays = (mk) => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - 6 + i);
+    return { date: dkey(d), ...mk(i) };
+  }).filter(d => d.date >= weekAgoKey);
+
+  test("near-guess days (<50% intake confidence) are dropped from avgKcal", () => {
+    // 4 reliable 1800-kcal days + 3 wild 4000-kcal guesses at 20% confidence.
+    const history = recentDays(i => i < 4
+      ? { kcal: 1800, logs: [{ kcal: 1800, conf: 100 }] }
+      : { kcal: 4000, logs: [{ kcal: 4000, conf: 20 }] });
+    const result = runCalibration(history, weighIns, 2400);
+    expect(result).not.toBeNull();
+    // If the 4000-kcal guesses counted, avgKcal would blow past 2500. Dropped → ~1800.
+    expect(result.avgKcal).toBeLessThanOrEqual(1850);
+  });
+
+  test("legacy days without logs still count at full confidence", () => {
+    const history = recentDays(() => ({ kcal: 1800 })); // no logs field
+    const result = runCalibration(history, weighIns, 2400);
+    expect(result).not.toBeNull();
+    expect(result.avgKcal).toBe(1800);
   });
 });

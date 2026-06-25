@@ -1348,6 +1348,35 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### v6.7 — AI meal capture: voice + photo + confidence follow-ups (June 2026)
+The AI Meal Log gains two new input adapters and a confidence-gated follow-up layer. One pipeline,
+three ways in. Tests **100/100**, sw `v50→v51`. Premium-gated exactly as before (no new gate).
+- **🎤 Voice (on-device):** inline mic button uses the browser's Web Speech API — recognition runs on the
+  device and **only the transcript** reaches the field (and only the text is ever sent onward). Editable
+  before Submit. Gracefully **hidden** when the browser lacks speech recognition or mic permission is denied.
+- **📷 Photo (transient):** inline camera button captures a meal photo, **downscaled to ≤1024px in memory**
+  and sent **once** to the vision model to estimate the plate. The image is **never written to storage** and
+  is **not part of the saved record** — it's discarded on save/leave. (Worker unchanged: it already forwards
+  the `messages` content array verbatim to Anthropic; model stays `claude-sonnet-4-6`, vision-capable.)
+- **Confidence-gated follow-ups (coach):** when a meal's **kcal-weighted** confidence is **< 80%**
+  (`INTAKE_FLAG_BELOW` — same "guess-heavy" bar as intake confidence), the app asks **at most 2** chip
+  questions, picked by **uncertainty impact = kcal × (100 − conf)** so the biggest unknowns get asked first.
+  Bank: **cooking fat** (dry/oil/fried → ×0.9/×1.0/×1.3 kcal+fat), **portion** (small/medium/large →
+  ×0.7/×1.0/×1.5 all macros), **version** (standard/veg/vegan → re-estimates the element). Always
+  **Skippable** — skipping logs the meal at its lower confidence. Answering never lowers an element's
+  confidence. fat/portion refine offline (deterministic, unit-tested); version re-estimates because its
+  macros genuinely change.
+- **Record:** saved AI meals now also carry a **`source`** flag (`ai-text` / `ai-voice` / `ai-photo`) and the
+  **`followups`** Q&A. No media, ever.
+- **Calibration safeguard (coach):** `runCalibration` now **confidence-weights** each recent day's intake and
+  **drops near-guess days (<50%)** so a biased AI estimate can't silently retrain TDEE. Legacy days without
+  per-entry `conf` count at full confidence (backward-compatible).
+- **Report-wrong (Play GenAI policy):** a low-emphasis "⚐ Report estimate as wrong" link under the result
+  opens a prefilled email (description + numbers only, no account data).
+- **Cap:** reuses the existing worker daily cap (429 → "limit reached"); on hitting it the screen now keeps
+  the captured input and offers manual entry instead of losing it. ⚠️ **Ops:** bind the `RATE_LIMIT` KV
+  namespace before launch or the cap is a no-op (vision calls cost more — keep the Anthropic spend cap too).
+
 ### v6.6 — Meal data integrity + confidence model (June 2026)
 Two bug clusters. Tests **90/90**, sw `v49→v50`.
 - **Data integrity (the truncation bug):** "Log all as one meal" in the AI Meal Log used to store the
