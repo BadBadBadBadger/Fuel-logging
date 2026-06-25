@@ -311,14 +311,23 @@ const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const sex = p.sex || "male";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
-  const tdee = Math.round(bmr * 1.2) + tdeeAdj;
+  // Adaptive TDEE calibrates the ×1.2 formula toward the user's real burn — but
+  // total daily expenditure can never sit below resting metabolism, so the
+  // adjustment must not pull estimated maintenance below BMR. Without this floor,
+  // a large negative tdeeAdj drove maintenance below BMR (a sub-resting "maintain"
+  // target, which is physiologically impossible). The mode deficit/surplus is
+  // applied AFTER the floor, so an intentional cut can still go below BMR (and is
+  // then caught by SAFE_MIN + the aggressive-cut warning).
+  const formulaTDEE = Math.round(bmr * 1.2);
+  const tdee = Math.max(bmr, formulaTDEE + tdeeAdj);
+  const bmrFloorApplied = formulaTDEE + tdeeAdj < bmr;
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   const safeMin = SAFE_MIN[sex] || 1400;
   const safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   const m = computeMacros(p, mode, kcal);
   return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
-    lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied,
+    lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied, bmrFloorApplied,
     floorsExceedKcal: m.floorsExceedKcal };
 };
 
@@ -1569,7 +1578,8 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   const prev     = calcTargets(f, "cut", 0, 0);
   const formulaTDEE = prev.tdee;
-  const adjTDEE     = formulaTDEE + tdeeAdj;
+  const adjTDEE     = Math.max(prev.bmr, formulaTDEE + tdeeAdj); // never below BMR
+  const tdeeFloored = formulaTDEE + tdeeAdj < prev.bmr;          // adjustment hit the floor
   const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
 
   useEffect(() => {
@@ -1704,6 +1714,12 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
               {adjTDEE} <span style={{ fontSize:11, color:"var(--text-label)" }}>kcal/day</span>
             </span>
           </div>
+          {tdeeFloored && (
+            <div style={{ fontSize:11, color:"var(--warn)", marginTop:6, lineHeight:1.5 }}>
+              Held at BMR. Your maintenance can't sit below resting metabolism, so the adaptive
+              adjustment is floored here — log weight consistently and it will re-converge.
+            </div>
+          )}
           {!confidence && (
             <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:6, lineHeight:1.5 }}>
               Log your weight daily from the dashboard to enable adaptive calibration.
@@ -1907,7 +1923,7 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
           <div style={{ fontSize:10, color:confColor2, letterSpacing:"0.08em", fontWeight:800 }}>{confidence.toUpperCase()}</div>
           {weeks >= 1
             ? <>
-                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{(baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
+                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{Math.max(Math.round(baseTDEE / 1.2), baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
                 <div style={{ fontSize:10, color:"var(--text-label)", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "var(--bulk)" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
               </>
             : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
@@ -4432,8 +4448,10 @@ function App() {
   };
 
   const p        = prof || DEF_PROFILE;
-  const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
-  const effectiveTDEE = baseTDEE + tdeeAdj;
+  const bmrFloor = Math.round(370 + 21.6 * (p.weight * (1 - p.bodyFat/100)));
+  const baseTDEE = Math.round(bmrFloor * 1.2);
+  // Mirror calcTargets: the adaptive adjustment can't pull maintenance below BMR.
+  const effectiveTDEE = Math.max(bmrFloor, baseTDEE + tdeeAdj);
   const effectiveMode = customKcal != null
     ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
     : mode;
