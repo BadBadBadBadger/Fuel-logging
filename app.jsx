@@ -367,7 +367,16 @@ const runCalibration = (history, weighIns, baseTDEE) => {
   const recentHist   = history.filter(d => d.date >= weekAgoKey && d.kcal > 0);
   if (recentHist.length < 4) return null;
 
-  const avgKcal      = recentHist.reduce((a, d) => a + d.kcal, 0) / recentHist.length;
+  // Coach safeguard: AI-estimated days are softer evidence than weighed/typed
+  // ones. Weight each day's intake by its confidence and drop near-guess days
+  // (<50%) so a biased AI estimate can't silently retrain TDEE. Days whose logs
+  // we can't inspect default to full confidence (legacy snapshots / no `conf`).
+  const trusted = recentHist
+    .map(d => ({ kcal: d.kcal, w: (d.logs ? intakeConfidence(d.logs) : 100) / 100 }))
+    .filter(x => x.w >= 0.5);
+  if (trusted.length < 4) return null;
+  const wSum         = trusted.reduce((a, x) => a + x.w, 0);
+  const avgKcal      = trusted.reduce((a, x) => a + x.kcal * x.w, 0) / wSum;
   const avgDeficit   = baseTDEE - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
@@ -2609,6 +2618,7 @@ Rules:
 - Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.
 - If a component is ambiguous (e.g. "large meal" at a restaurant that only does regular), state the ambiguity in the reasoning field.
 - Be conservative — if unsure between two estimates, explain both.
+- For ANY component whose confidence is below 80, set "ask" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: "fat" (hidden cooking fat — oil/butter vs dry/grilled), "portion" (ambiguous amount/size), or "version" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set "ask" to null.
 
 Meal to analyse: "${desc}"
 
@@ -2622,8 +2632,30 @@ Return ONLY valid JSON (no markdown, no preamble):
       "carbs": number,
       "fat": number,
       "confidence": number,
+      "ask": "fat" | "portion" | "version" | null,
       "reasoning": "one sentence explaining source of data or uncertainty"
     }
+  ]
+}`;
+
+// Vision variant — same contract, but the meal is in the attached photo. Any
+// typed text is optional extra context (brand, restaurant, portion the user knows).
+const AI_PHOTO_PROMPT = (desc) => `You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL.
+
+A photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.
+
+Rules:
+- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).
+- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.
+- Hidden cooking fat and exact portion are the usual photo blind spots — reflect that in confidence and in "ask".
+- For ANY component with confidence below 80, set "ask" to the single highest-leverage unknown: "fat", "portion", or "version" (see below). Otherwise null.
+${desc && desc.trim() ? `\nThe user added this context: "${desc.trim()}" — use it to disambiguate.\n` : ""}
+"ask" meanings: "fat" = hidden cooking fat (oil/butter vs dry/grilled); "portion" = ambiguous amount/size; "version" = animal-vs-plant or major recipe variant.
+
+Return ONLY valid JSON (no markdown, no preamble):
+{
+  "items": [
+    { "name": "specific food with estimated portion", "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": number, "ask": "fat" | "portion" | "version" | null, "reasoning": "one sentence" }
   ]
 }`;
 
@@ -2646,6 +2678,105 @@ Return ONLY valid JSON (no markdown):
 
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
+
+// ── AI capture: confidence-gated follow-ups (coach hat, 2026-06-25) ──────────
+// Threshold reuses INTAKE_FLAG_BELOW (80) — the same kcal-weighted bar that
+// intakeConfidence already calls "guess-heavy". No new magic number.
+const FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
+
+// The model tags each low-confidence element with an `ask` reason code; we map
+// it to a question + chips here. fat/portion refine deterministically offline
+// (no extra AI call); version re-estimates the element by name (macros genuinely
+// change between animal/plant versions — a faked offline swap would be a guess
+// dressed as a fact, which the coach hat forbids).
+const FOLLOWUP_BANK = {
+  fat: { mode:"fat", q: f => `How was the ${f} cooked?`, chips: [
+    { label:"Dry / grilled",       factor:0.9, conf:85 },
+    { label:"Some oil or butter",  factor:1.0, conf:85 },
+    { label:"Fried / lots of fat", factor:1.3, conf:82 },
+    { label:"Not sure",            factor:1.0, conf:null },
+  ]},
+  portion: { mode:"scale", q: f => `Roughly how much ${f}?`, chips: [
+    { label:"Small (under a fist)", factor:0.7, conf:85 },
+    { label:"Medium (a fist)",      factor:1.0, conf:85 },
+    { label:"Large (two fists+)",   factor:1.5, conf:85 },
+    { label:"Not sure",             factor:1.0, conf:null },
+  ]},
+  version: { mode:"version", q: f => `Which version of the ${f}?`, chips: [
+    { label:"Standard",   ver:"",           conf:85 },
+    { label:"Vegetarian", ver:"vegetarian", conf:85 },
+    { label:"Vegan",      ver:"vegan",       conf:85 },
+    { label:"Not sure",   ver:null,          conf:null },
+  ]},
+};
+
+// Refine one element from a follow-up answer. Pure + deterministic (mirrored in
+// Jest). mode "scale": portion → all macros + kcal scale. mode "fat": cooking
+// fat → kcal + fat scale, protein/carbs held. Confidence rises to `conf` but
+// never drops (answering only clarifies). conf null ("Not sure") = unchanged.
+const refineElement = (el, mode, factor, conf) => {
+  if (conf == null) return el;
+  const r1 = n => Math.round(n * 10) / 10;
+  const out = mode === "fat"
+    ? { ...el, kcal: Math.round(el.kcal * factor), fat: r1(el.fat * factor) }
+    : { ...el, kcal: Math.round(el.kcal * factor), protein: r1(el.protein * factor),
+        carbs: r1(el.carbs * factor), fat: r1(el.fat * factor) };
+  out.confidence = Math.max(el.confidence, conf);
+  return out;
+};
+
+// Up to 2 elements worth asking about, ranked by uncertainty IMPACT =
+// kcal*(100-conf) — a fuzzy big main matters, a fuzzy garnish doesn't. Only
+// elements the model tagged with a known `ask` reason qualify. (coach)
+const pickFollowups = items => (items || [])
+  .map((it, idx) => ({ idx, ask: it.ask, name: it.name,
+    impact: (it.kcal || 0) * (100 - (it.confidence || 0)) }))
+  .filter(x => x.ask && FOLLOWUP_BANK[x.ask])
+  .sort((a, b) => b.impact - a.impact)
+  .slice(0, 2);
+
+// On-device speech recognition handle (null when the browser lacks it → the mic
+// button gracefully hides). Only the transcript ever leaves the device.
+const SpeechRec = typeof window !== "undefined" &&
+  (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+// Downscale a captured photo to <=1024px and re-encode JPEG so the vision
+// payload stays small (cheaper + within the worker's body limits). The result
+// lives only in component state — never written to storage. Returns
+// { base64, mediaType, preview }.
+const fileToImage = (file, max = 1024, quality = 0.7) => new Promise((resolve, reject) => {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(img, 0, 0, w, h);
+    const dataUrl = cv.toDataURL("image/jpeg", quality);
+    resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg", preview: dataUrl });
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read image")); };
+  img.src = url;
+});
+
+// "Report estimate as wrong" → opens a prefilled email (Google Play GenAI app
+// policy needs a working report path). Sends only what the user already gave the
+// AI — the description + the numbers — never account data. (launch + design)
+const reportEstimate = (desc, items, totals) => {
+  const lines = (items || []).map(it =>
+    `- ${it.name}: ${Math.round(it.kcal)} kcal (P${it.protein}/C${it.carbs}/F${it.fat}) ${it.confidence}%`
+  ).join("\n");
+  const body = "I think this AI estimate is wrong.\n\nMy description:\n"
+    + (desc ? desc : "(photo only)")
+    + "\n\nEstimate:\n" + lines
+    + "\n\nTotal: " + Math.round((totals && totals.kcal) || 0) + " kcal"
+    + "\n\nWhat was off:\n";
+  window.location.href = "mailto:fuellogadmin@gmail.com?subject="
+    + encodeURIComponent("Fuel Log — inaccurate AI estimate")
+    + "&body=" + encodeURIComponent(body);
+};
 
 async function searchOFT(query) {
   try {
@@ -2743,6 +2874,22 @@ function AILog({ onAdd, onBack }) {
   const [error,        setError]        = useState("");
   const [loggedAll,    setLoggedAll]    = useState(false);
   const [loggedCount,  setLoggedCount]  = useState({}); // idx -> times logged (ephemeral; resets on unmount)
+  // Capture adapters — voice transcript + transient photo. The photo lives ONLY
+  // here in memory ({base64, preview}); it is never written to storage and never
+  // included in the saved record (see logAll). It is discarded when we unmount.
+  const [photo,        setPhoto]        = useState(null);
+  const [listening,    setListening]    = useState(false);
+  const [micDenied,    setMicDenied]    = useState(false);
+  const [usedVoice,    setUsedVoice]    = useState(false);
+  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
+  const [followups,    setFollowups]    = useState([]);   // [{idx, ask, name}]
+  const [fuDone,       setFuDone]        = useState({});   // idx -> true once answered/skipped
+  const [fuLog,        setFuLog]        = useState([]);    // [{q, a}] persisted with the meal
+  const recRef  = React.useRef(null);
+  const fileRef = React.useRef(null);
+
+  // Stop any in-flight speech recognition if we leave the screen.
+  useEffect(() => () => { try { recRef.current && recRef.current.stop(); } catch(e) {} }, []);
 
   const totals = items ? items.reduce((a, it) => ({
     kcal:    a.kcal    + it.kcal,
@@ -2751,29 +2898,100 @@ function AILog({ onAdd, onBack }) {
     fat:     a.fat     + it.fat,
   }), { kcal:0, protein:0, carbs:0, fat:0 }) : null;
 
-  const avgConf = items ? Math.round(items.reduce((a, it) => a + it.confidence, 0) / items.length) : 0;
+  // kcal-weighted (matches intakeConfidence + what logAll stores) so a fuzzy big
+  // item drags the meal's confidence more than a fuzzy garnish.
+  const avgConf = items ? (totals && totals.kcal > 0
+    ? Math.round(items.reduce((a, it) => a + it.confidence * it.kcal, 0) / totals.kcal)
+    : Math.round(items.reduce((a, it) => a + it.confidence, 0) / items.length)) : 0;
+
+  const voiceAvailable = !!SpeechRec && !micDenied;
+  const capError = /limit reached|sign in/i.test(error);
+  const pendingFollowups = followups.filter(fu => !fuDone[fu.idx]);
+
+  const startVoice = () => {
+    if (!SpeechRec || listening) return;
+    let rec;
+    try { rec = new SpeechRec(); } catch(e) { return; }
+    rec.lang = "en-GB"; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.onresult = ev => {
+      const t = Array.from(ev.results).map(r => r[0].transcript).join(" ").trim();
+      if (t) { setDesc(d => (d ? d.trim() + " " : "") + t); setUsedVoice(true); }
+    };
+    rec.onerror = ev => { if (ev && ev.error === "not-allowed") setMicDenied(true); setListening(false); };
+    rec.onend   = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    try { rec.start(); } catch(e) { setListening(false); }
+  };
+  const stopVoice = () => { try { recRef.current && recRef.current.stop(); } catch(e) {} setListening(false); };
+
+  const onPickPhoto = async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // let the same file be re-picked
+    if (!file) return;
+    try { setPhoto(await fileToImage(file)); setError(""); }
+    catch(err) { setError("Couldn't read that image — try another photo."); }
+  };
 
   const estimate = async () => {
-    if (!desc.trim()) return;
+    if (!desc.trim() && !photo) return;
     setLoading(true); setError(""); setItems(null); setLoggedAll(false); setLoggedCount({});
+    setFollowups([]); setFuDone({}); setFuLog([]);
     try {
-      const parsed = await callAIJson(AI_PROMPT(desc), 2000);
+      const parsed = photo
+        ? await callAIJson([
+            { type:"image", source:{ type:"base64", media_type:photo.mediaType, data:photo.base64 } },
+            { type:"text",  text: AI_PHOTO_PROMPT(desc) },
+          ], 2000)
+        : await callAIJson(AI_PROMPT(desc), 2000);
       let aiItems  = parsed.items || [];
 
       // OFT parallel lookup for each item
       const oftResults = await Promise.all(aiItems.map(it => searchOFT(it.name)));
       const merged = aiItems.map((it, i) => {
         const oft = oftResults[i];
-        // Use OFT data if found AND it has higher confidence than AI estimate
-        if (oft && oft.confidence > it.confidence) return { ...oft, name: it.name };
+        // Use OFT data if found AND it has higher confidence than AI estimate.
+        // Carry the AI's `ask` reason across (OFT doesn't set it).
+        if (oft && oft.confidence > it.confidence) return { ...oft, name: it.name, ask: null };
         return it;
       });
 
       setItems(merged);
+      // Confidence-gated: only ask when the kcal-weighted estimate is below the
+      // "guess-heavy" bar, and only the top-2 highest-leverage unknowns.
+      const k = merged.reduce((a, it) => a + (it.kcal || 0), 0);
+      const wConf = k > 0
+        ? Math.round(merged.reduce((a, it) => a + it.confidence * (it.kcal || 0), 0) / k)
+        : 100;
+      setFollowups(wConf < FOLLOWUP_BELOW ? pickFollowups(merged) : []);
     } catch(e) {
       setError("Estimation failed: " + e.message);
     }
     setLoading(false);
+  };
+
+  // Answer one follow-up: fat/portion refine offline (deterministic), version
+  // re-estimates the element by name (its macros genuinely change). "Not sure"
+  // keeps the estimate at its lower confidence.
+  const answerFollowup = (fu, chip) => {
+    const bank = FOLLOWUP_BANK[fu.ask];
+    const foodName = items[fu.idx] ? items[fu.idx].name : fu.name;
+    setFuLog(prev => [...prev, { q: bank.q(foodName), a: chip.label }]);
+    setFuDone(prev => ({ ...prev, [fu.idx]: true }));
+    if (chip.conf == null) return; // "Not sure" → no refinement
+    if (bank.mode === "version") {
+      if (chip.ver) reestimate(fu.idx, foodName + " (" + chip.ver + ")");
+    } else {
+      setItems(prev => prev.map((it, i) =>
+        i === fu.idx ? refineElement(it, bank.mode, chip.factor, chip.conf) : it));
+    }
+  };
+  const skipFollowups = () => {
+    const log = pendingFollowups.map(fu => ({
+      q: FOLLOWUP_BANK[fu.ask].q(items[fu.idx] ? items[fu.idx].name : fu.name), a: "Skipped" }));
+    const done = {}; pendingFollowups.forEach(fu => { done[fu.idx] = true; });
+    setFuLog(prev => [...prev, ...log]);
+    setFuDone(prev => ({ ...prev, ...done }));
   };
 
   const reestimate = async (idx, newName) => {
@@ -2807,20 +3025,23 @@ function AILog({ onAdd, onBack }) {
     const conf = totals.kcal > 0
       ? Math.round(elements.reduce((a, e) => a + e.conf * e.kcal, 0) / totals.kcal)
       : avgConf;
-    onAdd({ name: desc.trim(), kcal: Math.round(totals.kcal),
+    // The record carries numbers + answers + flags — NEVER the photo or any audio.
+    const source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    onAdd({ name: desc.trim() || "Photo meal", kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs:   Math.round(totals.carbs   * 10) / 10,
       fat:     Math.round(totals.fat     * 10) / 10,
-      conf, elements });
+      conf, elements, source, followups: fuLog });
     onBack();
   };
 
   const logItem = (item, idx) => {
+    const source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
     onAdd({ name: item.name, kcal: Math.round(item.kcal),
       protein: Math.round(item.protein * 10) / 10,
       carbs:   Math.round(item.carbs   * 10) / 10,
       fat:     Math.round(item.fat     * 10) / 10,
-      conf: item.confidence });
+      conf: item.confidence, source });
     setLoggedCount(prev => ({ ...prev, [idx]: (prev[idx] || 0) + 1 }));
   };
 
@@ -2828,8 +3049,8 @@ function AILog({ onAdd, onBack }) {
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="AI MEAL LOG" onBack={onBack}/>
       <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
-        Describe your meal — I'll break it down item by item with confidence scores.
-        Tap any item to correct it and re-estimate.
+        Type it, dictate it, or photograph it — I'll break it down item by item with
+        confidence scores. Tap any item to correct it and re-estimate.
       </p>
 
       <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={4}
@@ -2839,22 +3060,65 @@ function AILog({ onAdd, onBack }) {
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
       <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:6 }}>
-        Just describe the food — no personal details needed. This text is sent to our AI to estimate nutrition.
+        Just the food — no personal details needed. Dictation runs on your device; only the
+        text is sent. A photo is used once to estimate the meal and is never stored.
       </div>
 
-      <button onClick={estimate} disabled={loading || !desc.trim()}
-        style={{ width:"100%", marginTop:12, padding:"15px",
-          background: loading || !desc.trim() ? "var(--surface-2)" : A,
-          color:      loading || !desc.trim() ? "var(--border-strong)" : "var(--bg)",
-          border:"none", borderRadius:14, fontSize:14, fontWeight:900,
-          letterSpacing:"0.08em", cursor: loading || !desc.trim() ? "not-allowed" : "pointer" }}>
-        {loading ? "⚡ ANALYSING..." : "🤖 ANALYSE MEAL"}
-      </button>
+      {/* Transient photo preview — held in memory only, discarded on save/leave */}
+      {photo && (
+        <div style={{ marginTop:12, position:"relative", borderRadius:14, overflow:"hidden",
+          border:`1px solid ${BD}` }}>
+          <img src={photo.preview} alt="meal" style={{ width:"100%", display:"block",
+            maxHeight:220, objectFit:"cover" }}/>
+          <button onClick={() => setPhoto(null)} aria-label="Remove photo"
+            style={{ position:"absolute", top:8, right:8, width:32, height:32, borderRadius:16,
+              background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", fontSize:16,
+              fontWeight:900, cursor:"pointer" }}>✕</button>
+        </div>
+      )}
+
+      {/* Inline capture row: 🎤 voice + 📷 photo beside the Analyse button */}
+      <div style={{ display:"flex", gap:8, marginTop:12 }}>
+        {voiceAvailable && (
+          <button onClick={listening ? stopVoice : startVoice} aria-label="Dictate meal"
+            style={{ flexShrink:0, width:54, padding:"15px 0", borderRadius:14,
+              background: listening ? A : "var(--surface-2)",
+              color: listening ? "var(--bg)" : A,
+              border:`1px solid ${listening ? A : aA("44")}`, fontSize:18, cursor:"pointer",
+              animation: listening ? "blink_add 1s ease-in-out infinite" : "none" }}>
+            {listening ? "⏹" : "🎤"}
+          </button>
+        )}
+        <button onClick={() => fileRef.current && fileRef.current.click()} aria-label="Photograph meal"
+          style={{ flexShrink:0, width:54, padding:"15px 0", borderRadius:14,
+            background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`,
+            fontSize:18, cursor:"pointer" }}>📷</button>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment"
+          onChange={onPickPhoto} style={{ display:"none" }}/>
+        <button onClick={estimate} disabled={loading || (!desc.trim() && !photo)}
+          style={{ flex:1, padding:"15px",
+            background: loading || (!desc.trim() && !photo) ? "var(--surface-2)" : A,
+            color:      loading || (!desc.trim() && !photo) ? "var(--border-strong)" : "var(--bg)",
+            border:"none", borderRadius:14, fontSize:14, fontWeight:900,
+            letterSpacing:"0.08em", cursor: loading || (!desc.trim() && !photo) ? "not-allowed" : "pointer" }}>
+          {loading ? "⚡ ANALYSING..." : photo ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL"}
+        </button>
+      </div>
 
       {error && (
         <div style={{ color:"var(--bulk-3)", fontSize:12, marginTop:14, background:"var(--over-tint-3)",
           border:"1px solid var(--bulk-tint)", borderRadius:10, padding:"12px 14px", lineHeight:1.6 }}>
           {error}
+          {capError && (
+            // Cap reached / session expired — degrade gracefully. The typed text
+            // and any photo are kept; offer manual entry instead of losing them.
+            <button onClick={onBack}
+              style={{ display:"block", marginTop:10, padding:"9px 14px", background:"var(--surface-2)",
+                border:`1px solid ${aA("44")}`, borderRadius:10, color:A, fontSize:12,
+                fontWeight:800, cursor:"pointer" }}>
+              Switch to manual entry →
+            </button>
+          )}
         </div>
       )}
 
@@ -2880,6 +3144,48 @@ function AILog({ onAdd, onBack }) {
               onReestimate={newName => reestimate(i, newName)}/>
           ))}
 
+          {/* Confidence-gated follow-ups — at most 2, each a chip tap, always skippable.
+              Until answered or skipped, the log buttons stay hidden so the meal can't
+              be saved before the quick clarification. */}
+          {pendingFollowups.length > 0 && (
+            <div style={{ background:CARD, border:`1px solid ${aA("44")}`, borderRadius:14,
+              padding:"14px 16px", marginBottom:16 }}>
+              <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
+                QUICK CHECK
+              </div>
+              <div style={{ fontSize:11, color:"var(--text-lo-2)", marginBottom:12, lineHeight:1.5 }}>
+                A couple of taps sharpen this estimate — or skip and log as-is.
+              </div>
+              {pendingFollowups.map(fu => {
+                const bank = FOLLOWUP_BANK[fu.ask];
+                const food = items[fu.idx] ? items[fu.idx].name : fu.name;
+                return (
+                  <div key={fu.idx} style={{ marginBottom:14 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:"var(--text-hi)", marginBottom:8 }}>
+                      {bank.q(food)}
+                    </div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {bank.chips.map(chip => (
+                        <button key={chip.label} onClick={() => answerFollowup(fu, chip)}
+                          style={{ padding:"8px 12px", borderRadius:20, background:"var(--surface-2)",
+                            border:`1px solid ${aA("44")}`, color:"var(--text-mid-6)", fontSize:12,
+                            fontWeight:600, cursor:"pointer" }}>
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <button onClick={skipFollowups}
+                style={{ marginTop:2, padding:"8px 0", background:"none", border:"none",
+                  color:"var(--text-lo-2)", fontSize:12, fontWeight:700, cursor:"pointer",
+                  textDecoration:"underline" }}>
+                Skip — log at lower confidence
+              </button>
+            </div>
+          )}
+
           {/* Totals */}
           <div style={{ background:CARD, border:`1px solid ${aA("33")}`, borderRadius:14,
             padding:"14px 16px", marginBottom:16 }}>
@@ -2894,7 +3200,8 @@ function AILog({ onAdd, onBack }) {
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Actions — only once any follow-ups are resolved */}
+          {pendingFollowups.length === 0 && (<>
           <button onClick={logAll}
             style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
               border:"none", borderRadius:12, fontSize:14, fontWeight:900,
@@ -2925,6 +3232,15 @@ function AILog({ onAdd, onBack }) {
             </button>
             );
           })}
+
+          {/* Report-wrong (Google Play GenAI policy) — opens a prefilled email */}
+          <button onClick={() => reportEstimate(desc, items, totals)}
+            style={{ display:"block", margin:"10px auto 0", padding:"6px 10px", background:"none",
+              border:"none", color:"var(--text-lo-2)", fontSize:11, fontWeight:600,
+              cursor:"pointer", textDecoration:"underline" }}>
+            ⚐ Report estimate as wrong
+          </button>
+          </>)}
         </div>
       )}
     </div>

@@ -1119,3 +1119,95 @@ Feature: Calorie-budget confidence — exact intake, estimated budget (Separated
     When the coach produces advice
     Then it uses the logged food directly, unqualified by any confidence value
     And it never displays or references confidence scoring
+
+
+# ── AI meal capture: text · voice · photo + confidence follow-ups (v6.7) ──────
+# Folded in from features/ai-capture.feature once built. Decisions (thresholds,
+# question bank, cap, report path) locked 2026-06-25 by coach + launch hats; see
+# DOCS.md §37 v6.7. Gating reuses the existing premium entitlement + worker cap —
+# no bespoke gate. @wip — built, device-verification pending (same as v6.6).
+@wip @ai-capture
+Feature: AI meal capture via text, voice, or photo
+
+  Background:
+    Given I am a premium user on the AI Meal Log screen
+    And the screen shows a meal description field, an Analyse button, and inline
+      microphone and photo buttons
+
+  Scenario Outline: All three inputs converge on one editable, saveable estimate
+    When I provide a meal by <input>
+    And the AI returns a high-confidence estimate
+    Then I see an editable estimate listing each element with its macros
+    And no follow-up questions are shown
+    And I can save the meal to my log
+    Examples:
+      | input                      |
+      | typing the description     |
+      | dictating the description  |
+      | photographing the plate    |
+
+  Scenario: Dictation runs on-device and only the transcript is used
+    Given the browser supports on-device speech recognition and mic permission is granted
+    When I tap the microphone and speak my meal
+    Then the transcript appears in the description field
+    And no audio leaves the device
+    And I can edit the transcript before I tap Analyse
+
+  Scenario: Voice degrades gracefully when unsupported or denied
+    Given the browser lacks speech recognition, or microphone permission is denied
+    Then the microphone button is not shown
+    And I can still type or photograph the meal
+
+  Scenario: A photographed meal is held only in memory and never stored
+    When I photograph my meal and analyse it
+    Then the image is downscaled and held in memory only
+    And the saved record contains no image and no audio
+    And the image is discarded when I save or leave the screen
+
+  Scenario: Camera access degrades gracefully
+    Given camera access is not granted
+    Then I can still pick an existing image, or type or dictate the meal
+    And the rest of the logging flow is unaffected
+
+  Scenario: A low-confidence estimate asks at most two skippable chip questions
+    When the meal's kcal-weighted confidence is below 80%
+    Then I am asked no more than 2 follow-up questions, each answered by a chip
+    And a Skip option is always available
+    And the questions target the highest-impact unknowns first
+
+  Scenario: Answering a follow-up refines the estimate without lowering confidence
+    Given a follow-up question is shown for an element
+    When I tap a chip answer
+    Then that element's estimate is refined
+    And its confidence is at or above its previous level
+
+  Scenario: Skipping follow-ups logs the meal at its lower confidence
+    Given follow-up questions are shown
+    When I tap Skip
+    Then the estimate is kept at its current, lower confidence
+    And I can save the meal
+
+  Scenario: The saved record carries numbers and answers, not media
+    When I save an AI-estimated meal
+    Then the record stores its elements, macros, follow-up answers, and a source flag
+    And it is flagged by capture source as text, voice, or photo
+    And it contains no image and no audio
+
+  Scenario: AI-estimated days cannot silently retrain TDEE
+    Given recent days include low-confidence AI-estimated intake
+    When calibration runs
+    Then each day's intake is weighted by its confidence
+    And near-guess days below 50% confidence are dropped from the calculation
+
+  Scenario: Reaching the daily AI cap degrades gracefully
+    Given I have reached the existing per-user daily AI cap
+    When I attempt an estimate
+    Then I am shown a clear daily-limit message
+    And I am offered manual entry
+    And the input I captured is not lost
+
+  Scenario: I can report an estimate as wrong
+    Given I am reviewing an AI estimate
+    When I tap "Report estimate as wrong"
+    Then a prefilled report opens containing the description and the numbers only
+    And it contains no account data

@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-24 (session 7: shipped **v6.6 bugfixes** — (1) meal **data integrity**: AI "Log all" no longer truncates the meal to a lossy string; it stores full **`elements[]`** (name+kcal+macros+`conf`) and the coach reads those, not the display string; (2) **confidence model "Separated"**: `EST. BUDGET · N%` on the budget only (50/65/80/92 by weigh-in tier), intake stays exact, quiet flag on guess-heavy days, coach never sees confidence. **DB migration applied** (`food_logs.elements`+`conf`). Tests **90/90**, sw v50. Earlier session 7: v6.5.1 PWA manifest fix + launch-hat persona. Next: more badge categories.) · *Prev session 6: v6.4 light mode + v6.5 celebration.* · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-25 (session 9 — **AI meal-capture pipeline BUILT (v6.7), not yet device-verified or committed.** Implemented in `app.jsx` + built: inline 🎤 **voice** (on-device Web Speech API, transcript-only, hides when unsupported/denied), 📷 **photo** (downscaled ≤1024px in memory, vision once, **never stored**, discarded on save), and a **confidence-gated follow-up** layer (≤2 skippable chips when kcal-weighted conf <80%, ranked by `kcal×(100−conf)`, deterministic offline refine). Also: per-meal **`source`** flag + **`followups`** persisted (no media ever); **`runCalibration`** now confidence-weights intake + drops <50% days so AI guesses can't retrain TDEE; **⚐ Report estimate as wrong** → prefilled mailto (Play GenAI policy). Coach + launch `# OPEN` blocks **decided & recorded** (DOCS §37 v6.7). Tests **100/100** (+10), sw **v50→v51**, scenarios folded into `features/fuel-log.feature` (`@wip`, device-verify pending); `ai-capture.feature` kept as design-rationale only. **No worker change** (forwards `messages` verbatim, model vision-capable). *Prev session 8: spec-only scoping of the same pipeline. Prev session 7: v6.6 data-integrity + Separated-confidence bugfixes (DB migration applied).* · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
@@ -21,7 +21,20 @@ Read this first. It never duplicates roadmap detail — it points to it.
   remount-on-unit-switch) with **contextual-zero** handling — blank when a measurement is unset, but a
   real 0 (12 st 0 lb / 5 ft 0 in) is shown. Tests **85/85**, sw `v37 → v41`, BDD scenarios verified,
   DOCS **v6.3**. The previously-held **v37 app-icon** commit went to `main` in the same merge.
-- **No blocking step.** Next build is the celebration redesign.
+- **AI capture (session 9, 2026-06-25 — BUILT v6.7, in working tree, NOT committed, NOT device-verified):**
+  voice + photo + confidence follow-ups + report-wrong + calibration safeguard all implemented and built
+  (`app.jsx` → `app.js`), sw v51, DOCS §37 v6.7, **tests 100/100**, scenarios in `fuel-log.feature` (`@wip`).
+  Both `# OPEN` persona blocks resolved (coach: threshold = `INTAKE_FLAG_BELOW` 80, impact-ranked top-2,
+  3-question bank; launch: reuse premium gate + worker cap, mailto report). **Automated checks green**
+  (babel build, `node --check`, dev server serves). **Pick up at device-verify + the two ⚠️ below.**
+- **⚠️ Ops blocker before launch (not code):** the worker's **`RATE_LIMIT` KV namespace is still unbound**,
+  so the daily AI cap is a **no-op** — and vision (photo) calls cost more than text. Bind it (worker →
+  Settings → Bindings → KV, var name `RATE_LIMIT`) + keep the Anthropic Console spend cap. (launch hat)
+- **⚠️ Spec deviation (intentional):** photo uses a file input with `capture="environment"` (robust PWA
+  path), so "camera denied → button unavailable" became "degrades to gallery / type / dictate"; the
+  Gherkin scenario was reworded to match reality.
+- **Badges still queued:** **more badge categories** (backlog) remains the next clean build after AI
+  capture is verified + committed.
 
 ## Next up (in order)
 
@@ -45,13 +58,19 @@ Read this first. It never duplicates roadmap detail — it points to it.
    guess-heavy days (<80%), coach never sees confidence. Tests **90/90**, sw v50, DOCS v6.6. **Open
    follow-up:** device-verify on `:8080` then flip the `@wip` on the two new Gherkin features (data
    integrity + confidence) in `features/fuel-log.feature`.
-3. **▶ Build: more badge categories** — the sole remaining product backlog feature (`DOCS §23`):
-   Protein King, Cut Champion, Bulk Mode, Balanced. Reuses the v6.5 tier + celebration engine, so it's
-   mostly metric calcs + data. **Natural next build (start here next session).**
-2. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
-3. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
+3. **◀ NOW — device-verify + commit AI capture (v6.7).** Built, not yet on a device or in git. On
+   `:8080` (premium account): dictate a meal (transcript appears, no audio sent) · photograph a plate ·
+   log a vague meal ("salad") to trigger ≤2 chips · answer vs **Skip** · confirm **⚐ Report estimate as
+   wrong** opens a prefilled email. Then **commit** the working tree (`app.jsx`/`app.js`/`sw.js`/`DOCS.md`/
+   `features/*`/`__tests__/*`). When green, flip `@wip` on the new *AI meal capture* feature in
+   `fuel-log.feature`. **Then bind the `RATE_LIMIT` KV** (ops ⚠️ above) before any real launch.
+4. **▶ Build: more badge categories** — backlog feature (`DOCS §23`): Protein King, Cut Champion, Bulk
+   Mode, Balanced. Reuses the v6.5 tier + celebration engine — mostly metric calcs + data. **The clean
+   build after AI capture is verified.**
+5. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
+6. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
    on your real account** — use a throwaway Google account.
-4. **Before Play submission:** narrow Art. 9 consent-wording review (`§7` tier 7g — downgradeable to a
+7. **Before Play submission:** narrow Art. 9 consent-wording review (`§7` tier 7g — downgradeable to a
    self-assessment + free ICO steer; Anthropic transfer mechanism already **resolved**, `§8`) **+**
    ICO fee & correspondence address (risk **R7**: get a PO box / virtual address *before* registering
    so your home address stays off the public register).
