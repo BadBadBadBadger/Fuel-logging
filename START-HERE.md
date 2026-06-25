@@ -1,11 +1,38 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-25 (session 9 — **AI meal-capture pipeline (v6.7) BUILT, MERGED to `main` + LIVE on Pages; device-tested, partially verified.** Inline 🎤 **voice** (on-device Web Speech API, transcript-only), 📷 **photo** (downscaled ≤1024px in memory, vision once, **never stored**), and an **optional confidence follow-up** layer (≤2 chips when kcal-weighted conf <80%, ranked by `kcal×(100−conf)`). Per-meal **`source`** + **`followups`** persisted (no media); **`runCalibration`** confidence-weights intake + drops <50% days; **⚐ Report-wrong** → mailto (Play GenAI). Coach + launch `# OPEN` blocks resolved (DOCS §37 v6.7). **Merged via `--no-ff` (rollback tag `pre-ai-capture-v67`); then 4 device-test fixes shipped: v52 confidence-fraction normaliser (`normConf` — vision returned 0.72 not 72), v53 cooking-fat chips reframed around added fat (egg-sensible), v54 dairy-aware copy (no "butter" for vegan/dairy-free), v55 follow-ups made OPTIONAL (removed the forced Skip tap — log buttons always visible).** Tests **103/103**, sw **v50→v55**. **No worker change, no Supabase migration** (`source`/`followups` are local-only). *Prev session 8: spec-only scoping. Prev session 7: v6.6 data-integrity + Separated-confidence (DB migration applied).* · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-06-25 (session 9 — **AI meal-capture pipeline (v6.7) BUILT, MERGED to `main` + LIVE on Pages; device-tested, partially verified.** Inline 🎤 **voice** (on-device Web Speech API, transcript-only), 📷 **photo** (downscaled ≤1024px in memory, vision once, **never stored**), and an **optional confidence follow-up** layer (≤2 chips when kcal-weighted conf <80%, ranked by `kcal×(100−conf)`). Per-meal **`source`** + **`followups`** persisted (no media); **`runCalibration`** confidence-weights intake + drops <50% days; **⚐ Report-wrong** → mailto (Play GenAI). Coach + launch `# OPEN` blocks resolved (DOCS §37 v6.7). **Merged via `--no-ff` (rollback tag `pre-ai-capture-v67`); then 4 device-test fixes shipped: v52 confidence-fraction normaliser (`normConf` — vision returned 0.72 not 72), v53 cooking-fat chips reframed around added fat (egg-sensible), v54 dairy-aware copy (no "butter" for vegan/dairy-free), v55 follow-ups made OPTIONAL (removed the forced Skip tap — log buttons always visible).** Tests **103/103**, sw **v50→v55**. **No worker change, no Supabase migration** (`source`/`followups` are local-only). **Then started a NUTRITION bug (targets): maintenance target shown BELOW BMR — diagnosed (adaptive `tdeeAdj` ≈ −582 with no BMR floor) and BMR-floor fix written, but it's PARKED on branch `targets-bmr-floor-wip` (pushed), NOT built/tested/shipped — see "⏸ PAUSED HERE" below.** *Prev session 8: spec-only scoping. Prev session 7: v6.6 data-integrity + Separated-confidence (DB migration applied).* · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
 
 ## Right now
+
+- **⏸ PAUSED HERE (session 9, end) — TARGETS BUG: maintenance below BMR.** A user in **Maintain** (98.5 kg,
+  172 cm, 30% BF → LBM 69, **BMR ≈ 1859**) was shown a **1650 kcal** target — *below resting metabolism,
+  physiologically impossible as maintenance*. **Root cause CONFIRMED** (user checked Profile): the **adaptive
+  `tdeeAdj` (≈ −582)** dragged it down and the only floor was the flat `SAFE_MIN` 1400, which sits below BMR.
+  The 51 g carbs were a **symptom** (carbs are the leftover, bottomed out on their 50 g min) — fixing kcal
+  restores them. **Fix written** (BMR floor: the adjustment can lower TDEE toward BMR but never below it;
+  intentional *cut* deficits below BMR still allowed): in `calcTargets`, the dashboard `effectiveTDEE`, and the
+  Profile/weigh-in TDEE displays (+ "Held at BMR" note). **⚠️ STATE: on branch `targets-bmr-floor-wip` (pushed),
+  `app.jsx` ONLY — NOT rebuilt to `app.js`, NOT tested, NOT merged.**
+- **⚠️ KEY FINDING — the `calcTargets` test mirror is STALE.** `__tests__/logic.test.js` mirrors an OLD
+  formula (activity multiplier **×1.375** + `training`/`sessKcal` bonus); the shipped app uses **flat ×1.2 +
+  `totalWorkoutKcal`**. So those unit tests validate a formula the app doesn't run — *that's why no test caught
+  maintenance < BMR*. **Next session MUST: (1) `git checkout targets-bmr-floor-wip`; (2) resync the mirror to
+  the real ×1.2 + BMR-floor formula and fix/replace the ~10 dependent tests; (3) add BMR-floor tests (the spec
+  the user handed over); (4) `npx babel app.jsx --out-file app.js`; (5) bump sw (v55→v56); (6) full Jest green;
+  (7) merge → push → deploy.**
+- **NEW IDEA (user, session 9 end) — smooth how workouts inflate targets/carbs.** Today workout kcals are
+  added to the *same day's* target ("earn to eat") via `totalWorkoutKcal`, so over-eating those earned kcals
+  erodes weight loss / recomp. User wants a **multi-day smoothed curve**: spread a logged workout's energy over
+  following days, tolerant of **rest-day clusters AND consecutive workout days**. This is a design + coach +
+  maths task, closely tied to the **activity-model review** below — treat them together. *Not started; captured
+  in `[[project_workout_smoothing_idea]]`.*
+- **Decisions locked this session:** BMR floor **now**; **carb floor** (spec scenario 5: clamp carbs to 2 g/kg,
+  reduce fat first) **deferred** to a follow-up; **activity-model review** (×1.2 vs activity-level vs
+  event-based, now + the workout-smoothing idea) **queued as its own coach session** — do not bundle into the
+  bug fix.
 
 - **Phase:** B — Compliance & data rights — is **LIVE and verified** (`main` @ Phase B, 2026-06-10;
   rollback point `8622d24`). Consent gate fires, consent recorded, existing data intact. Engineering
@@ -66,20 +93,32 @@ Read this first. It never duplicates roadmap detail — it points to it.
    guess-heavy days (<80%), coach never sees confidence. Tests **90/90**, sw v50, DOCS v6.6. **Open
    follow-up:** device-verify on `:8080` then flip the `@wip` on the two new Gherkin features (data
    integrity + confidence) in `features/fuel-log.feature`.
-3. **◀ NOW — finish device-verifying AI capture (v6.7), already LIVE on Pages.** Voice transcript + photo
+3. **◀ NOW — finish the TARGETS BMR-floor fix** (paused mid-work; see "⏸ PAUSED HERE" above). Steps:
+   `git checkout targets-bmr-floor-wip` → **resync the stale `calcTargets` test mirror** to the real ×1.2 +
+   BMR-floor formula (fix the ~10 dependent tests) → **add the BMR-floor tests** from the user's handed-over
+   Gherkin (maintain ≥ BMR; no deficit in maintain) → rebuild `app.js` → bump sw **v55→v56** → full Jest green
+   → merge → push → deploy → device-verify the user's own profile now shows maintain ≥ BMR. (Rollback tag for
+   the whole v6.7 line is still `pre-ai-capture-v67`.)
+4. **◀ THEN — finish device-verifying AI capture (v6.7), already LIVE on Pages.** Voice transcript + photo
    recognition **confirmed working** on device this session. **3 checks left** (on the live github.io site,
    premium account, **hard-reload first** to dodge the PWA cache): (a) the v55 **optional** follow-up flow
    feels right; (b) **⚐ Report-wrong** opens a prefilled email; (c) **+ Log all** lands in **today's food**.
    When green, **flip `@wip`** on the *AI meal capture* feature (and the two v6.6 features) in
    `fuel-log.feature`. **Then bind the `RATE_LIMIT` KV** (ops ⚠️ above) before any real launch.
    *Rollback if needed:* `git reset --hard pre-ai-capture-v67 && git push --force-with-lease origin main`.
-4. **▶ Build: more badge categories** — backlog feature (`DOCS §23`): Protein King, Cut Champion, Bulk
-   Mode, Balanced. Reuses the v6.5 tier + celebration engine — mostly metric calcs + data. **The clean
-   build after AI capture is verified.**
-5. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
-6. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
+5. **🗓️ Queued — activity-model review + workout→target smoothing (own coach session).** Revisit
+   `TDEE = BMR×1.2` (flat sedentary) vs an activity-level picker vs event-based; AND the user's idea to
+   **spread workout kcals across days as a smoothed curve** (tolerant of rest-day clusters / back-to-back
+   training) instead of inflating the same day's target. See [[project_workout_smoothing_idea]]. Coach + design + maths.
+6. **🗓️ Deferred — carb floor (spec scenario 5):** clamp carbs to 2 g/kg bodyweight on aggressive cuts,
+   reduce **fat** first (down to its 0.6 g/kg hormonal floor). Changes the macro split for all cutters —
+   do deliberately, after the BMR-floor fix lands.
+7. **▶ Build: more badge categories** — backlog feature (`DOCS §23`): Protein King, Cut Champion, Bulk
+   Mode, Balanced. Reuses the v6.5 tier + celebration engine — mostly metric calcs + data.
+8. **Optional, deferred:** Cloudflare cron trigger (`LEGAL_ROADMAP §13` step 4 — nothing depends on it).
+9. **Optional, safe:** test **"Download my data"** (`§13` step 6). ⚠️ **Never test "Delete my account"
    on your real account** — use a throwaway Google account.
-7. **Before Play submission:** narrow Art. 9 consent-wording review (`§7` tier 7g — downgradeable to a
+10. **Before Play submission:** narrow Art. 9 consent-wording review (`§7` tier 7g — downgradeable to a
    self-assessment + free ICO steer; Anthropic transfer mechanism already **resolved**, `§8`) **+**
    ICO fee & correspondence address (risk **R7**: get a PO box / virtual address *before* registering
    so your home address stays off the public register).
