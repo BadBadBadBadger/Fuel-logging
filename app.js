@@ -6725,6 +6725,22 @@ var normConf = function normConf(c) {
 // intakeConfidence already calls "guess-heavy". No new magic number.
 var FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
 
+// Butter only makes sense if dairy is on the user's menu. Vegan / dairy-free
+// diets — or a milk/dairy allergen — switch the cooking-fat prompt to oil only.
+var dairyAvoided = function dairyAvoided() {
+  var diets = (DIETARY.diets || []).map(function (d) {
+    return d.toLowerCase();
+  });
+  var allg = (DIETARY.allergens || []).map(function (a) {
+    return a.toLowerCase();
+  });
+  return diets.some(function (d) {
+    return /vegan|dairy[\s-]?free/.test(d);
+  }) || allg.some(function (a) {
+    return /milk|dairy/.test(a);
+  });
+};
+
 // The model tags each low-confidence element with an `ask` reason code; we map
 // it to a question + chips here. fat/portion refine deterministically offline
 // (no extra AI call); version re-estimates the element by name (macros genuinely
@@ -6736,7 +6752,7 @@ var FOLLOWUP_BANK = {
   fat: {
     mode: "fat",
     q: function q(f) {
-      return "Any oil or butter on the ".concat(f, "?");
+      return "Any oil".concat(dairyAvoided() ? "" : " or butter", " on the ").concat(f, "?");
     },
     chips: [{
       label: "None / dry (boiled, poached, grilled)",

@@ -2696,6 +2696,15 @@ const normConf = c => {
 // intakeConfidence already calls "guess-heavy". No new magic number.
 const FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
 
+// Butter only makes sense if dairy is on the user's menu. Vegan / dairy-free
+// diets — or a milk/dairy allergen — switch the cooking-fat prompt to oil only.
+const dairyAvoided = () => {
+  const diets = (DIETARY.diets || []).map(d => d.toLowerCase());
+  const allg  = (DIETARY.allergens || []).map(a => a.toLowerCase());
+  return diets.some(d => /vegan|dairy[\s-]?free/.test(d))
+      || allg.some(a => /milk|dairy/.test(a));
+};
+
 // The model tags each low-confidence element with an `ask` reason code; we map
 // it to a question + chips here. fat/portion refine deterministically offline
 // (no extra AI call); version re-estimates the element by name (macros genuinely
@@ -2704,7 +2713,7 @@ const FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
 const FOLLOWUP_BANK = {
   // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
   // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
-  fat: { mode:"fat", q: f => `Any oil or butter on the ${f}?`, chips: [
+  fat: { mode:"fat", q: f => `Any oil${dairyAvoided() ? "" : " or butter"} on the ${f}?`, chips: [
     { label:"None / dry (boiled, poached, grilled)", factor:0.9, conf:85 },
     { label:"A little",            factor:1.0, conf:85 },
     { label:"Fried / generous",    factor:1.3, conf:82 },
