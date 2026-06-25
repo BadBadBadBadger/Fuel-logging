@@ -7405,24 +7405,6 @@ function AILog(_ref73) {
       });
     }
   };
-  var skipFollowups = function skipFollowups() {
-    var log = pendingFollowups.map(function (fu) {
-      return {
-        q: FOLLOWUP_BANK[fu.ask].q(items[fu.idx] ? items[fu.idx].name : fu.name),
-        a: "Skipped"
-      };
-    });
-    var done = {};
-    pendingFollowups.forEach(function (fu) {
-      done[fu.idx] = true;
-    });
-    setFuLog(function (prev) {
-      return [].concat(_toConsumableArray(prev), _toConsumableArray(log));
-    });
-    setFuDone(function (prev) {
-      return _objectSpread(_objectSpread({}, prev), done);
-    });
-  };
   var reestimate = /*#__PURE__*/function () {
     var _ref76 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(idx, newName) {
       var updated, oft, u, _final, _t34;
@@ -7743,14 +7725,14 @@ function AILog(_ref73) {
       fontWeight: 800,
       marginBottom: 4
     }
-  }, "QUICK CHECK"), /*#__PURE__*/React.createElement("div", {
+  }, "QUICK CHECK \xB7 OPTIONAL"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--text-lo-2)",
       marginBottom: 12,
       lineHeight: 1.5
     }
-  }, "A couple of taps sharpen this estimate \u2014 or skip and log as-is."), pendingFollowups.map(function (fu) {
+  }, "A couple of taps sharpen the estimate \u2014 or just log it below."), pendingFollowups.map(function (fu) {
     var bank = FOLLOWUP_BANK[fu.ask];
     var food = items[fu.idx] ? items[fu.idx].name : fu.name;
     return /*#__PURE__*/React.createElement("div", {
@@ -7789,20 +7771,7 @@ function AILog(_ref73) {
         }
       }, chip.label);
     })));
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: skipFollowups,
-    style: {
-      marginTop: 2,
-      padding: "8px 0",
-      background: "none",
-      border: "none",
-      color: "var(--text-lo-2)",
-      fontSize: 12,
-      fontWeight: 700,
-      cursor: "pointer",
-      textDecoration: "underline"
-    }
-  }, "Skip \u2014 log at lower confidence")), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(aA("33")),
@@ -7840,7 +7809,7 @@ function AILog(_ref73) {
     label: "FAT",
     value: Math.round(totals.fat) + "g",
     color: "var(--bulk)"
-  }))), pendingFollowups.length === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }))), /*#__PURE__*/React.createElement("button", {
     onClick: logAll,
     style: {
       width: "100%",
@@ -7912,7 +7881,7 @@ function AILog(_ref73) {
       cursor: "pointer",
       textDecoration: "underline"
     }
-  }, "\u2690 Report estimate as wrong"))));
+  }, "\u2690 Report estimate as wrong")));
 }
 
 // ── Quick Add ─────────────────────────────────────────────────

@@ -3011,14 +3011,6 @@ function AILog({ onAdd, onBack }) {
         i === fu.idx ? refineElement(it, bank.mode, chip.factor, chip.conf) : it));
     }
   };
-  const skipFollowups = () => {
-    const log = pendingFollowups.map(fu => ({
-      q: FOLLOWUP_BANK[fu.ask].q(items[fu.idx] ? items[fu.idx].name : fu.name), a: "Skipped" }));
-    const done = {}; pendingFollowups.forEach(fu => { done[fu.idx] = true; });
-    setFuLog(prev => [...prev, ...log]);
-    setFuDone(prev => ({ ...prev, ...done }));
-  };
-
   const reestimate = async (idx, newName) => {
     setReestIdx(idx);
     try {
@@ -3170,17 +3162,17 @@ function AILog({ onAdd, onBack }) {
               onReestimate={newName => reestimate(i, newName)}/>
           ))}
 
-          {/* Confidence-gated follow-ups — at most 2, each a chip tap, always skippable.
-              Until answered or skipped, the log buttons stay hidden so the meal can't
-              be saved before the quick clarification. */}
+          {/* Confidence-gated follow-ups — at most 2, each a chip tap. OPTIONAL:
+              the log buttons below are always available; answering just sharpens
+              the estimate. No skip step — not answering simply logs as-is. */}
           {pendingFollowups.length > 0 && (
             <div style={{ background:CARD, border:`1px solid ${aA("44")}`, borderRadius:14,
               padding:"14px 16px", marginBottom:16 }}>
               <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
-                QUICK CHECK
+                QUICK CHECK · OPTIONAL
               </div>
               <div style={{ fontSize:11, color:"var(--text-lo-2)", marginBottom:12, lineHeight:1.5 }}>
-                A couple of taps sharpen this estimate — or skip and log as-is.
+                A couple of taps sharpen the estimate — or just log it below.
               </div>
               {pendingFollowups.map(fu => {
                 const bank = FOLLOWUP_BANK[fu.ask];
@@ -3203,12 +3195,6 @@ function AILog({ onAdd, onBack }) {
                   </div>
                 );
               })}
-              <button onClick={skipFollowups}
-                style={{ marginTop:2, padding:"8px 0", background:"none", border:"none",
-                  color:"var(--text-lo-2)", fontSize:12, fontWeight:700, cursor:"pointer",
-                  textDecoration:"underline" }}>
-                Skip — log at lower confidence
-              </button>
             </div>
           )}
 
@@ -3226,8 +3212,7 @@ function AILog({ onAdd, onBack }) {
             </div>
           </div>
 
-          {/* Actions — only once any follow-ups are resolved */}
-          {pendingFollowups.length === 0 && (<>
+          {/* Actions — always available; the follow-ups above are optional */}
           <button onClick={logAll}
             style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
               border:"none", borderRadius:12, fontSize:14, fontWeight:900,
@@ -3266,7 +3251,6 @@ function AILog({ onAdd, onBack }) {
               cursor:"pointer", textDecoration:"underline" }}>
             ⚐ Report estimate as wrong
           </button>
-          </>)}
         </div>
       )}
     </div>

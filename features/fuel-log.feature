@@ -1169,10 +1169,10 @@ Feature: AI meal capture via text, voice, or photo
     Then I can still pick an existing image, or type or dictate the meal
     And the rest of the logging flow is unaffected
 
-  Scenario: A low-confidence estimate asks at most two skippable chip questions
+  Scenario: A low-confidence estimate asks at most two optional chip questions
     When the meal's kcal-weighted confidence is below 80%
     Then I am asked no more than 2 follow-up questions, each answered by a chip
-    And a Skip option is always available
+    And the questions are optional — the log buttons are available without answering
     And the questions target the highest-impact unknowns first
 
   Scenario: Answering a follow-up refines the estimate without lowering confidence
@@ -1181,11 +1181,11 @@ Feature: AI meal capture via text, voice, or photo
     Then that element's estimate is refined
     And its confidence is at or above its previous level
 
-  Scenario: Skipping follow-ups logs the meal at its lower confidence
+  Scenario: Follow-ups are optional — I can log without answering
     Given follow-up questions are shown
-    When I tap Skip
-    Then the estimate is kept at its current, lower confidence
-    And I can save the meal
+    Then the log buttons are available alongside the questions
+    When I log the meal without answering them
+    Then it is saved at its current, lower confidence
 
   Scenario: The saved record carries numbers and answers, not media
     When I save an AI-estimated meal
