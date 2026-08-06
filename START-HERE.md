@@ -17,21 +17,28 @@ Read this first. It never duplicates roadmap detail — it points to it.
 **`energy-safety-bmr-floor`** (checked out). Parked `targets-bmr-floor-wip` **deleted**. Rollback tag
 `pre-bmr-floor` (pre-fix `main`).
 
-- **✅ DEPLOYED — Energy-safety piece 1 of 5: the BMR × 1.2 maintenance floor** (part of feature 04).
-  Maintenance floored at **BMR × 1.2, maintain-only** — a deliberate cut may still sit below it, backstopped
-  by SAFE_MIN. `calcTargets` floor + `bmrFloorApplied`; effective TDEE floored in Profile/weigh-in/dashboard;
-  *"Held at your minimum maintenance"* note + dashboard banner; custom-target warning baseline floored. Stale
-  `calcTargets` test mirror resynced (it tested a ×1.375 formula the app never ran) + BMR-floor tests →
-  **Jest 107/107**; `fuel-log.feature` flat guard reframed as a backstop + new maintenance-floor Feature.
-  **sw v56.** Verified: 1631 → 2231. See [[project_targets_bmr_floor]].
+- **✅ DEPLOYED — the BMR × 1.2 maintenance floor ONLY** (this is feature **04**'s fix (a), *not* file 01).
+  **⚠️ Read this before assuming 01 is done:** what's live is a single sub-floor — maintenance can't drop below
+  sedentary TDEE (BMR × 1.2). The **energy-availability floor (30 kcal/kg FFM) and its warning bands — the
+  substance of file 01 — are NOT built** (the app has zero EA logic; only a `calcTargets` comment marks it
+  "later", [app.jsx:319](app.jsx#L319)). The BMR × 1.2 floor happens to also be *one row* (`maint_floor`) of
+  01's "strictest floor wins" table, which is why it can look like 01 landed — it didn't.
+  - Changelist: `calcTargets` floor + `bmrFloorApplied`; effective TDEE floored in Profile/weigh-in/dashboard;
+    *"Held at your minimum maintenance"* note + dashboard banner; custom-target warning baseline floored. Stale
+    `calcTargets` test mirror resynced (it tested a ×1.375 formula the app never ran) + BMR-floor tests →
+    **Jest 107/107**; `fuel-log.feature` flat guard reframed as a backstop + new maintenance-floor Feature.
+    **sw v56.** Verified: 1631 → 2231. See [[project_targets_bmr_floor]].
 
 - **◀ NEXT — build + deploy the remaining energy-safety features** (`features/energy-safety/`, all `@draft`),
   on the branch, merging + deploying as each lands. **Device-testing is BATCHED** — the user will test every
   feature file in one pass later, so DON'T stop for a per-feature on-device check; just keep Jest green,
   merge, deploy. **4½ features left to deploy:**
-  - **01 — Energy-availability floor** (30 kcal/kg FFM; target 45) that *replaces* the flat SAFE_MIN for every
-    mode, + warning bands: green ≥45 · amber "Low fuel" chip+sheet 30–45 · red "Held at safe minimum" <30.
-    Strictest floor wins (`max()`). *(The BMR × 1.2 maintain floor above is the first slice of the same model.)*
+  - **01 — Energy-availability floor — NOT STARTED** (the natural next build): `EA = (intake − training burn) ÷
+    FFM`, hard floor **30** / target **45 kcal/kg FFM**; **scales with body size and replaces the flat SAFE_MIN**
+    as the real floor (a large user's floor lands well above 1,400), + warning bands: green ≥45 · amber "Low
+    fuel" chip+sheet 30–45 · red "Held at safe minimum" <30, + missing-body-fat fallback to SAFE_MIN + prompt.
+    Strictest floor wins: `max(EA floor, maintain-only BMR×1.2, SAFE_MIN-when-bodyfat-unset)`. The live BMR×1.2
+    floor is only the `maint_floor` row of this stack — the EA mechanism + bands are all still to build.
   - **02 — cut-cycling:** time-boxed blocks (soft 8 wk / hard 12 wk / 5 %-loss triggers; leaner → earlier);
     cumulative-cut escalation. **02 is yours to proofread.**
   - **03 — diet break** as a first-class mode (2 wk at true maintenance, ratchet paused).
