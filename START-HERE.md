@@ -1,28 +1,74 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-06-25 (session 9 — **AI meal-capture pipeline (v6.7) BUILT, MERGED to `main` + LIVE on Pages; device-tested, partially verified.** Inline 🎤 **voice** (on-device Web Speech API, transcript-only), 📷 **photo** (downscaled ≤1024px in memory, vision once, **never stored**), and an **optional confidence follow-up** layer (≤2 chips when kcal-weighted conf <80%, ranked by `kcal×(100−conf)`). Per-meal **`source`** + **`followups`** persisted (no media); **`runCalibration`** confidence-weights intake + drops <50% days; **⚐ Report-wrong** → mailto (Play GenAI). Coach + launch `# OPEN` blocks resolved (DOCS §37 v6.7). **Merged via `--no-ff` (rollback tag `pre-ai-capture-v67`); then 4 device-test fixes shipped: v52 confidence-fraction normaliser (`normConf` — vision returned 0.72 not 72), v53 cooking-fat chips reframed around added fat (egg-sensible), v54 dairy-aware copy (no "butter" for vegan/dairy-free), v55 follow-ups made OPTIONAL (removed the forced Skip tap — log buttons always visible).** Tests **103/103**, sw **v50→v55**. **No worker change, no Supabase migration** (`source`/`followups` are local-only). **Then started a NUTRITION bug (targets): maintenance target shown BELOW BMR — diagnosed (adaptive `tdeeAdj` ≈ −582 with no BMR floor) and BMR-floor fix written, but it's PARKED on branch `targets-bmr-floor-wip` (pushed), NOT built/tested/shipped — see "⏸ PAUSED HERE" below.** *Prev session 8: spec-only scoping. Prev session 7: v6.6 data-integrity + Separated-confidence (DB migration applied).* · **One screen: where we are, what's next, which doc for what.**
+**Updated:** 2026-08-06 (session 11 — **TARGETS BMR-FLOOR FIX built + tested; NOT yet committed / merged / deployed / device-verified.** The adaptive-TDEE ratchet could drive a *Maintain* target below resting metabolism (founder's harm report: ~1,650 shown against an ~1,859 BMR). Maintenance is now floored at **sedentary TDEE (BMR × 1.2), maintain-only** — a deliberate cut may still sit below it, backstopped by SAFE_MIN. Corrected the two errors in the parked `targets-bmr-floor-wip` branch (it floored at *raw BMR*, all-mode) → that branch is **SUPERSEDED**. Displayed effective TDEE floored to match (Profile + weigh-in), a *"Held at your minimum maintenance"* note + dashboard banner, and the custom-target deficit-warning baseline floored too. **Resynced the STALE `calcTargets` test mirror** (it mirrored a ×1.375 + training-bonus formula the app never ran — why no test caught the bug) + added a BMR-floor test block → **Jest 107/107**, `app.js` rebuilt, **sw v55→v56**. Feature files cleaned: `Safe minimum calorie guard` reframed as a *backstop* (kept — still valid), new `Feature: Maintenance is never floored below sedentary TDEE`. *Prev session 10: energy-safety specs drafted (still @draft). Session 9 — **AI meal-capture pipeline (v6.7) BUILT, MERGED to `main` + LIVE on Pages; device-tested, partially verified.*** Inline 🎤 **voice** (on-device Web Speech API, transcript-only), 📷 **photo** (downscaled ≤1024px in memory, vision once, **never stored**), and an **optional confidence follow-up** layer (≤2 chips when kcal-weighted conf <80%, ranked by `kcal×(100−conf)`). Per-meal **`source`** + **`followups`** persisted (no media); **`runCalibration`** confidence-weights intake + drops <50% days; **⚐ Report-wrong** → mailto (Play GenAI). Coach + launch `# OPEN` blocks resolved (DOCS §37 v6.7). **Merged via `--no-ff` (rollback tag `pre-ai-capture-v67`); then 4 device-test fixes shipped: v52 confidence-fraction normaliser (`normConf` — vision returned 0.72 not 72), v53 cooking-fat chips reframed around added fat (egg-sensible), v54 dairy-aware copy (no "butter" for vegan/dairy-free), v55 follow-ups made OPTIONAL (removed the forced Skip tap — log buttons always visible).** Tests **103/103**, sw **v50→v55**. **No worker change, no Supabase migration** (`source`/`followups` are local-only). *(The targets/maintenance-below-BMR bug diagnosed at the end of session 9 is the fix now completed in session 11 — see the lead above and the NOW bullet.)* *Prev session 8: spec-only scoping. Prev session 7: v6.6 data-integrity + Separated-confidence (DB migration applied).* · **One screen: where we are, what's next, which doc for what.**
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
 
 ## Right now
 
-- **⏸ PAUSED HERE (session 9, end) — TARGETS BUG: maintenance below BMR.** A user in **Maintain** (98.5 kg,
-  172 cm, 30% BF → LBM 69, **BMR ≈ 1859**) was shown a **1650 kcal** target — *below resting metabolism,
-  physiologically impossible as maintenance*. **Root cause CONFIRMED** (user checked Profile): the **adaptive
-  `tdeeAdj` (≈ −582)** dragged it down and the only floor was the flat `SAFE_MIN` 1400, which sits below BMR.
-  The 51 g carbs were a **symptom** (carbs are the leftover, bottomed out on their 50 g min) — fixing kcal
-  restores them. **Fix written** (BMR floor: the adjustment can lower TDEE toward BMR but never below it;
-  intentional *cut* deficits below BMR still allowed): in `calcTargets`, the dashboard `effectiveTDEE`, and the
-  Profile/weigh-in TDEE displays (+ "Held at BMR" note). **⚠️ STATE: on branch `targets-bmr-floor-wip` (pushed),
-  `app.jsx` ONLY — NOT rebuilt to `app.js`, NOT tested, NOT merged.**
-- **⚠️ KEY FINDING — the `calcTargets` test mirror is STALE.** `__tests__/logic.test.js` mirrors an OLD
-  formula (activity multiplier **×1.375** + `training`/`sessKcal` bonus); the shipped app uses **flat ×1.2 +
-  `totalWorkoutKcal`**. So those unit tests validate a formula the app doesn't run — *that's why no test caught
-  maintenance < BMR*. **Next session MUST: (1) `git checkout targets-bmr-floor-wip`; (2) resync the mirror to
-  the real ×1.2 + BMR-floor formula and fix/replace the ~10 dependent tests; (3) add BMR-floor tests (the spec
-  the user handed over); (4) `npx babel app.jsx --out-file app.js`; (5) bump sw (v55→v56); (6) full Jest green;
-  (7) merge → push → deploy.**
+- **◀ NOW (session 11, 2026-08-06) — TARGETS BMR-FLOOR FIX built + tested in the working tree on `main`;
+  NOT committed, merged, deployed or device-verified.** Root cause fixed: maintenance floored at **sedentary
+  TDEE (BMR × 1.2), maintain-only**. Verified numerically (harm profile 98.5 kg / 30 %: maintain **1631 → 2231**,
+  now above the 1859 BMR).
+  - **Changed (ALL uncommitted, `main` working tree):**
+    - `app.jsx` — `calcTargets` maintain-only floor + `bmrFloorApplied`; `effectiveTDEE`, Profile `adjTDEE` &
+      weigh-in "est. TDEE" floored to match; *"Held at your minimum maintenance"* Profile note + dashboard 🛡️
+      banner; custom-target deficit-warning baseline floored ([app.jsx:2273](app.jsx#L2273)).
+    - `app.js` rebuilt via Babel · **sw v55 → v56**.
+    - `__tests__/logic.test.js` — **stale mirror resynced** to the real ×1.2 / `totalWorkoutKcal` /
+      `computeMacros` / SAFE_MIN formula; dead `ACTIVITY` table + 5 stale tests removed; **new
+      `calcTargets — maintenance BMR×1.2 floor` block** added → **Jest 107/107**.
+    - `features/fuel-log.feature` — `Safe minimum calorie guard` reframed as a *last-resort backstop* (kept —
+      still valid in code), new `Feature: Maintenance is never floored below sedentary TDEE (BMR × 1.2)`.
+  - **⚠️ Branch `targets-bmr-floor-wip` is SUPERSEDED** — its app.jsx-only WIP floored at *raw BMR*, all-mode
+    (undershoot). **Do NOT merge it;** this working-tree version is the correct one.
+  - **Design decisions locked here:** floor is **maintain-only** (a cut is a chosen deficit, still
+    SAFE_MIN-backstopped); the *displayed* effective TDEE is floored too, so negative `tdeeAdj` is now
+    **upward-only for maintenance** (safe direction, intended); SAFE_MIN scenarios kept as a backstop, not
+    deleted; feature cleanup scoped to the targets/safety area — a full `fuel-log.feature` audit is a separate
+    QA pass.
+  - **NEXT:** (1) **branch** (e.g. `energy-safety-bmr-floor`) + **commit the fix files only** — the working tree
+    also carries UNRELATED pre-existing edits (`cloudflare-worker.js`, `.claude/settings.local.json`, this
+    `START-HERE.md`, untracked `features/energy-safety/` drafts); don't sweep them into the fix commit.
+    (2) merge → deploy → **device-verify the 3 UI surfaces** (Profile note, dashboard banner, floored est. TDEE
+    — logic is test-covered, the rendered copy isn't). (3) then resume the energy-safety review below. See
+    [[project_targets_bmr_floor]].
+
+- **⏳ (session 10, 2026-08-06) — ENERGY-SAFETY workstream DRAFTED (feature files only; the maintenance-floor
+  piece is now BUILT ↑, the other four tracks are still `@draft`).** Triggered by a real harm report: the founder ran a Jan–Jun deficit and tested
+  *seriously low testosterone*. Traced to the app's design — the adaptive-TDEE **"ratchet"** drives calories
+  *down* when a stalling dieter's weight ticks up (reads water/glycogen/muscle as a lower metabolism), with no
+  BMR floor. Five review-ready Gherkin files now live in **`features/energy-safety/`** (all `@draft`):
+  01 EA floor · 02 cut-cycling blocks · 03 diet break · 04 adaptive-TDEE guardrails · 05 LEA symptom check.
+  - **FLOOR MODEL DECIDED:** the **energy-availability floor (30 kcal/kg FFM, target 45) governs EVERY mode**;
+    **maintenance floored at BMR × 1.2** (sedentary TDEE), *not* raw BMR; raw BMR is only a label for lean
+    cutters; **strictest floor wins** (`max()`).
+  - **RATCHET FIX:** weight *gain during a deficit* must NOT ratchet targets down (flag / offer a diet break
+    instead); accumulated `tdeeAdj` can never push maintenance below BMR × 1.2.
+  - **ALSO SPEC'D:** cut-cycling (soft 8wk / hard 12wk / 5%-loss break triggers), a 2-week **diet break** as a
+    first-class state, and a **sex-neutral** LEA symptom check → *"see a healthcare professional"* (not "GP").
+    All evidence-cited (RED-S, MATADOR/Byrne 2018, Loucks, Garthe, Fagerberg…).
+  - **GHERKIN CONVENTION SET (applies to ALL future feature work):** a **NUMBERS CONTRACT** header separating
+    *derived worked-examples (never hardcode)* from *named policy constants*; **Scenario Outlines with
+    contrasting rows**; exact numbers owned by `__tests__/logic.test.js`; steps assert observable
+    outcomes/relationships, never intent, tone or internal code paths.
+  - **✅ RESOLVED in session 11 (three of the pre-build reconcile items):** the parked branch's raw-BMR
+    undershoot (→ superseded, done right at BMR × 1.2 maintain-only), the stale `calcTargets` test mirror
+    (→ resynced), and the live `fuel-log.feature` flat-floor framing (→ reframed as a backstop; the flat-floor
+    scenarios stay because SAFE_MIN still runs). The maintenance-floor + BMR × 1.2 model is now the built
+    reference for the rest of the workstream.
+  - **⚠️ Still to reconcile before building the REST:** the full **EA floor** (30 kcal/kg FFM) that will
+    eventually *replace* the flat SAFE_MIN is still `@draft` (`features/energy-safety/01`); the ratchet
+    *asymmetry* fix (gain-during-deficit must not cut down), cut-cycling, diet-break state and the LEA check
+    (files 02–05) are unbuilt.
+  - **02 is the user's to proofread.** The other four tracks are spec-only, awaiting review. See
+    [[project_energy_safety_workstream]].
+
+- **✅ RESOLVED (session 11) — the session-9 "maintenance below BMR" bug is fixed** (98.5 kg / 30 % BF, BMR
+  ≈ 1859: was **1650**, now **2231**). Fix + stale-mirror resync + tests + feature-file cleanup all done in the
+  `main` working tree — see the session-11 NOW bullet above for the full changelist and the commit/verify
+  hand-off. The parked `targets-bmr-floor-wip` branch is superseded (do not merge).
 - **NEW IDEA (user, session 9 end) — smooth how workouts inflate targets/carbs.** Today workout kcals are
   added to the *same day's* target ("earn to eat") via `totalWorkoutKcal`, so over-eating those earned kcals
   erodes weight loss / recomp. User wants a **multi-day smoothed curve**: spread a logged workout's energy over
@@ -93,12 +139,12 @@ Read this first. It never duplicates roadmap detail — it points to it.
    guess-heavy days (<80%), coach never sees confidence. Tests **90/90**, sw v50, DOCS v6.6. **Open
    follow-up:** device-verify on `:8080` then flip the `@wip` on the two new Gherkin features (data
    integrity + confidence) in `features/fuel-log.feature`.
-3. **◀ NOW — finish the TARGETS BMR-floor fix** (paused mid-work; see "⏸ PAUSED HERE" above). Steps:
-   `git checkout targets-bmr-floor-wip` → **resync the stale `calcTargets` test mirror** to the real ×1.2 +
-   BMR-floor formula (fix the ~10 dependent tests) → **add the BMR-floor tests** from the user's handed-over
-   Gherkin (maintain ≥ BMR; no deficit in maintain) → rebuild `app.js` → bump sw **v55→v56** → full Jest green
-   → merge → push → deploy → device-verify the user's own profile now shows maintain ≥ BMR. (Rollback tag for
-   the whole v6.7 line is still `pre-ai-capture-v67`.)
+3. **✅ DONE (build + tests) — TARGETS BMR-floor fix.** Maintenance floored at BMR × 1.2 (maintain-only),
+   displays + notes + custom-warning baseline aligned, stale mirror resynced, BMR-floor tests added, `app.js`
+   rebuilt, **sw v55→v56**, **Jest 107/107**. **◀ REMAINING: commit (branch off `main`, fix files only) →
+   merge → deploy → device-verify** the 3 UI surfaces (Profile "Held at your minimum maintenance" note,
+   dashboard banner, floored est. TDEE). Parked branch `targets-bmr-floor-wip` SUPERSEDED. Rollback tag for the
+   v6.7 line is still `pre-ai-capture-v67`. Full changelist: session-11 NOW bullet.
 4. **◀ THEN — finish device-verifying AI capture (v6.7), already LIVE on Pages.** Voice transcript + photo
    recognition **confirmed working** on device this session. **3 checks left** (on the live github.io site,
    premium account, **hard-reload first** to dodge the PWA cache): (a) the v55 **optional** follow-up flow
