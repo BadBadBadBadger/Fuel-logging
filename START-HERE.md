@@ -1,10 +1,11 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-06 (session 11). **Harm-fix landed:** the adaptive-TDEE "ratchet" could show a
-*Maintain* target below resting metabolism (founder's harm report: ~1,650 vs an ~1,859 BMR). Maintenance
-is now floored at **sedentary TDEE (BMR × 1.2)** — committed on branch `energy-safety-bmr-floor`, not yet
-merged / deployed / device-verified. **Next focus (user's call): finish building out the rest of the
-ENERGY-SAFETY workstream *before* device-testing the AI photo→log feature.**
+**Updated:** 2026-08-06 (session 11). **Harm-fix DEPLOYED + LIVE:** the adaptive-TDEE "ratchet" could show a
+*Maintain* target below resting metabolism (founder's harm report: ~1,650 vs an ~1,859 BMR). Maintenance is
+now floored at **sedentary TDEE (BMR × 1.2)** — merged to `main` @ `88a283a`, **live on Pages (sw v56,
+verified)**; rollback tag `pre-bmr-floor`. **Strategy (user's call): keep building + deploying the remaining
+ENERGY-SAFETY features on the `energy-safety-bmr-floor` branch; device-test ALL feature files together in one
+pass later** (no per-feature device check). AI photo→log verify stays deferred until after.
 
 Read this first. It never duplicates roadmap detail — it points to it.
 
@@ -12,44 +13,38 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 ## Right now
 
-**Git:** work is on branch **`energy-safety-bmr-floor`** (4 commits, off `main`); `main` is clean. Parked
-`targets-bmr-floor-wip` **deleted** (local + remote — it floored at raw BMR, superseded).
+**Git:** `main` @ `88a283a` = the harm-fix, **live on Pages**. Ongoing energy-safety work continues on branch
+**`energy-safety-bmr-floor`** (checked out). Parked `targets-bmr-floor-wip` **deleted**. Rollback tag
+`pre-bmr-floor` (pre-fix `main`).
 
-- **✅ DONE — TARGETS BMR-floor fix (committed; NOT merged / deployed / device-verified).**
+- **✅ DEPLOYED — Energy-safety piece 1 of 5: the BMR × 1.2 maintenance floor** (part of feature 04).
   Maintenance floored at **BMR × 1.2, maintain-only** — a deliberate cut may still sit below it, backstopped
-  by SAFE_MIN. Verified numerically (98.5 kg / 30 % BF: maintain **1631 → 2231**, now above the 1859 BMR).
-  - `app.jsx` — `calcTargets` floor + `bmrFloorApplied`; effective TDEE floored in Profile, weigh-in &
-    dashboard; *"Held at your minimum maintenance"* note + dashboard banner; custom-target deficit-warning
-    baseline floored. `app.js` rebuilt · **sw v55 → v56**.
-  - `__tests__/logic.test.js` — **stale `calcTargets` mirror resynced** (it had tested a ×1.375 +
-    training-bonus formula the app never ran — *that's why no test caught the bug*) + new BMR-floor block →
-    **Jest 107/107**.
-  - `features/fuel-log.feature` — flat `Safe minimum guard` reframed as a *last-resort backstop* (kept; still
-    valid), new `Feature: Maintenance is never floored below sedentary TDEE`.
-  - **Remaining:** merge → deploy → **device-verify 3 UI surfaces** (Profile note, dashboard banner, floored
-    est. TDEE — logic is test-covered, rendered copy isn't). ⚠️ **This is a harm-fix** — worth deciding whether
-    to ship it *ahead of* the fuller workstream rather than sit on it. See [[project_targets_bmr_floor]].
-  - *Also on this branch:* 5 `@draft` energy-safety specs (session 10), a Supabase keep-alive worker ping
-    (committed, not deployed), this doc.
+  by SAFE_MIN. `calcTargets` floor + `bmrFloorApplied`; effective TDEE floored in Profile/weigh-in/dashboard;
+  *"Held at your minimum maintenance"* note + dashboard banner; custom-target warning baseline floored. Stale
+  `calcTargets` test mirror resynced (it tested a ×1.375 formula the app never ran) + BMR-floor tests →
+  **Jest 107/107**; `fuel-log.feature` flat guard reframed as a backstop + new maintenance-floor Feature.
+  **sw v56.** Verified: 1631 → 2231. See [[project_targets_bmr_floor]].
 
-- **◀ NEXT (user's priority) — BUILD OUT the rest of the ENERGY-SAFETY workstream** (`features/energy-safety/`,
-  all `@draft`) *before* the AI photo→log device-test. The maintenance floor (part of file 04) is the first
-  piece done; **four tracks remain:**
+- **◀ NEXT — build + deploy the remaining energy-safety features** (`features/energy-safety/`, all `@draft`),
+  on the branch, merging + deploying as each lands. **Device-testing is BATCHED** — the user will test every
+  feature file in one pass later, so DON'T stop for a per-feature on-device check; just keep Jest green,
+  merge, deploy. **4½ features left to deploy:**
   - **01 — Energy-availability floor** (30 kcal/kg FFM; target 45) that *replaces* the flat SAFE_MIN for every
     mode, + warning bands: green ≥45 · amber "Low fuel" chip+sheet 30–45 · red "Held at safe minimum" <30.
-    Strictest floor wins (`max()`).
-  - **04 (rest) — ratchet asymmetry:** weight *gain during a deficit* must NOT ratchet targets down — flag +
-    offer a diet break; recomp / muscle-gain not misread as a lower metabolism.
+    Strictest floor wins (`max()`). *(The BMR × 1.2 maintain floor above is the first slice of the same model.)*
   - **02 — cut-cycling:** time-boxed blocks (soft 8 wk / hard 12 wk / 5 %-loss triggers; leaner → earlier);
     cumulative-cut escalation. **02 is yours to proofread.**
   - **03 — diet break** as a first-class mode (2 wk at true maintenance, ratchet paused).
+  - **04 (remaining half) — ratchet asymmetry:** weight *gain during a deficit* must NOT ratchet targets down —
+    flag + offer a diet break; recomp / muscle-gain not misread as a lower metabolism.
   - **05 — LEA symptom check**, sex-neutral → *"see a healthcare professional."*
-  - **Before coding:** specs are @draft — proofread 02, sign off the set, then implement to the **NUMBERS
-    CONTRACT** convention (derived worked-examples vs named policy constants; exact numbers owned by
-    `logic.test.js`; steps assert observable outcomes). Coach + QA hats. See [[project_energy_safety_workstream]].
+  - **Convention:** specs are @draft — implement to the **NUMBERS CONTRACT** (derived worked-examples vs named
+    policy constants; exact numbers owned by `logic.test.js`; steps assert observable outcomes). Coach + QA
+    hats. Suggested order: 01 → 03 → 04-rest → 02 → 05 (floor & break first; cut-cycling/symptoms build on
+    them). See [[project_energy_safety_workstream]].
 
 - **⏸ DEFERRED (per user) — AI photo→log (v6.7) device-verify.** Already live on Pages; 3 checks remain
-  (see Next-up 2), held until the energy-safety build lands.
+  (see Next-up 2), held until the energy-safety build lands and gets its batch device-test.
 
 - **NEW IDEA (parked) — smooth how workouts inflate targets/carbs.** Spread a logged workout's kcals across
   following days (a smoothed curve, tolerant of rest-day clusters *and* back-to-back training) instead of
@@ -58,12 +53,14 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 ## Next up (in order)
 
-1. **◀ Build the energy-safety workstream** — files 01 / 02 / 03 / 05 + the ratchet-asymmetry half of 04
-   (see Right-now). Then merge the whole line → deploy.
-2. **Device-verify AI capture (v6.7)** — live on Pages. 3 checks (hard-reload first, PWA cache): (a) v55
-   optional follow-up flow feels right; (b) ⚐ Report-wrong opens a prefilled email; (c) + Log all lands in
-   today's food. When green, flip `@wip` on the AI-capture + two v6.6 features in `fuel-log.feature`. **Then
-   bind `RATE_LIMIT` KV** (ops blocker below) before any launch.
+1. **◀ Build + deploy the remaining energy-safety features** — 01 EA floor · 02 cut-cycling · 03 diet break ·
+   04-rest ratchet asymmetry · 05 LEA check (see Right-now for the suggested order). Merge + deploy as each
+   lands (keep Jest green); **batch the on-device test of all feature files once the set is complete.**
+2. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7) checks
+   in one pass (hard-reload first, PWA cache): (a) v55 optional follow-up flow; (b) ⚐ Report-wrong opens a
+   prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI (EA warning bands, diet-break
+   mode, symptom check, "Held at your minimum maintenance"). When green, flip `@wip` on the AI-capture + two
+   v6.6 features in `fuel-log.feature`. **Then bind `RATE_LIMIT` KV** (ops blocker below) before any launch.
 3. **🗓️ activity-model review + workout→target smoothing** (own coach session): flat ×1.2 vs activity-picker
    vs event-based; the workout-smoothing idea above. [[project_workout_smoothing_idea]].
 4. **🗓️ carb floor** (deferred): clamp carbs to 2 g/kg bodyweight on aggressive cuts, reduce **fat** first
