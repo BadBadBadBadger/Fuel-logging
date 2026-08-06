@@ -6,13 +6,7 @@ const MODES = {
   bulk:     { adj: 500  },
 };
 
-const ACTIVITY = {
-  sedentary: { mult: 1.2   },
-  light:     { mult: 1.375 },
-  moderate:  { mult: 1.55  },
-  active:    { mult: 1.725 },
-  very:      { mult: 1.9   },
-};
+const SAFE_MIN = { male: 1400, female: 1200 };
 
 const MET = {
   legs:     { light: 4.0, moderate: 6.0, heavy: 8.0 },
@@ -42,19 +36,28 @@ const intakeConfidence = logs => {
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
-const calcTargets = (p, mode, training, sessKcal = null, tdeeAdj = 0) => {
+// Faithful mirror of app.jsx calcTargets: flat sedentary TDEE (BMR × 1.2), the
+// day's workout kcals added directly, macros via computeMacros, and a MAINTAIN-ONLY
+// floor at sedentary TDEE (the adaptive adjustment can never starve maintenance
+// below it) plus the legacy SAFE_MIN backstop.
+const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
-  const act = p.activity || "light";
+  const sex = p.sex || "male";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
-  const tdee = Math.round(bmr * (ACTIVITY[act]?.mult || 1.375)) + tdeeAdj;
-  const bonus = training ? (sessKcal !== null ? sessKcal : Math.round(w * 2.8)) : 0;
-  const kcal  = tdee + MODES[mode].adj + bonus;
-  const protein = Math.round(lbm * (mode === "cut" ? 2.2 : mode === "bulk" ? 2.0 : 1.8));
-  const fat     = Math.round(w   * (mode === "cut" ? 0.8 : 1.0));
-  const carbs   = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { kcal, protein, carbs, fat, tdee, bmr, lbm: Math.round(lbm), bonus };
+  const sedentaryTDEE = Math.round(bmr * 1.2);
+  const tdee = sedentaryTDEE + tdeeAdj;
+  let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
+  const bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
+  if (bmrFloorApplied) kcal = sedentaryTDEE;
+  const safeMin = SAFE_MIN[sex] || 1400;
+  const safeMinApplied = kcal < safeMin;
+  if (safeMinApplied) kcal = safeMin;
+  const m = computeMacros(p, mode, kcal);
+  return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
+    lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied, bmrFloorApplied,
+    floorsExceedKcal: m.floorsExceedKcal };
 };
 
 // ── Macro floor engine (feature #7) — mirror of app.jsx computeMacros ──────────
@@ -197,88 +200,74 @@ const makeCalcStreak = (getNow) => (hist) => {
 // ── calcTargets ───────────────────────────────────────────────
 
 describe("calcTargets — Katch-McArdle", () => {
-  const prof = { weight: 80, height: 178, bodyFat: 18, activity: "light" };
+  const prof = { weight: 80, height: 178, bodyFat: 18 };
 
   test("BMR is correct for 80kg/18%bf", () => {
     // lbm = 80 * 0.82 = 65.6 → bmr = 370 + 21.6*65.6 = 1787
-    const { bmr } = calcTargets(prof, "maintain", false);
+    const { bmr } = calcTargets(prof, "maintain");
     expect(bmr).toBe(1787);
   });
 
-  test("TDEE applies light activity multiplier (×1.375)", () => {
-    const { bmr, tdee } = calcTargets(prof, "maintain", false);
-    expect(tdee).toBe(Math.round(bmr * 1.375));
+  test("TDEE uses a flat sedentary multiplier (×1.2)", () => {
+    const { bmr, tdee } = calcTargets(prof, "maintain");
+    expect(tdee).toBe(Math.round(bmr * 1.2));
   });
 
-  test("maintain mode adds no adjustment", () => {
-    const { tdee, kcal, bonus } = calcTargets(prof, "maintain", false);
+  test("activity level does NOT affect TDEE (flat ×1.2, not an activity picker)", () => {
+    const a = calcTargets({ ...prof, activity: "sedentary" }, "maintain").tdee;
+    const b = calcTargets({ ...prof, activity: "active"    }, "maintain").tdee;
+    expect(a).toBe(b);
+  });
+
+  test("maintain mode adds no adjustment beyond workout kcals", () => {
+    const { tdee, kcal, bonus } = calcTargets(prof, "maintain");
     expect(kcal).toBe(tdee + bonus);
   });
 
   test("cut mode subtracts 500 kcal", () => {
-    const maintain = calcTargets(prof, "maintain", false).kcal;
-    const cut      = calcTargets(prof, "cut",      false).kcal;
+    const maintain = calcTargets(prof, "maintain").kcal;
+    const cut      = calcTargets(prof, "cut").kcal;
     expect(maintain - cut).toBe(500);
   });
 
   test("bulk mode adds 500 kcal", () => {
-    const maintain = calcTargets(prof, "maintain", false).kcal;
-    const bulk     = calcTargets(prof, "bulk",     false).kcal;
+    const maintain = calcTargets(prof, "maintain").kcal;
+    const bulk     = calcTargets(prof, "bulk").kcal;
     expect(bulk - maintain).toBe(500);
   });
 
-  test("training=false gives zero bonus", () => {
-    const { bonus } = calcTargets(prof, "maintain", false);
+  test("no workout kcals gives zero bonus", () => {
+    const { bonus } = calcTargets(prof, "maintain");
     expect(bonus).toBe(0);
   });
 
-  test("training=true without session uses weight×2.8 bonus", () => {
-    const { bonus } = calcTargets(prof, "maintain", true);
-    expect(bonus).toBe(Math.round(80 * 2.8)); // 224
-  });
-
-  test("sessKcal overrides weight-based bonus when training=true", () => {
-    const { bonus } = calcTargets(prof, "maintain", true, 400);
+  test("totalWorkoutKcal is added to the target and reflected in bonus", () => {
+    const base = calcTargets(prof, "maintain").kcal;
+    const { kcal, bonus } = calcTargets(prof, "maintain", 400);
     expect(bonus).toBe(400);
+    expect(kcal - base).toBe(400);
   });
 
-  test("sessKcal is ignored when training=false", () => {
-    const { bonus } = calcTargets(prof, "maintain", false, 400);
-    expect(bonus).toBe(0);
-  });
-
-  test("cut protein target uses 2.2g per kg LBM", () => {
+  test("protein target uses 2.2g per kg LBM for males (mode-independent)", () => {
     const lbm = 80 * 0.82;
-    const { protein } = calcTargets(prof, "cut", false);
-    expect(protein).toBe(Math.round(lbm * 2.2));
+    expect(calcTargets(prof, "cut").protein).toBe(Math.round(lbm * 2.2));
+    expect(calcTargets(prof, "bulk").protein).toBe(Math.round(lbm * 2.2));
   });
 
-  test("bulk protein target uses 2.0g per kg LBM", () => {
-    const lbm = 80 * 0.82;
-    const { protein } = calcTargets(prof, "bulk", false);
-    expect(protein).toBe(Math.round(lbm * 2.0));
-  });
-
-  test("cut fat target uses 0.8g per kg bodyweight", () => {
-    const { fat } = calcTargets(prof, "cut", false);
+  test("cut fat target uses 0.8g per kg bodyweight (male)", () => {
+    const { fat } = calcTargets(prof, "cut");
     expect(fat).toBe(Math.round(80 * 0.8));
   });
 
   test("carbs never go below 50g", () => {
     // Very low kcal scenario
-    const lean = { weight: 50, bodyFat: 5, activity: "sedentary" };
-    const { carbs } = calcTargets(lean, "cut", false);
+    const lean = { weight: 50, bodyFat: 5 };
+    const { carbs } = calcTargets(lean, "cut");
     expect(carbs).toBeGreaterThanOrEqual(50);
   });
 
-  test("different activity multipliers produce different TDEEs", () => {
-    const sedentary = calcTargets({ ...prof, activity: "sedentary" }, "maintain", false).tdee;
-    const active    = calcTargets({ ...prof, activity: "active"    }, "maintain", false).tdee;
-    expect(active).toBeGreaterThan(sedentary);
-  });
-
   test("lbm returned is rounded", () => {
-    const { lbm } = calcTargets(prof, "maintain", false);
+    const { lbm } = calcTargets(prof, "maintain");
     expect(lbm).toBe(Math.round(80 * 0.82));
   });
 });
@@ -550,24 +539,85 @@ describe("sumLogs", () => {
 // ── calcTargets tdeeAdj ───────────────────────────────────────
 
 describe("calcTargets — tdeeAdj", () => {
-  const prof = { weight: 80, height: 178, bodyFat: 18, activity: "light" };
+  const prof = { weight: 80, height: 178, bodyFat: 18 };
 
-  test("positive tdeeAdj raises kcal target", () => {
-    const base    = calcTargets(prof, "maintain", false, null, 0).kcal;
-    const adjusted = calcTargets(prof, "maintain", false, null, 200).kcal;
+  test("positive tdeeAdj raises the maintenance target", () => {
+    const base     = calcTargets(prof, "maintain", 0, 0).kcal;
+    const adjusted = calcTargets(prof, "maintain", 0, 200).kcal;
     expect(adjusted - base).toBe(200);
   });
 
-  test("negative tdeeAdj lowers kcal target", () => {
-    const base    = calcTargets(prof, "maintain", false, null, 0).kcal;
-    const adjusted = calcTargets(prof, "maintain", false, null, -150).kcal;
+  test("negative tdeeAdj still lowers a BULK target (floor is maintain-only)", () => {
+    const base     = calcTargets(prof, "bulk", 0, 0).kcal;
+    const adjusted = calcTargets(prof, "bulk", 0, -150).kcal;
     expect(base - adjusted).toBe(150);
   });
 
-  test("tdeeAdj is reflected in tdee field", () => {
-    const { tdee } = calcTargets(prof, "maintain", false, null, 300);
-    const baseTdee = calcTargets(prof, "maintain", false, null, 0).tdee;
-    expect(tdee - baseTdee).toBe(300);
+  test("tdeeAdj is reflected in the (unfloored) tdee estimate field", () => {
+    const up   = calcTargets(prof, "maintain", 0, 300).tdee;
+    const base = calcTargets(prof, "maintain", 0, 0).tdee;
+    const down = calcTargets(prof, "maintain", 0, -300).tdee;
+    expect(up - base).toBe(300);
+    expect(base - down).toBe(300);
+  });
+});
+
+// ── calcTargets — BMR×1.2 maintenance floor (energy-safety file 04) ────────────
+// The harm: adaptive tdeeAdj drove maintenance BELOW resting metabolism, prescribing
+// "eat less" to a stalling dieter. Rule: maintenance can never sit below sedentary
+// TDEE (BMR × 1.2); a deliberate cut may, bounded elsewhere. Numbers are DERIVED
+// from the formula here (never hardcoded upstream), with contrasting bodies proving
+// the floor is computed, not baked in.
+describe("calcTargets — maintenance BMR×1.2 floor", () => {
+  const sedentaryTDEE = p => {
+    const lbm = p.weight * (1 - p.bodyFat / 100);
+    return Math.round(Math.round(370 + 21.6 * lbm) * 1.2);
+  };
+
+  // Worked example from the harm report: 98.5 kg / 30% BF → BMR ≈ 1859, floor ≈ 2231.
+  const harmed = { weight: 98.5, bodyFat: 30 };
+  // A smaller, contrasting body so the floor value differs — proof it is derived.
+  const smaller = { weight: 62, bodyFat: 22 };
+
+  test.each([harmed, smaller])(
+    "maintenance is never pulled below sedentary TDEE by a full negative adjustment (%o)",
+    (p) => {
+      const floor = sedentaryTDEE(p);
+      const raw   = floor - 600;                       // what the ratchet alone would give
+      const { kcal, bmrFloorApplied } = calcTargets(p, "maintain", 0, -600);
+      expect(kcal).toBe(floor);
+      expect(kcal).toBeGreaterThan(raw);
+      expect(bmrFloorApplied).toBe(true);
+    },
+  );
+
+  test("the floor value tracks body size (two bodies → two different floors)", () => {
+    expect(sedentaryTDEE(harmed)).not.toBe(sedentaryTDEE(smaller));
+    expect(calcTargets(harmed, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(harmed));
+    expect(calcTargets(smaller, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(smaller));
+  });
+
+  test("any negative adjustment to maintenance is floored, not just the extreme", () => {
+    const { kcal, bmrFloorApplied } = calcTargets(harmed, "maintain", 0, -50);
+    expect(kcal).toBe(sedentaryTDEE(harmed));
+    expect(bmrFloorApplied).toBe(true);
+  });
+
+  test("a positive adjustment raises maintenance and does NOT flag the floor", () => {
+    const { kcal, bmrFloorApplied } = calcTargets(harmed, "maintain", 0, 200);
+    expect(kcal).toBe(sedentaryTDEE(harmed) + 200);
+    expect(bmrFloorApplied).toBe(false);
+  });
+
+  test("a deliberate cut is allowed below sedentary TDEE — the maintain floor does not apply", () => {
+    const { kcal, bmrFloorApplied } = calcTargets(harmed, "cut", 0, -600);
+    expect(bmrFloorApplied).toBe(false);
+    expect(kcal).toBeLessThan(sedentaryTDEE(harmed)); // cut deficit + negative adj both bite
+  });
+
+  test("workout kcals cannot be gamed to bypass the floor downward", () => {
+    // Even with zero workout and a huge negative adj, maintenance holds at the floor.
+    expect(calcTargets(harmed, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(harmed));
   });
 });
 

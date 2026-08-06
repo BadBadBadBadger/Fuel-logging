@@ -311,14 +311,23 @@ const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const sex = p.sex || "male";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
-  const tdee = Math.round(bmr * 1.2) + tdeeAdj;
+  // Sedentary TDEE (BMR × 1.2) is the lowest a real MAINTENANCE can sit — nobody
+  // lives at raw BMR. The adaptive tdeeAdj calibrates this estimate, but a large
+  // negative adjustment (the "ratchet") must never drag maintenance below it, which
+  // previously produced a sub-resting, physiologically-impossible maintain target.
+  // A deliberate cut is a chosen deficit bounded separately (SAFE_MIN today, the
+  // energy-availability floor later), so the BMR×1.2 floor is MAINTAIN-ONLY.
+  const sedentaryTDEE = Math.round(bmr * 1.2);
+  const tdee = sedentaryTDEE + tdeeAdj;
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
+  const bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
+  if (bmrFloorApplied) kcal = sedentaryTDEE;
   const safeMin = SAFE_MIN[sex] || 1400;
   const safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   const m = computeMacros(p, mode, kcal);
   return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
-    lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied,
+    lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied, bmrFloorApplied,
     floorsExceedKcal: m.floorsExceedKcal };
 };
 
@@ -1569,7 +1578,8 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   const prev     = calcTargets(f, "cut", 0, 0);
   const formulaTDEE = prev.tdee;
-  const adjTDEE     = formulaTDEE + tdeeAdj;
+  const adjTDEE     = Math.max(formulaTDEE, formulaTDEE + tdeeAdj); // never below sedentary TDEE
+  const tdeeFloored = formulaTDEE + tdeeAdj < formulaTDEE;          // adaptive adj hit the floor
   const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
 
   useEffect(() => {
@@ -1704,6 +1714,13 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
               {adjTDEE} <span style={{ fontSize:11, color:"var(--text-label)" }}>kcal/day</span>
             </span>
           </div>
+          {tdeeFloored && (
+            <div style={{ fontSize:11, color:"var(--warn)", marginTop:6, lineHeight:1.5 }}>
+              Held at your minimum maintenance. Your maintenance can't sit below sedentary
+              energy use, so the adaptive adjustment is floored here — keep logging weight and it
+              will re-converge.
+            </div>
+          )}
           {!confidence && (
             <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:6, lineHeight:1.5 }}>
               Log your weight daily from the dashboard to enable adaptive calibration.
@@ -1907,7 +1924,7 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
           <div style={{ fontSize:10, color:confColor2, letterSpacing:"0.08em", fontWeight:800 }}>{confidence.toUpperCase()}</div>
           {weeks >= 1
             ? <>
-                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{(baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
+                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{Math.max(baseTDEE, baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
                 <div style={{ fontSize:10, color:"var(--text-label)", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "var(--bulk)" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
               </>
             : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
@@ -2252,8 +2269,11 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
     setEditingTarget(false);
   };
 
-  // Warnings computed from custom target vs effective TDEE
-  const tdee = targets.tdee; // effective TDEE (formula + adaptive adj)
+  // Warnings computed from custom target vs effective TDEE. Use the FLOORED
+  // effective TDEE (mirrors App effectiveTDEE and the maintenance floor) so a
+  // custom target isn't judged against a sub-floor baseline when a negative
+  // adaptive adjustment is active — otherwise a real deficit would read as smaller.
+  const tdee = Math.max(baseTDEE, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
   const targetWarning = (() => {
     if (!isCustomMode || targets.safeMinApplied) return null;
     const diff = customKcal - tdee; // negative = deficit
@@ -2398,6 +2418,26 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
                   fontWeight:700, padding:0, cursor:"pointer", textDecoration:"underline" }}>
                 Check your profile stats.
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Minimum-maintenance floor: the adaptive adjustment tried to pull maintenance
+          below sedentary TDEE (BMR × 1.2). Held there — the ratchet can't starve a
+          stalling dieter. Suppressed when SAFE_MIN already speaks. */}
+      {targets.bmrFloorApplied && !targets.safeMinApplied && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🛡️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              HELD AT YOUR MINIMUM MAINTENANCE
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              Your maintenance can't sit below your body's sedentary energy use, so we've held
+              today's target at {targets.kcal.toLocaleString()} kcal. If the scale keeps rising, a
+              short diet break usually beats eating less.
             </div>
           </div>
         </div>
@@ -4433,7 +4473,9 @@ function App() {
 
   const p        = prof || DEF_PROFILE;
   const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
-  const effectiveTDEE = baseTDEE + tdeeAdj;
+  // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull
+  // it below sedentary TDEE (BMR × 1.2). baseTDEE already IS that floor.
+  const effectiveTDEE = Math.max(baseTDEE, baseTDEE + tdeeAdj);
   const effectiveMode = customKcal != null
     ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
     : mode;

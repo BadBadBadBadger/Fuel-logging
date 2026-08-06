@@ -622,8 +622,17 @@ var calcTargets = function calcTargets(p, mode) {
   var sex = p.sex || "male";
   var lbm = w * (1 - bf / 100);
   var bmr = Math.round(370 + 21.6 * lbm);
-  var tdee = Math.round(bmr * 1.2) + tdeeAdj;
+  // Sedentary TDEE (BMR × 1.2) is the lowest a real MAINTENANCE can sit — nobody
+  // lives at raw BMR. The adaptive tdeeAdj calibrates this estimate, but a large
+  // negative adjustment (the "ratchet") must never drag maintenance below it, which
+  // previously produced a sub-resting, physiologically-impossible maintain target.
+  // A deliberate cut is a chosen deficit bounded separately (SAFE_MIN today, the
+  // energy-availability floor later), so the BMR×1.2 floor is MAINTAIN-ONLY.
+  var sedentaryTDEE = Math.round(bmr * 1.2);
+  var tdee = sedentaryTDEE + tdeeAdj;
   var kcal = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
+  var bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
+  if (bmrFloorApplied) kcal = sedentaryTDEE;
   var safeMin = SAFE_MIN[sex] || 1400;
   var safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
@@ -638,6 +647,7 @@ var calcTargets = function calcTargets(p, mode) {
     lbm: m.lbm,
     bonus: totalWorkoutKcal || 0,
     safeMinApplied: safeMinApplied,
+    bmrFloorApplied: bmrFloorApplied,
     floorsExceedKcal: m.floorsExceedKcal
   };
 };
@@ -4009,7 +4019,8 @@ function ProfileScreen(_ref56) {
   var bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   var prev = calcTargets(f, "cut", 0, 0);
   var formulaTDEE = prev.tdee;
-  var adjTDEE = formulaTDEE + tdeeAdj;
+  var adjTDEE = Math.max(formulaTDEE, formulaTDEE + tdeeAdj); // never below sedentary TDEE
+  var tdeeFloored = formulaTDEE + tdeeAdj < formulaTDEE; // adaptive adj hit the floor
   var confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
   useEffect(function () {
     if (!valid) return;
@@ -4377,7 +4388,14 @@ function ProfileScreen(_ref56) {
       fontSize: 11,
       color: "var(--text-label)"
     }
-  }, "kcal/day"))), !confidence && /*#__PURE__*/React.createElement("div", {
+  }, "kcal/day"))), tdeeFloored && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--warn)",
+      marginTop: 6,
+      lineHeight: 1.5
+    }
+  }, "Held at your minimum maintenance. Your maintenance can't sit below sedentary energy use, so the adaptive adjustment is floored here \u2014 keep logging weight and it will re-converge."), !confidence && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--text-lo-2)",
@@ -4903,7 +4921,7 @@ function WeighInWidget(_ref62) {
       color: A,
       marginTop: 2
     }
-  }, "~", (baseTDEE + tdeeAdj).toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("div", {
+  }, "~", Math.max(baseTDEE, baseTDEE + tdeeAdj).toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
       color: "var(--text-label)",
@@ -5807,8 +5825,11 @@ function Dashboard(_ref68) {
     setEditingTarget(false);
   };
 
-  // Warnings computed from custom target vs effective TDEE
-  var tdee = targets.tdee; // effective TDEE (formula + adaptive adj)
+  // Warnings computed from custom target vs effective TDEE. Use the FLOORED
+  // effective TDEE (mirrors App effectiveTDEE and the maintenance floor) so a
+  // custom target isn't judged against a sub-floor baseline when a negative
+  // adaptive adjustment is active — otherwise a real deficit would read as smaller.
+  var tdee = Math.max(baseTDEE, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
   var targetWarning = function () {
     if (!isCustomMode || targets.safeMinApplied) return null;
     var diff = customKcal - tdee; // negative = deficit
@@ -6154,7 +6175,41 @@ function Dashboard(_ref68) {
       cursor: "pointer",
       textDecoration: "underline"
     }
-  }, "Check your profile stats.")))), targets.floorsExceedKcal && /*#__PURE__*/React.createElement("div", {
+  }, "Check your profile stats.")))), targets.bmrFloorApplied && !targets.safeMinApplied && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--warn-tint-2)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      marginTop: 1
+    }
+  }, "\uD83D\uDEE1\uFE0F"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: AMBER,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 2
+    }
+  }, "HELD AT YOUR MINIMUM MAINTENANCE"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--gold-dim)",
+      lineHeight: 1.5
+    }
+  }, "Your maintenance can't sit below your body's sedentary energy use, so we've held today's target at ", targets.kcal.toLocaleString(), " kcal. If the scale keeps rising, a short diet break usually beats eating less."))), targets.floorsExceedKcal && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--warn-tint-2)",
       border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
@@ -10782,7 +10837,9 @@ function App() {
   }();
   var p = prof || DEF_PROFILE;
   var baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat / 100))) * 1.2);
-  var effectiveTDEE = baseTDEE + tdeeAdj;
+  // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull
+  // it below sedentary TDEE (BMR × 1.2). baseTDEE already IS that floor.
+  var effectiveTDEE = Math.max(baseTDEE, baseTDEE + tdeeAdj);
   var effectiveMode = customKcal != null ? customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain" : mode;
   var workoutKcal = workouts.reduce(function (s, w) {
     return s + (w.kcal || 0);
