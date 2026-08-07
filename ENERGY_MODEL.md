@@ -126,9 +126,34 @@ Standard activity factors (1.2–1.725) are meant to be **whole-day incl. exerci
 | **1** | ✅ **DONE 2026-08-07 — Activity input + seeded multiplier.** Flat ×1.2 replaced with a 4-chip NEAT multiplier (`ACTIVITY` in `app.jsx`); Profile selector (= onboarding surface) with "we auto-tune" framing; seed feeds `calcTargets`, calibration base, effective-TDEE display; floor stays sedentary. Activity is **local-only** for now (survives sync pulls; no `profiles` column yet). sw v57, Jest 108. | design (input UX), coach (values), QA (scenarios) | ✅ Believability gate passed (§3.1); Jest green. |
 | **2** | ✅ **DONE 2026-08-07 — Strengthen adaptive TDEE.** Flat ±150 integrator → **dead-time-compensated, confidence-scaled** convergence (gain 0.8; per-run cap 100/150/200 by tier; engages at **6** weigh-ins, was 8). Root fix: the old loop slammed to the ±600 cap and pinned there ~10 days (lag overshoot); subtracting the in-flight adjustment kills it. **Plus weigh-in engagement (file 06):** invite (not "log daily"), progress cue, cadence picker, one gentle 7-day nudge with mute — because calibrate needs weigh-ins the seed no longer *requires*. sw v58, Jest 117. | coach + eng + design + QA | ✅ Simulation closes a 500 kcal gap by day 19 (≤3 wk), never pins the cap, max step 100; nudge/cadence unit-tested. |
 | **3** | ✅ **DONE 2026-08-07 — Smooth earn-to-eat.** A session's kcal are spread FORWARD across a 3-day window as an energy-conserving weighted average (`SMOOTH_WEIGHTS = [0.5, 0.3, 0.2]` over today/−1d/−2d, Σ=1 — total training energy unchanged, just un-spiked). Same-day bonus halved; a rest day after training still carries fuel; back-to-back days average instead of stacking. Prior-2-days workout kcal loaded from `workouts__<date>` into `priorWorkoutKcal` state; `smoothedBonus` replaces the raw same-day total into `calcTargets`. Workout-card copy reworked ("kcal burned" + "+X added to today, the rest fuels the next couple of days"). New `07-smoothed-earn-to-eat.feature` (@draft). sw v59, Jest 125. | coach (maths) + design | ✅ No same-day full unlock; rest-day fuel sane; back-to-back averaged; 8 unit tests green. |
-| **4** | **EA floor (file 01), re-seated.** Hard cut boundary @ EA 30; green @ 45; `SAFE_MIN` backstop only when body-fat unset; rare/true, supportive warnings. | coach (numbers), design (copy/UX), QA | On the corrected TDEE the floor fires only for genuine under-fuelling; amber uncommon. |
+| **4** | ✅ **DONE 2026-08-07 — Energy floor, re-seated as TWO protections.** The draft's single EA-30 clamp did not survive its own numbers (see §5.1), so it was split: (a) **steady-loss floor** — the hard clamp, all users: a preset target never sits more than `MAX_DEFICIT_FRAC` (0.25) below believable maintenance + the applied training bonus, so it scales with body size and eases rather than blocks; (b) **low-fuel warning** — energy availability `(target − raw burn) ÷ FFM`, **warning only**, shown for a lean body (`LEAN_BF` 15% M / 23% F) on a day it trained when EA < 30. `EA_OK = 45` **dropped** (unreachable by construction). `SAFE_MIN` survives as the absolute backstop + body-fat-unset fallback. Custom targets are warned about, never overridden. sw v60, Jest 142. | coach (numbers), design (copy/UX), QA | ✅ A 98.5 kg cut keeps its full 500 kcal deficit; a 60 kg cut is eased; low-fuel fires only for lean + trained + genuinely low. |
 | **5** | **Sustainability system** — cut-cycling (02), diet break (03), no-auto-lower-on-gain (04-rest). Meaningful only once a cut is a real deficit. | coach + QA | Per-feature specs green. |
 | **6** | **LEA symptom check (file 05).** Sex-neutral → *"see a healthcare professional."* | coach + design | Per-spec; no diagnosis. |
+
+### 5.1 Why Step 4 was re-shaped at build time (2026-08-07)
+
+The draft spec (`features/energy-safety/01`) made EA-30 a hard clamp and EA-45 an "all clear" band.
+Run against the three canonical personas plus the founder profile, neither holds:
+
+| Profile | FFM | TDEE (post-Step 1) | Cut target | EA | Draft spec would… |
+|---|---|---|---|---|---|
+| Founder — 98.5 kg / 30% BF, sedentary | 69 | 2,231 | 1,731 | 25.1 | clamp to 2,070 → **deficit capped at 161 kcal** |
+| Lean lifter — 80 kg / 12% BF, active | 70.4 | 2,742 | 2,242 | 31.8 | amber |
+| Manual worker — 85 kg / 20% BF, very active | 68 | 2,850 | 2,350 | 34.6 | amber |
+
+1. **EA_OK = 45 is unreachable by construction.** Our multipliers are NEAT-only (max 1.55), training
+   is added separately and then subtracted back out of EA. Clearing 45 kcal/kg FFM needs a whole-day
+   factor ≈1.68+. Every user would sit amber in every mode — wallpaper, and a direct breach of the
+   rare+true guardrail (§4). **Dropped.**
+2. **EA_HARD = 30 as a clamp forbids weight loss for anyone carrying fat.** Steps 1–3 raised TDEE for
+   *active* users only; a sedentary user's EA-30 floor still lands at ~93% of maintenance. This is the
+   §1.1 collision, unresolved by the resequencing. The EA thresholds were derived in lean athletes,
+   who have no large fat store to cover the gap — a body with reserves is a different case.
+
+So EA became a **warning gated to the population the evidence is drawn from**, and the hard clamp
+became a **rate-of-loss floor**, which is what file 01's stated WHY actually asked for: a floor derived
+from the user's own energy instead of a flat number that protects nobody in particular (a 98.5 kg body
+floors at 1,673 kcal, a 60 kg body at 1,208 — the flat 1,400 served neither).
 
 **Cross-cutting:** design runs an ED-safety review on every calorie-facing warning; consultant runs the believability gate before each deploy; the **BMR×1.2 maintenance floor already live** (file 04a, `bmrFloorApplied`) stays as-is — it's a harmless subset of this model.
 
@@ -140,6 +165,13 @@ Standard activity factors (1.2–1.725) are meant to be **whole-day incl. exerci
 2. **Adaptive-TDEE convergence shape** (Step 2) — per-update rate limit vs. absolute cap; how early to engage; confidence tiers.
 3. **Earn-to-eat smoothing curve** (Step 3) — window length, decay, rest-day handling. Ties to the activity-model review.
 4. **Whether the activity multiplier is ever auto-suggested** from logged-workout frequency, or stays purely user-set (revisit after Step 2 lands).
+5. **`MAX_DEFICIT_FRAC = 0.25`** (Step 4) — set at build time to sit just above the flat −500 preset for
+   a ~2,200 kcal maintenance, so it eases small bodies without touching large ones. Worth re-checking
+   against real usage once weigh-in data exists: if it binds for a large share of users it is too tight.
+6. **`LEAN_BF = 15% M / 23% F`** (Step 4) — the gate deciding who *sees* the low-fuel warning. Informed
+   by standard athletic/fitness body-fat ranges, not a clinical cut-off, and it rests on a **self-reported**
+   body-fat figure. Over-reporting leanness over-warns (noisy but safe); under-reporting silences the
+   warning. Revisit if the warning proves either constant or never seen.
 
 ---
 
@@ -147,6 +179,7 @@ Standard activity factors (1.2–1.725) are meant to be **whole-day incl. exerci
 
 | Date | Change |
 |---|---|
+| 2026-08-07 | **Step 4 built** (energy floor, re-seated). The draft's single EA-30 clamp was **split into two protections** after it failed its own persona numbers (§5.1): a **steady-loss floor** that clamps every preset target at 75% of believable maintenance + the applied training bonus (`MAX_DEFICIT_FRAC = 0.25`; scales with body size; eases, never blocks), and a **low-fuel warning** on energy availability `(target − raw burn) ÷ FFM` that is **warning-only**, gated to lean bodies (`LEAN_BF` 15% M / 23% F) on days they trained, EA < 30. **`EA_OK = 45` dropped** — unreachable given NEAT-only multipliers with training subtracted back out. EA deliberately uses the **raw** burn while the target uses Step 3's smoothed bonus. Custom targets warn, never override. `SAFE_MIN` retained as absolute backstop + body-fat-unset fallback. `01-energy-availability-floor.feature` rewritten to match. sw v60, Jest 142. Step 5 (sustainability: 02/03/04-rest) is next. Device-test still batched. |
 | 2026-08-07 | **Step 3 built** (smooth earn-to-eat). A logged workout's kcal are spread forward across a 3-day window as an energy-conserving weighted average (`SMOOTH_WEIGHTS = [0.5, 0.3, 0.2]`, Σ=1) instead of a full same-day unlock — damps the same-day spike, still fuels the day after a hard session, averages back-to-back days. `priorWorkoutKcal` state loads the prior 2 days from `workouts__<date>`; `smoothedBonus` feeds `calcTargets`; workout-card copy reworked. New `07-smoothed-earn-to-eat.feature` (@draft). sw v59, Jest 125. Step 4 (EA floor, file 01, re-seated on the corrected TDEE) is next. Device-test still batched. |
 | 2026-08-07 | **Step 2 built** (adaptive-TDEE convergence) + **weigh-in engagement (file 06)**. Dead-time compensation + confidence-scaled steps replace the flat ±150 integrator; engages at 6 weigh-ins. Simulation: 500 kcal gap closed by day 19, no cap-pinning. Engagement = invite/progress/cadence-picker/7-day nudge (Coach+Design+QA). sw v58, Jest 117. New `06-weigh-in-engagement.feature` (@draft). Step 3 (smooth earn-to-eat) is next. Device-test still batched. |
 | 2026-08-07 | **Step 1 shipped** (activity input + seeded NEAT multiplier). Multipliers LOCKED 1.20/1.35/1.45/1.55 (top widened from 1.45 after the believability gate); sedentary == old flat baseline. Activity local-only (no DB column yet). sw v57, Jest 108. Device-test batched (Next-up 2). Step 2 (adaptive-TDEE strengthening) is now next. |

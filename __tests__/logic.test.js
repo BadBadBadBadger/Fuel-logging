@@ -43,7 +43,23 @@ const estimateSessionKcal = (w, bf, type, dur, int) =>
 // for a higher-activity seed) plus the legacy SAFE_MIN backstop.
 const ACTIVITY = { sedentary: 1.20, light: 1.35, active: 1.45, very: 1.55 };
 const activityMult = p => ACTIVITY[p && p.activity] || ACTIVITY.sedentary;
-const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
+
+// ── Energy floor + low-fuel warning (Step 4) — mirror of app.jsx ──────────────
+// The hard clamp is RATE OF LOSS (scales with body size); energy availability is a
+// WARNING ONLY, gated to lean bodies on days they trained. EA_OK (45) is not a band —
+// it is unreachable given NEAT-only multipliers with training subtracted back out.
+const EA_HARD          = 30;
+const MAX_DEFICIT_FRAC = 0.25;
+const LEAN_BF = { male: 15, female: 23 };
+const ffmOf      = p => (Number(p.weight) || 80) * (1 - (Number(p.bodyFat) || 18) / 100);
+const bodyFatSet = p => { const bf = Number(p && p.bodyFat); return bf > 0 && bf < 100; };
+const isLeanBody = p => bodyFatSet(p) && Number(p.bodyFat) <= LEAN_BF[p.sex === "female" ? "female" : "male"];
+const deficitFloorOf = (effTDEE, appliedBonus = 0) =>
+  Math.round((1 - MAX_DEFICIT_FRAC) * (effTDEE + (appliedBonus || 0)));
+const energyAvailability = (kcal, rawBurnKcal, p) =>
+  bodyFatSet(p) ? Math.round(((kcal - (rawBurnKcal || 0)) / ffmOf(p)) * 10) / 10 : null;
+
+const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0, rawBurnKcal = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
   const sex = p.sex || "male";
@@ -55,12 +71,19 @@ const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   const bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
+  const effTDEE = Math.max(sedentaryTDEE, tdee);
+  const deficitFloor = deficitFloorOf(effTDEE, totalWorkoutKcal);
+  const deficitFloorApplied = kcal < deficitFloor;
+  if (deficitFloorApplied) kcal = deficitFloor;
   const safeMin = SAFE_MIN[sex] || 1400;
   const safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   const m = computeMacros(p, mode, kcal);
+  const ea = energyAvailability(kcal, rawBurnKcal, p);
+  const lowFuel = ea != null && isLeanBody(p) && (rawBurnKcal || 0) > 0 && ea < EA_HARD;
   return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
     lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied, bmrFloorApplied,
+    deficitFloorApplied, deficitFloor, ea, lowFuel, bodyFatUnset: !bodyFatSet(p),
     floorsExceedKcal: m.floorsExceedKcal };
 };
 
@@ -1295,5 +1318,144 @@ describe("Smoothed earn-to-eat (Step 3)", () => {
   test("no training in the window adds nothing (baseline unchanged)", () => {
     expect(smoothWorkoutKcal([])).toBe(0);
     expect(smoothWorkoutKcal([0, 0, 0])).toBe(0);
+  });
+});
+
+// ── Energy floor + low-fuel warning (Step 4; features/energy-safety/01) ────────
+// Numbers here are DERIVED from the formulas, never hardcoded upstream. Contrasting
+// bodies prove each rule is computed. The two protections are tested separately
+// because they are separate: the deficit floor CLAMPS, energy availability WARNS.
+describe("Step 4 — steady-loss floor (the hard clamp)", () => {
+  const tdeeOf = p => {
+    const bmr = Math.round(370 + 21.6 * p.weight * (1 - p.bodyFat / 100));
+    return Math.round(bmr * (ACTIVITY[p.activity] || ACTIVITY.sedentary));
+  };
+  // Contrasting bodies: a large one where a flat −500 is modest, a small one where
+  // the same flat −500 is a third of everything they burn.
+  const large = { weight: 98.5, bodyFat: 30, sex: "male"   }; // TDEE ≈ 2231
+  const small = { weight: 60,   bodyFat: 25, sex: "female" }; // TDEE ≈ 1610
+
+  test("the floor is a fixed fraction of maintenance, so it tracks body size", () => {
+    const fLarge = calcTargets(large, "cut").deficitFloor;
+    const fSmall = calcTargets(small, "cut").deficitFloor;
+    expect(fLarge).toBe(Math.round(0.75 * tdeeOf(large)));
+    expect(fSmall).toBe(Math.round(0.75 * tdeeOf(small)));
+    expect(fLarge).not.toBe(fSmall);
+    // The point of replacing the flat floor: a big body's floor sits well above 1,400.
+    expect(fLarge).toBeGreaterThan(SAFE_MIN.male);
+  });
+
+  test("a normal cut on a large body is NOT clamped — weight loss still works", () => {
+    const { kcal, deficitFloorApplied } = calcTargets(large, "cut");
+    expect(deficitFloorApplied).toBe(false);
+    expect(kcal).toBe(tdeeOf(large) - 500); // the full 500 kcal deficit survives
+  });
+
+  test("the same flat cut IS eased on a small body, where it is too deep a share", () => {
+    const { kcal, deficitFloorApplied, deficitFloor } = calcTargets(small, "cut");
+    expect(deficitFloorApplied).toBe(true);
+    expect(kcal).toBe(Math.max(deficitFloor, SAFE_MIN.female));
+    expect(kcal).toBeGreaterThan(tdeeOf(small) - 500); // eased upward, not blocked
+    expect(kcal).toBeLessThan(tdeeOf(small));          // still a real deficit
+  });
+
+  test("the deficit never exceeds a quarter of maintenance in any preset mode", () => {
+    for (const p of [large, small]) {
+      for (const mode of ["cut", "maintain", "bulk"]) {
+        const { kcal } = calcTargets(p, mode);
+        expect(kcal).toBeGreaterThanOrEqual(Math.round(0.75 * tdeeOf(p)));
+      }
+    }
+  });
+
+  test("maintain and bulk are untouched by the floor (it only binds a deficit)", () => {
+    expect(calcTargets(large, "maintain").deficitFloorApplied).toBe(false);
+    expect(calcTargets(large, "bulk").deficitFloorApplied).toBe(false);
+  });
+
+  test("the floor rises with the applied training bonus, so smoothing is not undone", () => {
+    const bonus = 300; // the SMOOTHED bonus the target was actually built from
+    const base  = calcTargets(large, "cut").deficitFloor;
+    const withTraining = calcTargets(large, "cut", bonus, 0, 600).deficitFloor;
+    expect(withTraining).toBe(Math.round(0.75 * (tdeeOf(large) + bonus)));
+    expect(withTraining).toBeGreaterThan(base);
+    // and the smoothed target still clears it — a training day isn't force-fed back
+    expect(calcTargets(large, "cut", bonus, 0, 600).deficitFloorApplied).toBe(false);
+  });
+
+  test("a negative adaptive adjustment cannot deepen the real deficit past the cap", () => {
+    // The floor is measured against BELIEVABLE maintenance (never below sedentary),
+    // so auto-lowering can't quietly stack another 600 kcal onto the cut.
+    const { kcal } = calcTargets(large, "cut", 0, -600);
+    expect(kcal).toBe(Math.round(0.75 * tdeeOf(large)));
+  });
+
+  test("SAFE_MIN still wins when it is the stricter of the two", () => {
+    const tiny = { weight: 45, bodyFat: 22, sex: "female" };
+    const { kcal, safeMinApplied } = calcTargets(tiny, "cut");
+    expect(safeMinApplied).toBe(true);
+    expect(kcal).toBe(SAFE_MIN.female);
+  });
+});
+
+describe("Step 4 — energy availability (warning only, never a clamp)", () => {
+  const lean = { weight: 80, bodyFat: 10, sex: "male", activity: "very" };  // FFM 72
+  const soft = { weight: 98.5, bodyFat: 30, sex: "male", activity: "very" }; // FFM 69
+
+  test("EA is intake minus TODAY'S RAW burn, per kg of fat-free mass", () => {
+    const { kcal, ea } = calcTargets(lean, "cut", 450, 0, 900);
+    expect(ea).toBeCloseTo(Math.round(((kcal - 900) / 72) * 10) / 10, 5);
+  });
+
+  test("EA uses the raw burn, not the smoothed bonus the target was built from", () => {
+    const smoothed = calcTargets(lean, "cut", 450, 0, 450).ea;
+    const raw      = calcTargets(lean, "cut", 450, 0, 900).ea;
+    expect(raw).toBeLessThan(smoothed); // the body spent 900 today, whatever we credited
+  });
+
+  test("a lean body training hard on a low target is flagged", () => {
+    const { lowFuel } = calcTargets(lean, "cut", 450, 0, 900);
+    expect(lowFuel).toBe(true);
+  });
+
+  test("the flag NEVER changes the target — it warns, it does not clamp", () => {
+    const flagged = calcTargets(lean, "cut", 450, 0, 900);
+    const quiet   = calcTargets(lean, "cut", 450, 0, 0);
+    expect(flagged.lowFuel).toBe(true);
+    expect(flagged.kcal).toBe(quiet.kcal); // identical target; only the flag differs
+  });
+
+  test("a body with fat reserves is not flagged at the same low EA", () => {
+    // Same rule, contrasting body: this profile's EA is below 30 too, but EA-30 is
+    // derived in lean athletes — here the reserves cover the gap, so no warning.
+    const { ea, lowFuel } = calcTargets(soft, "cut", 450, 0, 900);
+    expect(ea).toBeLessThan(EA_HARD);
+    expect(lowFuel).toBe(false);
+  });
+
+  test("no training logged → no low-fuel warning, however deep the cut", () => {
+    expect(calcTargets(lean, "cut", 0, -600, 0).lowFuel).toBe(false);
+  });
+
+  test("a lean body that eats its training back is not flagged", () => {
+    const { lowFuel } = calcTargets(lean, "bulk", 900, 0, 900);
+    expect(lowFuel).toBe(false);
+  });
+
+  test("the lean gate is sex-specific and uses the profile's own body fat", () => {
+    const leanWoman  = { weight: 62, bodyFat: 22, sex: "female", activity: "very" };
+    const otherWoman = { weight: 62, bodyFat: 30, sex: "female", activity: "very" };
+    expect(calcTargets(leanWoman,  "cut", 300, 0, 600).lowFuel).toBe(true);
+    expect(calcTargets(otherWoman, "cut", 300, 0, 600).lowFuel).toBe(false);
+    // a man at the woman's threshold is NOT lean by the male gate
+    expect(calcTargets({ ...leanWoman, sex: "male" }, "cut", 300, 0, 600).lowFuel).toBe(false);
+  });
+
+  test("with body fat unset there is no EA at all, and SAFE_MIN backstops instead", () => {
+    const unknown = { weight: 80, bodyFat: 0, sex: "male" };
+    const t = calcTargets(unknown, "cut", 0, 0, 600);
+    expect(t.ea).toBe(null);
+    expect(t.lowFuel).toBe(false);
+    expect(t.bodyFatUnset).toBe(true);
   });
 });

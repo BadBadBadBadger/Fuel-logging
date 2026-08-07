@@ -58,6 +58,7 @@ BMR    = 370 + (21.6 × LBM)
 TDEE   = (BMR × activityMult) + tdeeAdj   ← activityMult: 1.20/1.35/1.45/1.55 (NEAT seed); adaptive tunes tdeeAdj
 Target = TDEE + mode adjustment + smoothed workout kcal   ← earn-to-eat spread over 3 days (§ Workout kcal)
          (maintenance floored at BMR × 1.20 — the adaptive auto-lowering can't sink it below sedentary)
+         (then floored by the strictest of: steady-loss 75% · min maintenance · safe minimum — see § Calorie floors)
 ```
 
 Activity multipliers were removed in v5.1 and **re-introduced in Energy Step 1** (Aug 2026) as a NEAT-only lifestyle seed (see §37). Sedentary (1.20) equals the old flat baseline, so unset/desk users are unchanged; anything above sedentary is now seeded from the activity chip *and* still gains logged workout kcal on top, with the adaptive TDEE engine calibrating `tdeeAdj` toward real expenditure within ~2 weeks of weigh-ins.
@@ -111,17 +112,30 @@ Fat targets:
 
 If `sex` is not set, male ratios are used as the default.
 
-### Safe minimum calorie floors
+### Calorie floors — strictest wins (Energy Step 4)
 
-| Sex | Safe minimum |
-|---|---|
-| Male | 1,400 kcal |
-| Female | 1,200 kcal |
+A target is floored by whichever of these bites hardest:
 
-If a calculated or user-set target falls below the safe minimum it is **clamped** to that floor and a banner warning is shown on the dashboard linking to the profile screen.
+| Floor | Value | Applies to | Flag |
+|---|---|---|---|
+| **Steady-loss** | 75% of (believable maintenance + applied training bonus) — `MAX_DEFICIT_FRAC = 0.25` | preset modes (a deficit only) | `deficitFloorApplied` |
+| **Minimum maintenance** | sedentary TDEE (BMR × 1.20) | MAINTAIN only | `bmrFloorApplied` |
+| **Safe minimum** (backstop) | 1,400 kcal male / 1,200 kcal female | everything, incl. custom targets | `safeMinApplied` |
 
-`calcTargets` signature: `calcTargets(profile, mode, totalWorkoutKcal=0, tdeeAdj=0)`
-Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus, safeMinApplied}`.
+The steady-loss floor is the one that scales with the body: ~1,673 kcal for a 98.5 kg profile, ~1,208 for a
+60 kg one. The flat safe minimum is now only an absolute backstop (and the fallback when body fat isn't set).
+A **custom** target is clamped by the safe minimum only — the steady-loss floor *warns* rather than
+overriding a number the user typed. Each floor shows its own dashboard banner.
+
+**Low-fuel warning (never clamps):** energy availability = `(target − today's raw training burn) ÷ fat-free
+mass`. Below **30 kcal/kg FFM** an amber "Low on fuel today" note appears — only for a lean body
+(`LEAN_BF` 15% male / 23% female) on a day training was logged. `lowFuel` / `ea`. See §37 for why this warns
+instead of clamping, and why there is no 45 kcal/kg "all clear" band.
+
+`calcTargets` signature: `calcTargets(profile, mode, totalWorkoutKcal=0, tdeeAdj=0, rawBurnKcal=0)` —
+`totalWorkoutKcal` is the **smoothed** bonus (Step 3), `rawBurnKcal` today's **actual** burn (for EA).
+Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus, safeMinApplied, bmrFloorApplied,
+deficitFloorApplied, deficitFloor, ea, lowFuel, bodyFatUnset, floorsExceedKcal}`.
 
 ---
 
@@ -330,12 +344,17 @@ The ratio of macros as a percentage of total calories remains constant.
 ### Safe minimum enforcement
 If a custom target falls below the sex-specific safe minimum (1,400 kcal male / 1,200 kcal female), it is clamped and a contextual banner appears: *"That's below the safe minimum for your body. We've set it to X kcal to keep you safe."*
 
+A custom target below the **steady-loss floor** (§8) is *not* clamped — a typed number stays as typed. It earns an amber warning naming the floor we'd have set, slotted into the existing custom-target ladder below the −750 / −1,000 kcal rungs so the stronger warnings still win.
+
 ### Persistence
 The custom target persists via `target_kcal` in localStorage and survives page reloads.
 
 ---
 
 ## 10. Safe Minimum Calorie Guard
+
+> Since Energy Step 4 this is the **backstop**, not the main protection — the body-sized steady-loss floor
+> (§8) is what normally binds. It remains the fallback when body fat isn't set.
 
 | Sex | Safe minimum |
 |---|---|
@@ -1352,6 +1371,33 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Energy Step 4 — energy floor: steady-loss clamp + low-fuel warning (Aug 2026)
+The flat safe minimum (1,400 M / 1,200 F) is no longer the thing protecting you — it protected nobody in
+particular, sitting below a large user's resting metabolism and above a small user's sensible target only by
+accident. Two body-derived protections replace it. Tests **142/142**, sw `v59→v60`. No worker/DB change.
+- **Steady-loss floor (the hard clamp, everyone):** a preset target never sits more than **25%**
+  (`MAX_DEFICIT_FRAC`) below believable maintenance plus the day's applied training bonus. It scales with the
+  body — ~1,673 kcal for a 98.5 kg profile, ~1,208 for a 60 kg one — so a flat −500 keeps its full bite on a
+  large body and is *eased* on a small one, where the same 500 is a third of everything they burn. It eases,
+  never blocks: the target still sits below maintenance, so weight loss still works. Measured against the
+  *floored* effective TDEE, so adaptive auto-lowering can't quietly deepen the real deficit past the cap.
+  Amber **"Eased to a steady pace"** note with a "Why?" toggle (`deficitFloorApplied`).
+- **Low-fuel warning (never clamps):** energy availability = `(target − today's RAW training burn) ÷ fat-free
+  mass`. Below **30 kcal/kg FFM** you get an amber **"Low on fuel today"** note — *only* for a lean body
+  (`LEAN_BF` 15% M / 23% F) on a day training was actually logged. It changes no number. EA deliberately uses
+  the **raw** burn while the target uses Step 3's **smoothed** bonus: the question is what today's body
+  actually had left.
+- **What changed from the draft spec and why:** the drafted EA-30 *clamp* would have capped a 98.5 kg / 30%
+  body-fat user's cut at a **161 kcal deficit** — those thresholds come from lean athletes with no fat store
+  to cover the gap. And the drafted EA-45 "all clear" band is **unreachable by construction** here (NEAT-only
+  multipliers, max 1.55, with training subtracted back out of EA), so it would have been permanently amber for
+  everyone — wallpaper, not safety. EA-45 is dropped; EA-30 warns instead of clamping. Full persona numbers:
+  `ENERGY_MODEL.md` §5.1.
+- **Custom targets are warned about, never overridden** — a number you typed stays the number you typed, with
+  an amber note naming the floor we'd have set. The flat `SAFE_MIN` survives as the absolute backstop and the
+  fallback when body fat isn't set (no EA figure is produced at all in that case).
+- Spec: `features/energy-safety/01-energy-availability-floor.feature` (rewritten to match).
 
 ### Energy Step 3 — smoothed earn-to-eat (Aug 2026)
 A logged workout no longer unlocks its full energy on the same day. Its kcal are spread **forward across a

@@ -681,9 +681,66 @@ var smoothWorkoutKcal = function smoothWorkoutKcal(kcalByOffset) {
     return s + w * (kcalByOffset[i] || 0);
   }, 0));
 };
+
+// ── Energy floor + low-fuel warning (energy-model Step 4) ─────────
+// features/energy-safety/01. Two DIFFERENT protections, deliberately separated —
+// the draft spec conflated them into one EA-30 clamp, which doesn't survive the
+// numbers (see ENERGY_MODEL.md §5 Step 4):
+//
+//  1. HARD CLAMP — rate of loss. A preset target never takes more than
+//     MAX_DEFICIT_FRAC off believable maintenance (+ today's applied training
+//     bonus, so the Step-3 smoothing isn't undone). This scales with body size,
+//     which is what the flat SAFE_MIN never did: a 98.5 kg body floors ~1,673,
+//     a 60 kg body ~1,208. SAFE_MIN survives only as the absolute backstop.
+//  2. WARNING ONLY — energy availability. EA = (intake − today's training burn)
+//     / fat-free mass; below EA_HARD the RED-S literature (Loucks & Thuma 2003;
+//     IOC consensus, Mountjoy et al.) documents endocrine/recovery harm. Those
+//     thresholds were derived in LEAN athletes, who have no large fat store to
+//     cover the gap — applied to a 30%-body-fat dieter EA-30 sits ABOVE a normal
+//     cut target and would forbid weight loss entirely. So EA never clamps; it
+//     warns, and only for lean bodies on days they actually trained. That keeps
+//     it rare AND true, and keeps a persistent "you're under-eating" banner off
+//     a calorie tracker (ED-safety guardrail).
+//
+// EA_OK (45) is deliberately NOT implemented as a band: our multipliers are
+// NEAT-only (max 1.55) with training added separately and subtracted back out of
+// EA, so 45 kcal/kg FFM is unreachable by construction — a band nothing can
+// satisfy is wallpaper, not safety.
+var EA_HARD = 30; // kcal per kg fat-free mass per day
+var MAX_DEFICIT_FRAC = 0.25; // a preset target never sits >25% below maintenance
+// Where the EA thresholds' source population starts. App policy informed by the
+// standard athletic/fitness body-fat ranges — not a clinical cut-off, and only
+// ever used to decide whether to SHOW a warning.
+var LEAN_BF = {
+  male: 15,
+  female: 23
+};
+var ffmOf = function ffmOf(p) {
+  return (Number(p.weight) || 80) * (1 - (Number(p.bodyFat) || 18) / 100);
+};
+var bodyFatSet = function bodyFatSet(p) {
+  var bf = Number(p && p.bodyFat);
+  return bf > 0 && bf < 100;
+};
+var isLeanBody = function isLeanBody(p) {
+  return bodyFatSet(p) && Number(p.bodyFat) <= LEAN_BF[p.sex === "female" ? "female" : "male"];
+};
+
+// The steady-loss floor: 75% of the energy the day is actually built on.
+var deficitFloorOf = function deficitFloorOf(effTDEE) {
+  var appliedBonus = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0;
+  return Math.round((1 - MAX_DEFICIT_FRAC) * (effTDEE + (appliedBonus || 0)));
+};
+
+// EA uses TODAY'S RAW burn (what the body actually spent), not the smoothed bonus
+// the target was built from — the question is what's left over today.
+var energyAvailability = function energyAvailability(kcal, rawBurnKcal, p) {
+  return bodyFatSet(p) ? Math.round((kcal - (rawBurnKcal || 0)) / ffmOf(p) * 10) / 10 : null;
+};
 var calcTargets = function calcTargets(p, mode) {
   var totalWorkoutKcal = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
   var tdeeAdj = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
+  var rawBurnKcal = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 0;
   var sex = p.sex || "male";
   var bmr = bmrOf(p);
   // Seed TDEE from the lifestyle NEAT multiplier (was a flat ×1.2). The adaptive
@@ -698,10 +755,20 @@ var calcTargets = function calcTargets(p, mode) {
   var kcal = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   var bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
+  // Steady-loss floor (Step 4). Measured against BELIEVABLE maintenance — the same
+  // floored effective TDEE the rest of the app trusts — so a negative adaptive
+  // adjustment can't quietly deepen the real deficit past the cap.
+  var effTDEE = Math.max(sedentaryTDEE, tdee);
+  var deficitFloor = deficitFloorOf(effTDEE, totalWorkoutKcal);
+  var deficitFloorApplied = kcal < deficitFloor;
+  if (deficitFloorApplied) kcal = deficitFloor;
   var safeMin = SAFE_MIN[sex] || 1400;
   var safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   var m = computeMacros(p, mode, kcal);
+  // Low-fuel signal: warning only, never a clamp (see the block above).
+  var ea = energyAvailability(kcal, rawBurnKcal, p);
+  var lowFuel = ea != null && isLeanBody(p) && (rawBurnKcal || 0) > 0 && ea < EA_HARD;
   return {
     kcal: kcal,
     protein: m.protein,
@@ -713,6 +780,11 @@ var calcTargets = function calcTargets(p, mode) {
     bonus: totalWorkoutKcal || 0,
     safeMinApplied: safeMinApplied,
     bmrFloorApplied: bmrFloorApplied,
+    deficitFloorApplied: deficitFloorApplied,
+    deficitFloor: deficitFloor,
+    ea: ea,
+    lowFuel: lowFuel,
+    bodyFatUnset: !bodyFatSet(p),
     floorsExceedKcal: m.floorsExceedKcal
   };
 };
@@ -6078,6 +6150,9 @@ function Dashboard(_ref69) {
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
   var isTraining = workouts.length > 0;
+  var todayWorkoutKcal = workouts.reduce(function (s, w) {
+    return s + (w.kcal || 0);
+  }, 0); // raw, for the low-fuel copy
   // Graduated calorie status: ok (≤100 over) | amber-soft (100-200) | amber (200-500) | red (500+)
   var AMBER = "var(--warn)";
   var RED = "var(--over)";
@@ -6129,6 +6204,12 @@ function Dashboard(_ref69) {
     if (diff < -750) return {
       level: "amber",
       text: "This is an aggressive deficit. You may lose muscle alongside fat. Consider ".concat((tdee - 750).toLocaleString(), " kcal or above.")
+    };
+    // Steady-loss floor (Step 4). A typed target isn't overridden — but a number below
+    // the floor we'd set for this body earns the same plain-English explanation.
+    if (targets.deficitFloor && customKcal < targets.deficitFloor) return {
+      level: "amber",
+      text: "That's below the ".concat(targets.deficitFloor.toLocaleString(), " kcal we'd set as your steady-loss floor \u2014 losing faster than that mostly costs muscle and is harder to stick to.")
     };
     if (diff >= -150 && diff < 0) return {
       level: "info",
@@ -6499,7 +6580,107 @@ function Dashboard(_ref69) {
       color: "var(--gold-dim)",
       lineHeight: 1.5
     }
-  }, "Your maintenance can't sit below your body's sedentary energy use, so we've held today's target at ", targets.kcal.toLocaleString(), " kcal. If the scale keeps rising, a short diet break usually beats eating less."))), targets.floorsExceedKcal && /*#__PURE__*/React.createElement("div", {
+  }, "Your maintenance can't sit below your body's sedentary energy use, so we've held today's target at ", targets.kcal.toLocaleString(), " kcal. If the scale keeps rising, a short diet break usually beats eating less."))), targets.deficitFloorApplied && !targets.safeMinApplied && !targets.bmrFloorApplied && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--warn-tint-2)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      marginTop: 1
+    }
+  }, "\uD83D\uDEE1\uFE0F"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: AMBER,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 2
+    }
+  }, "EASED TO A STEADY PACE"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--gold-dim)",
+      lineHeight: 1.5
+    }
+  }, "A ", MODES[mode].label.toLowerCase(), " at your size would have taken too big a bite out of today, so we've set it to ", targets.kcal.toLocaleString(), " kcal.", /*#__PURE__*/React.createElement("details", {
+    style: {
+      marginTop: 4
+    }
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      cursor: "pointer",
+      color: AMBER,
+      fontWeight: 700,
+      fontSize: 11
+    }
+  }, "Why?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 4,
+      color: "var(--text-mid)"
+    }
+  }, "Your floor is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--warn-tint-2)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      marginTop: 1
+    }
+  }, "\u26FD"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: AMBER,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 2
+    }
+  }, "LOW ON FUEL TODAY"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--gold-dim)",
+      lineHeight: 1.5
+    }
+  }, "Today's training used about ", todayWorkoutKcal.toLocaleString(), " kcal, which doesn't leave much behind for recovery. Eating a bit more today would be worth it.", /*#__PURE__*/React.createElement("details", {
+    style: {
+      marginTop: 4
+    }
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      cursor: "pointer",
+      color: AMBER,
+      fontWeight: 700,
+      fontSize: 11
+    }
+  }, "Why?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 4,
+      color: "var(--text-mid)"
+    }
+  }, "What matters isn't just what you eat \u2014 it's what's left once training has taken its share. At your body composition there isn't much spare to draw on, and running short for weeks at a time tends to show up as flat training, poor sleep, low mood and hormonal changes. One light day is nothing to worry about."))))), targets.floorsExceedKcal && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--warn-tint-2)",
       border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
@@ -11360,7 +11541,9 @@ function App() {
     return s + (w.kcal || 0);
   }, 0);
   var smoothedBonus = smoothWorkoutKcal([todayWorkoutKcal].concat(_toConsumableArray(priorWorkoutKcal)));
-  var baseTargets = calcTargets(p, effectiveMode, smoothedBonus, tdeeAdj);
+  // Raw (unsmoothed) burn goes in separately: the target is built from the smoothed
+  // bonus, but energy availability asks what today's body actually spent (Step 4).
+  var baseTargets = calcTargets(p, effectiveMode, smoothedBonus, tdeeAdj, todayWorkoutKcal);
   var targets = function () {
     if (customKcal == null) return baseTargets;
     var safeMin = SAFE_MIN[p.sex || "male"] || 1400;
@@ -11375,7 +11558,12 @@ function App() {
       fat: m.fat,
       floorsExceedKcal: m.floorsExceedKcal,
       safeMinApplied: safeKcal > customKcal,
-      customKcalApplied: true
+      customKcalApplied: true,
+      // A typed target is the user's own choice: the steady-loss floor WARNS here
+      // (see targetWarning) instead of silently overriding the number they set.
+      deficitFloorApplied: false,
+      ea: energyAvailability(safeKcal, todayWorkoutKcal, p),
+      lowFuel: isLeanBody(p) && todayWorkoutKcal > 0 && energyAvailability(safeKcal, todayWorkoutKcal, p) < EA_HARD
     });
   }();
   var totals = sumLogs(logs);
