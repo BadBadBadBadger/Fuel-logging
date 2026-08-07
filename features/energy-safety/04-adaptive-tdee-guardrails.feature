@@ -21,13 +21,13 @@
 #       lives at BMR, so a maintenance figure at raw BMR is itself unusable —
 #       the parked targets-bmr-floor-wip work undershot by flooring at BMR.
 #   (b) Asymmetric calibration: unexpected GAIN during a deficit must NOT
-#       ratchet the target down; it flags for investigation / a break.
+#       auto-lower the target; it flags for investigation / a break.
 #   (c) The accumulated tdeeAdj can never, by itself, push maintenance below
 #       sedentary TDEE. The ENERGY-AVAILABILITY floor (file 01) is the hard
 #       floor for EVERY mode; raw BMR is only a label for the rare lean case.
 # Intentional CUT deficits can sit below sedentary TDEE (a cut is a choice),
 # bounded by the energy-availability floor in file 01; what is forbidden is
-# MAINTENANCE below BMR × 1.2 and the auto-ratchet driving it there.
+# MAINTENANCE below BMR × 1.2 and the auto-lowering driving it there.
 #
 # ── NUMBERS CONTRACT (read before writing code) ──────────────
 #   DERIVED figures are WORKED EXAMPLES — never hardcode them. Any maintenance /

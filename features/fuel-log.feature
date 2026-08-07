@@ -136,7 +136,7 @@ Feature: Safe minimum calorie guard (last-resort backstop)
 # BUILT 2026-08-06 (app.jsx calcTargets, sw v56; unit-tested in
 # __tests__/logic.test.js — "calcTargets — maintenance BMR×1.2 floor").
 # This is the first piece of the energy-safety workstream to ship. The
-# adaptive-TDEE ratchet could previously drive a MAINTAIN target below
+# adaptive-TDEE auto-lowering could previously drive a MAINTAIN target below
 # resting metabolism (the founder's harm report: ~1,650 shown against an
 # ~1,859 BMR). Maintenance is now floored at sedentary TDEE (BMR × 1.2).
 #

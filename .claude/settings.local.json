@@ -44,7 +44,11 @@
       "Bash(echo \"build exit: $?\")",
       "Bash(npx jest *)",
       "Bash(git fetch *)",
-      "Bash(curl -s -o /dev/null -w 'HTTP status: %{http_code}\\\\n' 'https://hvohicddolqpcgzgrbwc.supabase.co/rest/v1/entitlements?select=id&limit=1' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2b2hpY2Rkb2xxcGNnemdyYndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDI4NTIsImV4cCI6MjA5MjcxODg1Mn0.NS5cRD-CHLV6_I9BiNmH-tN4kicbgXBh4gb_xl-65fY' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2b2hpY2Rkb2xxcGNnemdyYndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDI4NTIsImV4cCI6MjA5MjcxODg1Mn0.NS5cRD-CHLV6_I9BiNmH-tN4kicbgXBh4gb_xl-65fY')"
+      "Bash(curl -s -o /dev/null -w 'HTTP status: %{http_code}\\\\n' 'https://hvohicddolqpcgzgrbwc.supabase.co/rest/v1/entitlements?select=id&limit=1' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2b2hpY2Rkb2xxcGNnemdyYndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDI4NTIsImV4cCI6MjA5MjcxODg1Mn0.NS5cRD-CHLV6_I9BiNmH-tN4kicbgXBh4gb_xl-65fY' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2b2hpY2Rkb2xxcGNnemdyYndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDI4NTIsImV4cCI6MjA5MjcxODg1Mn0.NS5cRD-CHLV6_I9BiNmH-tN4kicbgXBh4gb_xl-65fY')",
+      "Bash(node -e ' *)",
+      "Bash(node \"C:/Users/adria/AppData/Local/Temp/claude/c--Users-adria-Fuel-logging/602e03b6-f955-40e3-97ab-32c093bc90b3/scratchpad/sim3.js\")",
+      "Bash(node \"C:/Users/adria/AppData/Local/Temp/claude/c--Users-adria-Fuel-logging/602e03b6-f955-40e3-97ab-32c093bc90b3/scratchpad/sim4.js\")",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

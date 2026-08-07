@@ -4,7 +4,7 @@
 # WHY: A prompt is useless without a real, low-friction path OUT of the
 # deficit. This defines the DIET BREAK as a first-class app state — a
 # distinct mode at true maintenance, floored at sedentary TDEE (BMR × 1.2),
-# with the adaptive ratchet PAUSED so it cannot keep cutting during recovery.
+# with the adaptive auto-lowering PAUSED so it cannot keep cutting during recovery.
 #
 # EVIDENCE (coach hat):
 #   • Diet break = a planned return to maintenance (energy balance) for a
@@ -54,7 +54,7 @@ Feature: Diet break is a first-class recovery state
       | 2,231 |
       | 1,680 |
 
-  Scenario: The adaptive ratchet is paused during a diet break
+  Scenario: The adaptive auto-lowering is paused during a diet break
     Given I am in "Diet Break" mode
     And my weight rises during the break
     When the weekly calibration runs
