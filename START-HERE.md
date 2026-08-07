@@ -28,45 +28,50 @@ Read this file first. It never duplicates roadmap detail — it points to it.
 
 ## Right now
 
-- **🔵 NOW (session 12) — Step 5: sustainability (02 cut-cycling · 03 diet break · 04-rest).** Steps 1–4 are
-  **built and committed** on `energy-safety-bmr-floor` (Jest 142, sw v60; not deployed/device-tested —
-  batched). Now that a cut is a *real, bounded* deficit, the cycling/diet-break features become meaningful.
-  **02 is yours to proofread first.** See `ENERGY_MODEL.md` §5 Step 5.
-  - **✅ Step 4 (energy floor) DONE 2026-08-07 — re-shaped from the draft.** Two protections, not one clamp:
-    (a) **steady-loss floor**, the hard clamp for everyone — `MAX_DEFICIT_FRAC = 0.25` off believable
-    maintenance + the applied training bonus (`deficitFloorApplied`, amber *"Eased to a steady pace"* with a
-    "Why?"); (b) **low-fuel warning** — EA `(target − raw burn) ÷ FFM`, **never clamps**, shown only for a lean
-    body (`LEAN_BF` 15% M / 23% F) on a day it trained with EA < 30. **`EA_OK = 45` dropped** — unreachable by
-    construction. EA uses the **raw** burn while the target uses Step 3's **smoothed** bonus. `SAFE_MIN` stays as
-    the absolute backstop + body-fat-unset fallback. Feature file 01 rewritten to match. Jest 142, sw v60.
-    Reasoning + persona numbers: `ENERGY_MODEL.md` §5.1.
-  - Steps 1–3 are summarised in the table at the top; their full changelists live in `DOCS.md` §37 and
-    `ENERGY_MODEL.md` §5. ([[project_workout_smoothing_idea]] shipped as Step 3.)
+**Session 12 ended clean.** Nothing half-finished, nothing uncommitted, Jest green, working tree empty.
+Branch `energy-safety-bmr-floor` is checked out and is where all the work is.
 
-**Git:** `main` @ `88a283a` = the harm-fix, **live on Pages**. Ongoing energy-safety work continues on branch
-**`energy-safety-bmr-floor`** (checked out) — Steps 1–4, latest `bfe926f`. Parked `targets-bmr-floor-wip`
-**deleted**. Rollback tag `pre-bmr-floor` (pre-fix `main`).
+### 🔵 Start here next session — Step 5: sustainability
 
-- **What's left in the energy plan** — `ENERGY_MODEL.md` §5 is the authoritative table; don't restate it here.
-  - **Step 5 — Sustainability: 02 cut-cycling · 03 diet break · 04-rest (no auto-lower on gain-in-deficit).**
-    Only meaningful now that a cut is a real, bounded deficit. **02 is yours to proofread.** ← next build.
-  - **Step 6 — 05 LEA symptom check**, sex-neutral → *"see a healthcare professional."* ⚠️ Its trigger needs
-    re-picking: it was written against the EA 30–45 caution band, which Step 4 dropped (noted in the file).
-  - **Convention:** specs are @draft — implement to the **NUMBERS CONTRACT** (derived worked-examples vs named
-    policy constants; exact numbers owned by `logic.test.js`; steps assert observable outcomes). Coach + design +
-    QA hats; consultant believability gate before each deploy. Device-testing stays **BATCHED** (one pass later).
-    See [[project_energy_safety_workstream]].
+Build **02 cut-cycling · 03 diet break · 04-rest** (no auto-lowering when the scale rises during a deficit).
+These only became meaningful now that a cut is a **real, bounded** deficit — before Step 4 there was nothing
+worth cycling. `ENERGY_MODEL.md` §5 Step 5 is the brief.
+
+**⛔ Do this first: `features/energy-safety/02-cut-cycle-blocks.feature` is yours to proofread.** It has been
+waiting on you since session 10. Don't let me build it until you've read it.
+
+Then, in order: **Step 6** — 05 LEA symptom check (its trigger is now **decided and written into the file**;
+see §"Trigger — decided" in its header, and `ENERGY_MODEL.md` §5 Step 6). Then **Next up 2**, the one batched
+device test + deploy of everything.
+
+### What landed this session (all committed, none deployed)
+
+Steps 1–4 of the energy plan — the table at the top of this file summarises them; `DOCS.md` §37 has the full
+changelists. Step 4 is the one that changed shape mid-build, so if you read one thing, read `ENERGY_MODEL.md`
+**§5.1**. In short: the drafted EA-30 rule would have capped a 98.5 kg cut at a 161 kcal deficit and the
+EA-45 band was unreachable by construction, so the feature became a **steady-loss floor** that clamps
+(`MAX_DEFICIT_FRAC = 0.25`, body-sized, amber *"Eased to a steady pace"*) plus a **low-fuel warning** that
+never touches a number (lean body + a day they trained + EA < 30). Docs across the repo were swept to match
+(`02840e4`) — including several that were flatly wrong, not just dated.
+
+**Git:** `main` @ `88a283a` = the harm-fix, **live on Pages** (sw v56). Branch `energy-safety-bmr-floor`
+carries Steps 1–4, head @ `02840e4` (`bfe926f` = the Step 4 build, `02840e4` = the docs sweep). Parked
+`targets-bmr-floor-wip` **deleted**. Rollback tag `pre-bmr-floor` (pre-fix `main`).
+
+**Convention for the remaining specs:** they're `@draft` — implement to the **NUMBERS CONTRACT** (derived
+worked-examples vs named policy constants; exact numbers owned by `logic.test.js`; steps assert observable
+outcomes). Coach + design + QA hats; consultant believability gate before each deploy. Device-testing stays
+**BATCHED** — one pass at the end. See [[project_energy_safety_workstream]].
 
 - **⏸ DEFERRED (per user) — AI photo→log (v6.7) device-verify.** Already live on Pages; 3 checks remain
   (see Next-up 2), held until the energy-safety build lands and gets its batch device-test.
 
 ## Next up (in order)
 
-1. **◀ Work the re-sequenced energy plan** (`ENERGY_MODEL.md` §5): ✅ Step 1 activity input + ✅ Step 2
-   adaptive-TDEE (+ weigh-in engagement 06) + ✅ Step 3 smooth earn-to-eat + ✅ Step 4 energy floor DONE →
-   **◀ Step 5 sustainability (02/03/04) (next)** → Step 6 LEA (05). Commit as each lands (keep Jest green);
-   **batch the on-device test + deploy of all feature files** once complete. *(Steps 1–4 committed + Jest-green
-   on `energy-safety-bmr-floor`, not yet deployed.)*
+1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅ 1 activity input · ✅ 2 adaptive-TDEE (+ weigh-in
+   engagement 06) · ✅ 3 smooth earn-to-eat · ✅ 4 energy floor → **◀ 5 sustainability (02/03/04)** → 6 LEA (05).
+   Proofread 02 first. Commit as each lands (keep Jest green); **batch the on-device test + deploy of every
+   feature file** once complete.
 2. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7) checks
    in one pass (hard-reload first, PWA cache): (a) v55 optional follow-up flow; (b) ⚐ Report-wrong opens a
    prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI ("Eased to a steady pace" +
