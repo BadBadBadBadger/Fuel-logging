@@ -17,7 +17,8 @@
 - The app models everyone as **sedentary (TDEE = BMR × 1.2)** and only adds **logged workouts** on top. It captures **no NEAT** (non-exercise activity — walking, standing, job, steps), the single most variable term in human expenditure (300–800+ kcal/day between similar bodies). So it **systematically under-estimates TDEE for anyone who isn't truly desk-bound.**
 - The **energy-availability (EA) floor** (file 01: hard 30 / target 45 kcal/kg FFM) is good science aimed at the **wrong layer**. Layered on an under-counted TDEE it fires on *everyone*: maintenance reads ≈ EA 32 (permanent amber "Low fuel"), and a "Cut" gets floored to a **~160 kcal deficit — not a cut.**
 - **Fix the model first, then the floor.** Locked design: **seed → calibrate** — ask one coarse activity question for a believable day-one target, then let a strengthened adaptive TDEE become the source of truth. NEAT-only multiplier; keep "earn to eat" for logged training but **smoothed across days**.
-- **Re-sequenced build:** activity input → stronger adaptive TDEE → smoothed earn-to-eat → EA floor (01) → sustainability (02/03/04) → LEA symptom check (05).
+- **Re-sequenced build:** activity input → stronger adaptive TDEE → smoothed earn-to-eat → energy floor (01) → sustainability (02/03/04) → LEA symptom check (05).
+- **⚠️ Updated 2026-08-07 — §§1–3 below record the state of thinking *before* Step 4 was built, where the plan was still to make EA-30 a hard floor once TDEE was corrected. It isn't.** Correcting TDEE helped active users only; a sedentary user's EA-30 floor still lands at ~93% of maintenance. The shipped design is a **rate-of-loss floor** that clamps and an **EA warning** that never touches a number. **§5.1 is the authoritative account** — read it before §3 item 4.
 
 ---
 
@@ -41,6 +42,10 @@ Two structural faults:
 | M2 | **Adaptive TDEE can't rescue it** — clamped **±150** ([app.jsx:392](app.jsx#L392)), needs **≥8 weigh-ins** to start ([app.jsx:366](app.jsx#L366)). | The one mechanism that could learn the true TDEE is too small (±150 can't close a 500 gap) and too slow. |
 
 ### 1.1 The collision that stopped file 01
+
+> This diagnosis still stands — it is *why* EA-30 could never be the floor. What changed at the Step 4
+> build is the conclusion drawn from it: correcting TDEE doesn't rescue the EA floor, because the
+> collision persists for every sedentary user. See **§5.1**.
 
 Target energy availability = (target intake − training) ÷ FFM. Because the app *adds* logged workouts to the target and EA *subtracts* them, **the workout term cancels** and:
 
@@ -67,7 +72,7 @@ And it's not an edge case — algebra says a sedentary −500 cut lands below EA
 | "Cut" to lose fat at a sane rate (~0.5–1%/wk) | Nominal −500, but EA floor caps to ~−160 on the low base | **Cut is fake** once the floor lands on a low TDEE |
 | Warnings only when I'm genuinely under-fuelling | Fire "Low fuel" at maintenance for nearly everyone | **Warning constant & false** → noise + harm framing |
 | To get more accurate the more I log | Adaptive TDEE clamped ±150, needs 8 weigh-ins, slow | **Too weak/slow** to close a 300–800 kcal gap |
-| To not be allowed to starve myself | Flat `SAFE_MIN` 1400/1200, ignores body size | Right instinct, **wrong mechanism** (EA floor fixes it — once seeded correctly) |
+| To not be allowed to starve myself | Flat `SAFE_MIN` 1400/1200, ignores body size | Right instinct, **wrong mechanism** — ✅ **closed at Step 4** by the body-sized steady-loss floor (not by the EA floor this row originally credited; §5.1) |
 
 ---
 
@@ -81,7 +86,7 @@ And it's not an edge case — algebra says a sedentary −500 cut lands below EA
 1. **Seed TDEE from a coarse activity input.** One 4-option lifestyle question → a **NEAT-only** multiplier on Katch-McArdle BMR, *replacing* the flat ×1.2. Asked at onboarding, editable in Profile, framed honestly as *"a starting point — we fine-tune this automatically as you log."*
 2. **Keep event-based "earn to eat" for logged training — but smoothed across days**, not a same-day unlock (kills compensatory "burn-to-eat" patterns; handles rest-day clusters). See [[project_workout_smoothing_idea]].
 3. **Adaptive TDEE is the truth.** Widen the ±150 clamp into a **rate-limited convergence** (can move far over weeks, never lurch per update), engage sooner, and show an honest "still learning" confidence state.
-4. **EA floor (file 01) sits on the corrected TDEE** — hard *cut boundary* at EA 30, green at 45, `SAFE_MIN` retained only as the body-fat-unset backstop.
+4. ~~**EA floor (file 01) sits on the corrected TDEE** — hard *cut boundary* at EA 30, green at 45, `SAFE_MIN` retained only as the body-fat-unset backstop.~~ **SUPERSEDED at the Step 4 build (2026-08-07):** correcting TDEE was not enough to make EA-30 usable as a floor — see **§5.1**. What shipped: a **steady-loss floor** (75% of believable maintenance) clamps; **EA-30 warns only**, for lean bodies on training days; EA-45 dropped; `SAFE_MIN` kept as the absolute backstop *and* the body-fat-unset fallback.
 
 ### 3.1 Multiplier values — NEAT-only, proposed (coach-owned, to verify)
 

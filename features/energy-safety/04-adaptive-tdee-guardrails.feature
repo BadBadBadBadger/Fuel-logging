@@ -23,11 +23,18 @@
 #   (b) Asymmetric calibration: unexpected GAIN during a deficit must NOT
 #       auto-lower the target; it flags for investigation / a break.
 #   (c) The accumulated tdeeAdj can never, by itself, push maintenance below
-#       sedentary TDEE. The ENERGY-AVAILABILITY floor (file 01) is the hard
-#       floor for EVERY mode; raw BMR is only a label for the rare lean case.
+#       sedentary TDEE. The STEADY-LOSS floor (file 01, BUILT 2026-08-07) is the
+#       hard floor for every mode; raw BMR is only a label for the rare lean case.
 # Intentional CUT deficits can sit below sedentary TDEE (a cut is a choice),
-# bounded by the energy-availability floor in file 01; what is forbidden is
-# MAINTENANCE below BMR × 1.2 and the auto-lowering driving it there.
+# bounded by the steady-loss floor in file 01; what is forbidden is MAINTENANCE
+# below BMR × 1.2 and the auto-lowering driving it there.
+#
+# ⚠️ UPDATED 2026-08-07 (Step 4 built): this file was drafted assuming energy
+# availability (EA_HARD × FFM) would be that hard floor. It isn't — EA-30 as a
+# clamp forbids weight loss for anyone carrying fat, so it ships as a WARNING
+# only. The hard floor is the steady-loss floor: 75% of believable maintenance
+# plus the applied training bonus (MAX_DEFICIT_FRAC = 0.25). See file 01 and
+# ENERGY_MODEL.md §5.1. Scenarios below are corrected; this file is still @draft.
 #
 # ── NUMBERS CONTRACT (read before writing code) ──────────────
 #   DERIVED figures are WORKED EXAMPLES — never hardcode them. Any maintenance /
@@ -38,7 +45,9 @@
 #   it is computed, not baked in.
 #   POLICY CONSTANTS (the only literals; owned by logic.test.js):
 #       ADJ_CAP = −600 kcal (accumulated adaptive adjustment limit)
-#       ACTIVITY_MULT = 1.2 · EA_HARD = 30 kcal/kg FFM (see file 01)
+#       ACTIVITY_MULT = 1.2 (sedentary; the seed is 1.20–1.55, see ENERGY_MODEL §3.1)
+#       MAX_DEFICIT_FRAC = 0.25 (steady-loss floor) · EA_HARD = 30 kcal/kg FFM
+#       (warning only — see file 01)
 # ─────────────────────────────────────────────────────────────
 
 Feature: Adaptive TDEE cannot starve a stalling dieter
@@ -80,16 +89,15 @@ Feature: Adaptive TDEE cannot starve a stalling dieter
     Then the app recommends a diet break as the first option
     And my calorie target is unchanged from before the calibration ran
 
-  Scenario: A deliberate cut is floored by energy availability, not by BMR
+  Scenario: A deliberate cut is floored by rate of loss, not by BMR
     Given I have deliberately selected "Cut" mode
     When the app calculates today's cut target
-    Then the target is never below my energy-availability floor (EA_HARD × my fat-free mass)
+    Then the target is never more than MAX_DEFICIT_FRAC below my believable maintenance
     And no separate BMR floor is applied to a cut, because a cut is a deliberate deficit
     And my maintenance floor of BMR × 1.2 does not apply while I am cutting
 
-  Scenario: A lean user whose cut target sits below BMR sees an honest note
-    Given my fat-free mass is small enough that my energy-availability floor is below my BMR
-    And today's cut target lands below my BMR but at or above the energy-availability floor
+  Scenario: A user whose cut target sits below BMR sees an honest note
+    Given today's cut target lands below my BMR but at or above my steady-loss floor
     When the app shows the target
     Then the cut target is allowed
     And I see an amber note "This is below your resting metabolism — fine short-term, not a long-term level"

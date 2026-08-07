@@ -90,18 +90,24 @@ Feature: Macro tolerance — forgiving colour logic
 
 
 # ─────────────────────────────────────────────────────────────
-# BACKSTOP ONLY (framing corrected 2026-08-06). The flat SAFE_MIN
-# (1,400 male / 1,200 female) is NO LONGER the primary safety mechanism —
-# it sits BELOW a large user's BMR, so it never protected them. It is now
-# the LAST-RESORT backstop beneath the maintenance floor (BMR × 1.2, BUILT —
-# see the next Feature) and, when body-fat is unset, the sole fallback.
-# The physiological energy-availability floor that will eventually REPLACE
-# this flat floor is still @draft in
-# features/energy-safety/01-energy-availability-floor.feature.
+# BACKSTOP ONLY (framing corrected 2026-08-06; confirmed 2026-08-07 at the
+# Step 4 build). The flat SAFE_MIN (1,400 male / 1,200 female) is NOT the
+# primary safety mechanism — it sits BELOW a large user's BMR, so it never
+# protected them. Two body-derived floors now run ABOVE it, both BUILT:
+#   • the STEADY-LOSS floor — 75% of believable maintenance + the applied
+#     training bonus, every preset mode (features/energy-safety/01);
+#   • the MAINTENANCE floor — sedentary TDEE, BMR × 1.2, maintain only
+#     (see the next Feature).
+# SAFE_MIN was NOT replaced and is not going to be: it stays as the absolute
+# backstop and, when body-fat is unset, the sole fallback (no energy-
+# availability figure can be produced without it). It therefore only wins on
+# the smallest bodies, where it out-ranks even the steady-loss floor.
 # These scenarios stay because SAFE_MIN still runs exactly as described.
 # ─────────────────────────────────────────────────────────────
 Feature: Safe minimum calorie guard (last-resort backstop)
 
+  # Since Step 4 a calculated target meets the steady-loss floor FIRST; SAFE_MIN
+  # only decides the outcome when it is the stricter of the two (small bodies).
   Scenario: Calculated cut target falls below safe minimum for men
     Given a male user's calculated cut target is below 1,400 kcal
     Then the target is overridden to 1,400 kcal
@@ -183,7 +189,8 @@ Feature: Maintenance is never floored below sedentary TDEE (BMR × 1.2)
     Given I have deliberately selected "Cut" mode
     When the app calculates my cut target
     Then the maintenance floor of BMR × 1.2 does NOT apply, because a cut is a chosen deficit
-    And the target is still backstopped by the flat safe minimum for my sex
+    And the target is instead bounded by the steady-loss floor (features/energy-safety/01)
+    And it is still backstopped beneath that by the flat safe minimum for my sex
 
   Scenario: The displayed effective TDEE is floored to match the target
     Given I am in "Maintain" mode with a negative adaptive adjustment

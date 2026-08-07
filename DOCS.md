@@ -1,12 +1,16 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.1 (Cream-grey UI refresh, WCAG-AA readability, top-aligned navigation)
-**Last Updated:** June 2026
+**Version:** 6.7 (AI meal capture) + energy-plan Steps 1–4 (built, not yet deployed)
+**Last Updated:** 7 August 2026
 
-> **What's new in 6.1** — The neon-lime palette was replaced with a warm cream-grey
-> theme; all text lifted to ≥WCAG-AA contrast; every screen now opens top-aligned;
-> the Google avatar is more robust (no-referrer + graceful fallback); and the
-> service worker is skipped on `localhost` for friction-free local dev. See
-> §35 Design System, §36 Local Development, and §37 Changelog.
+> **What's new** — the **energy plan** rebuilt how targets are worked out, in four steps:
+> a lifestyle activity chip seeds a believable TDEE (Step 1); the adaptive engine converges
+> on your real one instead of over-correcting (Step 2); a workout's calories spread across
+> three days rather than all unlocking at once (Step 3); and a **body-sized steady-loss
+> floor** replaced the flat safe minimum as the real protection, with energy availability
+> demoted to a rare warning (Step 4). Steps 1–4 are **built and Jest-green on branch
+> `energy-safety-bmr-floor` but not deployed** — what's live is v6.7 plus the BMR × 1.2
+> maintenance floor. See §3 Calorie Calculation (its **Calorie floors** table), §10 Safe Minimum, §37 Changelog, and
+> `ENERGY_MODEL.md` for the model behind it.
 
 ---
 
@@ -344,7 +348,7 @@ The ratio of macros as a percentage of total calories remains constant.
 ### Safe minimum enforcement
 If a custom target falls below the sex-specific safe minimum (1,400 kcal male / 1,200 kcal female), it is clamped and a contextual banner appears: *"That's below the safe minimum for your body. We've set it to X kcal to keep you safe."*
 
-A custom target below the **steady-loss floor** (§8) is *not* clamped — a typed number stays as typed. It earns an amber warning naming the floor we'd have set, slotted into the existing custom-target ladder below the −750 / −1,000 kcal rungs so the stronger warnings still win.
+A custom target below the **steady-loss floor** (§3) is *not* clamped — a typed number stays as typed. It earns an amber warning naming the floor we'd have set, slotted into the existing custom-target ladder below the −750 / −1,000 kcal rungs so the stronger warnings still win.
 
 ### Persistence
 The custom target persists via `target_kcal` in localStorage and survives page reloads.
@@ -354,7 +358,7 @@ The custom target persists via `target_kcal` in localStorage and survives page r
 ## 10. Safe Minimum Calorie Guard
 
 > Since Energy Step 4 this is the **backstop**, not the main protection — the body-sized steady-loss floor
-> (§8) is what normally binds. It remains the fallback when body fat isn't set.
+> (§3) is what normally binds. It remains the fallback when body fat isn't set.
 
 | Sex | Safe minimum |
 |---|---|
@@ -498,19 +502,30 @@ npm test
 
 Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them in Node.
 
+Current as of 2026-08-07 (`npx jest`).
+
 | Group | Tests | What's covered |
 |---|---|---|
-| `calcTargets — Katch-McArdle` | 15 | BMR, TDEE, all modes, training bonus, session override, macros, carb floor, and sex-specific safe-minimum clamping (`safeMinApplied`) |
-| `estimateSessionKcal — MET-based` | 6 | MET scaling by type/intensity/weight/duration/body fat, unknown type fallback |
-| `calcStreak` | 5 | Consecutive days, gap breaks streak, empty logs, empty history |
-| `sumLogs` | 4 | Multi-entry accumulation, empty array, partial fields |
-| `calcTargets — tdeeAdj` | 3 | Positive/negative adjustments propagate to kcal and tdee fields |
-| `weighRollingAvg` | 4 | Average accuracy, cutoff exclusion, insufficient data, empty array |
-| `runCalibration` | 3 | Insufficient data guards, positive adjustment when burning more than expected |
-| `runMigrations` | 4 | Stamps schema version when absent, no-op when current, never overwrites user data, applies once across calls |
-| **Total** | **44** | |
+| `calcTargets — Katch-McArdle` | 12 | BMR, seeded TDEE per activity chip, all modes, training bonus, macros, carb floor, LBM |
+| `computeMacros — floors hold, carbs absorb` | 8 | Protein/fat floors held across modes; carbs absorb the remainder |
+| `scanAllergens — zero-token output backstop` | 7 | Allergen + synonym matching without an AI round-trip |
+| `dietaryPromptBlock — prompt injection` | 4 | Diet/allergy/dislike constraints reach the prompt safely |
+| `paceVerdict — computed pace with safeguards` | 7 | Pace verdict from the first logged meal, never a wall clock |
+| `estimateSessionKcal — MET-based` | 6 | MET scaling by type/intensity/weight/duration/body fat |
+| `calcStreak` / `sumLogs` | 5 / 4 | Streak gaps + empty cases; multi-entry accumulation |
+| `calcTargets — tdeeAdj` | 3 | Adjustments propagate to kcal and the tdee field |
+| `calcTargets — maintenance BMR×1.2 floor` | 8 | Maintenance never below sedentary TDEE; floor is derived, not baked in |
+| **`Step 4 — steady-loss floor`** | **8** | Floor tracks body size; a large body keeps its full deficit, a small one is eased; training bonus raises it; adaptive adjustment can't deepen the cut past the cap; SAFE_MIN still wins when stricter |
+| **`Step 4 — energy availability`** | **9** | EA uses the raw burn not the smoothed bonus; flags a lean body training hard; **never changes the target**; no flag for a body with reserves, a rest day, or unset body fat; lean gate is sex-specific |
+| `Smoothed earn-to-eat (Step 3)` | 8 | Energy-conserving 3-day spread; back-to-back averages, never stacks |
+| `weighRollingAvg` / `weighCadenceOf` / `shouldNudgeWeighIn` | 4 / 2 / 4 | Trend window; cadence choice; the one gentle nudge + cooldown + mute |
+| `runCalibration` (+ AI-estimated days) | 6 / 2 | Convergence guards; low-confidence intake days can't retrain TDEE |
+| `runMigrations` | 4 | Stamps schema version, no-op when current, never overwrites user data |
+| Capture/confidence groups (`unit conversions`, `MeasureField`, `tag suggestion`, `confidence model`, `normConf`, `confLabel`, `pickFollowups`, `refineElement`) | 31 | v6.6/v6.7 AI-capture maths and follow-up logic |
+| **Total** | **142** | |
 
-(Safe-minimum behaviour is verified inside the `calcTargets — Katch-McArdle` group, not a separate suite.)
+Safe-minimum behaviour is verified inside the `calcTargets` groups rather than a suite of its own — since
+Step 4 it is the backstop beneath the steady-loss floor, so it is asserted where that ordering is tested.
 
 ---
 
@@ -518,7 +533,18 @@ Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them 
 
 Feature behaviour is documented as executable Gherkin scenarios in `features/fuel-log.feature`. This file is the source of truth for UX decisions (colour thresholds, warning copy, animation timing, etc.) and should be updated before any implementation change.
 
-Current features covered:
+Two more spec sets sit alongside it:
+
+| Path | Covers | State |
+|---|---|---|
+| `features/ai-capture.feature` | v6.7 voice/photo meal capture | `@wip` until the batch device-test |
+| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 06 and 07 are **built** (their files were rewritten to match what shipped), 02–05 are not |
+
+Specs in `features/energy-safety/` carry a **NUMBERS CONTRACT** header: kcal figures in scenarios are worked
+examples derived from the formulas, never values to hardcode — the exact arithmetic is owned by
+`__tests__/logic.test.js`. Policy constants are named in the header and are the only literals.
+
+Current features covered in `fuel-log.feature`:
 1. Sex setting on profile screen
 2. Calorie tolerance — forgiving colour logic
 3. Macro tolerance — forgiving colour logic

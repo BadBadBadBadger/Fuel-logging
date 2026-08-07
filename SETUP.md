@@ -61,7 +61,7 @@ npx babel app.jsx --out-file app.js
 npm test
 ```
 
-44 tests covering all pure logic functions. No browser required.
+142 tests covering all pure logic functions (as of 2026-08-07). No browser required.
 
 ---
 

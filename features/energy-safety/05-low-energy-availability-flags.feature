@@ -29,8 +29,15 @@
 # ── NUMBERS CONTRACT ─────────────────────────────────────────
 #   No derived kcal outputs live here. The figures are POLICY CONSTANTS, owned
 #   by __tests__/logic.test.js so a tweak doesn't touch these scenarios:
-#       LEA_WEEKS_TO_PROMPT = 3 consecutive low-fuel weeks before offering a check
+#       LEA_WEEKS_TO_PROMPT = 3 consecutive weeks of under-eating before a check
 #       FLAG_THRESHOLD      = 2 selected symptoms escalates to break + healthcare-pro
+#   "The floor" below always means the STEADY-LOSS floor built in Step 4
+#   (file 01): 75% of believable maintenance + the applied training bonus.
+#   NOTE (2026-08-07): energy availability itself never moves a target — it is a
+#   warning shown only to lean bodies on days they trained (file 01, ENERGY_MODEL
+#   §5.1). So the trigger for THIS file is sustained under-eating against the
+#   steady-loss floor, not an "EA floor" breach. The name of this file is about
+#   the SYMPTOMS it screens for, not a threshold it reads.
 #   Core symptom set (sex-neutral, reviewable): low libido/sex drive, persistent
 #   low mood, poor sleep, feeling cold often, stalled/declining strength or
 #   recovery, getting ill or injured often. PLUS one profile-relevant physical
@@ -44,8 +51,15 @@
 
 Feature: Low-energy-availability symptom check and healthcare-professional signposting
 
-  Scenario: A symptom check is offered after a long low-fuel stretch
-    Given I have been in the caution band or below for LEA_WEEKS_TO_PROMPT (3) consecutive weeks
+  # ⚠️ OPEN (Step 6): this Given used to read "in the caution band or below" — the
+  # EA 30–45 caution band was DROPPED at the Step 4 build (unreachable by
+  # construction; ENERGY_MODEL.md §5.1), so the trigger needs re-picking before
+  # this file is built. Candidates: consecutive weeks cutting at/near the
+  # steady-loss floor, or weeks in which the low-fuel note actually fired.
+  # "Low-fuel stretch" here means a long stretch of under-eating — NOT the app's
+  # "Low on fuel today" note, which is a single-day, lean-body-only signal.
+  Scenario: A symptom check is offered after a long stretch of under-eating
+    Given I have been eating at or under my steady-loss floor for LEA_WEEKS_TO_PROMPT (3) consecutive weeks
     When I open the dashboard
     Then I see a calm, optional prompt "Quick check-in: how are you feeling?"
     And I can tap "Do the 30-second check" or "Not now"
@@ -94,7 +108,7 @@ Feature: Low-energy-availability symptom check and healthcare-professional signp
     And no running tally or history of my symptom scores is shown
 
   Scenario: Sustained under-eating with a fixation pattern is answered plainly
-    Given I have logged intake below my energy-availability floor for many consecutive days
+    Given I have logged intake below my steady-loss floor for many consecutive days
     And my behaviour matches the FIXATION_PATTERN (e.g. repeatedly pushing my target below the safe floor)
     When the well-being summary is shown
     Then it states plainly "Losing weight fast and eating less than your body needs harms your health, hormones, muscle and mood"
