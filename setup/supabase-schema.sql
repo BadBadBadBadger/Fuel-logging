@@ -24,6 +24,12 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_at           TIMEST
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS consent_policy_version      TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_withdrawn_at TIMESTAMPTZ;
 
+-- Energy-model Step 1 (activity / NEAT seed). Currently LOCAL-ONLY in the app: run this
+-- column FIRST, then wire it into syncProfile()/pullFromSupabase() in app.jsx — do NOT add
+-- it to the upsert before the column exists or the whole profile upsert 400s silently.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS activity TEXT
+  CHECK (activity IN ('sedentary', 'light', 'active', 'very'));
+
 -- ── Daily food log entries ─────────────────────────────────────
 -- entry_id is the client-side timestamp used as the log entry id
 CREATE TABLE IF NOT EXISTS food_logs (

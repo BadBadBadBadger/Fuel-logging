@@ -59,7 +59,7 @@ const TIERS      = [3, 6, 12, 24, 48, 96];
 const TIER_NAMES = ["Bronze","Silver","Gold","Platinum","Diamond","Elite"];
 const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
-const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null };
+const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null, activity:null, weighCadence:null };
 
 // ── Display units ─────────────────────────────────────────────────
 // Storage is ALWAYS metric (weight kg, height cm). These are per-device
@@ -305,20 +305,43 @@ const computeMacros = (p, mode, kcal) => {
   return { protein, carbs, fat, lbm: Math.round(lbm), floorsExceedKcal };
 };
 
+// ── Activity / NEAT seed (energy-model Step 1) ────────────────────
+// Seed TDEE from one coarse lifestyle question (seed → calibrate; ENERGY_MODEL.md §3).
+// These are NEAT-ONLY multipliers — deliberately below the textbook whole-day factors
+// (1.375–1.725) because logged workouts are added separately as "earn to eat"; a
+// whole-day factor would double-count training. Sedentary == 1.20 == the old flat
+// baseline, so existing/unset users and the BMR×1.2 maintenance floor are unchanged.
+// Values locked against the believability gate (ENERGY_MODEL.md §4); the exact numbers
+// are owned here + mirrored in __tests__/logic.test.js.
+const ACTIVITY = {
+  sedentary: { mult: 1.20, label: "Sedentary",      hint: "Mostly seated — desk job, under ~5k steps" },
+  light:     { mult: 1.35, label: "Lightly active", hint: "Some walking on your feet, ~5–8k steps" },
+  active:    { mult: 1.45, label: "Active",         hint: "On your feet often, ~8–12k steps" },
+  very:      { mult: 1.55, label: "Very active",    hint: "Manual/physical job, ~12k+ steps" },
+};
+const ACTIVITY_ORDER = ["sedentary", "light", "active", "very"];
+const activityMult = p => (p && ACTIVITY[p.activity] ? ACTIVITY[p.activity].mult : ACTIVITY.sedentary.mult);
+const bmrOf = p => Math.round(370 + 21.6 * ((Number(p.weight) || 80) * (1 - (Number(p.bodyFat) || 18) / 100)));
+// Day-one seed estimate; the adaptive tdeeAdj becomes the source of truth over time.
+const seedTDEE = p => Math.round(bmrOf(p) * activityMult(p));
+// Absolute MAINTAIN floor — nobody's true maintenance sits below sedentary energy use,
+// so the adaptive auto-lowering can never drag maintenance there even for a user who
+// seeded a higher activity level (adaptive may calibrate that seed DOWN to sedentary,
+// never below). Stays BMR×1.2 regardless of the seed.
+const sedentaryFloorOf = p => Math.round(bmrOf(p) * 1.2);
+
 const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
-  const w   = Number(p.weight)  || 80;
-  const bf  = Number(p.bodyFat) || 18;
   const sex = p.sex || "male";
-  const lbm = w * (1 - bf / 100);
-  const bmr  = Math.round(370 + 21.6 * lbm);
-  // Sedentary TDEE (BMR × 1.2) is the lowest a real MAINTENANCE can sit — nobody
-  // lives at raw BMR. The adaptive tdeeAdj calibrates this estimate, but a large
-  // negative adjustment (the "ratchet") must never drag maintenance below it, which
-  // previously produced a sub-resting, physiologically-impossible maintain target.
+  const bmr  = bmrOf(p);
+  // Seed TDEE from the lifestyle NEAT multiplier (was a flat ×1.2). The adaptive
+  // tdeeAdj then calibrates this estimate; a large negative adjustment (the
+  // auto-lowering) must never drag MAINTENANCE below sedentary (see sedentaryFloorOf),
+  // which previously produced a sub-resting, physiologically-impossible maintain target.
   // A deliberate cut is a chosen deficit bounded separately (SAFE_MIN today, the
-  // energy-availability floor later), so the BMR×1.2 floor is MAINTAIN-ONLY.
+  // energy-availability floor later), so the floor is MAINTAIN-ONLY.
+  const seed = Math.round(bmr * activityMult(p));
   const sedentaryTDEE = Math.round(bmr * 1.2);
-  const tdee = sedentaryTDEE + tdeeAdj;
+  const tdee = seed + tdeeAdj;
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   const bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
@@ -362,8 +385,29 @@ const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
 };
 
-const runCalibration = (history, weighIns, baseTDEE) => {
-  if (weighIns.length < 8) return null;
+// Adaptive-TDEE convergence (energy-model Step 2). The estimate error (in kcal/day) is
+// measured from the gap between actual and expected weight change, then applied as a
+// DAMPED, per-run-capped step so it converges without lurching. Two structural fixes over
+// the old flat ±150 integrator (which slammed to the ±600 cap and pinned there for ~10
+// days before settling — a lag-induced overshoot):
+//   • Dead-time compensation: the 7-day trailing weight window can't yet reflect an
+//     adjustment made in the last 7 days, so we SUBTRACT that in-flight adjustment from
+//     the measured error — otherwise the integrator re-counts a correction already working
+//     its way through and overshoots.
+//   • Confidence-scaled step cap: sparser data (low confidence) moves cautiously; a
+//     well-established history is allowed larger steps, so a real 500 kcal gap closes in
+//     ~3 weeks (simulated) yet never lurches.
+// The accumulated adjustment is still bounded by ADJ_CAP (±600, feature-04 policy) and the
+// maintenance BMR×1.2 floor at the target layer. Engages at 6 weigh-ins (was 8).
+const CAL_MIN_WEIGHINS = 6;
+const CAL_GAIN         = 0.8;                              // proportional gain toward the measured error
+const CAL_STEP_CAP     = { low: 100, medium: 150, high: 200 }; // per-run cap by confidence tier
+const CAL_STEP_ROUND   = 25;                              // step granularity (kcal)
+const CAL_MIN_STEP     = 25;                              // ignore sub-25 nudges (applied at the call site)
+const ADJ_CAP          = 600;                             // accumulated adjustment limit (feature 04)
+
+const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
+  if (weighIns.length < CAL_MIN_WEIGHINS) return null;
   const today = new Date();
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoKey = dateKey(weekAgo);
@@ -389,11 +433,44 @@ const runCalibration = (history, weighIns, baseTDEE) => {
   const avgDeficit   = baseTDEE - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
-  const adj = Math.max(-150, Math.min(150, Math.round(-discrepancy * 7700 / 7 / 50) * 50));
+  const errKcal      = -discrepancy * 7700 / 7;           // signed estimate error, kcal/day
+  const effErr       = errKcal - inFlightAdj;             // dead-time compensation
+  const confidence   = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
+  const cap          = CAL_STEP_CAP[confidence];
+  const adj = Math.max(-cap, Math.min(cap,
+    Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
 
-  const confidence = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
   return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
+};
+
+// ── Weigh-in engagement (energy Step 2 companion; features/energy-safety/06) ──
+// Seed → calibrate only calibrates if the user weighs in, but the seed stands on its
+// own — so we INVITE check-ins, never demand them. The cadence states intent; the
+// nudge is one simple universal backstop (a week with no weigh-in). Calibration just
+// uses whatever weigh-ins exist. Coach guardrails: default is a few-times-a-week (never
+// "daily"); "I'd rather not" fully mutes; supportive, never shaming; no streaks.
+const WEIGH_NUDGE_GAP_DAYS      = 7;   // a week with no weigh-in ⇒ a gentle nudge
+const WEIGH_NUDGE_COOLDOWN_DAYS = 14;  // silence for this long after a dismissal
+const WEIGH_CADENCE = {
+  few:    { label: "A few times a week", hint: "Suggested — enough to fine-tune, easy to keep up" },
+  daily:  { label: "Daily",              hint: "You like to track your weight day to day" },
+  weekly: { label: "Weekly",             hint: "A weekly check-in is plenty" },
+  off:    { label: "I'd rather not",     hint: "We'll rely on your profile estimate — no reminders" },
+};
+const WEIGH_CADENCE_ORDER = ["few", "daily", "weekly", "off"]; // suggested option first
+const weighCadenceOf = p => (p && WEIGH_CADENCE[p.weighCadence] ? p.weighCadence : "few");
+const daysBetweenTs  = (aTs, bTs) => Math.floor((bTs - aTs) / 86400000);
+// Pure: should the escalated check-in nudge show? `lastActivityTs` = the last weigh-in,
+// or (if the user has never weighed) the first day they were active; null when there is
+// no anchor yet (brand-new). Muted entirely when cadence is "off".
+const shouldNudgeWeighIn = ({ cadence, lastActivityTs, dismissedTs, now,
+  gapDays = WEIGH_NUDGE_GAP_DAYS, cooldownDays = WEIGH_NUDGE_COOLDOWN_DAYS }) => {
+  if (cadence === "off") return false;
+  if (lastActivityTs == null) return false;
+  if (daysBetweenTs(lastActivityTs, now) < gapDays) return false;
+  if (dismissedTs != null && daysBetweenTs(dismissedTs, now) < cooldownDays) return false;
+  return true;
 };
 
 const sg = async k => {
@@ -591,7 +668,11 @@ const pullFromSupabase = async uid => {
     ]);
     const result = {};
     if (profR.data) {
-      const p = { weight:profR.data.weight, height:profR.data.height,
+      // Preserve local-only profile fields the profiles table doesn't carry yet
+      // (activity/NEAT seed, dietary config) so a cloud pull doesn't wipe them; the
+      // four synced columns below stay authoritative.
+      let local = {}; try { const pv = await sg("profile"); if (pv) local = JSON.parse(pv); } catch(e) {}
+      const p = { ...local, weight:profR.data.weight, height:profR.data.height,
         bodyFat:profR.data.body_fat, sex:profR.data.sex };
       await ss("profile", JSON.stringify(p));
       result.profile = p;
@@ -1577,10 +1658,11 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   const bfVal = Number(f.bodyFat);
   const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   const prev     = calcTargets(f, "cut", 0, 0);
-  const formulaTDEE = prev.tdee;
-  const adjTDEE     = Math.max(formulaTDEE, formulaTDEE + tdeeAdj); // never below sedentary TDEE
-  const tdeeFloored = formulaTDEE + tdeeAdj < formulaTDEE;          // adaptive adj hit the floor
-  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
+  const formulaTDEE = prev.tdee;                            // seeded estimate (activity-adjusted)
+  const tdeeFloor   = sedentaryFloorOf(f);                  // absolute floor = sedentary (BMR × 1.2)
+  const adjTDEE     = Math.max(tdeeFloor, formulaTDEE + tdeeAdj); // never below sedentary TDEE
+  const tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor;    // adaptive adj hit the floor
+  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 6 ? "Estimating" : null;
 
   useEffect(() => {
     if (!valid) return;
@@ -1591,7 +1673,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
       setTimeout(() => setSaved(false), 1800);
     }, 600);
     return () => clearTimeout(t);
-  }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
+  }, [f.weight, f.height, f.bodyFat, f.sex, f.activity, f.weighCadence]); // eslint-disable-line
 
   const row = (label, val, unit, color = "var(--text-hi)") => (
     <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
@@ -1670,8 +1752,57 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
             Targets may need adjusting around your cycle — override anytime.
           </div>
         )}
-        <div style={{ fontSize:11, color:"var(--text-lo-2)", marginBottom:14, lineHeight:1.5 }}>
-          Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
+        <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
+          ACTIVITY <span style={{ color:"var(--text-label)", fontSize:10, fontWeight:400 }}>— your typical day, not counting workouts</span>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:6 }}>
+          {ACTIVITY_ORDER.map(k => {
+            const on = (f.activity || "sedentary") === k;
+            const set_ = f.activity == null;
+            return (
+              <button key={k} onClick={() => set("activity", k)}
+                style={{ textAlign:"left", padding:"9px 12px", borderRadius:10,
+                  border:`1px solid ${on && !set_ ? aA("88") : BD}`,
+                  background: on && !set_ ? aA("18") : "var(--bg)",
+                  color: on && !set_ ? A : "var(--text-mid)", lineHeight:1.35 }}>
+                <div style={{ fontSize:12, fontWeight:900, letterSpacing:"0.02em" }}>{ACTIVITY[k].label}</div>
+                <div style={{ fontSize:10, color:"var(--text-label)", fontWeight:400, marginTop:1 }}>{ACTIVITY[k].hint}</div>
+              </button>
+            );
+          })}
+        </div>
+        {f.activity == null ? (
+          <div style={{ fontSize:11, color:"var(--warn)", marginBottom:10, lineHeight:1.5 }}>
+            Pick your typical activity for a more accurate starting target — defaulting to sedentary until you do.
+          </div>
+        ) : (
+          <div style={{ fontSize:11, color:"var(--text-mid-2)", marginBottom:10, lineHeight:1.5 }}>
+            A starting point — we fine-tune this automatically as you log weight. Workout calories are added
+            separately when you log a session, so pick how active your day is <em>without</em> training.
+          </div>
+        )}
+        <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
+          WEIGH-INS <span style={{ color:"var(--text-label)", fontSize:10, fontWeight:400 }}>— how often you'd like to check in</span>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+          {WEIGH_CADENCE_ORDER.map(k => {
+            const cur = f.weighCadence || "few";
+            const on  = cur === k;
+            return (
+              <button key={k} onClick={() => set("weighCadence", k)}
+                style={{ padding:"8px 12px", borderRadius:10, fontSize:12, fontWeight:800,
+                  border:`1px solid ${on ? aA("88") : BD}`,
+                  background: on ? aA("18") : "var(--bg)", color: on ? A : "var(--text-label)" }}>
+                {WEIGH_CADENCE[k].label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize:11, color:"var(--text-mid-2)", marginBottom:14, lineHeight:1.5 }}>
+          {WEIGH_CADENCE[f.weighCadence || "few"].hint}. We use your 7-day trend, not any single day —
+          {(f.weighCadence || "few") === "off"
+            ? " your targets run on your profile estimate."
+            : " weigh in when it suits and we auto-tune your targets."}
         </div>
       </div>
 
@@ -1877,7 +2008,7 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
+function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE }) {
   const [val, setVal]   = useState(""); // kg · lb · or stone (when st mode)
   const [val2, setVal2] = useState(""); // pounds (st mode only)
   const wUnit = getWUnit();
@@ -1886,7 +2017,6 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
                 : Number(val);
   const today       = todayKey();
   const todayEntry  = weighIns.find(w => w.date === today);
-  const weeks       = Math.floor(weighIns.length / 7);
 
   const trend7 = (() => {
     if (weighIns.length < 4) return null;
@@ -1898,6 +2028,8 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
 
   const confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
   const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "var(--warn)" : "var(--text-mid)";
+  const calibrating  = weighIns.length >= CAL_MIN_WEIGHINS; // 6 — matches the engine's engagement point
+  const checkInsToGo = Math.max(0, CAL_MIN_WEIGHINS - weighIns.length);
 
   return (
     <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
@@ -1922,12 +2054,14 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ fontSize:10, color:confColor2, letterSpacing:"0.08em", fontWeight:800 }}>{confidence.toUpperCase()}</div>
-          {weeks >= 1
+          {calibrating
             ? <>
-                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{Math.max(baseTDEE, baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
+                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{Math.max(tdeeFloor, baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
                 <div style={{ fontSize:10, color:"var(--text-label)", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "var(--bulk)" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
               </>
-            : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
+            : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:110, textAlign:"right", lineHeight:1.4 }}>
+                {checkInsToGo} more check-in{checkInsToGo === 1 ? "" : "s"} until we fine-tune
+              </div>
           }
         </div>
       </div>
@@ -1962,10 +2096,9 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
       )}
 
       <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5 }}>
-        {weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism."}
-        {weeks >= 1 && weeks < 2 && `🔄 ${confidence} — ${weighIns.length} weigh-ins so far. 2+ weeks unlocks calibration.`}
-        {weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet."}
-        {weeks >= 2 && tdeeAdj !== 0 && `Your real TDEE is ${tdeeAdj > 0 ? "higher" : "lower"} than the formula predicts. Targets adjusted accordingly.`}
+        {!calibrating && `Your target is already set from your profile. Weigh in a few times a week and we auto-tune it — we use your 7-day trend, not any single day. ${checkInsToGo} more check-in${checkInsToGo === 1 ? "" : "s"} until we start fine-tuning.`}
+        {calibrating && tdeeAdj === 0 && `🔄 ${confidence} — your logged results match the estimate, no adjustment needed yet.`}
+        {calibrating && tdeeAdj !== 0 && `🔄 ${confidence} — your real TDEE looks ${tdeeAdj > 0 ? "higher" : "lower"} than the estimate, so targets are adjusted to match.`}
       </div>
     </div>
   );
@@ -2232,7 +2365,8 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
 function Dashboard({ logs, totals, targets, remaining, water, setWater,
   mode, setMode, setView, removeLog, updateLog, addToQA,
   hasProfile, streak, streakPop, badgeGlow, prof,
-  weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
+  weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
+  showWeighNudge = false, onNudgeDismiss = () => {}, onNudgeMute = () => {}, coachKey,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
   aggressiveCutAcked, onAckAggressiveCut,
@@ -2273,7 +2407,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   // effective TDEE (mirrors App effectiveTDEE and the maintenance floor) so a
   // custom target isn't judged against a sub-floor baseline when a negative
   // adaptive adjustment is active — otherwise a real deficit would read as smaller.
-  const tdee = Math.max(baseTDEE, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
+  const tdee = Math.max(tdeeFloor, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
   const targetWarning = (() => {
     if (!isCustomMode || targets.safeMinApplied) return null;
     const diff = customKcal - tdee; // negative = deficit
@@ -2424,7 +2558,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       )}
 
       {/* Minimum-maintenance floor: the adaptive adjustment tried to pull maintenance
-          below sedentary TDEE (BMR × 1.2). Held there — the ratchet can't starve a
+          below sedentary TDEE (BMR × 1.2). Held there — the auto-lowering can't starve a
           stalling dieter. Suppressed when SAFE_MIN already speaks. */}
       {targets.bmrFloorApplied && !targets.safeMinApplied && (
         <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
@@ -2571,9 +2705,36 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       </div>
 
+      {/* Gentle weigh-in check-in nudge (energy Step 2 companion). Supportive, dismissable,
+          mutable — never guilt. Sits directly above the widget so "Log weight" is one glance away. */}
+      {showWeighNudge && (
+        <div style={{ background:"var(--surface-2)", border:`1px solid ${aA("33")}`, borderRadius:16,
+          padding:"14px 16px", marginBottom:12, display:"flex", gap:12, alignItems:"flex-start" }}>
+          <div style={{ fontSize:18, marginTop:1 }}>⚖️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:"var(--text-hi)", marginBottom:2 }}>Time for a quick check-in?</div>
+            <div style={{ fontSize:12, color:"var(--text-mid-2)", lineHeight:1.5, marginBottom:10 }}>
+              It's been a week since your last weigh-in. A quick one keeps your targets accurate —
+              we use your 7-day trend, not any single day. No pressure, whenever suits.
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              <button onClick={onNudgeDismiss}
+                style={{ padding:"8px 14px", borderRadius:9, fontSize:12, fontWeight:800, border:"none",
+                  background:A, color:"var(--bg)" }}>Log weight</button>
+              <button onClick={onNudgeDismiss}
+                style={{ padding:"8px 14px", borderRadius:9, fontSize:12, fontWeight:700,
+                  border:`1px solid ${BD}`, background:"transparent", color:"var(--text-mid)" }}>Not now</button>
+              <button onClick={onNudgeMute}
+                style={{ padding:"8px 10px", borderRadius:9, fontSize:12, fontWeight:600,
+                  border:"none", background:"transparent", color:"var(--text-label)" }}>Don't remind me</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Weigh-in */}
       <WeighInWidget weighIns={weighIns} onWeighIn={onWeighIn}
-        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}/>
+        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}/>
 
       {/* Add food */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
@@ -4037,6 +4198,8 @@ function App() {
   const [ready,      setReady]      = useState(false);
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
+  const [adjLog,     setAdjLog]     = useState([]); // recent {date,adj} events — dead-time comp (local-only)
+  const [weighNudgeAt, setWeighNudgeAt] = useState(null); // last weigh-in-nudge dismissal (ms; local-only)
   const [coachKey,         setCoachKey]         = useState(0);
   const [streakPop,        setStreakPop]        = useState(null);  // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   const [badgeToast,       setBadgeToast]       = useState(null);  // Bronze/Silver badge → quiet toast + 🏆 glow
@@ -4102,6 +4265,8 @@ function App() {
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
       const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
       const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
+      const alv = await sg("tdee_adj_log"); if (alv) { try { setAdjLog(JSON.parse(alv) || []); } catch(e) {} }
+      const wnv = await sg("weigh_nudge_dismissed"); if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
       const ckv = await sg("target_kcal"); if (ckv) { const n = parseInt(ckv); if (n > 0) setCustomKcal(n); }
       const acv = await sg("aggressive_cut_acked"); if (acv) setAggressiveCutAcked(true);
 
@@ -4352,7 +4517,7 @@ function App() {
   const handleSignOut = async () => {
     if (sb()) { try { await sb().auth.signOut(); } catch(e) {} }
     const clearKeys = ["auth_state","auth_user","profile","meals","history","badges",
-      "weighins","tdee_adj","target_kcal","aggressive_cut_acked","health_consent"];
+      "weighins","tdee_adj","tdee_adj_log","weigh_nudge_dismissed","target_kcal","aggressive_cut_acked","health_consent"];
     for (const k of clearKeys) await ss(k, "");
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -4368,7 +4533,7 @@ function App() {
     setAuthState("anonymous"); setAuthUser(null);
     setLogs([]); setWater(0); setMode("cut"); setProf(null);
     setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
-    setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setCustomKcal(null);
+    setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setAdjLog([]); setWeighNudgeAt(null); setCustomKcal(null);
     setConsentInfo(null); setNeedsConsent(false);
     setShowSignOut(false);
     setView("dashboard");
@@ -4459,26 +4624,55 @@ function App() {
     const updatedProf = { ...(prof || DEF_PROFILE), weight };
     await saveProf(updatedProf);
 
-    // Run calibration whenever a new weigh-in arrives
-    const base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat/100))) * 1.2);
-    const result = runCalibration(hist, updated, base + tdeeAdj);
-    if (result && Math.abs(result.adj) >= 50) {
-      const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
-      setTdeeAdj(newAdj);
-      await ss("tdee_adj", String(newAdj));
-      if (authState === "premium" && authUser?.id)
-        syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked).catch(() => {});
+    // Run calibration whenever a new weigh-in arrives — measure the deficit against the
+    // seeded estimate (activity-adjusted) currently shown to the user, plus any adaptive adj.
+    // Dead-time compensation: the 7-day weight window can't yet reflect adjustments made in
+    // the last 7 days, so pass their sum so the controller doesn't re-count them (kills the
+    // overshoot the old ±150 integrator had). The log is local-only convergence bookkeeping.
+    const base = seedTDEE(updatedProf);
+    const wk = new Date(); wk.setDate(wk.getDate() - 7);
+    const weekAgoKey = dateKey(wk);
+    const inFlight = adjLog.filter(a => a.date > weekAgoKey).reduce((s, a) => s + a.adj, 0);
+    const result = runCalibration(hist, updated, base + tdeeAdj, inFlight);
+    if (result && Math.abs(result.adj) >= CAL_MIN_STEP) {
+      const newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
+      const applied = newAdj - tdeeAdj;
+      if (applied !== 0) {
+        setTdeeAdj(newAdj);
+        await ss("tdee_adj", String(newAdj));
+        const nextLog = [...adjLog, { date: todayKey(), adj: applied }].slice(-14);
+        setAdjLog(nextLog);
+        await ss("tdee_adj_log", JSON.stringify(nextLog));
+        if (authState === "premium" && authUser?.id)
+          syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked).catch(() => {});
+      }
     }
   };
 
-  const p        = prof || DEF_PROFILE;
-  const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
-  // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull
-  // it below sedentary TDEE (BMR × 1.2). baseTDEE already IS that floor.
-  const effectiveTDEE = Math.max(baseTDEE, baseTDEE + tdeeAdj);
+  const p         = prof || DEF_PROFILE;
+  const baseTDEE  = seedTDEE(p);            // seeded estimate (activity-adjusted); may exceed sedentary
+  const tdeeFloor = sedentaryFloorOf(p);    // absolute maintenance floor (BMR × 1.2)
+  // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull it
+  // below sedentary TDEE (BMR × 1.2). The floor is sedentary, NOT the seed — so a negative
+  // adjustment on a higher-activity seed still bites down to sedentary.
+  const effectiveTDEE = Math.max(tdeeFloor, baseTDEE + tdeeAdj);
   const effectiveMode = customKcal != null
     ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
     : mode;
+
+  // Weigh-in check-in nudge (energy Step 2 companion; features/energy-safety/06). Anchor on
+  // the last weigh-in, or (if never weighed) the first day the user was active, so a week of
+  // silence surfaces one gentle, cadence-respecting prompt.
+  const weighNudgeAnchorTs = weighIns.length
+    ? new Date(weighIns[weighIns.length - 1].date).getTime()
+    : (hist.length ? hist.reduce((m, d) => Math.min(m, new Date(d.date).getTime()), Infinity) : null);
+  const showWeighNudge = shouldNudgeWeighIn({
+    cadence: weighCadenceOf(p), lastActivityTs: weighNudgeAnchorTs,
+    dismissedTs: weighNudgeAt, now: Date.now() });
+  const dismissWeighNudge = async () => {
+    const ts = Date.now(); setWeighNudgeAt(ts); await ss("weigh_nudge_dismissed", String(ts));
+  };
+  const muteWeighNudge = async () => { await dismissWeighNudge(); await saveProf({ ...p, weighCadence: "off" }); };
 
   const workoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
   const baseTargets = calcTargets(p, effectiveMode, workoutKcal, tdeeAdj);
@@ -4582,7 +4776,8 @@ function App() {
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}
-          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}
+          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
+          showWeighNudge={showWeighNudge} onNudgeDismiss={dismissWeighNudge} onNudgeMute={muteWeighNudge}
           coachKey={coachKey}
           workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}
           customKcal={customKcal} onSetCustomKcal={saveCustomKcal} isCustomMode={customKcal != null}

@@ -36,18 +36,22 @@ const intakeConfidence = logs => {
 const estimateSessionKcal = (w, bf, type, dur, int) =>
   Math.round((MET[type]?.[int] || 5) * w * ((w * (1 - bf / 100)) / 70) * (dur / 60));
 
-// Faithful mirror of app.jsx calcTargets: flat sedentary TDEE (BMR × 1.2), the
-// day's workout kcals added directly, macros via computeMacros, and a MAINTAIN-ONLY
-// floor at sedentary TDEE (the adaptive adjustment can never starve maintenance
-// below it) plus the legacy SAFE_MIN backstop.
+// Faithful mirror of app.jsx calcTargets: TDEE seeded from a NEAT-only activity
+// multiplier (sedentary 1.20 == the old flat baseline), the day's workout kcals added
+// directly, macros via computeMacros, and a MAINTAIN-ONLY floor at sedentary TDEE
+// (BMR × 1.2 — the adaptive adjustment can never starve maintenance below it, even
+// for a higher-activity seed) plus the legacy SAFE_MIN backstop.
+const ACTIVITY = { sedentary: 1.20, light: 1.35, active: 1.45, very: 1.55 };
+const activityMult = p => ACTIVITY[p && p.activity] || ACTIVITY.sedentary;
 const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const w   = Number(p.weight)  || 80;
   const bf  = Number(p.bodyFat) || 18;
   const sex = p.sex || "male";
   const lbm = w * (1 - bf / 100);
   const bmr  = Math.round(370 + 21.6 * lbm);
+  const seed = Math.round(bmr * activityMult(p));
   const sedentaryTDEE = Math.round(bmr * 1.2);
-  const tdee = sedentaryTDEE + tdeeAdj;
+  const tdee = seed + tdeeAdj;
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   const bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
@@ -151,8 +155,16 @@ const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
 };
 
-const runCalibration = (history, weighIns, baseTDEE) => {
-  if (weighIns.length < 8) return null;
+// Mirror of app.jsx runCalibration (energy Step 2): dead-time-compensated, damped,
+// confidence-scaled convergence. inFlightAdj = adjustments applied in the last 7 days
+// (the weight window hasn't reflected them yet) — subtracted to prevent overshoot.
+const CAL_MIN_WEIGHINS = 6;
+const CAL_GAIN         = 0.8;
+const CAL_STEP_CAP     = { low: 100, medium: 150, high: 200 };
+const CAL_STEP_ROUND   = 25;
+const ADJ_CAP          = 600;
+const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
+  if (weighIns.length < CAL_MIN_WEIGHINS) return null;
   const today = new Date();
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoKey = weekAgo.getFullYear() + "-" + String(weekAgo.getMonth()+1).padStart(2,"0") + "-" + String(weekAgo.getDate()).padStart(2,"0");
@@ -178,8 +190,11 @@ const runCalibration = (history, weighIns, baseTDEE) => {
   const avgDeficit   = baseTDEE - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
-  const adj = Math.max(-150, Math.min(150, Math.round(-discrepancy * 7700 / 7 / 50) * 50));
+  const errKcal      = -discrepancy * 7700 / 7;
+  const effErr       = errKcal - inFlightAdj;
   const confidence = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
+  const cap = CAL_STEP_CAP[confidence];
+  const adj = Math.max(-cap, Math.min(cap, Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
   return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
@@ -208,15 +223,20 @@ describe("calcTargets — Katch-McArdle", () => {
     expect(bmr).toBe(1787);
   });
 
-  test("TDEE uses a flat sedentary multiplier (×1.2)", () => {
-    const { bmr, tdee } = calcTargets(prof, "maintain");
+  test("unset/sedentary activity seeds TDEE at BMR × 1.20 (backwards-compatible baseline)", () => {
+    const { bmr, tdee } = calcTargets(prof, "maintain"); // prof has no activity → sedentary
     expect(tdee).toBe(Math.round(bmr * 1.2));
+    expect(calcTargets({ ...prof, activity: "sedentary" }, "maintain").tdee).toBe(tdee);
   });
 
-  test("activity level does NOT affect TDEE (flat ×1.2, not an activity picker)", () => {
-    const a = calcTargets({ ...prof, activity: "sedentary" }, "maintain").tdee;
-    const b = calcTargets({ ...prof, activity: "active"    }, "maintain").tdee;
-    expect(a).toBe(b);
+  test("activity level scales the seeded TDEE (NEAT multiplier, not flat)", () => {
+    const { bmr } = calcTargets(prof, "maintain");
+    expect(calcTargets({ ...prof, activity: "light"  }, "maintain").tdee).toBe(Math.round(bmr * 1.35));
+    expect(calcTargets({ ...prof, activity: "active" }, "maintain").tdee).toBe(Math.round(bmr * 1.45));
+    expect(calcTargets({ ...prof, activity: "very"   }, "maintain").tdee).toBe(Math.round(bmr * 1.55));
+    // and a more active seed is strictly higher than sedentary
+    expect(calcTargets({ ...prof, activity: "active" }, "maintain").tdee)
+      .toBeGreaterThan(calcTargets({ ...prof, activity: "sedentary" }, "maintain").tdee);
   });
 
   test("maintain mode adds no adjustment beyond workout kcals", () => {
@@ -583,7 +603,7 @@ describe("calcTargets — maintenance BMR×1.2 floor", () => {
     "maintenance is never pulled below sedentary TDEE by a full negative adjustment (%o)",
     (p) => {
       const floor = sedentaryTDEE(p);
-      const raw   = floor - 600;                       // what the ratchet alone would give
+      const raw   = floor - 600;                       // what the auto-lowering alone would give
       const { kcal, bmrFloorApplied } = calcTargets(p, "maintain", 0, -600);
       expect(kcal).toBe(floor);
       expect(kcal).toBeGreaterThan(raw);
@@ -618,6 +638,17 @@ describe("calcTargets — maintenance BMR×1.2 floor", () => {
   test("workout kcals cannot be gamed to bypass the floor downward", () => {
     // Even with zero workout and a huge negative adj, maintenance holds at the floor.
     expect(calcTargets(harmed, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(harmed));
+  });
+
+  test("floor is SEDENTARY, not the seed — a higher-activity seed still floors at BMR×1.2", () => {
+    // An 'active' user seeds at BMR×1.45 but a full negative adjustment must still be
+    // allowed to calibrate maintenance DOWN to sedentary (BMR×1.2) — never below.
+    const active = { ...harmed, activity: "active" };
+    const seedActive = calcTargets(active, "maintain", 0, 0).tdee;      // BMR × 1.45
+    expect(seedActive).toBeGreaterThan(sedentaryTDEE(active));          // seed sits above the floor
+    const { kcal, bmrFloorApplied } = calcTargets(active, "maintain", 0, -600);
+    expect(kcal).toBe(sedentaryTDEE(active));                          // floored at sedentary, not the seed
+    expect(bmrFloorApplied).toBe(true);
   });
 });
 
@@ -662,7 +693,7 @@ describe("weighRollingAvg", () => {
 // ── runCalibration ────────────────────────────────────────────
 
 describe("runCalibration", () => {
-  test("returns null with fewer than 8 weigh-ins", () => {
+  test("returns null below the engagement threshold (6 weigh-ins)", () => {
     const wi = [{ date: "2026-04-01", weight: 80 }];
     expect(runCalibration([], wi, 2400)).toBeNull();
   });
@@ -691,6 +722,133 @@ describe("runCalibration", () => {
     }).filter(d => d.date >= weekAgoKey);
     const result = runCalibration(history, weighIns, 2400);
     if (result) expect(result.adj).toBeGreaterThan(0);
+  });
+
+  // Build 14 daily weigh-ins losing 0.2 kg/wk faster than expected + a full week of
+  // deficit history, so a non-null calibration is produced for the unit checks below.
+  const scenario = (inFlight, weighInCount = 14) => {
+    const today = new Date();
+    // ~0.7 kg/wk loss vs ~0.55 expected → a mild error, so the step sits below the cap
+    // and the dead-time / confidence effects are visible rather than saturated.
+    const weighIns = Array.from({ length: weighInCount }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - (weighInCount - 1) + i);
+      return { date: d.toISOString().split("T")[0], weight: 80 - i * 0.1 };
+    });
+    const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekAgoKey = weekAgo.toISOString().split("T")[0];
+    const history = Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - 7 + i);
+      return { date: d.toISOString().split("T")[0], kcal: 1800 };
+    }).filter(d => d.date >= weekAgoKey);
+    return runCalibration(history, weighIns, 2400, inFlight);
+  };
+
+  test("dead-time compensation: an in-flight adjustment shrinks (never enlarges) the next step", () => {
+    const raw  = scenario(0);
+    const comp = scenario(150); // 150 kcal of correction already applied but not yet in the weight window
+    expect(raw).not.toBeNull();
+    expect(comp).not.toBeNull();
+    expect(comp.adj).toBeLessThan(raw.adj);            // don't re-count the in-flight correction
+    expect(raw.adj - comp.adj).toBeGreaterThanOrEqual(50); // ~0.8 × 150, rounded to 25
+  });
+
+  test("confidence-scaled cap: more weigh-ins permit a larger single step", () => {
+    // Same signal, different history length → different confidence tier → different cap.
+    const low  = scenario(0, 12); // <14 → low → cap 100
+    const high = scenario(0, 30); // ≥28 → high → cap 200
+    expect(low.confidence).toBe("low");
+    expect(high.confidence).toBe("high");
+    expect(Math.abs(low.adj)).toBeLessThanOrEqual(100);
+    expect(Math.abs(high.adj)).toBeGreaterThan(100);
+  });
+
+  // ACCEPTANCE (ENERGY_MODEL §5 Step 2): a real 500 kcal under-estimate closes within ~3
+  // weeks WITHOUT lurching — the whole point of the strengthening. Simulates a maintain-mode
+  // user eating exactly at target while their true TDEE is 500 above the seed; each day
+  // re-anchors the trailing windows to "today" and applies the ≥25 step under the ±600 cap
+  // with dead-time compensation, exactly as the app does.
+  test("closes a 500 kcal gap in ≤3 weeks and settles without overshooting the cap", () => {
+    const dk = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    const seed = 2200, trueTDEE = 2700, today = new Date();
+    let tdeeAdj = 0, weight = 80, closedDay = null, maxAdj = 0, maxStep = 0;
+    const series = [], adjLog = [], N = 35;
+    for (let day = 0; day < N; day++) {
+      const intake = seed + tdeeAdj;
+      weight += (intake - trueTDEE) / 7700;            // maintain, perfect adherence
+      series.push({ weight, kcal: intake });
+      const len = series.length;
+      const weighIns = series.map((s, i) => ({ date: dk(new Date(today.getTime() - (len-1-i)*86400000)), weight: s.weight }));
+      const history  = series.map((s, i) => ({ date: dk(new Date(today.getTime() - (len-1-i)*86400000)), kcal: s.kcal }));
+      const inFlight = adjLog.filter(a => a.dayIdx > day - 7).reduce((s, a) => s + a.adj, 0);
+      const r = runCalibration(history, weighIns, seed + tdeeAdj, inFlight);
+      if (r && Math.abs(r.adj) >= 25) {
+        const prev = tdeeAdj;
+        tdeeAdj = Math.max(-600, Math.min(600, tdeeAdj + r.adj));
+        const applied = tdeeAdj - prev;
+        if (applied !== 0) { adjLog.push({ dayIdx: day, adj: applied }); maxStep = Math.max(maxStep, Math.abs(applied)); }
+      }
+      maxAdj = Math.max(maxAdj, tdeeAdj);
+      if (closedDay === null && tdeeAdj >= 450) closedDay = day + 1;
+    }
+    expect(closedDay).not.toBeNull();
+    expect(closedDay).toBeLessThanOrEqual(21);         // ≤ 3 weeks
+    expect(maxAdj).toBeLessThan(600);                  // never pinned at the safety cap (no runaway overshoot)
+    expect(maxStep).toBeLessThanOrEqual(200);          // no single lurch beyond the high-confidence cap
+    expect(tdeeAdj).toBeGreaterThanOrEqual(450);       // settled at the true gap (±50)
+    expect(tdeeAdj).toBeLessThanOrEqual(575);
+  });
+});
+
+// ── Weigh-in engagement (energy Step 2 companion; features/energy-safety/06) ──
+// Mirror of app.jsx: cadence default + the pure nudge gate (a week with no weigh-in,
+// respecting the mute and the post-dismissal cooldown).
+const WEIGH_NUDGE_GAP_DAYS = 7, WEIGH_NUDGE_COOLDOWN_DAYS = 14;
+const WEIGH_CADENCE = { few:1, daily:1, weekly:1, off:1 };
+const weighCadenceOf = p => (p && WEIGH_CADENCE[p.weighCadence] ? p.weighCadence : "few");
+const daysBetweenTs = (a, b) => Math.floor((b - a) / 86400000);
+const shouldNudgeWeighIn = ({ cadence, lastActivityTs, dismissedTs, now,
+  gapDays = WEIGH_NUDGE_GAP_DAYS, cooldownDays = WEIGH_NUDGE_COOLDOWN_DAYS }) => {
+  if (cadence === "off") return false;
+  if (lastActivityTs == null) return false;
+  if (daysBetweenTs(lastActivityTs, now) < gapDays) return false;
+  if (dismissedTs != null && daysBetweenTs(dismissedTs, now) < cooldownDays) return false;
+  return true;
+};
+
+describe("weighCadenceOf", () => {
+  test("defaults to 'few' when unset or unknown", () => {
+    expect(weighCadenceOf(null)).toBe("few");
+    expect(weighCadenceOf({})).toBe("few");
+    expect(weighCadenceOf({ weighCadence: "nonsense" })).toBe("few");
+  });
+  test("respects a valid stored cadence", () => {
+    expect(weighCadenceOf({ weighCadence: "weekly" })).toBe("weekly");
+    expect(weighCadenceOf({ weighCadence: "off" })).toBe("off");
+  });
+});
+
+describe("shouldNudgeWeighIn", () => {
+  const now = new Date("2026-08-20T09:00:00Z").getTime();
+  const daysAgo = n => now - n * 86400000;
+
+  test("'I'd rather not' (off) never nudges, even after a long gap", () => {
+    expect(shouldNudgeWeighIn({ cadence: "off", lastActivityTs: daysAgo(30), dismissedTs: null, now })).toBe(false);
+  });
+
+  test("no anchor yet (brand-new user) does not nudge", () => {
+    expect(shouldNudgeWeighIn({ cadence: "few", lastActivityTs: null, dismissedTs: null, now })).toBe(false);
+  });
+
+  test("a gap under a week does not nudge; a week or more does", () => {
+    expect(shouldNudgeWeighIn({ cadence: "few", lastActivityTs: daysAgo(6), dismissedTs: null, now })).toBe(false);
+    expect(shouldNudgeWeighIn({ cadence: "few", lastActivityTs: daysAgo(7), dismissedTs: null, now })).toBe(true);
+    expect(shouldNudgeWeighIn({ cadence: "daily", lastActivityTs: daysAgo(20), dismissedTs: null, now })).toBe(true);
+  });
+
+  test("a recent dismissal silences the nudge until the cooldown passes", () => {
+    const lastActivityTs = daysAgo(20); // well past the gap
+    expect(shouldNudgeWeighIn({ cadence: "few", lastActivityTs, dismissedTs: daysAgo(3),  now })).toBe(false); // in cooldown
+    expect(shouldNudgeWeighIn({ cadence: "few", lastActivityTs, dismissedTs: daysAgo(14), now })).toBe(true);  // cooldown elapsed
   });
 });
 

@@ -1,17 +1,42 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-06 (session 11). **Harm-fix DEPLOYED + LIVE:** the adaptive-TDEE "ratchet" could show a
+**Updated:** 2026-08-07 (session 12). **Energy-plan Steps 1 + 2 BUILT + weigh-in engagement (file 06).**
+Step 2 replaced the flat ±150 adaptive integrator with a **dead-time-compensated, confidence-scaled**
+convergence (gain 0.8; per-run cap 100/150/200; engages at 6 weigh-ins) — a simulation closes a 500 kcal
+gap by day 19 without pinning the ±600 cap (the old loop overshot and pinned ~10 days). Because calibrate
+needs weigh-ins the believable seed no longer *requires*, it also ships **weigh-in engagement** (Coach +
+Design + QA): the widget **invites** instead of saying "log daily", shows a **progress cue** to the
+6th check-in, a **cadence picker** (few/daily/weekly/"I'd rather not"=mute) sits by the activity chips,
+and one **gentle 7-day nudge** (dismiss + 14-day cooldown + mute) lives on the dashboard. **Jest 117/117,
+sw v58, compiled — NOT committed/deployed or device-tested** (batched). Step 3 (smooth earn-to-eat) next.
+*Prev in session 12:* **Step 1 (activity input + seeded NEAT multiplier).** Flat BMR×1.2 replaced by a 4-chip lifestyle multiplier (Sedentary 1.20 / Light 1.35 /
+Active 1.45 / Very 1.55 — NEAT-only, locked against the believability gate: 3 personas within ~7.5% of
+MyFitnessPal). Profile selector with "we auto-tune as you log" framing; seed feeds targets, calibration
+base + effective-TDEE display; maintenance floor stays **sedentary** (BMR×1.2), so a negative adaptive
+adj still bites for active users. Activity is **local-only** (survives sync pulls; no `profiles` column
+yet). Sedentary == the old baseline → zero regression for existing/desk users. **Jest 108/108, sw v57,
+compiled — NOT yet committed/deployed or device-tested** (device-test stays batched, Next-up 2). Step 2
+(strengthen adaptive TDEE) is next. *Prev session 11:* **Harm-fix DEPLOYED + LIVE:** the adaptive-TDEE auto-lowering — targets drop automatically as weight falls and don't climb back on their own — could show a
 *Maintain* target below resting metabolism (founder's harm report: ~1,650 vs an ~1,859 BMR). Maintenance is
 now floored at **sedentary TDEE (BMR × 1.2)** — merged to `main` @ `88a283a`, **live on Pages (sw v56,
-verified)**; rollback tag `pre-bmr-floor`. **Strategy (user's call): keep building + deploying the remaining
-ENERGY-SAFETY features on the `energy-safety-bmr-floor` branch; device-test ALL feature files together in one
-pass later** (no per-feature device check). AI photo→log verify stays deferred until after.
+verified)**; rollback tag `pre-bmr-floor`. **Strategy CHANGED 2026-08-07:** a coach + launch-consultant +
+design-lead review found file 01 (the EA floor) collides with the flat sedentary TDEE model — on today's
+model it would cap every *Cut* to a ~160 kcal deficit and paint maintenance amber for most users. The model
+is re-locked to **seed → calibrate** and the energy-safety features are **re-sequenced behind an activity
+model + an adaptive-TDEE fix**. Full design + ordered plan: **`ENERGY_MODEL.md`** (read it before touching
+targets). AI photo→log verify stays deferred until after.
 
 Read this first. It never duplicates roadmap detail — it points to it.
 
 ---
 
 ## Right now
+
+- **🔵 NOW (session 12) — Step 3: smoothed earn-to-eat.** Steps 1–2 + weigh-in engagement are **built and
+  committed** on `energy-safety-bmr-floor` (Jest 117, sw v58; not deployed/device-tested — batched). **Next
+  build:** spread a logged workout's kcals across the following days as a smoothed curve (tolerant of rest-day
+  clusters *and* back-to-back training) instead of same-day "earn to eat" via `totalWorkoutKcal`. Coach (maths)
+  + design; spec-first (@draft feature) before code. See `ENERGY_MODEL.md` §5 Step 3 + [[project_workout_smoothing_idea]].
 
 **Git:** `main` @ `88a283a` = the harm-fix, **live on Pages**. Ongoing energy-safety work continues on branch
 **`energy-safety-bmr-floor`** (checked out). Parked `targets-bmr-floor-wip` **deleted**. Rollback tag
@@ -29,26 +54,27 @@ Read this first. It never duplicates roadmap detail — it points to it.
     **Jest 107/107**; `fuel-log.feature` flat guard reframed as a backstop + new maintenance-floor Feature.
     **sw v56.** Verified: 1631 → 2231. See [[project_targets_bmr_floor]].
 
-- **◀ NEXT — build + deploy the remaining energy-safety features** (`features/energy-safety/`, all `@draft`),
-  on the branch, merging + deploying as each lands. **Device-testing is BATCHED** — the user will test every
-  feature file in one pass later, so DON'T stop for a per-feature on-device check; just keep Jest green,
-  merge, deploy. **4½ features left to deploy:**
-  - **01 — Energy-availability floor — NOT STARTED** (the natural next build): `EA = (intake − training burn) ÷
-    FFM`, hard floor **30** / target **45 kcal/kg FFM**; **scales with body size and replaces the flat SAFE_MIN**
-    as the real floor (a large user's floor lands well above 1,400), + warning bands: green ≥45 · amber "Low
-    fuel" chip+sheet 30–45 · red "Held at safe minimum" <30, + missing-body-fat fallback to SAFE_MIN + prompt.
-    Strictest floor wins: `max(EA floor, maintain-only BMR×1.2, SAFE_MIN-when-bodyfat-unset)`. The live BMR×1.2
-    floor is only the `maint_floor` row of this stack — the EA mechanism + bands are all still to build.
-  - **02 — cut-cycling:** time-boxed blocks (soft 8 wk / hard 12 wk / 5 %-loss triggers; leaner → earlier);
-    cumulative-cut escalation. **02 is yours to proofread.**
-  - **03 — diet break** as a first-class mode (2 wk at true maintenance, ratchet paused).
-  - **04 (remaining half) — ratchet asymmetry:** weight *gain during a deficit* must NOT ratchet targets down —
-    flag + offer a diet break; recomp / muscle-gain not misread as a lower metabolism.
-  - **05 — LEA symptom check**, sex-neutral → *"see a healthcare professional."*
+- **◀ NEXT — the re-sequenced energy plan (see `ENERGY_MODEL.md` §5 for the authoritative table).** Root cause:
+  the app models everyone as **sedentary (BMR × 1.2)** and counts **no NEAT**, so it under-estimates TDEE — and
+  the EA floor bolted on that under-count fires on everyone. **Fix the model first, then the floor.** Locked
+  model = **seed → calibrate** (a coarse activity chip seeds a believable target; a strengthened adaptive TDEE
+  becomes the truth; NEAT-only multiplier; earn-to-eat kept but smoothed). Ordered steps:
+  - **Step 1 — Activity input + seeded multiplier** ✅ **BUILT 2026-08-07** (flat ×1.2 → 4-chip NEAT
+    multiplier 1.20/1.35/1.45/1.55; Profile selector = onboarding surface; gate passed vs MFP; local-only).
+    Compiled + Jest 108, **not committed/deployed/device-tested yet**.
+  - **Step 2 — Strengthen adaptive TDEE** ✅ **BUILT 2026-08-07** (dead-time comp + confidence-scaled steps;
+    engages at 6; sim closes 500 kcal by day 19, no cap-pinning). **+ weigh-in engagement (file 06)** —
+    invite/progress/cadence-picker/7-day nudge. Compiled + Jest 117, **not committed/deployed/device-tested yet**.
+  - **Step 3 — Smooth earn-to-eat** across days ([[project_workout_smoothing_idea]]). **← the actual next build.**
+  - **Step 4 — EA floor (file 01), re-seated** on the corrected TDEE: hard cut boundary @ EA 30, green @ 45,
+    `SAFE_MIN` only as the body-fat-unset backstop; rare/true, supportive warnings.
+  - **Step 5 — Sustainability: 02 cut-cycling · 03 diet break · 04-rest (no auto-lower on gain-in-deficit)** —
+    only meaningful once a cut is a real deficit. **02 is yours to proofread.**
+  - **Step 6 — 05 LEA symptom check**, sex-neutral → *"see a healthcare professional."*
   - **Convention:** specs are @draft — implement to the **NUMBERS CONTRACT** (derived worked-examples vs named
-    policy constants; exact numbers owned by `logic.test.js`; steps assert observable outcomes). Coach + QA
-    hats. Suggested order: 01 → 03 → 04-rest → 02 → 05 (floor & break first; cut-cycling/symptoms build on
-    them). See [[project_energy_safety_workstream]].
+    policy constants; exact numbers owned by `logic.test.js`; steps assert observable outcomes). Coach + design +
+    QA hats; consultant believability gate before each deploy. Device-testing stays **BATCHED** (one pass later).
+    See [[project_energy_safety_workstream]].
 
 - **⏸ DEFERRED (per user) — AI photo→log (v6.7) device-verify.** Already live on Pages; 3 checks remain
   (see Next-up 2), held until the energy-safety build lands and gets its batch device-test.
@@ -60,16 +86,19 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 ## Next up (in order)
 
-1. **◀ Build + deploy the remaining energy-safety features** — 01 EA floor · 02 cut-cycling · 03 diet break ·
-   04-rest ratchet asymmetry · 05 LEA check (see Right-now for the suggested order). Merge + deploy as each
-   lands (keep Jest green); **batch the on-device test of all feature files once the set is complete.**
+1. **◀ Work the re-sequenced energy plan** (`ENERGY_MODEL.md` §5): ✅ Step 1 activity input + ✅ Step 2
+   adaptive-TDEE (+ weigh-in engagement 06) DONE → **◀ Step 3 smooth earn-to-eat (next)** → Step 4 EA floor
+   (01) → Step 5 sustainability (02/03/04) → Step 6 LEA (05). Commit + deploy as each lands (keep Jest green);
+   **batch the on-device test of all feature files** once complete. *(Steps 1–2 built + Jest-green, not yet
+   committed/deployed.)*
 2. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7) checks
    in one pass (hard-reload first, PWA cache): (a) v55 optional follow-up flow; (b) ⚐ Report-wrong opens a
    prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI (EA warning bands, diet-break
    mode, symptom check, "Held at your minimum maintenance"). When green, flip `@wip` on the AI-capture + two
    v6.6 features in `fuel-log.feature`. **Then bind `RATE_LIMIT` KV** (ops blocker below) before any launch.
-3. **🗓️ activity-model review + workout→target smoothing** (own coach session): flat ×1.2 vs activity-picker
-   vs event-based; the workout-smoothing idea above. [[project_workout_smoothing_idea]].
+3. **✅ activity-model review — DONE 2026-08-07** (coach + consultant + design). Outcome: flat ×1.2 rejected;
+   model locked to **seed → calibrate** (NEAT multiplier + smoothed earn-to-eat). Now Steps 1–3 of the energy
+   plan above — no longer a separate later item. Detail: `ENERGY_MODEL.md`. [[project_workout_smoothing_idea]].
 4. **🗓️ carb floor** (deferred): clamp carbs to 2 g/kg bodyweight on aggressive cuts, reduce **fat** first
    (to its 0.6 g/kg hormonal floor). Changes the macro split for all cutters — do after the EA floor lands.
 5. **Build: more badge categories** (`DOCS §23`: Protein King, Cut Champion, Bulk Mode, Balanced) — reuses
@@ -88,7 +117,14 @@ Read this first. It never duplicates roadmap detail — it points to it.
 - **⚠️ PWA cache:** an installed PWA serves the **old bundle** until a full SW cycle — background isn't enough;
   fully close & reopen (or hard-reload) to pick up a new `sw.js`. (Bit us mid-test: stale "0.72%".)
 - **Build:** edit `app.jsx` → `npx babel app.jsx --out-file app.js`; **bump `sw.js` cache version on every
-  build**; run `npx jest` (currently **107/107**).
+  build**; run `npx jest` (currently **117/117**, sw **v58**).
+- **⚠️ Local-only profile fields** (energy Steps 1–2): the `profiles` table has no `activity` or
+  `weighCadence` column, so both live only in the local profile blob (preserved across sync pulls via the
+  pull-merge, but a brand-new device defaults until re-picked). The weigh-in nudge's dismissal timestamp
+  (`weigh_nudge_dismissed`) and the dead-time-comp log (`tdee_adj_log`) are likewise local-only. Cloud sync
+  for `activity` is a trivial fast-follow — add the column (`setup/supabase-schema.sql` has it commented)
+  **then** wire `syncProfile`/pull; don't add it to the upsert before the column exists or profile sync
+  silently breaks.
 - **Shipped + verified so far:** Phase B compliance (consent gate + `/delete-account` + dormant sweep, LIVE
   2026-06-10) · session-3 features #2–#8 · v6.3 per-field units + allergen safety fix · v6.4 light mode ·
   v6.5 celebration engine · v6.5.1 manifest/icon fix · v6.6 meal data-integrity + Separated-confidence ·
@@ -101,6 +137,7 @@ Read this first. It never duplicates roadmap detail — it points to it.
 | Open this… | …when you want |
 |---|---|
 | **START-HERE.md** (this) | where am I / what's next |
+| **ENERGY_MODEL.md** | the target-energy model (seed→calibrate) + the ordered energy-safety build plan |
 | **SECURITY_ROADMAP.md** | the master phase plan (0 → F) + threat model |
 | **LEGAL_ROADMAP.md** | privacy/compliance detail (Phase B), deploy checklist, risk register |
 | **DOCS.md** | how the product works — features, design system, changelog, backlog |

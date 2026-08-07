@@ -55,8 +55,9 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 ```
 LBM    = weight × (1 − bodyFat / 100)
 BMR    = 370 + (21.6 × LBM)
-TDEE   = (BMR × 1.2) + tdeeAdj        ← fixed baseline; adaptive engine adjusts tdeeAdj over time
+TDEE   = (BMR × activityMult) + tdeeAdj   ← activityMult: 1.20/1.35/1.45/1.55 (NEAT seed); adaptive tunes tdeeAdj
 Target = TDEE + mode adjustment + workout kcal
+         (maintenance floored at BMR × 1.20 — the adaptive auto-lowering can't sink it below sedentary)
 ```
 
 Activity multipliers were removed in v5.1. The fixed ×1.2 (sedentary baseline) is intentionally conservative — any real activity above sedentary shows up as logged workout kcal, and the adaptive TDEE engine corrects the remainder within 2 weeks of weigh-ins.
@@ -1347,6 +1348,40 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Energy Step 2 — adaptive-TDEE convergence + weigh-in engagement (Aug 2026)
+The adaptive engine learns your real TDEE faster and cleanly, and the app now *invites* weigh-ins
+instead of assuming daily ones. Tests **117/117**, sw `v57→v58`. No worker/DB change.
+- **Convergence (`runCalibration`):** the flat ±150 integrator is replaced by a **dead-time-compensated,
+  confidence-scaled** controller — it subtracts adjustments still "in flight" (the 7-day weight window
+  hasn't caught up) so it stops overshooting, and takes bigger steps when it has more data (cap 100/150/200
+  by confidence tier, gain 0.8). Engages at **6** weigh-ins (was 8). A simulation closes a 500 kcal
+  under-estimate by ~day 19 and settles without pinning the ±600 cap.
+- **Weigh-in engagement:** the widget's "log daily" line is gone. Uncalibrated state now **invites** ("weigh
+  in a few times a week — we use your 7-day trend, not any single day") and shows a **progress cue** counting
+  down to the 6th check-in. A **cadence picker** (a few times a week / daily / weekly / "I'd rather not")
+  sits by the activity chips. One **gentle dashboard nudge** appears after a week with no weigh-in —
+  dismissable, 14-day cooldown, and "Don't remind me" mutes it entirely. No streaks; a weight change is
+  never celebrated or shamed. Spec: `features/energy-safety/06-weigh-in-engagement.feature`.
+- **Local-only:** `weighCadence`, the nudge dismissal, and the convergence log are device-local (survive
+  cloud pulls; no migration).
+
+### Energy Step 1 — activity input + seeded NEAT multiplier (Aug 2026)
+First build of the re-sequenced energy-safety plan (`ENERGY_MODEL.md`). The flat sedentary baseline
+(BMR × 1.2) is replaced by a **4-chip lifestyle multiplier** so the app stops under-estimating TDEE for
+anyone who isn't desk-bound. Tests **108/108**, sw `v56→v57`. No worker/DB change.
+- **Activity chips (Profile → Body Stats):** Sedentary **1.20** · Lightly active **1.35** · Active **1.45**
+  · Very active **1.55**. NEAT-only (deliberately below textbook whole-day factors) because logged
+  workouts are still added separately as "earn to eat" — a whole-day factor would double-count training.
+  Framed as *"a starting point — we fine-tune this automatically as you log."*
+- **Believability gate passed:** day-one seed for 3 personas landed within ~7.5% of MyFitnessPal
+  (sedentary +0.5%, active lifter −2.5%, manual worker −7.4%).
+- **Backwards-compatible:** sedentary == the old ×1.2, so existing/unset users are unchanged; unset shows a
+  gentle "pick your activity" nudge and defaults to sedentary.
+- **Maintenance floor unchanged & correct:** still **sedentary (BMR × 1.20)**, not the seed — a negative
+  adaptive adjustment on a higher-activity seed still calibrates maintenance down to sedentary (never below).
+- **Local-only for now:** the `profiles` table has no `activity` column yet; the chip lives in the local
+  profile blob and survives cloud pulls. Cloud sync is a documented fast-follow (`setup/supabase-schema.sql`).
 
 ### v6.7 — AI meal capture: voice + photo + confidence follow-ups (June 2026)
 The AI Meal Log gains two new input adapters and a confidence-gated follow-up layer. One pipeline,
