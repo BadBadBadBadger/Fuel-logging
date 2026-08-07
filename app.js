@@ -665,6 +665,22 @@ var seedTDEE = function seedTDEE(p) {
 var sedentaryFloorOf = function sedentaryFloorOf(p) {
   return Math.round(bmrOf(p) * 1.2);
 };
+
+// ── Smoothed earn-to-eat (energy-model Step 3) ────────────────────
+// A logged workout no longer unlocks its full energy the same day. Its kcal are
+// spread FORWARD across a 3-day window as an ENERGY-CONSERVING weighted average
+// (weights sum to 1 — total training energy is unchanged, only un-spiked). This
+// protects the deficit from a same-day binge, still fuels the day AFTER a hard
+// session, and averages back-to-back days instead of stacking them. Front-loaded
+// [today, −1d, −2d] so today's own session still visibly nudges today. See
+// ENERGY_MODEL.md §5 Step 3 + features/energy-safety/07; mirrored in logic.test.js.
+var SMOOTH_WEIGHTS = [0.5, 0.3, 0.2];
+// kcalByOffset[0] = today's workout kcal, [1] = yesterday's, [2] = 2 days ago.
+var smoothWorkoutKcal = function smoothWorkoutKcal(kcalByOffset) {
+  return Math.round(SMOOTH_WEIGHTS.reduce(function (s, w, i) {
+    return s + w * (kcalByOffset[i] || 0);
+  }, 0));
+};
 var calcTargets = function calcTargets(p, mode) {
   var totalWorkoutKcal = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
   var tdeeAdj = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
@@ -5293,6 +5309,8 @@ function WorkoutLogger(_ref64) {
     onAdd = _ref64.onAdd,
     onRemove = _ref64.onRemove,
     prof = _ref64.prof,
+    _ref64$earnedToday = _ref64.earnedToday,
+    earnedToday = _ref64$earnedToday === void 0 ? 0 : _ref64$earnedToday,
     isPremium = _ref64.isPremium,
     onPremiumGate = _ref64.onPremiumGate;
   var _useState57 = useState("legs"),
@@ -5431,7 +5449,14 @@ function WorkoutLogger(_ref64) {
       fontWeight: 900,
       color: A
     }
-  }, totalKcal, " kcal added")), workouts.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, totalKcal, " kcal burned")), workouts.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "var(--text-mid-3)",
+      marginBottom: 10,
+      lineHeight: 1.4
+    }
+  }, "+", earnedToday, " kcal added to today \u2014 the rest fuels the next couple of days, so one big session doesn\u2019t all land at once."), workouts.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 10
     }
@@ -6315,6 +6340,7 @@ function Dashboard(_ref69) {
     onAdd: onAddWorkout,
     onRemove: onRemoveWorkout,
     prof: prof,
+    earnedToday: targets.bonus || 0,
     isPremium: isPremium,
     onPremiumGate: onPremiumGate
   }), !hasProfile && /*#__PURE__*/React.createElement("button", {
@@ -10146,61 +10172,67 @@ function App() {
     _useState168 = _slicedToArray(_useState167, 2),
     workouts = _useState168[0],
     setWorkouts = _useState168[1];
-  var _useState169 = useState([]),
+  // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
+  // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
+  var _useState169 = useState([0, 0]),
     _useState170 = _slicedToArray(_useState169, 2),
-    earnedBdgs = _useState170[0],
-    setEarnedBdgs = _useState170[1];
-  var _useState171 = useState(null),
+    priorWorkoutKcal = _useState170[0],
+    setPriorWorkoutKcal = _useState170[1];
+  var _useState171 = useState([]),
     _useState172 = _slicedToArray(_useState171, 2),
-    newBadge = _useState172[0],
-    setNewBadge = _useState172[1];
-  var _useState173 = useState(false),
+    earnedBdgs = _useState172[0],
+    setEarnedBdgs = _useState172[1];
+  var _useState173 = useState(null),
     _useState174 = _slicedToArray(_useState173, 2),
-    ready = _useState174[0],
-    setReady = _useState174[1];
-  var _useState175 = useState([]),
+    newBadge = _useState174[0],
+    setNewBadge = _useState174[1];
+  var _useState175 = useState(false),
     _useState176 = _slicedToArray(_useState175, 2),
-    weighIns = _useState176[0],
-    setWeighIns = _useState176[1];
-  var _useState177 = useState(0),
+    ready = _useState176[0],
+    setReady = _useState176[1];
+  var _useState177 = useState([]),
     _useState178 = _slicedToArray(_useState177, 2),
-    tdeeAdj = _useState178[0],
-    setTdeeAdj = _useState178[1];
-  var _useState179 = useState([]),
+    weighIns = _useState178[0],
+    setWeighIns = _useState178[1];
+  var _useState179 = useState(0),
     _useState180 = _slicedToArray(_useState179, 2),
-    adjLog = _useState180[0],
-    setAdjLog = _useState180[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState181 = useState(null),
+    tdeeAdj = _useState180[0],
+    setTdeeAdj = _useState180[1];
+  var _useState181 = useState([]),
     _useState182 = _slicedToArray(_useState181, 2),
-    weighNudgeAt = _useState182[0],
-    setWeighNudgeAt = _useState182[1]; // last weigh-in-nudge dismissal (ms; local-only)
-  var _useState183 = useState(0),
+    adjLog = _useState182[0],
+    setAdjLog = _useState182[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState183 = useState(null),
     _useState184 = _slicedToArray(_useState183, 2),
-    coachKey = _useState184[0],
-    setCoachKey = _useState184[1];
-  var _useState185 = useState(null),
+    weighNudgeAt = _useState184[0],
+    setWeighNudgeAt = _useState184[1]; // last weigh-in-nudge dismissal (ms; local-only)
+  var _useState185 = useState(0),
     _useState186 = _slicedToArray(_useState185, 2),
-    streakPop = _useState186[0],
-    setStreakPop = _useState186[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState186[0],
+    setCoachKey = _useState186[1];
   var _useState187 = useState(null),
     _useState188 = _slicedToArray(_useState187, 2),
-    badgeToast = _useState188[0],
-    setBadgeToast = _useState188[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
-  var _useState189 = useState(false),
+    streakPop = _useState188[0],
+    setStreakPop = _useState188[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+  var _useState189 = useState(null),
     _useState190 = _slicedToArray(_useState189, 2),
-    badgeGlow = _useState190[0],
-    setBadgeGlow = _useState190[1]; // the 🏆 glow paired with the toast
-  var _useState191 = useState(null),
+    badgeToast = _useState190[0],
+    setBadgeToast = _useState190[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState191 = useState(false),
     _useState192 = _slicedToArray(_useState191, 2),
-    customKcal = _useState192[0],
-    setCustomKcal = _useState192[1];
-  var _useState193 = useState(false),
+    badgeGlow = _useState192[0],
+    setBadgeGlow = _useState192[1]; // the 🏆 glow paired with the toast
+  var _useState193 = useState(null),
     _useState194 = _slicedToArray(_useState193, 2),
-    aggressiveCutAcked = _useState194[0],
-    setAggressiveCutAcked = _useState194[1];
-  var _useState195 = useState(0),
+    customKcal = _useState194[0],
+    setCustomKcal = _useState194[1];
+  var _useState195 = useState(false),
     _useState196 = _slicedToArray(_useState195, 2),
-    setThemeTick = _useState196[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState196[0],
+    setAggressiveCutAcked = _useState196[1];
+  var _useState197 = useState(0),
+    _useState198 = _slicedToArray(_useState197, 2),
+    setThemeTick = _useState198[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -10226,46 +10258,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState197 = useState("anonymous"),
-    _useState198 = _slicedToArray(_useState197, 2),
-    authState = _useState198[0],
-    setAuthState = _useState198[1];
-  var _useState199 = useState(null),
+  var _useState199 = useState("anonymous"),
     _useState200 = _slicedToArray(_useState199, 2),
-    authUser = _useState200[0],
-    setAuthUser = _useState200[1];
+    authState = _useState200[0],
+    setAuthState = _useState200[1];
   var _useState201 = useState(null),
     _useState202 = _slicedToArray(_useState201, 2),
-    premiumGate = _useState202[0],
-    setPremiumGate = _useState202[1]; // {emoji, name} | null
-  var _useState203 = useState(false),
+    authUser = _useState202[0],
+    setAuthUser = _useState202[1];
+  var _useState203 = useState(null),
     _useState204 = _slicedToArray(_useState203, 2),
-    showSignIn = _useState204[0],
-    setShowSignIn = _useState204[1];
+    premiumGate = _useState204[0],
+    setPremiumGate = _useState204[1]; // {emoji, name} | null
   var _useState205 = useState(false),
     _useState206 = _slicedToArray(_useState205, 2),
-    showSignOut = _useState206[0],
-    setShowSignOut = _useState206[1];
+    showSignIn = _useState206[0],
+    setShowSignIn = _useState206[1];
   var _useState207 = useState(false),
     _useState208 = _slicedToArray(_useState207, 2),
-    showLapsed = _useState208[0],
-    setShowLapsed = _useState208[1];
+    showSignOut = _useState208[0],
+    setShowSignOut = _useState208[1];
   var _useState209 = useState(false),
     _useState210 = _slicedToArray(_useState209, 2),
-    needsConsent = _useState210[0],
-    setNeedsConsent = _useState210[1]; // retroactive Art. 9 consent (R2)
-  var _useState211 = useState(null),
+    showLapsed = _useState210[0],
+    setShowLapsed = _useState210[1];
+  var _useState211 = useState(false),
     _useState212 = _slicedToArray(_useState211, 2),
-    consentInfo = _useState212[0],
-    setConsentInfo = _useState212[1]; // parsed local health_consent for display
-  var _useState213 = useState(navigator.onLine),
+    needsConsent = _useState212[0],
+    setNeedsConsent = _useState212[1]; // retroactive Art. 9 consent (R2)
+  var _useState213 = useState(null),
     _useState214 = _slicedToArray(_useState213, 2),
-    isOnline = _useState214[0],
-    setIsOnline = _useState214[1];
-  var _useState215 = useState(""),
+    consentInfo = _useState214[0],
+    setConsentInfo = _useState214[1]; // parsed local health_consent for display
+  var _useState215 = useState(navigator.onLine),
     _useState216 = _slicedToArray(_useState215, 2),
-    syncMsg = _useState216[0],
-    setSyncMsg = _useState216[1];
+    isOnline = _useState216[0],
+    setIsOnline = _useState216[1];
+  var _useState217 = useState(""),
+    _useState218 = _slicedToArray(_useState217, 2),
+    syncMsg = _useState218[0],
+    setSyncMsg = _useState218[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -10306,7 +10338,7 @@ function App() {
   useEffect(function () {
     var load = /*#__PURE__*/function () {
       var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34() {
-        var k, lv, wv, mv, pv, pp, mv2, wkv, bv, hv, wiv, tav, alv, wnv, ckv, n, acv, asv, auv, u, hc, hcParsed;
+        var k, lv, wv, mv, pv, pp, mv2, wkv, prior, d, pwv, bv, hv, wiv, tav, alv, wnv, ckv, n, acv, asv, auv, u, hc, hcParsed;
         return _regenerator().w(function (_context34) {
           while (1) switch (_context34.n) {
             case 0:
@@ -10348,86 +10380,107 @@ function App() {
             case 7:
               wkv = _context34.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
-              _context34.n = 8;
-              return sg("badges");
+              // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
+              prior = [];
+              d = 1;
             case 8:
+              if (!(d <= 2)) {
+                _context34.n = 11;
+                break;
+              }
+              _context34.n = 9;
+              return sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
+            case 9:
+              pwv = _context34.v;
+              prior.push(pwv ? JSON.parse(pwv).reduce(function (s, w) {
+                return s + (w.kcal || 0);
+              }, 0) : 0);
+            case 10:
+              d++;
+              _context34.n = 8;
+              break;
+            case 11:
+              setPriorWorkoutKcal(prior);
+              _context34.n = 12;
+              return sg("badges");
+            case 12:
               bv = _context34.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context34.n = 9;
+              _context34.n = 13;
               return sg("history");
-            case 9:
+            case 13:
               hv = _context34.v;
               if (hv) setHist(JSON.parse(hv));
-              _context34.n = 10;
+              _context34.n = 14;
               return sg("weighins");
-            case 10:
+            case 14:
               wiv = _context34.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context34.n = 11;
+              _context34.n = 15;
               return sg("tdee_adj");
-            case 11:
+            case 15:
               tav = _context34.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context34.n = 12;
+              _context34.n = 16;
               return sg("tdee_adj_log");
-            case 12:
+            case 16:
               alv = _context34.v;
               if (alv) {
                 try {
                   setAdjLog(JSON.parse(alv) || []);
                 } catch (e) {}
               }
-              _context34.n = 13;
+              _context34.n = 17;
               return sg("weigh_nudge_dismissed");
-            case 13:
+            case 17:
               wnv = _context34.v;
               if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
-              _context34.n = 14;
+              _context34.n = 18;
               return sg("target_kcal");
-            case 14:
+            case 18:
               ckv = _context34.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context34.n = 15;
+              _context34.n = 19;
               return sg("aggressive_cut_acked");
-            case 15:
+            case 19:
               acv = _context34.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context34.n = 16;
+              _context34.n = 20;
               return sg("auth_state");
-            case 16:
+            case 20:
               asv = _context34.v;
-              _context34.n = 17;
+              _context34.n = 21;
               return sg("auth_user");
-            case 17:
+            case 21:
               auv = _context34.v;
               if (!(asv === "premium" && auv)) {
-                _context34.n = 21;
+                _context34.n = 25;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context34.n = 19;
+                _context34.n = 23;
                 break;
               }
-              _context34.n = 18;
+              _context34.n = 22;
               return ss("auth_state", "anonymous");
-            case 18:
+            case 22:
               setShowLapsed(true);
-              _context34.n = 21;
+              _context34.n = 25;
               break;
-            case 19:
+            case 23:
               setAuthState("premium");
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context34.n = 20;
+              _context34.n = 24;
               return sg("health_consent");
-            case 20:
+            case 24:
               hc = _context34.v;
               hcParsed = null;
               try {
@@ -10462,12 +10515,15 @@ function App() {
                       setWater(snap.water || 0);
                     }
                   }
-                  if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+                  if (pulled.workouts) {
+                    setWorkouts(pulled.workouts[todayKey()] || []);
+                    setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
+                  }
                 })["catch"](function () {});
               }
-            case 21:
+            case 25:
               setReady(true);
-            case 22:
+            case 26:
               return _context34.a(2);
           }
         }, _callee34);
@@ -10622,6 +10678,16 @@ function App() {
       return _ref98.apply(this, arguments);
     };
   }();
+  // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
+  // earn-to-eat window, Step 3). Used on sync pulls where we have the whole byDate map.
+  var priorFromByDate = function priorFromByDate(byDate) {
+    return [1, 2].map(function (d) {
+      var arr = byDate[dateKey(new Date(Date.now() - d * 86400000))] || [];
+      return arr.reduce(function (s, w) {
+        return s + (w.kcal || 0);
+      }, 0);
+    });
+  };
   var addLog = /*#__PURE__*/function () {
     var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
@@ -10896,7 +10962,10 @@ function App() {
                 setWater(snap.water || 0);
               }
             }
-            if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+            if (pulled.workouts) {
+              setWorkouts(pulled.workouts[todayKey()] || []);
+              setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
+            }
             _context46.n = 10;
             break;
           case 9:
@@ -11283,10 +11352,15 @@ function App() {
       return _ref112.apply(this, arguments);
     };
   }();
-  var workoutKcal = workouts.reduce(function (s, w) {
+
+  // Earn-to-eat is SMOOTHED (Step 3): today's applied bonus is a weighted average of
+  // today's + the prior two days' workout kcal, not today's raw session total. This
+  // damps the same-day spike and carries a hard session's fuel into the next days.
+  var todayWorkoutKcal = workouts.reduce(function (s, w) {
     return s + (w.kcal || 0);
   }, 0);
-  var baseTargets = calcTargets(p, effectiveMode, workoutKcal, tdeeAdj);
+  var smoothedBonus = smoothWorkoutKcal([todayWorkoutKcal].concat(_toConsumableArray(priorWorkoutKcal)));
+  var baseTargets = calcTargets(p, effectiveMode, smoothedBonus, tdeeAdj);
   var targets = function () {
     if (customKcal == null) return baseTargets;
     var safeMin = SAFE_MIN[p.sex || "male"] || 1400;

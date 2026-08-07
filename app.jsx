@@ -330,6 +330,19 @@ const seedTDEE = p => Math.round(bmrOf(p) * activityMult(p));
 // never below). Stays BMR×1.2 regardless of the seed.
 const sedentaryFloorOf = p => Math.round(bmrOf(p) * 1.2);
 
+// ── Smoothed earn-to-eat (energy-model Step 3) ────────────────────
+// A logged workout no longer unlocks its full energy the same day. Its kcal are
+// spread FORWARD across a 3-day window as an ENERGY-CONSERVING weighted average
+// (weights sum to 1 — total training energy is unchanged, only un-spiked). This
+// protects the deficit from a same-day binge, still fuels the day AFTER a hard
+// session, and averages back-to-back days instead of stacking them. Front-loaded
+// [today, −1d, −2d] so today's own session still visibly nudges today. See
+// ENERGY_MODEL.md §5 Step 3 + features/energy-safety/07; mirrored in logic.test.js.
+const SMOOTH_WEIGHTS = [0.5, 0.3, 0.2];
+// kcalByOffset[0] = today's workout kcal, [1] = yesterday's, [2] = 2 days ago.
+const smoothWorkoutKcal = kcalByOffset =>
+  Math.round(SMOOTH_WEIGHTS.reduce((s, w, i) => s + w * (kcalByOffset[i] || 0), 0));
+
 const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
   const sex = p.sex || "male";
   const bmr  = bmrOf(p);
@@ -2106,7 +2119,7 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGate }) {
+function WorkoutLogger({ workouts, onAdd, onRemove, prof, earnedToday = 0, isPremium, onPremiumGate }) {
   const [type,      setType]      = useState("legs");
   const [dur,       setDur]       = useState(45);
   const [intensity, setIntensity] = useState("moderate");
@@ -2152,9 +2165,16 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
           WORKOUTS {workouts.length > 0 && <span style={{ color:A }}>· ⚡{workouts.length}</span>}
         </div>
         {workouts.length > 0 && (
-          <span style={{ fontSize:12, fontWeight:900, color:A }}>{totalKcal} kcal added</span>
+          <span style={{ fontSize:12, fontWeight:900, color:A }}>{totalKcal} kcal burned</span>
         )}
       </div>
+
+      {workouts.length > 0 && (
+        <div style={{ fontSize:10, color:"var(--text-mid-3)", marginBottom:10, lineHeight:1.4 }}>
+          +{earnedToday} kcal added to today — the rest fuels the next couple of days,
+          so one big session doesn&rsquo;t all land at once.
+        </div>
+      )}
 
       {workouts.length > 0 && (
         <div style={{ marginBottom:10 }}>
@@ -2491,7 +2511,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Workout logger */}
       <WorkoutLogger workouts={workouts} onAdd={onAddWorkout} onRemove={onRemoveWorkout} prof={prof}
-        isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+        earnedToday={targets.bonus || 0} isPremium={isPremium} onPremiumGate={onPremiumGate}/>
 
       {!hasProfile && (
         <button onClick={() => setView("profile")}
@@ -4193,6 +4213,9 @@ function App() {
   const [hist,       setHist]       = useState([]);
   const [meals,      setMeals]      = useState([...DEF_MEALS]);
   const [workouts,   setWorkouts]   = useState([]);
+  // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
+  // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
+  const [priorWorkoutKcal, setPriorWorkoutKcal] = useState([0, 0]);
   const [earnedBdgs, setEarnedBdgs] = useState([]);
   const [newBadge,   setNewBadge]   = useState(null);
   const [ready,      setReady]      = useState(false);
@@ -4261,6 +4284,13 @@ function App() {
       const pv = await sg("profile");     if (pv)  { const pp = JSON.parse(pv); setProf(pp); setDietaryCache(pp.dietary); }
       const mv2 = await sg("meals");      if (mv2) setMeals(JSON.parse(mv2));
       const wkv = await sg("workouts__" + k); if (wkv) setWorkouts(JSON.parse(wkv));
+      // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
+      const prior = [];
+      for (let d = 1; d <= 2; d++) {
+        const pwv = await sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
+        prior.push(pwv ? JSON.parse(pwv).reduce((s, w) => s + (w.kcal || 0), 0) : 0);
+      }
+      setPriorWorkoutKcal(prior);
       const bv = await sg("badges");     if (bv)  setEarnedBdgs(JSON.parse(bv));
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
       const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
@@ -4306,7 +4336,10 @@ function App() {
                 const snap = pulled.history.find(h => h.date === tod);
                 if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
               }
-              if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+              if (pulled.workouts) {
+                setWorkouts(pulled.workouts[todayKey()] || []);
+                setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
+              }
             }).catch(() => {});
           }
         }
@@ -4382,6 +4415,12 @@ function App() {
     if (authState === "premium" && authUser?.id)
       syncWorkouts(authUser.id, todayKey(), w).catch(() => {});
   };
+  // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
+  // earn-to-eat window, Step 3). Used on sync pulls where we have the whole byDate map.
+  const priorFromByDate = byDate => [1, 2].map(d => {
+    const arr = byDate[dateKey(new Date(Date.now() - d * 86400000))] || [];
+    return arr.reduce((s, w) => s + (w.kcal || 0), 0);
+  });
 
   const addLog = async e => {
     haptic();
@@ -4498,7 +4537,10 @@ function App() {
           const snap = pulled.history.find(h => h.date === tod);
           if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
         }
-        if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+        if (pulled.workouts) {
+          setWorkouts(pulled.workouts[todayKey()] || []);
+          setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
+        }
       } catch(e) {}
       setSyncMsg("");
     }
@@ -4674,8 +4716,12 @@ function App() {
   };
   const muteWeighNudge = async () => { await dismissWeighNudge(); await saveProf({ ...p, weighCadence: "off" }); };
 
-  const workoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
-  const baseTargets = calcTargets(p, effectiveMode, workoutKcal, tdeeAdj);
+  // Earn-to-eat is SMOOTHED (Step 3): today's applied bonus is a weighted average of
+  // today's + the prior two days' workout kcal, not today's raw session total. This
+  // damps the same-day spike and carries a hard session's fuel into the next days.
+  const todayWorkoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
+  const smoothedBonus = smoothWorkoutKcal([todayWorkoutKcal, ...priorWorkoutKcal]);
+  const baseTargets = calcTargets(p, effectiveMode, smoothedBonus, tdeeAdj);
   const targets = (() => {
     if (customKcal == null) return baseTargets;
     const safeMin = SAFE_MIN[p.sex || "male"] || 1400;

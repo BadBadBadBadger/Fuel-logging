@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-07 (session 12). **Energy-plan Steps 1 + 2 BUILT + weigh-in engagement (file 06).**
+**Updated:** 2026-08-07 (session 12). **Energy-plan Steps 1–3 BUILT** (activity seed · adaptive-TDEE + weigh-in engagement · smoothed earn-to-eat).
 Step 2 replaced the flat ±150 adaptive integrator with a **dead-time-compensated, confidence-scaled**
 convergence (gain 0.8; per-run cap 100/150/200; engages at 6 weigh-ins) — a simulation closes a 500 kcal
 gap by day 19 without pinning the ±600 cap (the old loop overshot and pinned ~10 days). Because calibrate
@@ -32,11 +32,17 @@ Read this first. It never duplicates roadmap detail — it points to it.
 
 ## Right now
 
-- **🔵 NOW (session 12) — Step 3: smoothed earn-to-eat.** Steps 1–2 + weigh-in engagement are **built and
-  committed** on `energy-safety-bmr-floor` (Jest 117, sw v58; not deployed/device-tested — batched). **Next
-  build:** spread a logged workout's kcals across the following days as a smoothed curve (tolerant of rest-day
-  clusters *and* back-to-back training) instead of same-day "earn to eat" via `totalWorkoutKcal`. Coach (maths)
-  + design; spec-first (@draft feature) before code. See `ENERGY_MODEL.md` §5 Step 3 + [[project_workout_smoothing_idea]].
+- **🔵 NOW (session 12) — Step 4: EA floor (file 01), re-seated.** Steps 1–3 are **built and committed** on
+  `energy-safety-bmr-floor` (Jest 125, sw v59; not deployed/device-tested — batched). **Next build:** the
+  energy-availability floor from `features/energy-safety/01` on the *corrected* TDEE — hard cut boundary @ EA 30,
+  green @ 45, `SAFE_MIN` only as the body-fat-unset backstop; rare/true, supportive warnings. Coach (numbers) +
+  design (copy/UX) + QA; ED-safety review on the warning copy. See `ENERGY_MODEL.md` §5 Step 4.
+  - **✅ Step 3 (smoothed earn-to-eat) DONE 2026-08-07.** A logged workout's kcal are spread FORWARD across a
+    3-day window as an energy-conserving weighted average (`SMOOTH_WEIGHTS = [0.5, 0.3, 0.2]` over today/−1d/−2d,
+    Σ=1 — total training energy unchanged, only un-spiked): same-day bonus halved, a rest day after training still
+    carries fuel, back-to-back days average instead of stacking. `priorWorkoutKcal` state loads the prior 2 days
+    from `workouts__<date>`; `smoothedBonus` feeds `calcTargets`; workout-card copy reworked. New
+    `07-smoothed-earn-to-eat.feature` (@draft). Jest 125, sw v59, committed. [[project_workout_smoothing_idea]].
 
 **Git:** `main` @ `88a283a` = the harm-fix, **live on Pages**. Ongoing energy-safety work continues on branch
 **`energy-safety-bmr-floor`** (checked out). Parked `targets-bmr-floor-wip` **deleted**. Rollback tag
@@ -65,9 +71,10 @@ Read this first. It never duplicates roadmap detail — it points to it.
   - **Step 2 — Strengthen adaptive TDEE** ✅ **BUILT 2026-08-07** (dead-time comp + confidence-scaled steps;
     engages at 6; sim closes 500 kcal by day 19, no cap-pinning). **+ weigh-in engagement (file 06)** —
     invite/progress/cadence-picker/7-day nudge. Compiled + Jest 117, **not committed/deployed/device-tested yet**.
-  - **Step 3 — Smooth earn-to-eat** across days ([[project_workout_smoothing_idea]]). **← the actual next build.**
+  - **Step 3 — Smooth earn-to-eat** ✅ **BUILT 2026-08-07** (3-day energy-conserving weighted average
+    `[0.5,0.3,0.2]`; `07-smoothed-earn-to-eat.feature`; Jest 125, sw v59). ([[project_workout_smoothing_idea]])
   - **Step 4 — EA floor (file 01), re-seated** on the corrected TDEE: hard cut boundary @ EA 30, green @ 45,
-    `SAFE_MIN` only as the body-fat-unset backstop; rare/true, supportive warnings.
+    `SAFE_MIN` only as the body-fat-unset backstop; rare/true, supportive warnings. **← the actual next build.**
   - **Step 5 — Sustainability: 02 cut-cycling · 03 diet break · 04-rest (no auto-lower on gain-in-deficit)** —
     only meaningful once a cut is a real deficit. **02 is yours to proofread.**
   - **Step 6 — 05 LEA symptom check**, sex-neutral → *"see a healthcare professional."*
@@ -87,10 +94,10 @@ Read this first. It never duplicates roadmap detail — it points to it.
 ## Next up (in order)
 
 1. **◀ Work the re-sequenced energy plan** (`ENERGY_MODEL.md` §5): ✅ Step 1 activity input + ✅ Step 2
-   adaptive-TDEE (+ weigh-in engagement 06) DONE → **◀ Step 3 smooth earn-to-eat (next)** → Step 4 EA floor
-   (01) → Step 5 sustainability (02/03/04) → Step 6 LEA (05). Commit + deploy as each lands (keep Jest green);
-   **batch the on-device test of all feature files** once complete. *(Steps 1–2 built + Jest-green, not yet
-   committed/deployed.)*
+   adaptive-TDEE (+ weigh-in engagement 06) + ✅ Step 3 smooth earn-to-eat DONE → **◀ Step 4 EA floor (01)
+   (next)** → Step 5 sustainability (02/03/04) → Step 6 LEA (05). Commit as each lands (keep Jest green);
+   **batch the on-device test + deploy of all feature files** once complete. *(Steps 1–3 committed + Jest-green
+   on `energy-safety-bmr-floor`, not yet deployed.)*
 2. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7) checks
    in one pass (hard-reload first, PWA cache): (a) v55 optional follow-up flow; (b) ⚐ Report-wrong opens a
    prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI (EA warning bands, diet-break
@@ -117,7 +124,7 @@ Read this first. It never duplicates roadmap detail — it points to it.
 - **⚠️ PWA cache:** an installed PWA serves the **old bundle** until a full SW cycle — background isn't enough;
   fully close & reopen (or hard-reload) to pick up a new `sw.js`. (Bit us mid-test: stale "0.72%".)
 - **Build:** edit `app.jsx` → `npx babel app.jsx --out-file app.js`; **bump `sw.js` cache version on every
-  build**; run `npx jest` (currently **117/117**, sw **v58**).
+  build**; run `npx jest` (currently **125/125**, sw **v59**).
 - **⚠️ Local-only profile fields** (energy Steps 1–2): the `profiles` table has no `activity` or
   `weighCadence` column, so both live only in the local profile blob (preserved across sync pulls via the
   pull-merge, but a brand-new device defaults until re-picked). The weigh-in nudge's dismissal timestamp

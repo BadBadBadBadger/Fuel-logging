@@ -1240,3 +1240,60 @@ describe("runCalibration — AI-estimated days can't silently retrain TDEE", () 
     expect(result.avgKcal).toBe(1800);
   });
 });
+
+// ── Smoothed earn-to-eat (energy-model Step 3) ────────────────────
+// Mirror of app.jsx: a logged workout's kcal are spread FORWARD across a 3-day
+// window as an energy-conserving weighted average (weights sum to 1). Front-loaded
+// so today weighs most but a session no longer fully unlocks its own day.
+const SMOOTH_WEIGHTS = [0.5, 0.3, 0.2];
+const smoothWorkoutKcal = kcalByOffset =>
+  Math.round(SMOOTH_WEIGHTS.reduce((s, w, i) => s + w * (kcalByOffset[i] || 0), 0));
+
+describe("Smoothed earn-to-eat (Step 3)", () => {
+  test("weights are energy-conserving (sum to 1)", () => {
+    expect(SMOOTH_WEIGHTS.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
+  });
+
+  test("a single session is damped on its own day, not fully unlocked", () => {
+    // 600 kcal logged today, nothing prior → only 0.5×600 lands today.
+    expect(smoothWorkoutKcal([600, 0, 0])).toBe(300);
+  });
+
+  test("the day after a hard session still carries earned fuel", () => {
+    // Rest today, 600 yesterday → 0.3×600 = 180 still fuels today.
+    expect(smoothWorkoutKcal([0, 600, 0])).toBe(180);
+  });
+
+  test("fuel tapers across the window then disappears", () => {
+    expect(smoothWorkoutKcal([0, 0, 600])).toBe(120); // 2 days ago
+    // 3 days ago is outside the 3-slot window entirely → nothing to add.
+    expect(smoothWorkoutKcal([0, 0, 0])).toBe(0);
+  });
+
+  test("the training-day share strictly exceeds later days", () => {
+    const day0 = smoothWorkoutKcal([600, 0, 0]);
+    const day1 = smoothWorkoutKcal([0, 600, 0]);
+    const day2 = smoothWorkoutKcal([0, 0, 600]);
+    expect(day0).toBeGreaterThan(day1);
+    expect(day1).toBeGreaterThan(day2);
+  });
+
+  test("back-to-back days average, never stack", () => {
+    // 600 yesterday + 600 today → 0.5×600 + 0.3×600 = 480, well below 1200,
+    // and above a single session's same-day 300.
+    const stacked = smoothWorkoutKcal([600, 600, 0]);
+    expect(stacked).toBe(480);
+    expect(stacked).toBeLessThan(1200);
+    expect(stacked).toBeGreaterThan(300);
+  });
+
+  test("steady training settles to a stable daily bonus", () => {
+    // Same 600 every day → 0.5+0.3+0.2 = 1.0 × 600 = 600 (== avg daily load).
+    expect(smoothWorkoutKcal([600, 600, 600])).toBe(600);
+  });
+
+  test("no training in the window adds nothing (baseline unchanged)", () => {
+    expect(smoothWorkoutKcal([])).toBe(0);
+    expect(smoothWorkoutKcal([0, 0, 0])).toBe(0);
+  });
+});
