@@ -55,7 +55,7 @@ never touches a number (lean body + a day they trained + EA < 30). Docs across t
 (`02840e4`) — including several that were flatly wrong, not just dated.
 
 **Git:** `main` @ `88a283a` = the harm-fix, **live on Pages** (sw v56). Branch `energy-safety-bmr-floor`
-carries Steps 1–4, head @ `02840e4` (`bfe926f` = the Step 4 build, `02840e4` = the docs sweep). Parked
+carries Steps 1–4 — `bfe926f` is the Step 4 build, the commits after it are the docs sweep. Parked
 `targets-bmr-floor-wip` **deleted**. Rollback tag `pre-bmr-floor` (pre-fix `main`).
 
 **Convention for the remaining specs:** they're `@draft` — implement to the **NUMBERS CONTRACT** (derived
