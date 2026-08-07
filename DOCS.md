@@ -56,11 +56,11 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 LBM    = weight × (1 − bodyFat / 100)
 BMR    = 370 + (21.6 × LBM)
 TDEE   = (BMR × activityMult) + tdeeAdj   ← activityMult: 1.20/1.35/1.45/1.55 (NEAT seed); adaptive tunes tdeeAdj
-Target = TDEE + mode adjustment + workout kcal
+Target = TDEE + mode adjustment + smoothed workout kcal   ← earn-to-eat spread over 3 days (§ Workout kcal)
          (maintenance floored at BMR × 1.20 — the adaptive auto-lowering can't sink it below sedentary)
 ```
 
-Activity multipliers were removed in v5.1. The fixed ×1.2 (sedentary baseline) is intentionally conservative — any real activity above sedentary shows up as logged workout kcal, and the adaptive TDEE engine corrects the remainder within 2 weeks of weigh-ins.
+Activity multipliers were removed in v5.1 and **re-introduced in Energy Step 1** (Aug 2026) as a NEAT-only lifestyle seed (see §37). Sedentary (1.20) equals the old flat baseline, so unset/desk users are unchanged; anything above sedentary is now seeded from the activity chip *and* still gains logged workout kcal on top, with the adaptive TDEE engine calibrating `tdeeAdj` toward real expenditure within ~2 weeks of weigh-ins.
 
 ### Mode adjustments
 | Mode | Adjustment |
@@ -69,14 +69,18 @@ Activity multipliers were removed in v5.1. The fixed ×1.2 (sedentary baseline) 
 | MAINTAIN | 0 kcal |
 | BULK | +500 kcal |
 
-### Workout kcal
-Logged workouts add to the calorie target for the day. Each workout entry is stored and persists; multiple per day supported.
+### Workout kcal (smoothed earn-to-eat, Energy Step 3)
+Logged workouts feed the calorie target, but their energy is **spread forward across 3 days** rather than added all on the day of the session (energy-model Step 3 — see §37). Each workout entry is stored and persists; multiple per day supported.
 
 ```javascript
 // MET-based estimate per workout:
 kcal = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
 
-// Target = TDEE + mode adj + sum of all workout kcal today
+// Earn-to-eat is SMOOTHED: today's applied bonus is an energy-conserving 3-day
+// weighted average of workout kcal — SMOOTH_WEIGHTS = [0.5, 0.3, 0.2] over
+// [today, −1d, −2d] (Σ = 1, so total training energy is unchanged, just re-timed).
+smoothedBonus = round(0.5×todayKcal + 0.3×yesterdayKcal + 0.2×twoDaysAgoKcal)
+// Target = TDEE + mode adj + smoothedBonus
 ```
 
 ### MET values
@@ -241,7 +245,7 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `Dashboard` | `...existing... authState, authUser, onPremiumGate, onSignOut, isOnline, syncMsg` | Shows all today's data; derives `isPremium = authState === "premium"`; gates AI LOG button and CoachCard; renders `<Avatar>` in the header when premium |
 | `Avatar` | `user, size = 34` | Google profile pic with graceful fallback. Uses `referrerPolicy="no-referrer"` so `googleusercontent` images don't 403/429, and an `onError` handler that falls back to the user's initial (cream on dark) instead of a broken-image icon |
 | `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
-| `WorkoutLogger` | `workouts, onAdd, onRemove, prof, isPremium, onPremiumGate` | Paste log button calls `onPremiumGate` when `isPremium` is false; no UI change otherwise |
+| `WorkoutLogger` | `workouts, onAdd, onRemove, prof, earnedToday, isPremium, onPremiumGate` | `earnedToday` = the smoothed earn-to-eat bonus applied to today (`targets.bonus`); shown as "+{Y} added to today". Paste log button calls `onPremiumGate` when `isPremium` is false |
 | `CoachCard` | `mode, totals, targets, streak, water` | Only rendered when `isPremium` is true — no AI call is made for anonymous users |
 | `ProfileScreen` | `tdeeAdj, weighIns, aggressiveCutAcked` | Unchanged |
 | `StreakCelebration` | `anim, onDone` | Full-screen emoji overlay; Web Audio whoosh+thud; auto-dismisses after 1.5s |
@@ -1348,6 +1352,22 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Energy Step 3 — smoothed earn-to-eat (Aug 2026)
+A logged workout no longer unlocks its full energy on the same day. Its kcal are spread **forward across a
+3-day window** as an energy-conserving weighted average, so one big session doesn't all land at once. Tests
+**125/125**, sw `v58→v59`. No worker/DB change.
+- **Smoothing (`smoothWorkoutKcal`):** today's earn-to-eat bonus = `0.5×today + 0.3×yesterday + 0.2×2-days-ago`
+  of logged workout kcal (`SMOOTH_WEIGHTS`, Σ = 1 — total training energy is unchanged, just re-timed).
+  Front-loaded so today still visibly nudges today, but a session's same-day share is halved.
+- **Why:** protects the deficit from a same-day binge, still fuels the day *after* a hard session (recovery
+  runs 24–48h), and averages back-to-back training days instead of stacking them. A 600 kcal session → +300
+  today, +180 tomorrow, +120 the day after; back-to-back 600+600 → +480, not +1200; a rest day after training
+  still carries fuel.
+- **Copy:** the workout card now reads "{X} kcal **burned**" + "+{Y} added to today — the rest fuels the next
+  couple of days," replacing the old "{X} kcal added." Spec: `features/energy-safety/07-smoothed-earn-to-eat.feature`.
+- **Prior-day data:** the last 2 days' workout kcal load from `workouts__<date>` into `priorWorkoutKcal`
+  (mount + sync pulls) — device-local, no migration. A brand-new device shows 0 prior fuel until those days sync.
 
 ### Energy Step 2 — adaptive-TDEE convergence + weigh-in engagement (Aug 2026)
 The adaptive engine learns your real TDEE faster and cleanly, and the app now *invites* weigh-ins
