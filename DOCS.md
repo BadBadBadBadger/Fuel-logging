@@ -1398,6 +1398,33 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### Energy Step 5a — cut cycling: a cut runs as load-weighted blocks (Aug 2026)
+Nothing capped how *long* a cut ran. A deficit from January to June with no structured break is the harm this
+whole workstream exists to prevent. A cut is now a **time-boxed block** that prompts a diet break — but the
+clock is not a calendar. Tests **172/172** (30 new), sw `v60→v61`. **DB change: 4 new `profiles` columns.**
+- **The unit is a deficit-weighted day ("cut load"), not a calendar day.** `dayLoad = deficitFrac ÷
+  REFERENCE_DEFICIT` (0.20), where `deficitFrac = 1 − target ÷ believable maintenance`. So a **gentle cut runs
+  much longer before being asked to break, and an aggressive one is cautioned sooner** — ~24 / 12 / ~9.5 real
+  weeks at a 10 / 20 / 25% deficit, bounded above by Step 4's `MAX_DEFICIT_FRAC`. That *is* the protection,
+  which is why there is deliberately no short universal calendar default (`ENERGY_MODEL.md` §5.2 records the
+  rejected alternatives, including why a ~42-day bodybuilder cadence would penalise higher-body-fat users).
+- **Whether a day counts is read from the declared daily mode, never from food logs** — plus a weight-trend
+  backstop (`TREND_CUT_RATE`, 0.25%/wk) that catches switching to "Maintain" to silence the prompts while
+  still under-eating. Days the app wasn't opened inherit the last known mode; **not logging never pauses the
+  clock**, because the patchy logger is exactly who this protects. Accrual is idempotent by date.
+- **Prompts:** dismissable amber nudge at **56** load-days, non-dismissable **84** (lean bodies 42 / 56,
+  reusing Step 4's `isLeanBody` — not a second leanness threshold). Losing **5%** of bodyweight inside one
+  block forces the prompt early. The hard card snoozes 3 days at a time and can never be permanently killed.
+- **The card shows REAL elapsed weeks, not load.** Telling a 16-week gentle cutter "you've been cutting for 8
+  weeks" because that is their load would simply be false.
+- **A block ends** via a completed break or 7 consecutive non-cut days; one day off never resets it. Time at
+  maintenance **pays down** the rolling year total (`MAINTENANCE_DECAY`), so a break taken is worth something.
+- **Copy constraint (coach, binding):** no day count is presented as the point at which something happens to
+  the body. There is no threshold at which testosterone falls or metabolism "breaks" — risk rises with
+  severity × duration, and in people with obesity weight loss often *improves* testosterone.
+- **Known gap:** the primary button says **"Switch to maintenance"**, not the spec's "Start 2-week diet
+  break" — the tracked break is file 03, not yet built. See §5.2 and `START-HERE.md`.
+
 ### Energy Step 4 — energy floor: steady-loss clamp + low-fuel warning (Aug 2026)
 The flat safe minimum (1,400 M / 1,200 F) is no longer the thing protecting you — it protected nobody in
 particular, sitting below a large user's resting metabolism and above a small user's sensible target only by

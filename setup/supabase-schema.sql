@@ -1,6 +1,16 @@
 -- ─────────────────────────────────────────────────────────────
 -- Fuel Log — Supabase Schema
--- Run this entire file in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
+-- FIRST-TIME SETUP: run this entire file in Supabase SQL Editor
+-- (Dashboard → SQL Editor → New Query).
+--
+-- ⚠️ EXISTING DATABASE: do NOT re-run the whole file. Nothing here deletes data —
+-- there is no DROP/TRUNCATE/DELETE, and the CREATE TABLE / ADD COLUMN / CREATE INDEX
+-- statements are all idempotent — BUT `CREATE POLICY` has no IF NOT EXISTS in Postgres,
+-- so the RLS block below fails with 42710 "policy already exists". The SQL Editor runs
+-- the file in one transaction, so that abort ROLLS BACK any ALTER TABLE above it: the
+-- columns you were adding silently never land. To add columns to a live database, run
+-- just the ALTER TABLE lines you need, then confirm with:
+--   SELECT column_name FROM information_schema.columns WHERE table_name = 'profiles';
 -- ─────────────────────────────────────────────────────────────
 
 -- ── User profiles ─────────────────────────────────────────────
@@ -29,6 +39,17 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_withdrawn_at TIMEST
 -- it to the upsert before the column exists or the whole profile upsert 400s silently.
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS activity TEXT
   CHECK (activity IN ('sedentary', 'light', 'active', 'very'));
+
+-- Energy-model Step 5 (cut cycling — features/energy-safety/02-cut-cycle-blocks.feature).
+-- These may NOT be local-only: block state is the one thing that has to remember a long cut,
+-- so a new device must not silently restart the clock at 0. Same ordering rule as above —
+-- run these columns FIRST, then wire syncProfile()/pullFromSupabase().
+-- NOTE the loads are NUMERIC, not INTEGER: a day is weighted by how deep the deficit is
+-- (a 10% cut adds 0.5, a 25% cut adds 1.25), so these accumulate fractionally.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_block_start DATE;    -- start of the open cut block; NULL = not cutting
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_block_load  NUMERIC DEFAULT 0;  -- load-days accumulated in that block
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_load_year   NUMERIC DEFAULT 0;  -- rolling year total, decays at maintenance (CUMULATIVE_CUT_ESCALATE)
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_break_end  DATE;    -- end of the most recent completed diet break
 
 -- ── Daily food log entries ─────────────────────────────────────
 -- entry_id is the client-side timestamp used as the log entry id
