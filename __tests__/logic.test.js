@@ -222,6 +222,94 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
 
+// ── Cut cycling (energy Step 5; features/energy-safety/02) ────
+// Mirror of app.jsx. The unit is a DEFICIT-WEIGHTED day ("cut load"), never a flat
+// calendar day and never read from food logs — see ENERGY_MODEL.md §5.2.
+const dateKey = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+const REFERENCE_DEFICIT       = 0.20;
+const CUT_MIN_FRAC            = 0.05;
+const CUT_BLOCK_SOFT_NUDGE    = 56;
+const CUT_BLOCK_HARD_PROMPT   = 84;
+const CUT_BLOCK_LEAN_SOFT     = 42;
+const CUT_BLOCK_LEAN_HARD     = 56;
+const BLOCK_LOSS_TRIGGER      = 0.05;
+const CUMULATIVE_CUT_ESCALATE = 168;
+const MAINTENANCE_DECAY       = 1.0;
+const TREND_CUT_RATE          = 0.0025;
+const BLOCK_END_GRACE         = 7;
+const CUT_NUDGE_SNOOZE_DAYS   = 7;
+const CUT_PROMPT_SNOOZE_DAYS  = 3;
+
+const dayCutLoad = (targetKcal, maintenanceKcal) => {
+  if (!maintenanceKcal || maintenanceKcal <= 0) return 0;
+  const frac = 1 - targetKcal / maintenanceKcal;
+  if (frac < CUT_MIN_FRAC) return 0;
+  return Math.round((frac / REFERENCE_DEFICIT) * 100) / 100;
+};
+
+const cutThresholds = p => isLeanBody(p)
+  ? { soft: CUT_BLOCK_LEAN_SOFT, hard: CUT_BLOCK_LEAN_HARD }
+  : { soft: CUT_BLOCK_SOFT_NUDGE, hard: CUT_BLOCK_HARD_PROMPT };
+
+const weeklyLossFrac = (weighIns, todayK) => {
+  const t = new Date(todayK + "T12:00:00");
+  const recent = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() + 86400000)), 7);
+  const older  = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - 7 * 86400000)), 7);
+  if (!recent || !older || older <= 0) return null;
+  return (older - recent) / older;
+};
+
+const EMPTY_CUT_BLOCK = { start:null, load:0, yearLoad:0, startWeight:null,
+  offRun:0, lastAccrued:null, lastBreakEnd:null, nudgeAt:null, snoozeAt:null };
+
+const stepCutBlock = (block, day) => {
+  const b = { ...block, lastAccrued: day.date };
+  if (day.cutting && day.load > 0) {
+    if (!b.start) { b.start = day.date; b.load = 0; b.startWeight = day.weight ?? null; }
+    if (b.startWeight == null && day.weight != null) b.startWeight = day.weight;
+    b.load     = Math.round((b.load + day.load) * 100) / 100;
+    b.yearLoad = Math.round((b.yearLoad + day.load) * 100) / 100;
+    b.offRun   = 0;
+    return b;
+  }
+  b.offRun   = (b.offRun || 0) + 1;
+  b.yearLoad = Math.max(0, Math.round((b.yearLoad - MAINTENANCE_DECAY) * 100) / 100);
+  if (b.start && b.offRun >= BLOCK_END_GRACE) { b.start = null; b.load = 0; b.startWeight = null; }
+  return b;
+};
+
+const accrueCutBlock = (block, todayK, day) => {
+  const b0 = block || EMPTY_CUT_BLOCK;
+  if (b0.lastAccrued === todayK) return b0;
+  const today = new Date(todayK + "T12:00:00");
+  const days = [];
+  if (b0.lastAccrued) {
+    const from = new Date(b0.lastAccrued + "T12:00:00");
+    for (let d = new Date(from.getTime() + 86400000); d <= today; d = new Date(d.getTime() + 86400000))
+      days.push(dateKey(d));
+  } else days.push(todayK);
+  return days.slice(-370).reduce((b, date) => stepCutBlock(b, { ...day, date }), b0);
+};
+
+const daysBetween = (fromK, toK) =>
+  Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
+
+const cutPromptFor = ({ block, profile, todayK, lossFrac = null, now = Date.now() }) => {
+  if (!block || !block.start) return null;
+  const th = cutThresholds(profile || {});
+  const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
+  const level = (block.load >= th.hard || bigLoss) ? "hard"
+              : block.load >= th.soft ? "soft" : null;
+  if (!level) return null;
+  const snoozedFor = level === "hard"
+    ? (block.snoozeAt ? now - block.snoozeAt < CUT_PROMPT_SNOOZE_DAYS * 86400000 : false)
+    : (block.nudgeAt  ? now - block.nudgeAt  < CUT_NUDGE_SNOOZE_DAYS  * 86400000 : false);
+  if (snoozedFor) return null;
+  return { level, bigLoss,
+    weeks:    Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)),
+    escalate: block.yearLoad > CUMULATIVE_CUT_ESCALATE };
+};
+
 // calcStreak needs a controllable "today" so we inject a date factory
 const makeCalcStreak = (getNow) => (hist) => {
   let s = 0;
@@ -1457,5 +1545,265 @@ describe("Step 4 — energy availability (warning only, never a clamp)", () => {
     expect(t.ea).toBe(null);
     expect(t.lowFuel).toBe(false);
     expect(t.bodyFatUnset).toBe(true);
+  });
+});
+
+// ── Cut cycling (energy Step 5; features/energy-safety/02) ────
+// The numbers contract for the load model. Copy lives in the feature file; the exact
+// arithmetic lives here. See ENERGY_MODEL.md §5.2 for why load, not calendar days.
+
+const MAINT = 2500;                         // believable maintenance used throughout
+const atDeficit = pct => MAINT * (1 - pct); // target kcal for a given deficit fraction
+
+// Step a block forward n days with the same day-spec, from a fixed start date.
+const runDays = (n, day, startK = "2026-01-01", block = EMPTY_CUT_BLOCK) => {
+  let b = block, d = new Date(startK + "T12:00:00");
+  for (let i = 0; i < n; i++) {
+    b = stepCutBlock(b, { ...day, date: dateKey(d) });
+    d = new Date(d.getTime() + 86400000);
+  }
+  return b;
+};
+const cutDay = (pct, weight = null) =>
+  ({ cutting: true, load: dayCutLoad(atDeficit(pct), MAINT), weight });
+const offDay = { cutting: false, load: 0, weight: null };
+
+describe("dayCutLoad — a day is weighted by how deep the deficit is", () => {
+  test("the reference deficit is exactly one load-day", () => {
+    expect(dayCutLoad(atDeficit(0.20), MAINT)).toBe(1);
+  });
+
+  test("a gentler deficit counts for less, a deeper one for more", () => {
+    expect(dayCutLoad(atDeficit(0.10), MAINT)).toBe(0.5);
+    expect(dayCutLoad(atDeficit(0.25), MAINT)).toBe(1.25);
+  });
+
+  test("it is a ratio, so the same deficit fraction scores the same at any body size", () => {
+    expect(dayCutLoad(1280, 1600)).toBe(dayCutLoad(2560, 3200)); // 20% of 1,600 and of 3,200
+  });
+
+  test("anything shallower than CUT_MIN_FRAC is noise, not a cut", () => {
+    expect(dayCutLoad(atDeficit(0.03), MAINT)).toBe(0);
+    expect(dayCutLoad(MAINT, MAINT)).toBe(0);       // maintenance
+    expect(dayCutLoad(MAINT * 1.1, MAINT)).toBe(0); // a surplus never accrues
+  });
+
+  test("a missing or nonsense maintenance never accrues", () => {
+    expect(dayCutLoad(2000, 0)).toBe(0);
+    expect(dayCutLoad(2000, null)).toBe(0);
+  });
+});
+
+describe("cut blocks — a gentle cut runs longer, a deep one is cautioned sooner", () => {
+  const daysToHard = pct => {
+    let b = EMPTY_CUT_BLOCK, n = 0, d = new Date("2026-01-01T12:00:00");
+    while (b.load < CUT_BLOCK_HARD_PROMPT && n < 500) {
+      b = stepCutBlock(b, { ...cutDay(pct), date: dateKey(d) });
+      d = new Date(d.getTime() + 86400000); n++;
+    }
+    return n;
+  };
+
+  test("10% / 20% / 25% deficits reach the hard prompt at ~24 / 12 / ~10 real weeks", () => {
+    expect(daysToHard(0.10)).toBe(168);  // 24 weeks
+    expect(daysToHard(0.20)).toBe(84);   // 12 weeks
+    expect(daysToHard(0.25)).toBe(68);   // ~9.7 weeks
+    // the ordering is the real guarantee: a deeper cut is ALWAYS cautioned sooner
+    expect(daysToHard(0.10)).toBeGreaterThan(daysToHard(0.20));
+    expect(daysToHard(0.20)).toBeGreaterThan(daysToHard(0.25));
+  });
+
+  test("Step 4's MAX_DEFICIT_FRAC bounds how fast any preset target can trip it", () => {
+    expect(daysToHard(MAX_DEFICIT_FRAC)).toBeGreaterThanOrEqual(67);
+  });
+
+  test("the block starts on the first qualifying day and counts from zero", () => {
+    const b = runDays(1, cutDay(0.20, 98.5));
+    expect(b.start).toBe("2026-01-01");
+    expect(b.load).toBe(1);
+    expect(b.startWeight).toBe(98.5);
+  });
+
+  test("a deficit under CUT_MIN_FRAC never opens a block however long it runs", () => {
+    const b = runDays(30, cutDay(0.03));
+    expect(b.start).toBe(null);
+    expect(b.load).toBe(0);
+    expect(cutPromptFor({ block: b, profile: {}, todayK: "2026-01-31" })).toBe(null);
+  });
+
+  test("a single day off Cut does not reset the counter", () => {
+    let b = runDays(30, cutDay(0.20));
+    expect(b.load).toBe(30);
+    b = stepCutBlock(b, { ...offDay, date: "2026-01-31" });
+    b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-02-01" });
+    expect(b.start).toBe("2026-01-01"); // same block
+    expect(b.load).toBe(31);            // continued, not restarted
+  });
+
+  test("BLOCK_END_GRACE consecutive non-cut days closes the block, but the year remembers", () => {
+    let b = runDays(50, cutDay(0.20));
+    expect(b.load).toBe(50);
+    b = runDays(BLOCK_END_GRACE, offDay, "2026-02-20", b);
+    expect(b.start).toBe(null);
+    expect(b.load).toBe(0);
+    expect(b.yearLoad).toBe(50 - BLOCK_END_GRACE * MAINTENANCE_DECAY); // 43
+    b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-03-01" });
+    expect(b.start).toBe("2026-03-01");  // a NEW block, from zero
+    expect(b.load).toBe(1);
+  });
+
+  test("six days off does NOT close the block — the grace window is not trivially trippable", () => {
+    let b = runDays(50, cutDay(0.20));
+    b = runDays(BLOCK_END_GRACE - 1, offDay, "2026-02-20", b);
+    expect(b.start).toBe("2026-01-01");
+    expect(b.load).toBe(50);
+  });
+});
+
+describe("cut load — not logging never pauses the clock", () => {
+  test("days the app was never opened are caught up on the next open", () => {
+    const start = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 40, yearLoad: 40,
+      lastAccrued: "2026-02-09" };
+    const b = accrueCutBlock(start, "2026-02-15", cutDay(0.20)); // 6 days closed
+    expect(b.load).toBe(46);
+    expect(b.lastAccrued).toBe("2026-02-15");
+  });
+
+  test("accrual is idempotent — reopening the app the same day cannot double-count", () => {
+    const b1 = accrueCutBlock(EMPTY_CUT_BLOCK, "2026-01-01", cutDay(0.20));
+    const b3 = accrueCutBlock(accrueCutBlock(b1, "2026-01-01", cutDay(0.20)),
+      "2026-01-01", cutDay(0.20));
+    expect(b1.load).toBe(1);
+    expect(b3.load).toBe(1);
+  });
+
+  test("a dormant install doesn't spin through unbounded history", () => {
+    const stale = { ...EMPTY_CUT_BLOCK, lastAccrued: "2020-01-01" };
+    const b = accrueCutBlock(stale, "2026-01-01", cutDay(0.20));
+    expect(b.load).toBeLessThanOrEqual(370);
+    expect(b.lastAccrued).toBe("2026-01-01");
+  });
+});
+
+describe("weeklyLossFrac — the weight-trend backstop", () => {
+  // 14 daily weigh-ins losing a steady 0.1 kg/day from 100 kg
+  const steady = Array.from({ length: 14 }, (_, i) => ({
+    date: dateKey(new Date(new Date("2026-01-01T12:00:00").getTime() + i * 86400000)),
+    weight: 100 - i * 0.1,
+  }));
+
+  test("a real downward trend reads as cutting whatever mode is selected", () => {
+    expect(weeklyLossFrac(steady, "2026-01-14")).toBeGreaterThan(TREND_CUT_RATE);
+  });
+
+  test("a flat scale does not", () => {
+    expect(weeklyLossFrac(steady.map(w => ({ ...w, weight: 100 })), "2026-01-14")).toBe(0);
+  });
+
+  test("too few weigh-ins yields null rather than a false reading", () => {
+    expect(weeklyLossFrac(steady.slice(0, 2), "2026-01-14")).toBe(null);
+    expect(weeklyLossFrac([], "2026-01-14")).toBe(null);
+  });
+});
+
+describe("cutPromptFor — thresholds, real weeks, and snoozing", () => {
+  const normal = { weight: 90, bodyFat: 25, sex: "male" };
+  const lean   = { weight: 80, bodyFat: 12, sex: "male" };
+
+  test("no block, no prompt", () => {
+    expect(cutPromptFor({ block: EMPTY_CUT_BLOCK, profile: normal, todayK: "2026-03-01" })).toBe(null);
+  });
+
+  test("soft nudge at the soft threshold, hard prompt at the hard one", () => {
+    const at = load => cutPromptFor({
+      block: { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load },
+      profile: normal, todayK: "2026-03-01" });
+    expect(at(CUT_BLOCK_SOFT_NUDGE - 1)).toBe(null);
+    expect(at(CUT_BLOCK_SOFT_NUDGE).level).toBe("soft");
+    expect(at(CUT_BLOCK_HARD_PROMPT - 1).level).toBe("soft");
+    expect(at(CUT_BLOCK_HARD_PROMPT).level).toBe("hard");
+  });
+
+  test("the lean modifier pulls both thresholds earlier, reusing Step 4's isLeanBody", () => {
+    const at = (profile, load) => cutPromptFor({
+      block: { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load }, profile, todayK: "2026-03-01" });
+    expect(at(lean, CUT_BLOCK_LEAN_SOFT).level).toBe("soft");
+    expect(at(lean, CUT_BLOCK_LEAN_HARD).level).toBe("hard");
+    expect(at(normal, CUT_BLOCK_LEAN_HARD).level).toBe("soft"); // same load, normal body
+    expect(cutThresholds(lean).hard).toBeLessThan(cutThresholds(normal).hard);
+  });
+
+  test("the card reports REAL elapsed weeks, not load", () => {
+    // a 15% cut accrues 0.75/day, so 84 load takes 112 real days = 16 weeks
+    const b = runDays(112, cutDay(0.15));
+    expect(b.load).toBe(CUT_BLOCK_HARD_PROMPT);
+    const prompt = cutPromptFor({ block: b, profile: normal, todayK: "2026-04-23" });
+    expect(prompt.level).toBe("hard");
+    expect(prompt.weeks).toBe(16); // NOT 12, which is what the load alone would imply
+  });
+
+  test("a deep cutter is prompted sooner AND told the smaller true week count", () => {
+    const b = runDays(68, cutDay(0.25));
+    const prompt = cutPromptFor({ block: b, profile: normal, todayK: "2026-03-09" });
+    expect(prompt.level).toBe("hard");
+    expect(prompt.weeks).toBe(10);
+  });
+
+  test("losing BLOCK_LOSS_TRIGGER of bodyweight forces the prompt below the load threshold", () => {
+    const b = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 20 };
+    expect(cutPromptFor({ block: b, profile: normal, todayK: "2026-02-01" })).toBe(null);
+    const p = cutPromptFor({ block: b, profile: normal, todayK: "2026-02-01", lossFrac: 0.05 });
+    expect(p.level).toBe("hard");
+    expect(p.bigLoss).toBe(true);
+  });
+
+  test("the soft nudge is silent for 7 days after 'Not yet', then returns", () => {
+    const now = Date.parse("2026-03-01T12:00:00Z");
+    const b = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: CUT_BLOCK_SOFT_NUDGE,
+      nudgeAt: now - 6 * 86400000 };
+    expect(cutPromptFor({ block: b, profile: normal, todayK: "2026-03-01", now })).toBe(null);
+    const later = { ...b, nudgeAt: now - 8 * 86400000 };
+    expect(cutPromptFor({ block: later, profile: normal, todayK: "2026-03-01", now }).level).toBe("soft");
+  });
+
+  test("the hard prompt snoozes for 3 days only — there is no permanent dismissal", () => {
+    const now = Date.parse("2026-03-01T12:00:00Z");
+    const b = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: CUT_BLOCK_HARD_PROMPT,
+      snoozeAt: now - 2 * 86400000 };
+    expect(cutPromptFor({ block: b, profile: normal, todayK: "2026-03-01", now })).toBe(null);
+    const returned = { ...b, snoozeAt: now - 4 * 86400000 };
+    expect(cutPromptFor({ block: returned, profile: normal, todayK: "2026-03-01", now }).level).toBe("hard");
+    // a soft-nudge dismissal can never silence the hard prompt
+    const dismissed = { ...EMPTY_CUT_BLOCK, start: "2026-01-01",
+      load: CUT_BLOCK_HARD_PROMPT, nudgeAt: now };
+    expect(cutPromptFor({ block: dismissed, profile: normal, todayK: "2026-03-01", now }).level).toBe("hard");
+  });
+
+  test("the week count keeps climbing while the prompt is showing", () => {
+    const b = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: CUT_BLOCK_HARD_PROMPT };
+    expect(cutPromptFor({ block: b, profile: normal, todayK: "2026-04-23" }).weeks).toBe(16);
+    expect(cutPromptFor({ block: b, profile: normal, todayK: "2026-05-21" }).weeks).toBe(20);
+  });
+});
+
+describe("cut load for the year — maintenance pays it down", () => {
+  const anyBody = { weight: 90, bodyFat: 25, sex: "male" };
+
+  test("14 days at maintenance removes 14 load-days", () => {
+    const b = runDays(14, offDay, "2026-03-01", { ...EMPTY_CUT_BLOCK, yearLoad: 150 });
+    expect(b.yearLoad).toBe(136);
+  });
+
+  test("the yearly total never goes negative however long you maintain", () => {
+    const b = runDays(30, offDay, "2026-03-01", { ...EMPTY_CUT_BLOCK, yearLoad: 5 });
+    expect(b.yearLoad).toBe(0);
+  });
+
+  test("a heavy year escalates the message; a light one does not", () => {
+    const heavy = { ...EMPTY_CUT_BLOCK, start: "2026-01-01",
+      load: CUT_BLOCK_HARD_PROMPT, yearLoad: CUMULATIVE_CUT_ESCALATE + 1 };
+    const light = { ...heavy, yearLoad: CUMULATIVE_CUT_ESCALATE - 1 };
+    expect(cutPromptFor({ block: heavy, profile: anyBody, todayK: "2026-04-23" }).escalate).toBe(true);
+    expect(cutPromptFor({ block: light, profile: anyBody, todayK: "2026-04-23" }).escalate).toBe(false);
   });
 });

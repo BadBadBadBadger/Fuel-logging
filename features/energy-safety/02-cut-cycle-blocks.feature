@@ -1,5 +1,6 @@
 # ─────────────────────────────────────────────────────────────
-# DRAFT — for review. Energy-safety workstream, file 2 of 5.
+# REVIEWED & LOCKED 2026-08-07 (session 13). Energy-safety workstream, file 2 of 5.
+# Resolved by: founder + coach hat + an outside review. Ready to implement.
 #
 # WHY: Nothing in the app caps how LONG a user cuts. A deficit from
 # January to June with no structured break is exactly what harmed the
@@ -20,52 +21,213 @@
 #   • PRACTITIONER FRAMEWORK (label as such): cut in ~6–12 week blocks,
 #     break to maintenance, cut more frequently/shorter the leaner you are
 #     — Helms et al. (2014, JISSN) natural-bodybuilding recommendations.
+#   • NOT ESTABLISHED, DO NOT IMPLY: that any specific day count causes a
+#     hormonal event. There is no threshold at which testosterone falls or
+#     metabolism "breaks". Risk rises with SEVERITY × DURATION of low energy
+#     availability. In people with obesity, weight loss often IMPROVES
+#     testosterone; it is prolonged/severe restriction, especially alongside
+#     heavy training, that suppresses it. All copy must reflect this.
+#
+# ── WHAT COUNTS AS CUTTING (decided, session 13) ──────────────
+#   The unit is a DAY, it is NOT read from food logs, and days are NOT equal.
+#
+#   Rejected: an earlier draft counted a "deficit week" as a deficit logged on
+#   ≥ 4 of 7 days. It under-counts the very user this exists to protect (months
+#   in, logging patchily → clock barely ticks → the prompt never fires) and is
+#   noisy for the diligent (one meal out flips a week).
+#
+#   IS IT A CUT DAY?
+#     PRIMARY   — declared mode. A day counts when that day's mode is "Cut".
+#                 Mode is already stored per day and synced; needs no logging.
+#                 Days the app was never opened INHERIT the last known mode —
+#                 mode persists until the user changes it.
+#     BACKSTOP  — weight trend. A day also counts when the 7-day average weight
+#                 is falling at ≥ TREND_CUT_RATE, whatever mode is selected.
+#                 Catches switching to "Maintain" to silence the prompts while
+#                 still under-eating.
+#     NOT-LOGGED DAYS: assume MAINTENANCE for that day's *intake* (so no phantom
+#     deficit reaches the adaptive TDEE) — but a non-logged day does NOT pause
+#     the clock. "Stopped logging" is not evidence the cut stopped.
+#
+#   HOW MUCH DOES IT COUNT? — CUT LOAD (the outside review called this "cut
+#   exposure"; same idea). A gentle deficit and an aggressive one are not the
+#   same physiological event, so a day is weighted by how deep the deficit is:
+#
+#       dayLoad = deficitFrac / REFERENCE_DEFICIT
+#       deficitFrac = 1 − (target kcal ÷ believable maintenance)
+#
+#   Both terms already exist inside calcTargets — `kcal` and `effTDEE`
+#   (app.jsx:408-414). This is a weighting of the existing counter, not a new
+#   subsystem. Worked through, and bounded at both ends by Step 4's
+#   MAX_DEFICIT_FRAC = 0.25:
+#       10% deficit → 0.50 load/day → hard prompt at ~24 real weeks
+#       20% deficit → 1.00 load/day → hard prompt at 12 real weeks
+#       25% deficit → 1.25 load/day → hard prompt at ~9.5 real weeks
+#   A light cut may therefore run much longer; an aggressive one is cautioned
+#   sooner. That IS the protection — which is why this file does NOT also adopt
+#   a shorter calendar default (see REJECTED below).
+#
+#   LOAD USES THE PRESCRIBED DEFICIT, NOT THE ACHIEVED ONE — a deliberate
+#   simplification. The target is known every day without any logging; what was
+#   actually eaten is not. It errs toward prompting a break EARLIER than strictly
+#   earned, which is the correct failure direction for a safety feature. Revisit
+#   only if it proves noisy in practice.
+#
+#   "CONSECUTIVE" IS DELIBERATELY NOT STRICT: one maintain day must not reset
+#   the counter, or the protection is trivially defeatable. Non-cut days simply
+#   add no load. A block ends only via a completed diet break or
+#   BLOCK_END_GRACE consecutive non-cut days.
+#
+# ── COPY MUST SHOW REAL WEEKS, NOT LOAD ──────────────────────
+#   The TRIGGER is load; the NUMBER ON SCREEN is real elapsed calendar time.
+#   Saying "You've been cutting for 8 weeks" to someone whose light cut took 16
+#   real weeks to reach 56 load is simply false. So every card interpolates the
+#   real week count. This also makes the feature self-explaining: the aggressive
+#   cutter sees the prompt at 10 weeks, the gentle one at 24, and the number
+#   they see is always the truth about their own calendar.
 #
 # ── NUMBERS CONTRACT ─────────────────────────────────────────
-#   The thresholds here are POLICY CONSTANTS (durations / percentages), owned
-#   by __tests__/logic.test.js so a tweak doesn't rewrite these scenarios.
-#   Where a figure is a worked example of a rule (5% of a starting weight), a
-#   Scenario Outline uses CONTRASTING rows so the RULE, not the example number,
-#   is what gets implemented.
+#   The thresholds here are POLICY CONSTANTS, owned by __tests__/logic.test.js
+#   so a tweak doesn't rewrite these scenarios. Where a figure is a worked
+#   example of a rule (5% of a starting weight), a Scenario Outline uses
+#   CONTRASTING rows so the RULE, not the example number, is implemented.
+#   They are GUARDRAILS, NOT PHYSIOLOGICAL LAWS. Copy must never present them
+#   as the point at which something happens to the body.
 #   POLICY CONSTANTS (all reviewable):
-#       CUT_BLOCK_SOFT_NUDGE  = 8 weeks continuous deficit
-#       CUT_BLOCK_HARD_PROMPT = 12 weeks continuous deficit
+#       REFERENCE_DEFICIT     = 0.20 — the deficit that counts as one full day
+#       CUT_MIN_FRAC          = 0.05 — below this it is noise, not a cut: 0 load
+#       CUT_BLOCK_SOFT_NUDGE  = 56 load-days in the block
+#       CUT_BLOCK_HARD_PROMPT = 84 load-days in the block
 #       BLOCK_LOSS_TRIGGER    = 5% of bodyweight lost within a block
-#       LEAN_MODIFIER: male < 12% BF (female < 20%) → soft 6 / hard 8 weeks
-#       CUMULATIVE_CUT_ESCALATE = 24 weeks of cut in the past year
-#       A "deficit week" = a calorie deficit logged on ≥ 4 of 7 days.
+#       LEAN_MODIFIER: reuses the EXISTING isLeanBody()/LEAN_BF from Step 4
+#                 (app.jsx:379 — 15% M / 23% F) → soft 42 / hard 56 load-days.
+#                 Do NOT introduce a second leanness threshold for this file.
+#       CUMULATIVE_CUT_ESCALATE = 168 load-days in the rolling past year
+#       MAINTENANCE_DECAY = 1.0 load-day removed from the YEARLY total per day
+#                 spent at genuine maintenance (floored at 0). A break taken has
+#                 to be worth something, or there is no reason to take one.
+#                 Decay applies to the yearly total only — the BLOCK counter is
+#                 reset outright by a completed diet break.
+#       TREND_CUT_RATE   = 0.25% of bodyweight per week of sustained loss
+#       BLOCK_END_GRACE  = 7 consecutive non-cut days ends a block
+#
+# ── REJECTED, WITH REASONS (do not re-litigate without new evidence) ─
+#   • A ~42-day default cut / ~14-day forced maintenance cycle. These are
+#     natural-bodybuilding numbers (Helms), whose own advice is to cut shorter
+#     and more often THE LEANER YOU ARE — so applying them to everyone inverts
+#     the lean modifier below. A general-population user at 32% body fat on a
+#     working moderate deficit would spend a quarter of the year not losing, for
+#     no demonstrated benefit in that population. Load-weighting already
+#     protects the aggressive cutter; a short calendar default would do the same
+#     job twice and penalise the wrong person.
+#   • A GREEN/AMBER/RED traffic light over sleep, fatigue, recovery, hunger and
+#     training performance. The app logs NONE of those — it has weight, deficit
+#     size and estimated session calories. A system that presents as holistic
+#     while running on half its inputs is worse than an honest partial one.
+#     Those signals belong in 05-low-energy-availability-flags, which asks the
+#     user directly and is honest about being self-report.
+#   • Folding training load into the load term. Step 4 ALREADY modulates a
+#     protection by training load — the low-fuel energy-availability warning
+#     (app.jsx:417-418). Two protections driven by the same variable, firing at
+#     different times, would contradict each other on screen. Keep it clean:
+#     cut load = magnitude × duration; training load stays in the EA warning.
+#
+# ── PERSISTENCE (needs new Supabase columns — founder is adding them) ─
+#   Block state must survive a device change, or a long cut is forgotten by the
+#   one thing meant to remember it. Unlike activity/weighCadence this may NOT be
+#   local-only. Columns on `profiles`: cut_block_start (date),
+#   cut_block_load (NUMERIC — fractional, not an int), cut_load_year (NUMERIC),
+#   last_break_end (date). Add the columns FIRST, then wire syncProfile/pull.
 # The diet-break FLOW itself lives in 03-diet-break-intervention.
 # ─────────────────────────────────────────────────────────────
 
-Feature: Cut runs as time-boxed blocks, not an open-ended deficit
+Feature: Cut runs as load-weighted blocks, not an open-ended deficit
 
   Background:
-    Given the app is tracking how many consecutive weeks I have been in "Cut" mode
-    And a week counts as a "deficit week" when I log a calorie deficit on 4 or more of its 7 days
+    Given the app accumulates "cut load" for each day I spend in a deficit
+    And a day at REFERENCE_DEFICIT (a 20% deficit) adds 1.0 load
+    And a day counts as a cut day when its mode was "Cut", or my 7-day average
+      weight is falling at TREND_CUT_RATE or faster whatever mode I selected
+    And a day I never opened the app inherits the mode of the last day I did
 
   Scenario: The app starts a cut block when I first select Cut
     Given I have never run a cut before
     When I switch my mode to "Cut"
     Then the app records the start date of cut block 1
-    And the app begins counting my consecutive deficit weeks from 0
+    And the app begins accumulating cut load from 0
+
+  Scenario Outline: A gentler deficit takes longer to reach the same prompt
+    Given my target sits <deficit> below my believable maintenance
+    And I stay there every day without a break
+    When I have been cutting for <weeks> weeks
+    Then I see the hard diet-break prompt for the first time
+    And the card tells me I have been cutting for <weeks> weeks
+
+    # Same 84 load-days in every row — only the depth of the deficit differs.
+    # Bounded above by Step 4's MAX_DEFICIT_FRAC, so ~9.5 weeks is the fastest
+    # any preset target can possibly trip this.
+    Examples: deeper cut, sooner caution
+      | deficit | weeks |
+      | 10%     | 24    |
+      | 20%     | 12    |
+      | 25%     | 9.5   |
+
+  Scenario: A deficit too small to matter accrues nothing
+    Given my target sits only 3% below my believable maintenance
+    And that is under CUT_MIN_FRAC
+    When I stay there for 30 days
+    Then my cut load has not increased
+    And no diet-break prompt appears
+
+  Scenario: Not logging my food does not pause the clock
+    Given I have accumulated 40 cut load in the current block
+    And I then log no food at all for 6 days while still cutting at REFERENCE_DEFICIT
+    When I open the dashboard
+    Then my cut load is 46
+    And those 6 days were treated as maintenance intake for my adaptive TDEE
+
+  Scenario: A single day off Cut does not reset the counter
+    Given I have accumulated 30 cut load in the current block
+    And I spend one day in "Maintain" mode and then return to "Cut"
+    When I open the dashboard
+    Then I am still in the same cut block
+    And that day added no load rather than resetting my total
+
+  Scenario: Losing weight while calling it Maintain still counts as cutting
+    Given my mode has been "Maintain" for the last 3 weeks
+    And my 7-day average weight has been falling faster than TREND_CUT_RATE throughout
+    When I open the dashboard
+    Then those days have accumulated cut load
+    And I am treated as being in an open cut block
 
   Scenario: A soft nudge appears at the soft-nudge threshold
-    Given I have logged CUT_BLOCK_SOFT_NUDGE (8) consecutive deficit weeks in the current block
+    Given I have accumulated CUT_BLOCK_SOFT_NUDGE (56) cut load in the current block
     And I am not yet at the hard-prompt threshold
+    And 11 real weeks have passed since this block started
     When I open the dashboard
-    Then I see a dismissable amber card "You've been cutting for 8 weeks"
-    And the card says "A short break at maintenance now can protect your metabolism and results"
+    Then I see a dismissable amber card "You've been cutting for 11 weeks"
+    And the card says "A break at maintenance now can ease diet fatigue and make the next stretch easier"
+    And the card does not claim a break will reset my metabolism
     And the card shows a "Plan a diet break" button
     And the card shows a "Not yet" button that dismisses it for 7 days
 
   Scenario: A hard prompt appears at the hard-prompt threshold
-    Given I have logged CUT_BLOCK_HARD_PROMPT (12) consecutive deficit weeks in the current block
+    Given I have accumulated CUT_BLOCK_HARD_PROMPT (84) cut load in the current block
+    And 16 real weeks have passed since this block started
     When I open the dashboard
     Then I see a non-dismissable red-bordered card "Time for a diet break"
-    And the card says "12 weeks is long enough in a deficit — let's spend 2 weeks at maintenance"
+    And the card says "16 weeks is a long stretch in a deficit — let's spend 2 weeks at maintenance"
     And the card shows a primary "Start 2-week diet break" button
     And the card shows a secondary "Remind me in 3 days" button
     And I can still use the rest of the app while the card is shown
+
+  Scenario: The hard prompt cannot be dismissed and its week count keeps climbing
+    Given the "Time for a diet break" card is showing after 16 real weeks of cutting
+    When I tap "Remind me in 3 days"
+    Then the card is hidden for 3 days and then returns by itself
+    And there is no action anywhere that removes it permanently
+    And each time it returns it shows my real elapsed weeks, which has grown
+    And four weeks later it reads "20 weeks" rather than the count it first appeared with
 
   Scenario Outline: A break is prompted after losing BLOCK_LOSS_TRIGGER of bodyweight in a block
     Given I started the current cut block at <start> kg
@@ -73,7 +235,7 @@ Feature: Cut runs as time-boxed blocks, not an open-ended deficit
     When I open the dashboard
     Then I see the "Time for a diet break" card
     And the card says "You've lost 5% of your bodyweight this block — a great point to consolidate"
-    And this prompt fires even if I am below the 12-week threshold
+    And this prompt fires even if I am below the cut-load threshold
 
     # <now> is <start> × (1 − BLOCK_LOSS_TRIGGER); different starts prove it is a percentage, not a fixed weight.
     Examples: 5% of a different starting weight → a different trigger point
@@ -81,28 +243,48 @@ Feature: Cut runs as time-boxed blocks, not an open-ended deficit
       | 100   | 95  |
       | 80    | 76  |
 
-  Scenario Outline: Deficit-week thresholds shift for leaner users (LEAN_MODIFIER)
-    Given my leanness classifies me as "<leanness>"
-    And I have logged <weeks> consecutive deficit weeks in the current block
+  Scenario Outline: Thresholds shift for leaner users (LEAN_MODIFIER)
+    Given my body fat classifies me as "<leanness>" by the existing isLeanBody rule
+    And I have accumulated <load> cut load in the current block
     When I open the dashboard
     Then I see the "<prompt>" prompt
 
     Examples: the lean modifier pulls both thresholds earlier
-      | leanness         | weeks | prompt          |
-      | normal           | 8     | soft nudge      |
-      | normal           | 12    | hard diet-break |
-      | lean (< 12% BF)  | 6     | soft nudge      |
-      | lean (< 12% BF)  | 8     | hard diet-break |
+      | leanness | load | prompt          |
+      | normal   | 56   | soft nudge      |
+      | normal   | 84   | hard diet-break |
+      | lean     | 42   | soft nudge      |
+      | lean     | 56   | hard diet-break |
+
+  Scenario: A block ends after a sustained stretch off Cut, without a diet break
+    Given I have accumulated 50 cut load in the current block
+    When I spend BLOCK_END_GRACE (7) consecutive days not cutting
+    Then the current cut block is closed
+    And a later switch back to "Cut" starts a new block from 0
+    And that 50 still counts towards my cut load for the year
 
   Scenario: Completing a diet break starts a fresh block
     Given I have completed a diet break
     When I switch back to "Cut" mode
     Then the app records the start of the next cut block
-    And my consecutive-deficit-week counter resets to 0
-    And the app remembers my cumulative time spent cutting across all blocks
+    And my cut load for the block resets to 0
+    And the app remembers my cut load for the year across all blocks
 
-  Scenario: Cumulative dieting time escalates the message
-    Given my cumulative time in cut mode across all blocks exceeds CUMULATIVE_CUT_ESCALATE (24 weeks) in the past year
+  Scenario: Time at maintenance pays down the yearly total
+    Given my cut load for the year is 150
+    When I spend 14 days at genuine maintenance
+    Then my cut load for the year is 136
+    And my yearly total never falls below 0 however long I maintain
+
+  Scenario: Block state survives moving to a new device
+    Given I have accumulated 60 cut load in the current block on my phone
+    When I sign in on a different device
+    Then that device shows the same cut block and the same 60 cut load
+    And the diet-break prompts fire at the same point they would have on my phone
+
+  Scenario: A year of heavy dieting escalates the message
+    Given my cut load for the year exceeds CUMULATIVE_CUT_ESCALATE (168)
     When a diet-break prompt appears
-    Then the card additionally says "You've spent a lot of this year cutting — consider a longer maintenance phase"
+    Then the card additionally says "You've spent a lot of this year in a deficit — consider a longer maintenance phase"
     And the card links to the low-energy-availability check
+    And the card does not attribute any specific symptom or hormonal effect to that total

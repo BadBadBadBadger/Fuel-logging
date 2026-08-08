@@ -512,6 +512,134 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
 
+// ── Cut cycling (energy-model Step 5; features/energy-safety/02) ──────
+// Nothing in the app capped how LONG a cut ran. A deficit from January to June with
+// no structured break is the harm this whole workstream exists to prevent.
+//
+// The unit is a DEFICIT-WEIGHTED DAY ("cut load"), not a calendar day, and it is never
+// read from food logs:
+//   • WHETHER a day counts comes from the DECLARED daily mode (already stored per day
+//     and synced) plus a weight-trend backstop. A log-derived counter goes quiet for
+//     the patchy logger — who is exactly the user this protects. Days the app wasn't
+//     opened inherit the last known mode; not logging never pauses the clock.
+//   • HOW MUCH it counts is dayLoad = deficitFrac / REFERENCE_DEFICIT, where
+//     deficitFrac = 1 − target ÷ believable maintenance. So a gentle cut runs much
+//     longer before prompting a break and an aggressive one is cautioned sooner
+//     (~24 / 12 / ~9.5 real weeks at a 10 / 20 / 25% deficit, bounded above by Step 4's
+//     MAX_DEFICIT_FRAC). That IS the protection — which is why this file does NOT also
+//     impose a short calendar default. See ENERGY_MODEL.md §5.2 for what was rejected.
+//   • Load uses the PRESCRIBED deficit, not the achieved one: the target is known every
+//     day without logging, and the error runs toward prompting a break EARLIER than
+//     strictly earned, which is the right failure direction for a safety feature.
+//
+// Coach constraint, binding on all copy here: no day count may be presented as the
+// point at which something happens to the body. There is no threshold at which
+// testosterone falls or metabolism "breaks"; risk rises with severity × duration, and
+// in people with obesity weight loss often IMPROVES testosterone. The card shows REAL
+// elapsed weeks, never load — telling a 16-week gentle cutter "you've been cutting for
+// 8 weeks" because that is their load would simply be false.
+// Exact numbers mirrored in __tests__/logic.test.js.
+const REFERENCE_DEFICIT       = 0.20;  // the deficit depth that counts as one full day
+const CUT_MIN_FRAC            = 0.05;  // shallower than this is noise, not a cut
+const CUT_BLOCK_SOFT_NUDGE    = 56;    // load-days → dismissable amber nudge
+const CUT_BLOCK_HARD_PROMPT   = 84;    // load-days → non-dismissable prompt
+const CUT_BLOCK_LEAN_SOFT     = 42;    // lean bodies are pulled earlier (Helms)
+const CUT_BLOCK_LEAN_HARD     = 56;
+const BLOCK_LOSS_TRIGGER      = 0.05;  // 5% of bodyweight lost inside one block
+const CUMULATIVE_CUT_ESCALATE = 168;   // year load above which the message escalates
+const MAINTENANCE_DECAY       = 1.0;   // year load paid down per maintenance day
+const TREND_CUT_RATE          = 0.0025;// ≥0.25%/wk of sustained loss reads as cutting
+const BLOCK_END_GRACE         = 7;     // consecutive non-cut days that close a block
+const CUT_NUDGE_SNOOZE_DAYS   = 7;     // soft nudge "Not yet"
+const CUT_PROMPT_SNOOZE_DAYS  = 3;     // hard prompt "Remind me in 3 days"
+
+// One day's contribution. Returns 0 for anything shallower than CUT_MIN_FRAC so a
+// rounding-error "deficit" can't accrue in slow motion.
+const dayCutLoad = (targetKcal, maintenanceKcal) => {
+  if (!maintenanceKcal || maintenanceKcal <= 0) return 0;
+  const frac = 1 - targetKcal / maintenanceKcal;
+  if (frac < CUT_MIN_FRAC) return 0;
+  return Math.round((frac / REFERENCE_DEFICIT) * 100) / 100;
+};
+
+// Lean bodies have less to give, so both thresholds move earlier. Reuses Step 4's
+// isLeanBody — deliberately NOT a second leanness threshold.
+const cutThresholds = p => isLeanBody(p)
+  ? { soft: CUT_BLOCK_LEAN_SOFT, hard: CUT_BLOCK_LEAN_HARD }
+  : { soft: CUT_BLOCK_SOFT_NUDGE, hard: CUT_BLOCK_HARD_PROMPT };
+
+// Weight-trend backstop: fraction of bodyweight lost per week, from the same 7-day
+// rolling averages the adaptive TDEE uses. Catches switching to "Maintain" to silence
+// the prompts while still under-eating. null when there aren't enough weigh-ins.
+const weeklyLossFrac = (weighIns, todayK) => {
+  const t = new Date(todayK + "T12:00:00");
+  const recent = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() + 86400000)), 7);
+  const older  = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - 7 * 86400000)), 7);
+  if (!recent || !older || older <= 0) return null;
+  return (older - recent) / older;
+};
+
+const EMPTY_CUT_BLOCK = { start:null, load:0, yearLoad:0, startWeight:null,
+  offRun:0, lastAccrued:null, lastBreakEnd:null, nudgeAt:null, snoozeAt:null };
+
+// Advance the block by ONE day. Pure, and idempotent at the call site via lastAccrued,
+// so re-opening the app can't double-count. `day.cutting` already folds in the mode and
+// the trend backstop; `day.load` is 0 on a day that doesn't qualify.
+const stepCutBlock = (block, day) => {
+  const b = { ...block, lastAccrued: day.date };
+  if (day.cutting && day.load > 0) {
+    if (!b.start) { b.start = day.date; b.load = 0; b.startWeight = day.weight ?? null; }
+    if (b.startWeight == null && day.weight != null) b.startWeight = day.weight;
+    b.load     = Math.round((b.load + day.load) * 100) / 100;
+    b.yearLoad = Math.round((b.yearLoad + day.load) * 100) / 100;
+    b.offRun   = 0;
+    return b;
+  }
+  // Not cutting today: the year total pays down, and a long enough run closes the block.
+  // A sub-CUT_MIN_FRAC "deficit" lands here too — it is maintenance in all but name.
+  b.offRun   = (b.offRun || 0) + 1;
+  b.yearLoad = Math.max(0, Math.round((b.yearLoad - MAINTENANCE_DECAY) * 100) / 100);
+  if (b.start && b.offRun >= BLOCK_END_GRACE) { b.start = null; b.load = 0; b.startWeight = null; }
+  return b;
+};
+
+// Catch up from lastAccrued to today. Gap days INHERIT today's cutting/load — the whole
+// point is that closing the app doesn't stop the clock. Capped so a year-dormant install
+// doesn't spin.
+const accrueCutBlock = (block, todayK, day) => {
+  const b0 = block || EMPTY_CUT_BLOCK;
+  if (b0.lastAccrued === todayK) return b0;
+  const today = new Date(todayK + "T12:00:00");
+  const days = [];
+  if (b0.lastAccrued) {
+    const from = new Date(b0.lastAccrued + "T12:00:00");
+    for (let d = new Date(from.getTime() + 86400000); d <= today; d = new Date(d.getTime() + 86400000))
+      days.push(dateKey(d));
+  } else days.push(todayK);
+  return days.slice(-370).reduce((b, date) => stepCutBlock(b, { ...day, date }), b0);
+};
+
+const daysBetween = (fromK, toK) =>
+  Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
+
+// Which prompt (if any) to show. Returns REAL elapsed weeks, never load — see the copy
+// constraint above. `lossFrac` is loss since the block started, for BLOCK_LOSS_TRIGGER.
+const cutPromptFor = ({ block, profile, todayK, lossFrac = null, now = Date.now() }) => {
+  if (!block || !block.start) return null;
+  const th    = cutThresholds(profile || {});
+  const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
+  const level = (block.load >= th.hard || bigLoss) ? "hard"
+              : block.load >= th.soft ? "soft" : null;
+  if (!level) return null;
+  const snoozedFor = level === "hard"
+    ? (block.snoozeAt ? now - block.snoozeAt < CUT_PROMPT_SNOOZE_DAYS * 86400000 : false)
+    : (block.nudgeAt  ? now - block.nudgeAt  < CUT_NUDGE_SNOOZE_DAYS  * 86400000 : false);
+  if (snoozedFor) return null;
+  return { level, bigLoss,
+    weeks:    Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)),
+    escalate: block.yearLoad > CUMULATIVE_CUT_ESCALATE };
+};
+
 // ── Weigh-in engagement (energy Step 2 companion; features/energy-safety/06) ──
 // Seed → calibrate only calibrates if the user weighs in, but the seed stands on its
 // own — so we INVITE check-ins, never demand them. The cadence states intent; the
@@ -606,8 +734,27 @@ const syncProfile = async (uid, p) => {
   try {
     await sb().from("profiles").upsert({
       id:uid, weight:p.weight, height:p.height,
-      body_fat:p.bodyFat, sex:p.sex||null, updated_at:new Date().toISOString()
+      body_fat:p.bodyFat, sex:p.sex||null, activity:p.activity||null,
+      updated_at:new Date().toISOString()
     });
+  } catch(e) {}
+};
+
+// Cut-cycling block state (energy Step 5). Deliberately NOT local-only like
+// activity/weighCadence: block state is the one thing that has to remember a long cut,
+// so a new device must not silently restart the clock at 0. Touches only its own four
+// columns, leaving body metrics alone on conflict.
+const syncCutBlock = async (uid, b) => {
+  if (!uid || !navigator.onLine || !b) return;
+  try {
+    await sb().from("profiles").upsert({
+      id: uid,
+      cut_block_start: b.start || null,
+      cut_block_load:  b.load || 0,
+      cut_load_year:   b.yearLoad || 0,
+      last_break_end:  b.lastBreakEnd || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
   } catch(e) {}
 };
 
@@ -736,14 +883,29 @@ const pullFromSupabase = async uid => {
     ]);
     const result = {};
     if (profR.data) {
-      // Preserve local-only profile fields the profiles table doesn't carry yet
-      // (activity/NEAT seed, dietary config) so a cloud pull doesn't wipe them; the
-      // four synced columns below stay authoritative.
+      // Preserve local-only profile fields the profiles table doesn't carry (weighCadence,
+      // dietary config) so a cloud pull doesn't wipe them; the synced columns below stay
+      // authoritative. `activity` now HAS a column, but an older row may still be null —
+      // in that case keep the local pick rather than resetting the user to sedentary.
       let local = {}; try { const pv = await sg("profile"); if (pv) local = JSON.parse(pv); } catch(e) {}
       const p = { ...local, weight:profR.data.weight, height:profR.data.height,
-        bodyFat:profR.data.body_fat, sex:profR.data.sex };
+        bodyFat:profR.data.body_fat, sex:profR.data.sex,
+        activity: profR.data.activity || local.activity || null };
       await ss("profile", JSON.stringify(p));
       result.profile = p;
+      // Cut-cycling block state. The local blob carries the working fields (accrual
+      // cursor, dismissals); the cloud carries the four durable ones, so a new device
+      // resumes an open cut instead of restarting it.
+      let localBlock = {}; try { const cv = await sg("cut_block"); if (cv) localBlock = JSON.parse(cv); } catch(e) {}
+      if (profR.data.cut_block_start || profR.data.cut_load_year) {
+        const block = { ...EMPTY_CUT_BLOCK, ...localBlock,
+          start:        profR.data.cut_block_start || null,
+          load:         Number(profR.data.cut_block_load) || 0,
+          yearLoad:     Number(profR.data.cut_load_year)  || 0,
+          lastBreakEnd: profR.data.last_break_end || null };
+        await ss("cut_block", JSON.stringify(block));
+        result.cutBlock = block;
+      }
     }
     if (weighR.data?.length) {
       const wi = weighR.data.map(r => ({ date:r.date, weight:Number(r.weight) }));
@@ -2442,6 +2604,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   hasProfile, streak, streakPop, badgeGlow, prof,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
   showWeighNudge = false, onNudgeDismiss = () => {}, onNudgeMute = () => {}, coachKey,
+  cutPrompt = null, onCutNudgeDismiss = () => {}, onCutPromptSnooze = () => {}, onStartDietBreak = () => {},
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
   aggressiveCutAcked, onAckAggressiveCut,
@@ -2705,6 +2868,92 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
                   hormonal changes. One light day is nothing to worry about.
                 </div>
               </details>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cut cycling (Step 5, file 02). The TRIGGER is deficit-weighted load; the number
+          shown is REAL elapsed weeks — a gentle cutter genuinely has been at it longer
+          than their load implies, and saying otherwise would be false. Coach constraint:
+          never present a week count as the point something happens to the body. */}
+      {cutPrompt && cutPrompt.level === "soft" && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🔄</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              YOU'VE BEEN CUTTING FOR {cutPrompt.weeks} WEEKS
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  Long deficits get harder, not easier — hunger climbs, training goes flat, and holding
+                  the line takes more out of you than it did in week one. A break isn't lost progress:
+                  it's what makes the next block work, and it re-checks whether your maintenance
+                  estimate is still right.
+                </div>
+              </details>
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                <button onClick={onStartDietBreak}
+                  style={{ flex:1, padding:"8px", background:"var(--surface-2)", border:`1px solid ${aA("44")}`,
+                    borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                  Switch to maintenance
+                </button>
+                <button onClick={onCutNudgeDismiss}
+                  style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${BD}`,
+                    borderRadius:9, color:"var(--text-mid)", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                  Not yet
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The hard prompt. Snoozable for 3 days, never permanently dismissable — and the
+          week count it shows keeps climbing each time it comes back. */}
+      {cutPrompt && cutPrompt.level === "hard" && (
+        <div style={{ background:"var(--over-tint-2)", border:"1px solid var(--over-tint)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🔄</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:"var(--over)", fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              TIME FOR A DIET BREAK
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              {cutPrompt.bigLoss
+                ? `You've lost 5% of your bodyweight this block — a great point to consolidate.`
+                : `${cutPrompt.weeks} weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance.`}
+              {cutPrompt.escalate && (
+                <div style={{ marginTop:4 }}>
+                  You've spent a lot of this year in a deficit — consider a longer maintenance phase.
+                </div>
+              )}
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:"var(--over)", fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  There's no day count at which something suddenly goes wrong — but the deeper the
+                  deficit and the longer it runs, the more it costs you in muscle, sleep, training and
+                  mood, and the more your body pushes back. Time at maintenance is how you keep the
+                  results you've earned{cutPrompt.escalate ? ", and a year with this much dieting in it is worth breaking up properly" : ""}.
+                  {" "}If you're feeling run down with it, it's worth talking to a doctor.
+                </div>
+              </details>
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                <button onClick={onStartDietBreak}
+                  style={{ flex:1, padding:"8px", background:"var(--surface-2)", border:"1px solid var(--over-tint)",
+                    borderRadius:9, color:"var(--over)", fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                  Switch to maintenance
+                </button>
+                <button onClick={onCutPromptSnooze}
+                  style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${BD}`,
+                    borderRadius:9, color:"var(--text-mid)", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                  Remind me in 3 days
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -4336,6 +4585,7 @@ function App() {
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
   const [adjLog,     setAdjLog]     = useState([]); // recent {date,adj} events — dead-time comp (local-only)
   const [weighNudgeAt, setWeighNudgeAt] = useState(null); // last weigh-in-nudge dismissal (ms; local-only)
+  const [cutBlock,   setCutBlock]   = useState(EMPTY_CUT_BLOCK); // cut-cycling state (Step 5); 4 fields sync
   const [coachKey,         setCoachKey]         = useState(0);
   const [streakPop,        setStreakPop]        = useState(null);  // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   const [badgeToast,       setBadgeToast]       = useState(null);  // Bronze/Silver badge → quiet toast + 🏆 glow
@@ -4410,6 +4660,7 @@ function App() {
       const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
       const alv = await sg("tdee_adj_log"); if (alv) { try { setAdjLog(JSON.parse(alv) || []); } catch(e) {} }
       const wnv = await sg("weigh_nudge_dismissed"); if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
+      const cbv = await sg("cut_block"); if (cbv) { try { setCutBlock({ ...EMPTY_CUT_BLOCK, ...JSON.parse(cbv) }); } catch(e) {} }
       const ckv = await sg("target_kcal"); if (ckv) { const n = parseInt(ckv); if (n > 0) setCustomKcal(n); }
       const acv = await sg("aggressive_cut_acked"); if (acv) setAggressiveCutAcked(true);
 
@@ -4434,6 +4685,7 @@ function App() {
           if (u.id && navigator.onLine) {
             pullFromSupabase(u.id).then(pulled => {
               if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
+              if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
               if (pulled.weighIns) setWeighIns(pulled.weighIns);
               if (pulled.meals)    setMeals(pulled.meals);
               if (pulled.badges)   setEarnedBdgs(pulled.badges);
@@ -4635,6 +4887,7 @@ function App() {
         await migrateLocalToSupabase(user.id);
         const pulled = await pullFromSupabase(user.id);
         if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
+        if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
         if (pulled.weighIns) setWeighIns(pulled.weighIns);
         if (pulled.meals)    setMeals(pulled.meals);
         if (pulled.badges)   setEarnedBdgs(pulled.badges);
@@ -4672,7 +4925,7 @@ function App() {
   const handleSignOut = async () => {
     if (sb()) { try { await sb().auth.signOut(); } catch(e) {} }
     const clearKeys = ["auth_state","auth_user","profile","meals","history","badges",
-      "weighins","tdee_adj","tdee_adj_log","weigh_nudge_dismissed","target_kcal","aggressive_cut_acked","health_consent"];
+      "weighins","tdee_adj","tdee_adj_log","weigh_nudge_dismissed","cut_block","target_kcal","aggressive_cut_acked","health_consent"];
     for (const k of clearKeys) await ss(k, "");
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -4689,6 +4942,7 @@ function App() {
     setLogs([]); setWater(0); setMode("cut"); setProf(null);
     setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
     setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setAdjLog([]); setWeighNudgeAt(null); setCustomKcal(null);
+    setCutBlock(EMPTY_CUT_BLOCK);
     setConsentInfo(null); setNeedsConsent(false);
     setShowSignOut(false);
     setView("dashboard");
@@ -4862,6 +5116,56 @@ function App() {
     };
   })();
 
+  // ── Cut cycling (energy Step 5; features/energy-safety/02) ──────
+  // How much today weighs comes from the PRESCRIBED deficit depth. Whether it counts at
+  // all comes from the declared mode + the weight-trend backstop — never from food logs,
+  // because a patchy logger is exactly the user this protects.
+  const todayK       = todayKey();
+  const todayLoad    = dayCutLoad(targets.kcal, effectiveTDEE);
+  const lossRate     = weeklyLossFrac(weighIns, todayK);
+  const trendCutting = lossRate != null && lossRate >= TREND_CUT_RATE;
+  const cuttingToday = (effectiveMode === "cut" && todayLoad > 0) || trendCutting;
+  // A trend-detected cut still needs a weight. If the label says "Maintain" the
+  // prescribed deficit is ~0, so fall back to the reference deficit rather than
+  // accruing nothing — the scale is the evidence here, not the setting.
+  const todayCutLoad = cuttingToday ? (todayLoad > 0 ? todayLoad : 1) : 0;
+
+  // Catch up every day since the last accrual, so closing the app never stops the clock.
+  // Idempotent by date — re-opening today cannot double-count.
+  useEffect(() => {
+    if (!ready || cutBlock.lastAccrued === todayK) return;
+    const next = accrueCutBlock(cutBlock, todayK, {
+      cutting: cuttingToday, load: todayCutLoad,
+      weight: weighIns.length ? weighIns[weighIns.length - 1].weight : (p.weight || null),
+    });
+    setCutBlock(next);
+    ss("cut_block", JSON.stringify(next));
+    if (authState === "premium" && authUser?.id) syncCutBlock(authUser.id, next).catch(() => {});
+  }, [ready, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
+
+  // Loss since this block opened, for BLOCK_LOSS_TRIGGER (5% of bodyweight).
+  const blockNowAvg = weighRollingAvg(weighIns, dateKey(new Date(Date.now() + 86400000)), 7);
+  const blockLossFrac = cutBlock.start && cutBlock.startWeight && blockNowAvg
+    ? (cutBlock.startWeight - blockNowAvg) / cutBlock.startWeight
+    : null;
+  const cutPrompt = cutPromptFor({ block: cutBlock, profile: p, todayK, lossFrac: blockLossFrac });
+
+  const saveCutBlock = async next => {
+    setCutBlock(next);
+    await ss("cut_block", JSON.stringify(next));
+    if (authState === "premium" && authUser?.id) syncCutBlock(authUser.id, next).catch(() => {});
+  };
+  const dismissCutNudge = () => saveCutBlock({ ...cutBlock, nudgeAt:  Date.now() });
+  const snoozeCutPrompt = () => saveCutBlock({ ...cutBlock, snoozeAt: Date.now() });
+  // Minimal break for now: switch to Maintain and clear the snoozes so the card goes
+  // quiet honestly (no load accrues at maintenance, and BLOCK_END_GRACE closes the block
+  // after a week). The full tracked 2-week break — with its own state and a proper "back
+  // to cutting" hand-off — is file 03, the next thing to build.
+  const startDietBreak = async () => {
+    await handleSetMode("maintain");
+    await saveCutBlock({ ...cutBlock, nudgeAt: null, snoozeAt: null });
+  };
+
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
   const streak    = calcStreak(hist);
@@ -4946,6 +5250,8 @@ function App() {
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
           showWeighNudge={showWeighNudge} onNudgeDismiss={dismissWeighNudge} onNudgeMute={muteWeighNudge}
           coachKey={coachKey}
+          cutPrompt={cutPrompt} onCutNudgeDismiss={dismissCutNudge} onCutPromptSnooze={snoozeCutPrompt}
+          onStartDietBreak={startDietBreak}
           workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}
           customKcal={customKcal} onSetCustomKcal={saveCustomKcal} isCustomMode={customKcal != null}
           aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}
