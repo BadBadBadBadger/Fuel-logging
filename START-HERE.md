@@ -1,24 +1,17 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-08 (session 13). **Jest 172/172 · sw v61 · branch `energy-safety-bmr-floor`.**
+**Updated:** 2026-08-08 (session 14). **Jest 172/172 · sw v61 · branch `energy-safety-bmr-floor` · tree clean.**
 
-> ## ▶ START HERE — in this order
+> ## ▶ START HERE
 >
-> **1. Commit the working tree first. Nothing else starts on top of it.** Nine files are modified and
-> uncommitted: file 02's build plus the docs sweep. Split it into **two commits** so the feature can be
-> reverted without losing the docs:
->
-> - **`feat(energy): cut cycling — load-weighted blocks + diet-break prompts`** →
->   `app.jsx`, `app.js`, `__tests__/logic.test.js`, `sw.js`, `features/energy-safety/02-cut-cycle-blocks.feature`
-> - **`docs: Step 5a cut cycling + START-HERE rewrite + schema re-run warning`** →
->   `START-HERE.md`, `ENERGY_MODEL.md`, `DOCS.md`, `setup/supabase-schema.sql`
->
-> Verify `npx jest` is **172/172** before committing. Stay on `energy-safety-bmr-floor` — do **not** merge
-> to `main`; the whole energy-safety set deploys together after the batched device test (Next up 3).
->
-> **2. Then: proofread `features/energy-safety/03-diet-break-intervention.feature`** (7 scenarios) and
-> Claude builds it. That's the only thing blocking progress. Ask Claude: *"pull out the decisions 03 needs
-> from me"* — that's how 02 was done, and it took ~5 minutes.
+> **Proofread `features/energy-safety/03-diet-break-intervention.feature` (DRAFT v2), then Claude
+> builds it.** That's the only thing blocking progress. Session 14 **killed the v1 draft** (a tracked
+> 14-day break state) and re-conceived the file with the founder: a break is simply *not cutting*; the
+> deliverable is the cut-load **bar that fills while cutting and drains while resting**. All decisions
+> are locked in the file's header — the proofread is for **copy voice** ("Recharged", "On a break ·
+> day 5"), the **guard's bite point** (reuses 02's soft threshold), and the **quiet finish** (one
+> celebration card, self-retires after 3 days). The build must also make the **two 02 amendments**
+> the header lists (BLOCK_END_GRACE cliff → pro-rata drain; honest break button).
 
 ---
 
@@ -72,7 +65,7 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 | 06 weigh-in engagement | invites check-ins, cadence picker | ✅ built |
 | 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ built |
 | 04 **first half** | *Maintain* floored at BMR × 1.2 | ✅ built + **live on `main`** |
-| **03 diet break** | the break as a real app state, and how you come off it | ⬜ **needs proofread → build** |
+| **03 the break bar** | a break is just *not cutting*; the load bar drains pro-rata over 14 rest days | ⬜ **draft v2 written → proofread → build** |
 | **04 second half** — *"the auto-lowering fix"* | stop cutting the target when weight rises during a deficit | ⬜ **needs proofread → build** |
 | 05 symptom check | asks how you're feeling after a long under-eat | ⬜ unbuilt; trigger already decided |
 
@@ -87,6 +80,17 @@ built**. The tag is stale, not a to-do. Clear the tags during the batched device
 ---
 
 ## Right now
+
+**Session 14 committed file 02 and rewrote file 03 from scratch.** The 02 build + docs sweep landed as
+two commits (`2209548` feat, `d509d86` docs) — tree clean, Jest 172/172. Then the founder reviewed 03's
+v1 draft and **rejected its whole shape** (a tracked 14-day break with countdown, completion card and
+choice buttons). The locked replacement, in the founder's words: *"a break is literally switching back
+to maintenance"* — or Bulk; *"it's the days not in cut that count."* No break state, nothing to start
+or finish, nothing to fail at. One gauge read in two directions: the 02 cut-load bar **fills while
+cutting, drains while not** — each rest day pays down 1/14 of the load the block had when the break
+began (`DIET_BREAK_DAYS = 14` clears any block; partial rest keeps its dent). Nothing ever changes mode
+automatically; the mode picker is the only mode surface. One guarded action: back to Cut early, only if
+the block had reached the soft-nudge threshold. Draft v2 is written and **awaits founder proofread**.
 
 **Session 13 built file 02 (cut cycling).** Jest 172/172, sw v61, `app.js` rebuilt. The four `profiles`
 columns **and** `activity` have been run on Supabase, so the sync wiring is live-safe.
@@ -117,12 +121,12 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
-1. **Commit the uncommitted work** — file 02's build + the docs sweep, as the two commits spelled out in
-   the box at the top of this file. Nothing else should start on top of it.
-2. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
-   earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) → **◀ 03 diet break** → **the auto-lowering fix**
-   (04's second half) → 05 symptom check. Proofread each before building; commit as each lands; keep Jest
-   green. **Batch the on-device test + deploy of every feature file** once complete.
+1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
+   earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) → **◀ 03 the break bar (proofread v2 → build,
+   incl. the two 02 amendments)** → **the auto-lowering fix** (04's second half — 03's reassurance copy
+   depends on it; they deploy together) → 05 symptom check (also inherits 03's "stay longer" idea).
+   Proofread each before building; commit as each lands; keep Jest green. **Batch the on-device test +
+   deploy of every feature file** once complete.
 3. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7)
    checks in one pass (**hard-reload first** — PWA cache): (a) v55 optional follow-up flow; (b) ⚐
    Report-wrong opens a prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI
@@ -147,7 +151,7 @@ that §4 warns against leaning on.
 
 **Git**
 - `main` @ `88a283a` = the harm-fix, **live on Pages** (sw v56).
-- `energy-safety-bmr-floor` carries Steps 1–4 committed (`bfe926f` = Step 4) **plus uncommitted file 02**.
+- `energy-safety-bmr-floor` carries Steps 1–5a committed (`2209548` = file 02, `d509d86` = its docs).
 - Rollback tags: `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` · Phase B → `8622d24`.
 - Parked branch `targets-bmr-floor-wip` was **deleted** — superseded, don't resurrect it.
 
