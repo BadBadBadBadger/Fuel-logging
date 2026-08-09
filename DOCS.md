@@ -538,7 +538,7 @@ Two more spec sets sit alongside it:
 | Path | Covers | State |
 |---|---|---|
 | `features/ai-capture.feature` | v6.7 voice/photo meal capture | `@wip` until the batch device-test |
-| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 06 and 07 are **built** (their files were rewritten to match what shipped); 04's second half and 05 are not |
+| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 04, 06 and 07 are **built** (their files were rewritten to match what shipped); only 05 is not |
 
 Specs in `features/energy-safety/` carry a **NUMBERS CONTRACT** header: kcal figures in scenarios are worked
 examples derived from the formulas, never values to hardcode — the exact arithmetic is owned by
@@ -1397,6 +1397,31 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Energy Step 5c — the auto-lowering fix: the app can't talk you into under-eating (Aug 2026)
+The app guesses what you burn, then corrects that guess against the scale each week. Good idea, one
+blind spot — and it's the one that caused the harm this workstream exists to answer. **The scale going
+the wrong way does not mean your metabolism slowed.** Water held from stress or under-eating, a
+glycogen swing, a salty meal, a full gut, muscle built while training: none of them mean you burn less,
+and the app couldn't tell any of them from a real slowdown. So it did the one thing that makes all of
+them worse and lowered your target. Tests **209/209** (10 new), sw `v62→v63`. No DB change.
+- **The rule, in one line: the app only lowers its estimate when you're not cutting.** While your
+  target sits below maintenance a disappointing scale never moves your number down — not on a gain,
+  not on a stall. In Maintain or Bulk it does, because there the evidence is clean: eating at
+  maintenance and still not losing genuinely does mean a lower burn.
+- **Good news is never slowed.** Losing faster than predicted raises your target at full speed, in
+  every mode. Only the downward direction is guarded.
+- **Nothing is thrown away, only deferred.** If the app really did over-estimate you, that shows up as
+  a stall → the stall check suggests a break → a break *is* Maintain, where the correction runs again.
+- **Whether the week counted as a cut comes from your declared daily mode**, by majority over the
+  measured week — the same signal cut-cycling uses, so it still works if you log patchily.
+- **New card: "Weight up while eating less than maintenance."** Explains that this is usually water,
+  glycogen or muscle, says plainly that your target hasn't been lowered, and never suggests eating
+  less. Carries an optional link to update your body-fat % (the recomposition case). No mode buttons —
+  the picker is the only thing that changes mode.
+- **New note: "Below your resting metabolism."** A cut target under your BMR is *allowed* — a cut is a
+  deliberate choice, and for a lean body the arithmetic lands there with nothing wrong — so the app
+  names it honestly rather than hiding or forbidding it. Silent when a floor has already spoken.
 
 ### Energy Step 5b — the break drain: a break is time not cutting (Aug 2026)
 A break is **simply not cutting**. Switching to Maintain — or Bulk — *is* the break: no fourth mode, no

@@ -1,24 +1,22 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-09 (session 15). **Jest 199/199 · sw v62 · branch `energy-safety-bmr-floor`.**
+**Updated:** 2026-08-09 (session 15). **Jest 209/209 · sw v63 · branch `energy-safety-bmr-floor`.**
 
 > ## ▶ START HERE
 >
-> **Run one line of SQL, then build the auto-lowering fix (04's second half).**
+> **Step 5 is complete — including the fix for the harm that started all of this.** Two things left
+> before deploy, in this order.
 >
-> **1. The SQL, before anything is deployed.** File 03 added one column and the app now writes it:
+> **1. Run one line of SQL.** File 03 added a column and the app now writes it:
 > ```sql
 > ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_break_load NUMERIC DEFAULT 0;
 > ```
 > Run **just that line** in the Supabase SQL Editor (never the whole schema file — see the warning
 > below). Until it exists, the profile upsert 400s and takes the *whole* profile sync down with it.
-> Nothing is deployed yet, so there's no live breakage — but this must happen before the batched
-> device test.
+> Nothing is deployed yet, so nothing is broken today — but this must precede the device test.
 >
-> **2. Then the last unbuilt piece of Step 5:** the **auto-lowering fix** — stop reading a weight
-> *rise* during a deficit as a slower metabolism and cutting the target for it. File 03 ships the
-> reassurance copy for that case; this is the mechanism behind it. Then Step 6 (05, LEA symptom
-> check), then the one batched device test + deploy of everything.
+> **2. Then Step 6 — file 05, the symptom check.** Trigger already decided, spec still needs a
+> proofread. After that: the one batched device test + deploy of everything.
 
 ---
 
@@ -37,8 +35,8 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v62**.
-- Run `npx jest` before claiming anything works. Currently **199/199**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v63**.
+- Run `npx jest` before claiming anything works. Currently **209/209**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -58,7 +56,8 @@ device-tested**. The device test is deliberately **batched** into one pass at th
 | 3 | A workout's calories spread forward over 3 days instead of unlocking the same day | ✅ committed |
 | 4 | A body-sized **steady-loss floor** replaces the flat safe minimum; energy availability becomes a **warning**, not an override | ✅ committed |
 | 5a | A cut runs as **load-weighted blocks** that prompt a diet break (file 02) | ✅ committed |
-| 5b | A break is **time not cutting** — the load bar drains while you rest; plus the **stall check**; minus the rolling-year track (file 03) | ⚠️ **built, UNCOMMITTED** |
+| 5b | A break is **time not cutting** — the load bar drains while you rest; plus the **stall check**; minus the rolling-year track (file 03) | ✅ committed |
+| 5c | **The auto-lowering fix** — the app only lowers its estimate of what you burn when you're *not* cutting (file 04). The original harm, closed. | ⚠️ **built, UNCOMMITTED** |
 
 ---
 
@@ -74,13 +73,14 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 | 06 weigh-in engagement | invites check-ins, cadence picker | ✅ built |
 | 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ built |
 | 04 **first half** | *Maintain* floored at BMR × 1.2 | ✅ built + **live on `main`** |
-| **04 second half** — *"the auto-lowering fix"* | stop cutting the target when weight rises during a deficit | ⬜ **needs proofread → build** |
+| 04 **second half** — *"the auto-lowering fix"* | the app only lowers its estimate of what you burn when you're *not* cutting | ✅ built (uncommitted) |
 | 05 symptom check | asks how you're feeling after a long under-eat | ⬜ unbuilt; trigger already decided |
 
 > **Terminology fix:** earlier notes called the last unbuilt half of file 04 **"04-rest"**. That name meant
-> nothing. It is **the auto-lowering fix** — use that. It's the exact mechanism that caused the founder's
-> harm: `runCalibration` reads *"weight went up while eating in a deficit"* as *"your metabolism is slower"*
-> and lowers the target. Water, glycogen and a full gut look identical to fat gain over one week.
+> nothing. It is **the auto-lowering fix** — use that. It was the exact mechanism that caused the founder's
+> harm: `runCalibration` read *"weight went up while eating in a deficit"* as *"your metabolism is slower"*
+> and lowered the target. Water, glycogen and a full gut look identical to fat gain over one week.
+> **Closed 2026-08-09** — the correction is now one-directional while cutting (`ENERGY_MODEL.md` §5.4).
 
 **Note on `@draft` tags:** 06 and 07 still carry `@draft` and 04 says so in a comment, but **their code is
 built**. The tag is stale, not a to-do. Clear the tags during the batched device test (Next up 2).
@@ -103,6 +103,17 @@ which measures the wrong thing: harm tracks energy availability and bodyweight l
 under a mild deficit. (2) **The stall check replaces it** — cutting 3 weeks with a flat scale opens 02's
 soft nudge with blameless copy ("your loss has stalled"). That's the honest trigger, and it aims at the
 person who needs it rather than at everyone who's been at it a while. Full reasoning: `ENERGY_MODEL.md` §5.3.
+
+**Session 15 then rewrote file 04 in plain English and BUILT it — Step 5 is complete.** Jest **209/209**,
+sw **v63**. The rewrite found that three of 04's four protections had already shipped, and that its draft
+contradicted 03 in two places (a card with mode buttons; a duplicated break recommendation) — both fixed.
+The one real piece left was **the asymmetry**, and it closes the original harm: *the app only lowers its
+estimate of what you burn when you are NOT cutting.* While your target sits below maintenance a
+disappointing scale never moves the number down — not on a gain, not on a stall. In Maintain or Bulk it
+does, because there the evidence is clean. Raising is never slowed. Nothing is lost: an over-estimate
+surfaces as a stall → the stall check suggests a break → a break is Maintain, where the correction runs.
+Two new cards: *"Weight up while eating less than maintenance"* and *"Below your resting metabolism"*.
+Reasoning: `ENERGY_MODEL.md` **§5.4**.
 
 **⚠️ One SQL line is owed before any deploy** — see START HERE at the top. `cut_break_load` is the drain
 rate; the app writes it now, and an upsert naming a column that doesn't exist 400s and takes the whole
@@ -136,18 +147,20 @@ that §4 warns against leaning on.
 ## Next up (in order)
 
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
-   earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) →
-   **◀ the auto-lowering fix** (04's second half — 03's reassurance copy depends on it, and they deploy
-   together so the gap never reaches a device) → 05 symptom check (also inherits 03's "stay longer" idea).
-   Proofread each before building; commit as each lands; keep Jest green. **Batch the on-device test +
-   deploy of every feature file** once complete.
+   earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
+   ✅5c the auto-lowering fix (04) → **◀ 6 the symptom check (05)** — trigger already decided, spec needs
+   a proofread first (it inherits 03's "stay at maintenance longer" idea). Then Jest green, commit,
+   and the **batched on-device test + deploy of every feature file**.
 3. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7)
    checks in one pass (**hard-reload first** — PWA cache): (a) v55 optional follow-up flow; (b) ⚐
    Report-wrong opens a prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI
    ("Eased to a steady pace", "Low on fuel today", "Held at your minimum maintenance", the cut-cycling
    nudge + hard prompt, and their "Why?" toggles) **and the file-03 surfaces** — the bar filling while
    cutting, the same bar draining on Maintain *and* on Bulk, the guard confirm on the Cut chip (and its
-   absence on Bulk), the "Recharged" card, and the stall nudge. **Run the `cut_break_load` SQL first.**
+   absence on Bulk), the "Recharged" card, and the stall nudge — **plus the file-04 pair**: "Weight up
+   while eating less than maintenance" (needs a rising 2-week trend while in Cut) and "Below your resting
+   metabolism" (needs a cut target under BMR that isn't already floored). **Run the `cut_break_load` SQL
+   first.**
    **Note:** the steady-loss floor only *visibly* bites on smaller bodies — to see it, temporarily set a
    ~60 kg profile. Cut-cycling and the drain need a long history to trip naturally, so seed `cut_block` in
    local storage (set `start`, `load`, and for a break `breakLoad` + `offRun`) rather than waiting weeks.
