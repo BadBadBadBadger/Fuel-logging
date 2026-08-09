@@ -2007,6 +2007,10 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   onResetAdjustment = () => {} }) {
   const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
+  // "Start clean" is the one control here that throws away something the app spent weeks
+  // learning, so it asks first — deliberately against the house no-friction rule, which is
+  // about deletes you can redo in a tap. This one you can't.
+  const [askReset, setAskReset] = useState(false);
   const [bfFocused, setBfFocused] = useState(false);
   const [wUnit, setWU]    = useState(getWUnit()); // display only — storage stays kg
   const [hUnit, setHU]    = useState(getHUnit()); // display only — storage stays cm
@@ -2212,16 +2216,44 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
               re-converging, not data. */}
           {tdeeAdj !== 0 && (
             <div style={{ padding:"10px 0 2px" }}>
-              <button onClick={onResetAdjustment}
-                style={{ width:"100%", padding:"9px", background:"var(--surface-2)", border:`1px solid ${BD}`,
-                  borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
-                Start clean — reset the adjustment to 0
-              </button>
-              <div style={{ fontSize:10.5, color:"var(--text-label)", lineHeight:1.5, marginTop:6 }}>
-                Wipes what the app has learned about your metabolism and starts over from your
-                body stats. Your weigh-ins and history are kept. It takes a few weeks of
-                check-ins to build the estimate back up.
-              </div>
+              {!askReset ? (
+                <>
+                  <button onClick={() => setAskReset(true)}
+                    style={{ width:"100%", padding:"9px", background:"var(--surface-2)", border:`1px solid ${BD}`,
+                      borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                    Start clean — reset the adjustment to 0
+                  </button>
+                  <div style={{ fontSize:10.5, color:"var(--text-label)", lineHeight:1.5, marginTop:6 }}>
+                    Wipes what the app has learned about your metabolism and starts over from your
+                    body stats. Your weigh-ins and history are kept. It takes a few weeks of
+                    check-ins to build the estimate back up.
+                  </div>
+                </>
+              ) : (
+                <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
+                  borderRadius:10, padding:"10px 12px" }}>
+                  <div style={{ fontSize:11, color:"var(--warn)", fontWeight:800, letterSpacing:"0.06em", marginBottom:3 }}>
+                    RESET THE ADJUSTMENT?
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+                    Your maintenance estimate goes straight back to {formulaTDEE.toLocaleString()} kcal
+                    — {tdeeAdj > 0 ? "down" : "up"} {Math.abs(tdeeAdj)} from where it sits now — and it'll
+                    take a few weeks of weigh-ins to learn your real number again. Nothing else is lost.
+                    <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                      <button onClick={() => setAskReset(false)}
+                        style={{ flex:1, padding:"8px", background:"var(--surface-2)", border:`1px solid ${aA("44")}`,
+                          borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                        Keep it
+                      </button>
+                      <button onClick={() => { setAskReset(false); onResetAdjustment(); }}
+                        style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${BD}`,
+                          borderRadius:9, color:"var(--text-mid)", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                        Yes, reset
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
