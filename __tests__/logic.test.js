@@ -217,9 +217,21 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
   const effErr       = errKcal - inFlightAdj;
   const confidence = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
   const cap = CAL_STEP_CAP[confidence];
-  const adj = Math.max(-cap, Math.min(cap, Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
-  return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
+  const rawAdj = Math.max(-cap, Math.min(cap, Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
+  // The asymmetry (file 04): only ever LOWER the estimate when the user was not cutting.
+  const weekDays   = history.filter(d => d.date >= weekAgoKey);
+  const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
+  const refused    = rawAdj < 0 && wasCutting;
+  return { adj: refused ? 0 : rawAdj, refused, wouldHaveBeen: rawAdj, confidence,
+    actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
+};
+
+// Weight up while eating below maintenance (file 04) — derived, not stored.
+const gainWhileCutting = ({ weighIns, todayK, cutting }) => {
+  if (!cutting) return false;
+  const rate = trendLossFrac(weighIns, todayK, 14);
+  return rate != null && rate < 0;
 };
 
 // ── Cut cycling (energy Step 5; features/energy-safety/02) ────
@@ -2066,5 +2078,96 @@ describe("trendLossFrac — the same averages over a longer span", () => {
   test("not enough weigh-ins yields null at any span", () => {
     expect(trendLossFrac(steady.slice(0, 2), "2026-01-28", 21)).toBe(null);
     expect(trendLossFrac([], "2026-01-28", 21)).toBe(null);
+  });
+});
+
+// ── The asymmetry (features/energy-safety/04) ─────────────────
+// The app only lowers its estimate of what you burn when you were NOT cutting.
+describe("the asymmetry — a disappointing scale can't cut a dieter's target", () => {
+  const key = d => d.toISOString().split("T")[0];
+
+  // A week eating 1,800 against a 2,400 estimate predicts a loss. What the scale
+  // actually does is the variable; `modes` is the declared mode of each of those days.
+  const calibrate = ({ modes, weightStep }) => {
+    const today = new Date();
+    const weighIns = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - 13 + i);
+      return { date: key(d), weight: 80 + i * weightStep };
+    });
+    const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+    const history = Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - 7 + i);
+      return { date: key(d), kcal: 1800, mode: Array.isArray(modes) ? modes[i] : modes };
+    }).filter(d => d.date >= key(weekAgo));
+    return runCalibration(history, weighIns, 2400);
+  };
+
+  test("weight UP while cutting leaves the number exactly where it was", () => {
+    const r = calibrate({ modes: "cut", weightStep: 0.1 });
+    expect(r.wouldHaveBeen).toBeLessThan(0);   // the old loop would have cut the target
+    expect(r.refused).toBe(true);
+    expect(r.adj).toBe(0);
+  });
+
+  test("a plain STALL while cutting is refused too, not just an outright gain", () => {
+    const r = calibrate({ modes: "cut", weightStep: 0 });
+    expect(r.wouldHaveBeen).toBeLessThan(0);
+    expect(r.refused).toBe(true);
+    expect(r.adj).toBe(0);
+  });
+
+  test("the same evidence at maintenance IS acted on — there it is clean", () => {
+    const r = calibrate({ modes: "maintain", weightStep: 0.1 });
+    expect(r.refused).toBe(false);
+    expect(r.adj).toBeLessThan(0);
+    expect(r.adj).toBe(r.wouldHaveBeen);
+  });
+
+  test("good news is never damped, cutting or not", () => {
+    for (const modes of ["cut", "maintain", "bulk"]) {
+      const r = calibrate({ modes, weightStep: -0.2 });   // losing faster than predicted
+      expect(r.adj).toBeGreaterThan(0);
+      expect(r.refused).toBe(false);
+      expect(r.adj).toBe(r.wouldHaveBeen);
+    }
+  });
+
+  test("the week is judged by its majority, so one odd day decides nothing", () => {
+    const mostlyCut = ["cut", "cut", "cut", "cut", "cut", "maintain", "maintain", "maintain"];
+    const mostlyNot = ["maintain", "maintain", "maintain", "maintain", "maintain", "cut", "cut", "cut"];
+    expect(calibrate({ modes: mostlyCut, weightStep: 0.1 }).refused).toBe(true);
+    expect(calibrate({ modes: mostlyNot, weightStep: 0.1 }).refused).toBe(false);
+  });
+
+  test("a cut that ends lets the deferred correction run — nothing is thrown away", () => {
+    const during = calibrate({ modes: "cut",      weightStep: 0.1 });
+    const after  = calibrate({ modes: "maintain", weightStep: 0.1 });
+    expect(during.adj).toBe(0);
+    expect(after.adj).toBe(during.wouldHaveBeen);   // same correction, taken later
+  });
+});
+
+describe("weight up while eating below maintenance — the explanation card", () => {
+  const from = (fn) => Array.from({ length: 21 }, (_, i) => ({
+    date: dateKey(new Date(new Date("2026-01-01T12:00:00").getTime() + i * 86400000)),
+    weight: fn(i),
+  }));
+  const todayK = "2026-01-21";
+
+  test("shows when the two-week trend is up and I am cutting", () => {
+    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05), todayK, cutting: true })).toBe(true);
+  });
+
+  test("stays silent when I am not cutting — file 03's break copy owns that case", () => {
+    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05), todayK, cutting: false })).toBe(false);
+  });
+
+  test("stays silent when the trend is going the right way", () => {
+    expect(gainWhileCutting({ weighIns: from(i => 80 - i * 0.05), todayK, cutting: true })).toBe(false);
+  });
+
+  test("stays silent without enough weigh-ins to know", () => {
+    expect(gainWhileCutting({ weighIns: [], todayK, cutting: true })).toBe(false);
+    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05).slice(0, 2), todayK, cutting: true })).toBe(false);
   });
 });

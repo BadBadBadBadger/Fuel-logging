@@ -505,12 +505,37 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
   const effErr       = errKcal - inFlightAdj;             // dead-time compensation
   const confidence   = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
   const cap          = CAL_STEP_CAP[confidence];
-  const adj = Math.max(-cap, Math.min(cap,
+  const rawAdj = Math.max(-cap, Math.min(cap,
     Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
 
-  return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
+  // ── THE ASYMMETRY (features/energy-safety/04) ──
+  // The loop above is symmetric: it lowers the estimate for a disappointing scale
+  // exactly as readily as it raises it for a good one. Those two directions are not
+  // equally safe. Guessing high costs some progress; guessing low walks a dieter toward
+  // under-eating 25 kcal at a time while telling them it is correct — which is the
+  // mechanism that started this workstream.
+  //
+  // So: the estimate is only ever LOWERED when the user was NOT cutting. A weight rise
+  // (or a stall) while eating below maintenance has five innocent explanations — water
+  // from stress or under-eating, glycogen, a full gut, salt, lean mass gained while
+  // training — and none of them mean a lower burn. Eating AT or ABOVE maintenance and
+  // still not losing is clean evidence, and there we act on it.
+  //
+  // This defers the correction, it doesn't discard it: an over-estimated maintenance
+  // surfaces as a stall, file 03's stall check suggests a break, and a break is Maintain
+  // — where this refusal lifts and the loop converges normally. Raising is NEVER damped.
+  //
+  // "Was I cutting" reads the DECLARED daily mode from the history snapshots, the same
+  // signal file 02 uses, so it holds up for a patchy logger.
+  const weekDays   = history.filter(d => d.date >= weekAgoKey);
+  const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
+  const refused    = rawAdj < 0 && wasCutting;
+
+  return { adj: refused ? 0 : rawAdj, refused, wouldHaveBeen: rawAdj, confidence,
+    actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
+
 
 // ── Cut cycling (energy-model Step 5; features/energy-safety/02) ──────
 // Nothing in the app capped how LONG a cut ran. A deficit from January to June with
@@ -582,6 +607,16 @@ const trendLossFrac = (weighIns, todayK, spanDays = 7) => {
   return ((older - recent) / older) * (7 / spanDays);
 };
 const weeklyLossFrac = (weighIns, todayK) => trendLossFrac(weighIns, todayK, 7);
+
+// Weight up while eating below maintenance (features/energy-safety/04). Derived every
+// render rather than stored as an event: the explanation should be on screen whenever the
+// situation is real, not only in the moments after a weigh-in. Two weeks rather than one,
+// because a single week of water is exactly the noise this is here to explain away.
+const gainWhileCutting = ({ weighIns, todayK, cutting }) => {
+  if (!cutting) return false;
+  const rate = trendLossFrac(weighIns, todayK, 14);
+  return rate != null && rate < 0;   // a negative loss rate is a gain
+};
 
 const EMPTY_CUT_BLOCK = { start:null, load:0, startWeight:null, offRun:0, breakLoad:0,
   lastAccrued:null, lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null };
@@ -2687,6 +2722,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   showWeighNudge = false, onNudgeDismiss = () => {}, onNudgeMute = () => {}, coachKey,
   cutPrompt = null, onCutNudgeDismiss = () => {}, onCutPromptSnooze = () => {}, onStartDietBreak = () => {},
   cutBar = null, cutGuard = null, showRecharged = false, onDismissRecharged = () => {},
+  showGainWhileCutting = false,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
   aggressiveCutAcked, onAckAggressiveCut,
@@ -2958,6 +2994,37 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       )}
 
+      {/* Below resting metabolism (file 04). A cut IS a deliberate choice to eat below
+          what you burn, and for a lean body the arithmetic lands under BMR with nothing
+          wrong — so this is allowed, and named rather than hidden or forbidden. Silent
+          when a floor already spoke, and silent outside Cut, where it would be alarming
+          rather than informative. */}
+      {mode === "cut" && targets.kcal < targets.bmr && !targets.safeMinApplied &&
+       !targets.bmrFloorApplied && !targets.deficitFloorApplied && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🌙</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              BELOW YOUR RESTING METABOLISM
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              Fine short-term, not a level to live at.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  Your resting metabolism ({targets.bmr.toLocaleString()} kcal) is what your body
+                  would use doing nothing at all — but you don't do nothing, so eating under it for a
+                  stretch is normal on a cut and is not the same as starving. It's a reasonable place
+                  to be for a few weeks, not a place to settle. The break prompts will tell you when
+                  you've been at it a while.
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Low fuel (Step 4, warning only — never clamps). Rare by design: lean body +
           a day you actually trained + what's left after training is genuinely low. */}
       {targets.lowFuel && (
@@ -2980,6 +3047,43 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
                   hormonal changes. One light day is nothing to worry about.
                 </div>
               </details>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Weight up while eating below maintenance (file 04). The calibration has already
+          refused to lower the target off this — see runCalibration's asymmetry block —
+          and this card is the honest explanation of why nothing moved. No mode buttons:
+          the picker is the only thing that changes mode. Never says "eat less", and never
+          frames the rise as a failure. */}
+      {showGainWhileCutting && (
+        <div style={{ background:CARD, border:`1px solid ${aA("33")}`, borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>💧</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:A, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              WEIGHT UP WHILE EATING LESS THAN MAINTENANCE
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              This is usually water, glycogen or muscle — not a slower metabolism. Your target
+              hasn't been lowered.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:A, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  The scale weighs everything, not just fat. Under-eating and stress both make you
+                  hold water, glycogen swings a kilo either way, and training builds tissue that
+                  weighs more than it looks. None of that means you burn less than we thought, so
+                  the app leaves your number where it is rather than asking you to eat less.
+                  {" "}If you've been training hard, updating your body-fat % in your profile keeps
+                  your targets tracking your real lean mass.
+                </div>
+              </details>
+              <button onClick={() => setView("profile")}
+                style={{ background:"none", border:"none", color:A, fontSize:11, fontWeight:700,
+                  padding:"6px 0 0", cursor:"pointer", textDecoration:"underline" }}>
+                Update my body-fat %
+              </button>
             </div>
           </div>
         </div>
@@ -5344,6 +5448,9 @@ function App() {
     weightUp: lossRate != null && lossRate < 0 });
   const cutGuard = cutGuardFor({ block: cutBlock, profile: p, cutting: cuttingToday });
   const showRecharged = rechargedCardDue(cutBlock, todayK);
+  // File 04: the scale went up over two weeks while eating below maintenance. The
+  // calibration has already refused to act on it; this card is the explanation.
+  const showGainWhileCutting = gainWhileCutting({ weighIns, todayK, cutting: cuttingToday });
 
   const saveCutBlock = async next => {
     setCutBlock(next);
@@ -5452,6 +5559,7 @@ function App() {
           onStartDietBreak={startDietBreak}
           cutBar={cutBar} cutGuard={cutGuard}
           showRecharged={showRecharged} onDismissRecharged={dismissRecharged}
+          showGainWhileCutting={showGainWhileCutting}
           workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}
           customKcal={customKcal} onSetCustomKcal={saveCustomKcal} isCustomMode={customKcal != null}
           aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}

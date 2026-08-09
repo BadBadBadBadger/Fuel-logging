@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
-# Energy-safety workstream, file 4 of 5.
-# Rewritten in plain English 2026-08-09 (session 15). Most of this file is
-# ALREADY BUILT — see the state table below before you write any code.
+# Energy-safety workstream, file 4 of 5. ✅ FULLY BUILT 2026-08-09 (session 15).
+# Rewritten in plain English the same day, then the last unbuilt piece — the
+# asymmetry — was implemented against it. Jest 209/209, sw v63.
 #
 # ── WHAT THIS FILE IS ABOUT ──────────────────────────────────
 # The app guesses how much you burn in a day, then corrects that guess against
@@ -139,7 +139,14 @@ Feature: The app's own guess can never talk you into under-eating
     And no separate BMR floor is applied to a cut, because a cut is a choice
     And my maintenance floor of BMR × 1.2 does not apply while I am cutting
 
-  # ── TO BUILD — the asymmetry ───────────────────────────────
+  # ── BUILT 2026-08-09 — the asymmetry ───────────────────────
+  # Lives in runCalibration (app.jsx): the raw step is computed exactly as before, then
+  # refused if it is negative AND the majority of the measured week's declared modes were
+  # "Cut". The refusal returns adj 0 alongside `wouldHaveBeen`, so nothing is hidden.
+  # The explanation card is DERIVED every render (gainWhileCutting) rather than stored as
+  # an event: the explanation should be available whenever the situation is real, not only
+  # in the moments after a weigh-in. It reads a TWO-week trend, because one week of water
+  # is precisely the noise the card exists to explain away.
 
   Scenario: Gaining weight while eating less than maintenance does not cut my target
     Given I have eaten at a calorie deficit for the past 2 weeks
@@ -191,18 +198,26 @@ Feature: The app's own guess can never talk you into under-eating
     And nothing on screen suggests eating less as the answer to a stall
 
   Scenario: Muscle gain during recomposition is not misread as a lower metabolism
-    Given my logged strength workouts have increased over the past month
-    And my weight has crept up while my measurements suggest recomposition
+    Given my weight has crept up while I am training and eating below maintenance
     When the calibration runs
     Then my TDEE estimate is unchanged by the weight rise
-    And the app invites me to update my body-fat % so targets track lean-mass change
-    And the invitation is optional and never blocks anything
+    And the same card invites me to update my body-fat % so targets track lean mass
+    And the invitation is a link to my profile, optional, and blocks nothing
+    # Simplified at build: the draft gated this on "logged strength workouts have
+    # increased over the past month". That gate bought nothing — the invitation is
+    # harmless and useful in every gain-while-cutting case, and a month of workout
+    # history is machinery to maintain for no change in what the user sees. The
+    # invitation therefore rides the card that already exists rather than needing
+    # a surface of its own.
 
   Scenario: A cut target below resting metabolism is allowed, and said plainly
     Given today's cut target lands below my BMR but at or above my steady-loss floor
     When the app shows the target
     Then the cut target is allowed
-    And I see an amber note "This is below your resting metabolism — fine short-term, not a long-term level"
+    And I see an amber note "Below your resting metabolism — fine short-term, not a
+      level to live at"
+    And the note is silent when a floor has already spoken, so only one card explains
+    And it is silent outside Cut, where it would alarm rather than inform
     # Deliberate: a cut IS a choice to eat below what you burn, and for a lean
     # body the arithmetic lands below BMR without anything being wrong. Naming it
     # honestly beats either hiding it or forbidding it.
