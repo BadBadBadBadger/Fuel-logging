@@ -4,20 +4,16 @@
 
 > ## ▶ START HERE
 >
-> **Step 5 is complete — including the fix for the harm that started all of this.** Two things left
-> before deploy, in this order.
+> **Step 5 is complete — including the fix for the harm that started all of this — and the Supabase
+> column is run.** ✅ `cut_break_load` added 2026-08-09; the sync wiring is live-safe.
 >
-> **1. Run one line of SQL.** File 03 added a column and the app now writes it:
-> ```sql
-> ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_break_load NUMERIC DEFAULT 0;
-> ```
-> Run **just that line** in the Supabase SQL Editor (never the whole schema file — see the warning
-> below). Until it exists, the profile upsert 400s and takes the *whole* profile sync down with it.
-> Nothing is deployed yet, so nothing is broken today — but this must precede the device test.
+> **The only work left is the batched on-device test + deploy of the whole energy-safety set**
+> (Next up 2). Nothing on this branch has ever run on a device. **File 05 is SHELVED** (founder,
+> 2026-08-09; see below) — don't start it, and don't treat it as an obligation.
 >
-> **2. Then the batched on-device test + deploy of the whole energy-safety set** (Next up 2). That is
-> the only work left — **file 05 is SHELVED** (founder, 2026-08-09; see below). Don't start it, and
-> don't treat it as an obligation.
+> ⚠️ **Reminder learned the hard way, again, on 2026-08-09:** running the *whole* schema file against
+> the live database fails on `CREATE POLICY` (42710) and the single-transaction rollback silently
+> takes your new `ALTER TABLE` with it. Run the one line you need, on its own.
 
 ---
 
@@ -171,8 +167,8 @@ that §4 warns against leaning on.
    cutting, the same bar draining on Maintain *and* on Bulk, the guard confirm on the Cut chip (and its
    absence on Bulk), the "Recharged" card, and the stall nudge — **plus the file-04 pair**: "Weight up
    while eating less than maintenance" (needs a rising 2-week trend while in Cut) and "Below your resting
-   metabolism" (needs a cut target under BMR that isn't already floored). **Run the `cut_break_load` SQL
-   first.**
+   metabolism" (needs a cut target under BMR that isn't already floored). ✅ The `cut_break_load` SQL is
+   done.
    **Note:** the steady-loss floor only *visibly* bites on smaller bodies — to see it, temporarily set a
    ~60 kg profile. Cut-cycling and the drain need a long history to trip naturally, so seed `cut_block` in
    local storage (set `start`, `load`, and for a break `breakLoad` + `offRun`) rather than waiting weeks.
@@ -219,8 +215,7 @@ that §4 warns against leaning on.
   (`cut_block_start`, `cut_block_load`, `cut_break_load`, `last_break_end`) via `syncProfile` /
   `syncCutBlock` and the pull-merge. The **rest-day count is derived, not stored** —
   `offRun = 14 × (1 − load ÷ breakLoad)` on pull, so there's nothing extra to drift.
-- ⏳ **Column exists but is NOT yet run on Supabase:** `cut_break_load` (added by file 03). One `ALTER
-  TABLE` — see START HERE at the top. Everything else in that list is live.
+- ✅ **`cut_break_load` was run on Supabase 2026-08-09.** Every synced column above now exists.
 - 🪦 **Retired:** `cut_load_year` — the column still exists but nothing reads or writes it (file 03
   removed the rolling-year track). Left in place deliberately; safe to drop by hand if you ever want to.
 - ⚠️ **Still local-only:** `weighCadence` (no column), `weigh_nudge_dismissed`, `tdee_adj_log`, and the

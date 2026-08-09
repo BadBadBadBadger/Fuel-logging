@@ -345,10 +345,10 @@ const smoothWorkoutKcal = kcalByOffset =>
 
 // ── Energy floor + low-fuel warning (energy-model Step 4) ─────────
 // features/energy-safety/01. Two DIFFERENT protections, deliberately separated —
-// the draft spec conflated them into one EA-30 clamp, which doesn't survive the
+// the draft spec conflated them into one EA-30 floor, which doesn't survive the
 // numbers (see ENERGY_MODEL.md §5 Step 4):
 //
-//  1. HARD CLAMP — rate of loss. A preset target never takes more than
+//  1. MOVES THE TARGET — rate of loss. A preset target never takes more than
 //     MAX_DEFICIT_FRAC off believable maintenance (+ today's applied training
 //     bonus, so the Step-3 smoothing isn't undone). This scales with body size,
 //     which is what the flat SAFE_MIN never did: a 98.5 kg body floors ~1,673,
@@ -358,7 +358,7 @@ const smoothWorkoutKcal = kcalByOffset =>
 //     IOC consensus, Mountjoy et al.) documents endocrine/recovery harm. Those
 //     thresholds were derived in LEAN athletes, who have no large fat store to
 //     cover the gap — applied to a 30%-body-fat dieter EA-30 sits ABOVE a normal
-//     cut target and would forbid weight loss entirely. So EA never clamps; it
+//     cut target and would forbid weight loss entirely. So EA never moves the
 //     warns, and only for lean bodies on days they actually trained. That keeps
 //     it rare AND true, and keeps a persistent "you're under-eating" banner off
 //     a calorie tracker (ED-safety guardrail).
@@ -413,7 +413,7 @@ const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0, rawBurnKcal = 0
   const safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   const m = computeMacros(p, mode, kcal);
-  // Low-fuel signal: warning only, never a clamp (see the block above).
+  // Low-fuel signal: warning only — it never changes the target (see the block above).
   const ea = energyAvailability(kcal, rawBurnKcal, p);
   const lowFuel = ea != null && isLeanBody(p) && (rawBurnKcal || 0) > 0 && ea < EA_HARD;
   return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
@@ -3025,7 +3025,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       )}
 
-      {/* Low fuel (Step 4, warning only — never clamps). Rare by design: lean body +
+      {/* Low fuel (Step 4, warning only — never changes the target). Rare by design: lean body +
           a day you actually trained + what's left after training is genuinely low. */}
       {targets.lowFuel && (
         <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
@@ -3538,7 +3538,8 @@ const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 // sometimes hand back a 0–1 fraction (e.g. 0.72) despite the prompt asking for
 // 0–100 — without this, 0.72 renders as "0.72%", mis-gates follow-ups, and gets
 // stored as ~1% confident (wrongly flagging the day + dropping it from
-// calibration). A bare value <=1 is treated as a fraction; everything is clamped.
+// calibration). A bare value <=1 is treated as a fraction; everything is then
+// held within 0–100.
 const normConf = c => {
   let n = Number(c);
   if (!isFinite(n)) return 50;

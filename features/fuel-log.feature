@@ -122,14 +122,14 @@ Feature: Safe minimum calorie guard (last-resort backstop)
   Scenario: Manual target below safe minimum for male
     Given I am male and my safe minimum is 1,400 kcal
     When I manually enter a target below 1,400 kcal
-    Then the target is clamped to 1,400 kcal
+    Then the target is raised to 1,400 kcal
     And the banner reads "That's below the safe minimum for your body. We've set it to 1,400 kcal to keep you safe."
     And it links to the profile screen
 
   Scenario: Manual target below safe minimum for female
     Given I am female and my safe minimum is 1,200 kcal
     When I manually enter a target below 1,200 kcal
-    Then the target is clamped to 1,200 kcal
+    Then the target is raised to 1,200 kcal
     And the same safety banner appears
 
   Scenario: Target is above safe minimum

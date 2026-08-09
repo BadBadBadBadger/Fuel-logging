@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 # DRAFT — for review. Energy-safety workstream, file 1 of 5.
 # REWRITTEN 2026-08-07 at build time (Step 4). The original draft made
-# Energy Availability (EA) a hard clamp at 30 kcal/kg FFM. That did not
+# Energy Availability (EA) a hard floor at 30 kcal/kg FFM. That did not
 # survive the numbers — see "WHY THIS CHANGED" below and ENERGY_MODEL.md §5.
 #
 # WHY: the shipped floor is a flat SAFE_MIN (1400 male / 1200 female) that sits
@@ -10,7 +10,7 @@
 # This replaces it with a floor DERIVED FROM THE USER'S OWN ENERGY.
 #
 # ── THE TWO PROTECTIONS (deliberately separate) ──────────────
-#   1. STEADY-LOSS FLOOR — the hard clamp, for everyone.
+#   1. STEADY-LOSS FLOOR — the one that MOVES YOUR TARGET, for everyone.
 #        floor = 75% of (believable maintenance + today's applied training bonus)
 #      A preset target never sits more than MAX_DEFICIT_FRAC below maintenance.
 #      Scales with body size, so it protects the small user the flat floor
@@ -25,12 +25,12 @@
 #     NEAT-only (max 1.55), training is added separately and then subtracted back
 #     out of EA. Reaching 45 kcal/kg FFM needs a whole-day factor ≈1.68+. An
 #     "all clear" band nothing can satisfy is wallpaper, not safety → DROPPED.
-#   • EA_HARD = 30 AS A CLAMP FORBIDS WEIGHT LOSS for anyone carrying fat. For a
+#   • EA_HARD = 30 AS A FLOOR FORBIDS WEIGHT LOSS for anyone carrying fat. For a
 #     98.5 kg / 30% body-fat profile the EA-30 floor lands ABOVE a normal cut
 #     target — it would have capped the deficit at ~160 kcal. The EA thresholds
 #     were derived in LEAN ATHLETES, who have no large fat store to cover the
-#     gap; a body with reserves is a different case → EA warns, never clamps,
-#     and only for the population the evidence is drawn from.
+#     gap; a body with reserves is a different case → EA warns, never moves a
+#     number, and only for the population the evidence is drawn from.
 #
 # EVIDENCE (coach hat, tiered):
 #   • WELL-ESTABLISHED: below ~30 kcal/kg FFM/day, reproductive/endocrine
@@ -120,7 +120,7 @@ Feature: A body-sized floor replaces the flat calorie floor
       | Maintain | sedentary maintenance (BMR×1.2) |
       | Cut      | steady-loss                     |
 
-  # ── Low fuel: a warning, never a clamp ──────────────────────
+  # ── Low fuel: a warning — it never moves your target ────────
   Scenario: A lean body that trains hard and eats little is told
     Given my body-fat is in the lean range for my sex
     And I log training that burns a large number of calories today
