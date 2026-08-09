@@ -45,7 +45,7 @@ const ACTIVITY = { sedentary: 1.20, light: 1.35, active: 1.45, very: 1.55 };
 const activityMult = p => ACTIVITY[p && p.activity] || ACTIVITY.sedentary;
 
 // ── Energy floor + low-fuel warning (Step 4) — mirror of app.jsx ──────────────
-// The hard clamp is RATE OF LOSS (scales with body size); energy availability is a
+// The floor that moves your target is RATE OF LOSS (scales with body size); energy availability is a
 // WARNING ONLY, gated to lean bodies on days they trained. EA_OK (45) is not a band —
 // it is unreachable given NEAT-only multipliers with training subtracted back out.
 const EA_HARD          = 30;
@@ -249,6 +249,7 @@ const TREND_CUT_RATE          = 0.0025;
 const CUT_NUDGE_SNOOZE_DAYS   = 7;
 const CUT_PROMPT_SNOOZE_DAYS  = 3;
 const DIET_BREAK_DAYS         = 14;
+const CUT_BAR_MIN_LOAD        = 7;
 const STALL_WEEKS             = 3;
 const RECHARGED_CARD_DAYS     = 3;
 
@@ -291,8 +292,10 @@ const stepCutBlock = (block, day) => {
     const left = 1 - b.offRun / DIET_BREAK_DAYS;
     b.load = left <= 0 ? 0 : Math.round(b.breakLoad * left * 100) / 100;
     if (b.load <= 0) {
+      const worthSaying = b.breakLoad >= CUT_BAR_MIN_LOAD;
       b.start = null; b.load = 0; b.startWeight = null; b.breakLoad = 0; b.offRun = 0;
-      b.lastBreakEnd = day.date; b.rechargedOn = day.date;
+      b.lastBreakEnd = day.date;
+      if (worthSaying) b.rechargedOn = day.date;
       b.nudgeAt = null; b.snoozeAt = null;
     }
   }
@@ -336,6 +339,10 @@ const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = nul
 
 const cutBarFor = ({ block, profile, todayK, cutting = false, weightUp = false }) => {
   if (!block || !block.start || block.load <= 0) return null;
+  // Filling gates on the CURRENT load; draining on the load at break start, so a break
+  // worth announcing is seen through to zero rather than vanishing part-way.
+  if (cutting ? block.load < CUT_BAR_MIN_LOAD
+              : (block.breakLoad || block.load) < CUT_BAR_MIN_LOAD) return null;
   const th  = cutThresholds(profile || {});
   const pct = Math.max(0, Math.min(100, Math.round((block.load / th.soft) * 100)));
   if (cutting) return { draining: false, pct,
@@ -1287,7 +1294,7 @@ describe("normConf — model confidence normalised to 0–100", () => {
     expect(normConf(98)).toBe(98);
     expect(normConf(0)).toBe(0);
   });
-  test("out-of-range is clamped and junk defaults to 50", () => {
+  test("out-of-range is pulled back into 0–100 and junk defaults to 50", () => {
     expect(normConf(150)).toBe(100);
     expect(normConf(-5)).toBe(0);
     expect(normConf(undefined)).toBe(50);
@@ -1457,8 +1464,8 @@ describe("Smoothed earn-to-eat (Step 3)", () => {
 // ── Energy floor + low-fuel warning (Step 4; features/energy-safety/01) ────────
 // Numbers here are DERIVED from the formulas, never hardcoded upstream. Contrasting
 // bodies prove each rule is computed. The two protections are tested separately
-// because they are separate: the deficit floor CLAMPS, energy availability WARNS.
-describe("Step 4 — steady-loss floor (the hard clamp)", () => {
+// because they are separate: the deficit floor MOVES THE TARGET, energy availability WARNS.
+describe("Step 4 — steady-loss floor (moves the target)", () => {
   const tdeeOf = p => {
     const bmr = Math.round(370 + 21.6 * p.weight * (1 - p.bodyFat / 100));
     return Math.round(bmr * (ACTIVITY[p.activity] || ACTIVITY.sedentary));
@@ -1478,7 +1485,7 @@ describe("Step 4 — steady-loss floor (the hard clamp)", () => {
     expect(fLarge).toBeGreaterThan(SAFE_MIN.male);
   });
 
-  test("a normal cut on a large body is NOT clamped — weight loss still works", () => {
+  test("a normal cut on a large body is NOT raised — weight loss still works", () => {
     const { kcal, deficitFloorApplied } = calcTargets(large, "cut");
     expect(deficitFloorApplied).toBe(false);
     expect(kcal).toBe(tdeeOf(large) - 500); // the full 500 kcal deficit survives
@@ -1531,7 +1538,7 @@ describe("Step 4 — steady-loss floor (the hard clamp)", () => {
   });
 });
 
-describe("Step 4 — energy availability (warning only, never a clamp)", () => {
+describe("Step 4 — energy availability (warning only — never changes the target)", () => {
   const lean = { weight: 80, bodyFat: 10, sex: "male", activity: "very" };  // FFM 72
   const soft = { weight: 98.5, bodyFat: 30, sex: "male", activity: "very" }; // FFM 69
 
@@ -1551,7 +1558,7 @@ describe("Step 4 — energy availability (warning only, never a clamp)", () => {
     expect(lowFuel).toBe(true);
   });
 
-  test("the flag NEVER changes the target — it warns, it does not clamp", () => {
+  test("the flag NEVER changes the target — it warns, it never moves a number", () => {
     const flagged = calcTargets(lean, "cut", 450, 0, 900);
     const quiet   = calcTargets(lean, "cut", 450, 0, 0);
     expect(flagged.lowFuel).toBe(true);
@@ -1935,10 +1942,46 @@ describe("the break gauge — one bar, read in two directions", () => {
     const shown = (load, cutting) => !!cutBarFor({
       block: { ...EMPTY_CUT_BLOCK, start: load > 0 ? "2026-01-01" : null, load },
       profile: normal, todayK: "2026-03-01", cutting });
-    expect(shown(10, true)).toBe(true);     // cutting → always
+    expect(shown(10, true)).toBe(true);     // cutting, past the minimum → shown
     expect(shown(40, false)).toBe(true);    // not cutting but load remains → shown
     expect(shown(0,  false)).toBe(false);   // a long bulk with nothing owed → nothing
     expect(shown(0,  true)).toBe(false);    // no block yet → nothing
+  });
+
+  // Cut is the DEFAULT mode, so opening the app for a day accrues load and opens a block.
+  // Without a minimum, a one-day block would spend a fortnight announcing "about 14 days to
+  // fully recharged" over a single day of cutting.
+  test("a block too small to mean anything stays silent in both directions", () => {
+    const tiny = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 1 };
+    expect(cutBarFor({ block: tiny, profile: normal, todayK: "2026-01-02", cutting: true })).toBe(null);
+    expect(cutBarFor({ block: { ...tiny, breakLoad: 1, offRun: 1 }, profile: normal,
+      todayK: "2026-01-02", cutting: false })).toBe(null);
+  });
+
+  test("the gate opens at about a week of real cutting, and not before", () => {
+    const at = load => !!cutBarFor({ block: { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load },
+      profile: normal, todayK: "2026-01-08", cutting: true });
+    expect(at(CUT_BAR_MIN_LOAD - 1)).toBe(false);
+    expect(at(CUT_BAR_MIN_LOAD)).toBe(true);
+  });
+
+  test("a break worth announcing is seen through to zero, not dropped part-way", () => {
+    // Gating the drain on the CURRENT load would hide the bar exactly when the user is
+    // closest to finishing — so it reads the load the block held when the break began.
+    const late = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 2, breakLoad: 56, offRun: 13 };
+    const bar = cutBarFor({ block: late, profile: normal, todayK: "2026-03-01", cutting: false });
+    expect(bar.draining).toBe(true);
+    expect(bar.daysLeft).toBe(1);
+  });
+
+  test("a trivial block that drains away gets no celebration either", () => {
+    const tiny = runDays(DIET_BREAK_DAYS, offDay, "2026-03-01",
+      { ...EMPTY_CUT_BLOCK, start: "2026-02-01", load: 2 });
+    expect(tiny.start).toBe(null);
+    expect(tiny.rechargedOn).toBe(null);   // nothing to congratulate
+    const real = runDays(DIET_BREAK_DAYS, offDay, "2026-03-01",
+      { ...EMPTY_CUT_BLOCK, start: "2026-02-01", load: 56 });
+    expect(real.rechargedOn).toBe("2026-03-14");
   });
 
   test("weight up early in a break is flagged for reassurance, not alarm", () => {

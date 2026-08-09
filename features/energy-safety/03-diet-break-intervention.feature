@@ -98,6 +98,17 @@
 #                 its size. Remaining = loadAtBreakStart × (1 − restDays/14),
 #                 computed from the original rather than by repeated
 #                 subtraction, so fourteen days land exactly on zero.
+#       CUT_BAR_MIN_LOAD = 7 — about a week of real cutting before the gauge
+#                 says ANYTHING. Added at build (2026-08-09) after the founder
+#                 hit the nonsense case: Cut is the DEFAULT mode, so merely
+#                 opening the app for a day accrues load and opens a block, and
+#                 because the drain is pro rata that one-day block announced
+#                 "about 14 days to fully recharged" — over a single day of
+#                 cutting, with nothing logged. The counter still runs from day
+#                 one (that is the protection); only the TALKING waits.
+#                 Filling gates on the CURRENT load; draining gates on the load
+#                 at BREAK START, so a break worth announcing is seen through to
+#                 zero instead of vanishing when the user is closest to done.
 #       STALL_WEEKS = 3 — weeks of a flat scale, while cutting, that read as a
 #                 stall. The RATE it compares against is TREND_CUT_RATE, which
 #                 02 already owns — losing slower than the backstop calls
@@ -289,15 +300,34 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
     When I open the dashboard
     Then the cut-load bar is <shown>
 
-    # Rule 4: cutting → always; otherwise only while load remains.
-    # A months-long bulk with nothing owed shows nothing.
+    # Rule 4, plus CUT_BAR_MIN_LOAD: cutting → once there's about a week in the
+    # block; otherwise only while load remains. A months-long bulk with nothing
+    # owed shows nothing, and neither does a block barely a day old.
     Examples:
       | mode     | load | shown     |
       | Cut      | 10   | shown     |
+      | Cut      | 1    | not shown |
       | Maintain | 40   | shown     |
       | Bulk     | 40   | shown     |
       | Maintain | 0    | not shown |
       | Bulk     | 0    | not shown |
+
+  Scenario: A day-old cut says nothing at all
+    Given I have just installed the app and changed no settings
+    And Cut is the mode it starts in, so a block has quietly opened
+    When I open the dashboard
+    Then no bar, no break copy and no recharge estimate is shown
+    And nothing suggests I am recovering from anything
+    # The founder hit this one in the harness: "I have nothing logged at all yet,
+    # so this pretty much doesn't make sense." Quite right — the app had accrued
+    # a single default-mode day and was offering a fortnight of recharging for it.
+
+  Scenario: A break that was worth announcing finishes on screen
+    Given my block held well over CUT_BAR_MIN_LOAD when I stopped cutting
+    And I have rested until only a sliver of load remains
+    When I open the dashboard
+    Then the bar is still shown, counting down its last day
+    And it does not disappear just as I am about to finish
 
   # ── Finishing — quietly ────────────────────────────────────
 

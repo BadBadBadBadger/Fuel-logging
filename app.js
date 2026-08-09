@@ -684,10 +684,10 @@ var smoothWorkoutKcal = function smoothWorkoutKcal(kcalByOffset) {
 
 // ── Energy floor + low-fuel warning (energy-model Step 4) ─────────
 // features/energy-safety/01. Two DIFFERENT protections, deliberately separated —
-// the draft spec conflated them into one EA-30 clamp, which doesn't survive the
+// the draft spec conflated them into one EA-30 floor, which doesn't survive the
 // numbers (see ENERGY_MODEL.md §5 Step 4):
 //
-//  1. HARD CLAMP — rate of loss. A preset target never takes more than
+//  1. MOVES THE TARGET — rate of loss. A preset target never takes more than
 //     MAX_DEFICIT_FRAC off believable maintenance (+ today's applied training
 //     bonus, so the Step-3 smoothing isn't undone). This scales with body size,
 //     which is what the flat SAFE_MIN never did: a 98.5 kg body floors ~1,673,
@@ -697,10 +697,10 @@ var smoothWorkoutKcal = function smoothWorkoutKcal(kcalByOffset) {
 //     IOC consensus, Mountjoy et al.) documents endocrine/recovery harm. Those
 //     thresholds were derived in LEAN athletes, who have no large fat store to
 //     cover the gap — applied to a 30%-body-fat dieter EA-30 sits ABOVE a normal
-//     cut target and would forbid weight loss entirely. So EA never clamps; it
-//     warns, and only for lean bodies on days they actually trained. That keeps
-//     it rare AND true, and keeps a persistent "you're under-eating" banner off
-//     a calorie tracker (ED-safety guardrail).
+//     cut target and would forbid weight loss entirely. So EA never moves the
+//     target; it warns, and only for lean bodies on days they actually trained.
+//     That keeps it rare AND true, and keeps a persistent "you're under-eating"
+//     banner off a calorie tracker (ED-safety guardrail).
 //
 // EA_OK (45) is deliberately NOT implemented as a band: our multipliers are
 // NEAT-only (max 1.55) with training added separately and subtracted back out of
@@ -766,7 +766,7 @@ var calcTargets = function calcTargets(p, mode) {
   var safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   var m = computeMacros(p, mode, kcal);
-  // Low-fuel signal: warning only, never a clamp (see the block above).
+  // Low-fuel signal: warning only — it never changes the target (see the block above).
   var ea = energyAvailability(kcal, rawBurnKcal, p);
   var lowFuel = ea != null && isLeanBody(p) && (rawBurnKcal || 0) > 0 && ea < EA_HARD;
   return {
@@ -988,6 +988,7 @@ var TREND_CUT_RATE = 0.0025; // ≥0.25%/wk of sustained loss reads as cutting
 var CUT_NUDGE_SNOOZE_DAYS = 7; // soft nudge "Not yet"
 var CUT_PROMPT_SNOOZE_DAYS = 3; // hard prompt "Remind me in 3 days"
 var DIET_BREAK_DAYS = 14; // rest days that fully drain a block (file 03)
+var CUT_BAR_MIN_LOAD = 7; // ~a week of real cutting before the gauge says anything
 var STALL_WEEKS = 3; // weeks of a flat scale that read as stalled
 var RECHARGED_CARD_DAYS = 3; // the "Recharged" card retires itself after this
 
@@ -1098,14 +1099,17 @@ var stepCutBlock = function stepCutBlock(block, day) {
     b.load = left <= 0 ? 0 : Math.round(b.breakLoad * left * 100) / 100;
     if (b.load <= 0) {
       // Fully recharged: the block closes, and the one celebration card is armed. Nothing
-      // changes mode — the app never resumes a cut on the user's behalf.
+      // changes mode — the app never resumes a cut on the user's behalf. A block too small
+      // to have been worth mentioning gets no celebration either: congratulating someone for
+      // recovering from two days of cutting is the app talking to hear itself.
+      var worthSaying = b.breakLoad >= CUT_BAR_MIN_LOAD;
       b.start = null;
       b.load = 0;
       b.startWeight = null;
       b.breakLoad = 0;
       b.offRun = 0;
       b.lastBreakEnd = day.date;
-      b.rechargedOn = day.date;
+      if (worthSaying) b.rechargedOn = day.date;
       b.nudgeAt = null;
       b.snoozeAt = null;
     }
@@ -1179,6 +1183,17 @@ var cutPromptFor = function cutPromptFor(_ref2) {
 // while not. The bar shows whenever there is something to show — always inside an open
 // block, never once the block is closed and nothing is owed. A months-long bulk with a
 // clean slate shows nothing at all.
+//
+// CUT_BAR_MIN_LOAD is the "is this worth mentioning yet" gate, and it matters more than it
+// looks. Cut is the DEFAULT mode, so merely opening the app for a day accrues load and
+// opens a block — and the drain is pro rata, so a one-day block would spend a fortnight
+// announcing "about 14 days to fully recharged" over a single day of cutting. Nonsense to
+// read, and it spends the user's trust on nothing. The counter still runs from day one
+// (that is the protection); only the TALKING waits for about a week of real cutting.
+//
+// Note which side each direction is gated on. Filling reads the CURRENT load, so the bar
+// appears once there's something to show. Draining reads the load at BREAK START, so a
+// break that was worth announcing is seen through to zero instead of vanishing mid-way.
 var cutBarFor = function cutBarFor(_ref3) {
   var block = _ref3.block,
     profile = _ref3.profile,
@@ -1188,6 +1203,7 @@ var cutBarFor = function cutBarFor(_ref3) {
     _ref3$weightUp = _ref3.weightUp,
     weightUp = _ref3$weightUp === void 0 ? false : _ref3$weightUp;
   if (!block || !block.start || block.load <= 0) return null;
+  if (cutting ? block.load < CUT_BAR_MIN_LOAD : (block.breakLoad || block.load) < CUT_BAR_MIN_LOAD) return null;
   var th = cutThresholds(profile || {});
   var pct = Math.max(0, Math.min(100, Math.round(block.load / th.soft * 100)));
   if (cutting) return {
@@ -8157,7 +8173,8 @@ var confLabel = function confLabel(c) {
 // sometimes hand back a 0–1 fraction (e.g. 0.72) despite the prompt asking for
 // 0–100 — without this, 0.72 renders as "0.72%", mis-gates follow-ups, and gets
 // stored as ~1% confident (wrongly flagging the day + dropping it from
-// calibration). A bare value <=1 is treated as a fraction; everything is clamped.
+// calibration). A bare value <=1 is treated as a fraction; everything is then
+// held within 0–100.
 var normConf = function normConf(c) {
   var n = Number(c);
   if (!isFinite(n)) return 50;
