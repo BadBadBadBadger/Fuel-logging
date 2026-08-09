@@ -37,11 +37,20 @@ the repo for orientation. Open further docs only when the task actually needs th
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
-- **Write plainly. Do not use the word "clamp"** — not in docs, specs, comments, or chat. It has been
-  removed repeatedly and keeps creeping back in. Say what actually happens instead:
-  a rule either **moves your target** (*"raises the target to the floor"*) or it **only warns**
-  (*"warns, never changes the target"*). Same rule for any other jargon noun: if a plain sentence
-  needs more words, use more words. (`clamp` survives only as a code identifier in `seed-data.js`.)
+- **Write plainly. Banned words — "clamp" and "gate" (as a verb)** — not in docs, specs, comments, or
+  chat. Both have been removed repeatedly and both crept back, because they were seeded through **code
+  comments**, so each new session re-read and copied them. If you sweep one, sweep the comments too.
+  Say what actually happens instead:
+  - *clamp* → a rule either **moves your target** (*"raises the target to the floor"*) or it **only
+    warns** (*"warns, never changes the target"*). Survives only as an identifier in `seed-data.js`.
+  - *gate* → name the condition: *"the bar appears once your load reaches a week's worth"*, *"shown
+    only to lean bodies"*, *"never make log/save wait on it"*. Still fine as the **name of a thing**:
+    the premium gate (paywall), consent gate (sign-up), believability gate (the pre-ship check against
+    MyFitnessPal, defined in full at `ENERGY_MODEL.md` §4).
+
+  Same rule for any other jargon noun: if a plain sentence needs more words, use more words. When the
+  founder says a word means nothing to him, that's the signal — fix the word everywhere, not just in
+  the reply.
 
 ---
 
