@@ -150,6 +150,33 @@
     .size-label { color: #444; font-size: 11px; letter-spacing: 1px; }
   </style>
 
+  <!-- ── Theme variables, borrowed from index.html ──────────────────────────
+       This harness loads app.js directly rather than framing index.html, so it
+       gets none of the app's CSS custom properties: every var(--bg), --surface,
+       --accent and --warn resolves to nothing, surfaces and borders vanish, and
+       the whole UI flattens to white-on-dark. The theme switcher looks broken
+       for the same reason — applyTheme() sets data-theme correctly, but no rule
+       in this page listens for it.
+
+       We PULL index.html's single <style> block at load rather than keeping a
+       copy here. DOCS.md §35 makes those :root blocks the source of truth, and a
+       duplicate would drift the first time the palette changes — which is worse
+       than no colours, because it would look plausible while lying. Dev harness
+       only; index.html itself keeps its CSS inline, deliberately, so the real
+       PWA never shows a flash of unstyled content. -->
+  <script>
+    fetch("index.html")
+      .then(r => r.text())
+      .then(html => {
+        const css = html.match(/<style>([\s\S]*?)<\/style>/);
+        if (!css) throw new Error("no <style> block found in index.html");
+        const el = document.createElement("style");
+        el.textContent = css[1];
+        document.head.prepend(el);   // first, so this page's own rules still win
+      })
+      .catch(e => console.warn("[preview] theme vars unavailable:", e.message));
+  </script>
+
   <!-- App dependencies (same as index.html) -->
   <script src="vendor/supabase.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
