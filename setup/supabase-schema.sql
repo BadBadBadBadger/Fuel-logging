@@ -48,8 +48,25 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS activity TEXT
 -- (a 10% cut adds 0.5, a 25% cut adds 1.25), so these accumulate fractionally.
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_block_start DATE;    -- start of the open cut block; NULL = not cutting
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_block_load  NUMERIC DEFAULT 0;  -- load-days accumulated in that block
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_load_year   NUMERIC DEFAULT 0;  -- rolling year total, decays at maintenance (CUMULATIVE_CUT_ESCALATE)
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_load_year   NUMERIC DEFAULT 0;  -- RETIRED (see below) — left in place, no longer written
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_break_end  DATE;    -- end of the most recent completed diet break
+
+-- Energy-model Step 5, file 03 (the break drain). A break is time not cutting, and each
+-- rest day pays down 1/DIET_BREAK_DAYS of the load the block held when the break began.
+-- That starting load IS the drain rate, so it has to survive a device change: without it
+-- a second phone would resume the break at the wrong speed and skip the early-return
+-- guard. The rest-day count needs no column — it is re-derived on pull from
+--   offRun = DIET_BREAK_DAYS × (1 − cut_block_load ÷ cut_break_load).
+-- ⚠️ RUN THIS BEFORE deploying the build that writes it: an upsert naming a column that
+-- doesn't exist 400s and takes the whole profile sync down with it.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_break_load  NUMERIC DEFAULT 0;  -- block load when the current break began
+
+-- RETIRED 2026-08-09 (file 03): cut_load_year held a rolling-year cut total that escalated
+-- the break message after ~a year of dieting. Removed as the wrong measure of harm — that
+-- tracks energy availability and how much bodyweight has come off (both already covered),
+-- not calendar time under a mild deficit. The app no longer reads or writes this column.
+-- Deliberately NOT dropped: dropping a live column can only go wrong, and an unused one
+-- costs nothing. Safe to drop by hand later if you ever want the tidy-up.
 
 -- ── Daily food log entries ─────────────────────────────────────
 -- entry_id is the client-side timestamp used as the log entry id

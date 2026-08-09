@@ -955,12 +955,12 @@ var CUT_BLOCK_HARD_PROMPT = 84; // load-days → non-dismissable prompt
 var CUT_BLOCK_LEAN_SOFT = 42; // lean bodies are pulled earlier (Helms)
 var CUT_BLOCK_LEAN_HARD = 56;
 var BLOCK_LOSS_TRIGGER = 0.05; // 5% of bodyweight lost inside one block
-var CUMULATIVE_CUT_ESCALATE = 168; // year load above which the message escalates
-var MAINTENANCE_DECAY = 1.0; // year load paid down per maintenance day
 var TREND_CUT_RATE = 0.0025; // ≥0.25%/wk of sustained loss reads as cutting
-var BLOCK_END_GRACE = 7; // consecutive non-cut days that close a block
 var CUT_NUDGE_SNOOZE_DAYS = 7; // soft nudge "Not yet"
 var CUT_PROMPT_SNOOZE_DAYS = 3; // hard prompt "Remind me in 3 days"
+var DIET_BREAK_DAYS = 14; // rest days that fully drain a block (file 03)
+var STALL_WEEKS = 3; // weeks of a flat scale that read as stalled
+var RECHARGED_CARD_DAYS = 3; // the "Recharged" card retires itself after this
 
 // One day's contribution. Returns 0 for anything shallower than CUT_MIN_FRAC so a
 // rounding-error "deficit" can't accrue in slow motion.
@@ -983,24 +983,32 @@ var cutThresholds = function cutThresholds(p) {
   };
 };
 
-// Weight-trend backstop: fraction of bodyweight lost per week, from the same 7-day
-// rolling averages the adaptive TDEE uses. Catches switching to "Maintain" to silence
-// the prompts while still under-eating. null when there aren't enough weigh-ins.
-var weeklyLossFrac = function weeklyLossFrac(weighIns, todayK) {
+// Weight-trend backstop: fraction of bodyweight lost PER WEEK, measured between two
+// 7-day rolling averages `spanDays` apart — the same averages the adaptive TDEE uses.
+// At the default 7-day span this catches switching to "Maintain" to silence the prompts
+// while still under-eating. Over a longer span it is the stall check (file 03): three
+// weeks is long enough that a fortnight of water retention can't masquerade as a stall.
+// null when there aren't enough weigh-ins — silence beats a confident wrong reading.
+var trendLossFrac = function trendLossFrac(weighIns, todayK) {
+  var spanDays = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 7;
   var t = new Date(todayK + "T12:00:00");
   var recent = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() + 86400000)), 7);
-  var older = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - 7 * 86400000)), 7);
+  var older = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - spanDays * 86400000)), 7);
   if (!recent || !older || older <= 0) return null;
-  return (older - recent) / older;
+  return (older - recent) / older * (7 / spanDays);
+};
+var weeklyLossFrac = function weeklyLossFrac(weighIns, todayK) {
+  return trendLossFrac(weighIns, todayK, 7);
 };
 var EMPTY_CUT_BLOCK = {
   start: null,
   load: 0,
-  yearLoad: 0,
   startWeight: null,
   offRun: 0,
+  breakLoad: 0,
   lastAccrued: null,
   lastBreakEnd: null,
+  rechargedOn: null,
   nudgeAt: null,
   snoozeAt: null
 };
@@ -1008,6 +1016,14 @@ var EMPTY_CUT_BLOCK = {
 // Advance the block by ONE day. Pure, and idempotent at the call site via lastAccrued,
 // so re-opening the app can't double-count. `day.cutting` already folds in the mode and
 // the trend backstop; `day.load` is 0 on a day that doesn't qualify.
+//
+// THE DRAIN (file 03). A break is simply not cutting — there is no break state to enter
+// or fail. Every non-cut day pays down the open block PRO RATA: DIET_BREAK_DAYS of rest
+// clear it whatever its size, seven days clear half, three days leave a real dent that
+// stands. The rate is fixed from the load the block held when THIS off-stretch began
+// (`breakLoad`), which is what makes a partial break worth exactly its length. Maintain
+// and Bulk drain identically — it's the days not in cut that count, and no surplus
+// multiplier exists that we could defend.
 var stepCutBlock = function stepCutBlock(block, day) {
   var b = _objectSpread(_objectSpread({}, block), {}, {
     lastAccrued: day.date
@@ -1021,18 +1037,36 @@ var stepCutBlock = function stepCutBlock(block, day) {
     }
     if (b.startWeight == null && day.weight != null) b.startWeight = day.weight;
     b.load = Math.round((b.load + day.load) * 100) / 100;
-    b.yearLoad = Math.round((b.yearLoad + day.load) * 100) / 100;
     b.offRun = 0;
+    b.breakLoad = 0; // the break is over; the next one re-reads the load as it stands then
     return b;
   }
-  // Not cutting today: the year total pays down, and a long enough run closes the block.
-  // A sub-CUT_MIN_FRAC "deficit" lands here too — it is maintenance in all but name.
+  // Not cutting today. A sub-CUT_MIN_FRAC "deficit" lands here too — it is maintenance in
+  // all but name. Remaining load is computed from the ORIGINAL breakLoad rather than by
+  // repeated subtraction, so fourteen rest days land exactly on zero at any block size.
   b.offRun = (b.offRun || 0) + 1;
-  b.yearLoad = Math.max(0, Math.round((b.yearLoad - MAINTENANCE_DECAY) * 100) / 100);
-  if (b.start && b.offRun >= BLOCK_END_GRACE) {
-    b.start = null;
-    b.load = 0;
-    b.startWeight = null;
+  if (b.start) {
+    // First rest day sets the rate. A block stored by a pre-drain build arrives mid-run
+    // with no breakLoad, so it starts its break cleanly from today rather than guessing.
+    if (b.offRun === 1 || !b.breakLoad) {
+      b.breakLoad = b.load;
+      b.offRun = 1;
+    }
+    var left = 1 - b.offRun / DIET_BREAK_DAYS;
+    b.load = left <= 0 ? 0 : Math.round(b.breakLoad * left * 100) / 100;
+    if (b.load <= 0) {
+      // Fully recharged: the block closes, and the one celebration card is armed. Nothing
+      // changes mode — the app never resumes a cut on the user's behalf.
+      b.start = null;
+      b.load = 0;
+      b.startWeight = null;
+      b.breakLoad = 0;
+      b.offRun = 0;
+      b.lastBreakEnd = day.date;
+      b.rechargedOn = day.date;
+      b.nudgeAt = null;
+      b.snoozeAt = null;
+    }
   }
   return b;
 };
@@ -1061,27 +1095,96 @@ var daysBetween = function daysBetween(fromK, toK) {
 
 // Which prompt (if any) to show. Returns REAL elapsed weeks, never load — see the copy
 // constraint above. `lossFrac` is loss since the block started, for BLOCK_LOSS_TRIGGER.
+//
+// THE STALL (file 03). A third route into the soft nudge, and the honest one: cutting for
+// STALL_WEEKS with the scale refusing to move means adherence has drifted, the body has
+// compensated, or water is masking the loss — and in every one of those "cut harder" is
+// the wrong answer while a spell at maintenance is the fix. `stallRate` is the per-week
+// loss over that longer span; null (not enough weigh-ins) says nothing rather than
+// guessing. Calendar time alone never triggers this — a gentle cut that IS working stays
+// unbothered however long it runs.
 var cutPromptFor = function cutPromptFor(_ref) {
   var block = _ref.block,
     profile = _ref.profile,
     todayK = _ref.todayK,
     _ref$lossFrac = _ref.lossFrac,
     lossFrac = _ref$lossFrac === void 0 ? null : _ref$lossFrac,
+    _ref$stallRate = _ref.stallRate,
+    stallRate = _ref$stallRate === void 0 ? null : _ref$stallRate,
+    _ref$cutting = _ref.cutting,
+    cutting = _ref$cutting === void 0 ? false : _ref$cutting,
     _ref$now = _ref.now,
     now = _ref$now === void 0 ? Date.now() : _ref$now;
   if (!block || !block.start) return null;
   var th = cutThresholds(profile || {});
   var bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
-  var level = block.load >= th.hard || bigLoss ? "hard" : block.load >= th.soft ? "soft" : null;
+  var stalled = cutting && stallRate != null && stallRate < TREND_CUT_RATE && daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
+  var level = block.load >= th.hard || bigLoss ? "hard" : block.load >= th.soft || stalled ? "soft" : null;
   if (!level) return null;
   var snoozedFor = level === "hard" ? block.snoozeAt ? now - block.snoozeAt < CUT_PROMPT_SNOOZE_DAYS * 86400000 : false : block.nudgeAt ? now - block.nudgeAt < CUT_NUDGE_SNOOZE_DAYS * 86400000 : false;
   if (snoozedFor) return null;
   return {
     level: level,
     bigLoss: bigLoss,
-    weeks: Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)),
-    escalate: block.yearLoad > CUMULATIVE_CUT_ESCALATE
+    // Only claim a stall on the card that can say it kindly; the hard prompt outranks it.
+    stalled: stalled && level === "soft" && block.load < th.soft,
+    weeks: Math.max(1, Math.round(daysBetween(block.start, todayK) / 7))
   };
+};
+
+// ── The break gauge (energy Step 5; features/energy-safety/03) ────────
+// One number read in two directions: the same cut load fills while cutting and drains
+// while not. The bar shows whenever there is something to show — always inside an open
+// block, never once the block is closed and nothing is owed. A months-long bulk with a
+// clean slate shows nothing at all.
+var cutBarFor = function cutBarFor(_ref2) {
+  var block = _ref2.block,
+    profile = _ref2.profile,
+    todayK = _ref2.todayK,
+    _ref2$cutting = _ref2.cutting,
+    cutting = _ref2$cutting === void 0 ? false : _ref2$cutting,
+    _ref2$weightUp = _ref2.weightUp,
+    weightUp = _ref2$weightUp === void 0 ? false : _ref2$weightUp;
+  if (!block || !block.start || block.load <= 0) return null;
+  var th = cutThresholds(profile || {});
+  var pct = Math.max(0, Math.min(100, Math.round(block.load / th.soft * 100)));
+  if (cutting) return {
+    draining: false,
+    pct: pct,
+    weeks: Math.max(1, Math.round(daysBetween(block.start, todayK) / 7))
+  };
+  // Draining. The rest-day count is 0 on the day the break is declared, because today
+  // already accrued as a cut day — saying "day 1" would be a day's worth of flattery.
+  var restDays = block.offRun || 0;
+  return {
+    draining: true,
+    pct: pct,
+    restDays: restDays,
+    weightUp: weightUp,
+    daysLeft: Math.max(0, DIET_BREAK_DAYS - restDays)
+  };
+};
+
+// The one guarded action: going back to Cut mid-break, and only where the app had
+// actually advised the break (the block reached its soft-nudge threshold before it
+// stopped). A short casual cut never meets friction, and Bulk is never guarded at all.
+var cutGuardFor = function cutGuardFor(_ref3) {
+  var block = _ref3.block,
+    profile = _ref3.profile,
+    _ref3$cutting = _ref3.cutting,
+    cutting = _ref3$cutting === void 0 ? false : _ref3$cutting;
+  if (!block || !block.start || cutting || block.load <= 0) return null;
+  if ((block.breakLoad || 0) < cutThresholds(profile || {}).soft) return null;
+  return {
+    daysLeft: Math.max(1, DIET_BREAK_DAYS - (block.offRun || 0))
+  };
+};
+
+// One dismissible card when the load reaches zero, which retires itself after
+// RECHARGED_CARD_DAYS whether or not it is ever tapped. Then silence — nothing about
+// breaks is shown again until there is a new block to talk about.
+var rechargedCardDue = function rechargedCardDue(block, todayK) {
+  return !!(block && block.rechargedOn && !block.start && daysBetween(block.rechargedOn, todayK) < RECHARGED_CARD_DAYS);
 };
 
 // ── Weigh-in engagement (energy Step 2 companion; features/energy-safety/06) ──
@@ -1120,15 +1223,15 @@ var daysBetweenTs = function daysBetweenTs(aTs, bTs) {
 // Pure: should the escalated check-in nudge show? `lastActivityTs` = the last weigh-in,
 // or (if the user has never weighed) the first day they were active; null when there is
 // no anchor yet (brand-new). Muted entirely when cadence is "off".
-var shouldNudgeWeighIn = function shouldNudgeWeighIn(_ref2) {
-  var cadence = _ref2.cadence,
-    lastActivityTs = _ref2.lastActivityTs,
-    dismissedTs = _ref2.dismissedTs,
-    now = _ref2.now,
-    _ref2$gapDays = _ref2.gapDays,
-    gapDays = _ref2$gapDays === void 0 ? WEIGH_NUDGE_GAP_DAYS : _ref2$gapDays,
-    _ref2$cooldownDays = _ref2.cooldownDays,
-    cooldownDays = _ref2$cooldownDays === void 0 ? WEIGH_NUDGE_COOLDOWN_DAYS : _ref2$cooldownDays;
+var shouldNudgeWeighIn = function shouldNudgeWeighIn(_ref4) {
+  var cadence = _ref4.cadence,
+    lastActivityTs = _ref4.lastActivityTs,
+    dismissedTs = _ref4.dismissedTs,
+    now = _ref4.now,
+    _ref4$gapDays = _ref4.gapDays,
+    gapDays = _ref4$gapDays === void 0 ? WEIGH_NUDGE_GAP_DAYS : _ref4$gapDays,
+    _ref4$cooldownDays = _ref4.cooldownDays,
+    cooldownDays = _ref4$cooldownDays === void 0 ? WEIGH_NUDGE_COOLDOWN_DAYS : _ref4$cooldownDays;
   if (cadence === "off") return false;
   if (lastActivityTs == null) return false;
   if (daysBetweenTs(lastActivityTs, now) < gapDays) return false;
@@ -1136,7 +1239,7 @@ var shouldNudgeWeighIn = function shouldNudgeWeighIn(_ref2) {
   return true;
 };
 var sg = /*#__PURE__*/function () {
-  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(k) {
+  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(k) {
     var r, _t;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.p = _context.n) {
@@ -1155,11 +1258,11 @@ var sg = /*#__PURE__*/function () {
     }, _callee, null, [[0, 2]]);
   }));
   return function sg(_x) {
-    return _ref3.apply(this, arguments);
+    return _ref5.apply(this, arguments);
   };
 }();
 var ss = /*#__PURE__*/function () {
-  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(k, v) {
+  var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(k, v) {
     var _t2;
     return _regenerator().w(function (_context2) {
       while (1) switch (_context2.p = _context2.n) {
@@ -1179,7 +1282,7 @@ var ss = /*#__PURE__*/function () {
     }, _callee2, null, [[0, 2]]);
   }));
   return function ss(_x2, _x3) {
-    return _ref4.apply(this, arguments);
+    return _ref6.apply(this, arguments);
   };
 }();
 var parseJwt = function parseJwt(token) {
@@ -1208,7 +1311,7 @@ var sb = function sb() {
   return window.supabaseClient;
 };
 var syncUpsert = /*#__PURE__*/function () {
-  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(table, rows, conflict) {
+  var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(table, rows, conflict) {
     var _t3;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.p = _context3.n) {
@@ -1236,11 +1339,11 @@ var syncUpsert = /*#__PURE__*/function () {
     }, _callee3, null, [[1, 3]]);
   }));
   return function syncUpsert(_x4, _x5, _x6) {
-    return _ref5.apply(this, arguments);
+    return _ref7.apply(this, arguments);
   };
 }();
 var syncFoodLogs = /*#__PURE__*/function () {
-  var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(uid, date, logs) {
+  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(uid, date, logs) {
     var now, _t4;
     return _regenerator().w(function (_context4) {
       while (1) switch (_context4.p = _context4.n) {
@@ -1291,11 +1394,11 @@ var syncFoodLogs = /*#__PURE__*/function () {
     }, _callee4, null, [[1, 3]]);
   }));
   return function syncFoodLogs(_x7, _x8, _x9) {
-    return _ref6.apply(this, arguments);
+    return _ref8.apply(this, arguments);
   };
 }();
 var syncWater = /*#__PURE__*/function () {
-  var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(uid, date, glasses) {
+  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(uid, date, glasses) {
     return _regenerator().w(function (_context5) {
       while (1) switch (_context5.n) {
         case 0:
@@ -1318,11 +1421,11 @@ var syncWater = /*#__PURE__*/function () {
     }, _callee5);
   }));
   return function syncWater(_x0, _x1, _x10) {
-    return _ref7.apply(this, arguments);
+    return _ref9.apply(this, arguments);
   };
 }();
 var syncWorkouts = /*#__PURE__*/function () {
-  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(uid, date, ws) {
+  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(uid, date, ws) {
     var now, _t5;
     return _regenerator().w(function (_context6) {
       while (1) switch (_context6.p = _context6.n) {
@@ -1371,11 +1474,11 @@ var syncWorkouts = /*#__PURE__*/function () {
     }, _callee6, null, [[1, 3]]);
   }));
   return function syncWorkouts(_x11, _x12, _x13) {
-    return _ref8.apply(this, arguments);
+    return _ref0.apply(this, arguments);
   };
 }();
 var syncProfile = /*#__PURE__*/function () {
-  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(uid, p) {
+  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(uid, p) {
     var _t6;
     return _regenerator().w(function (_context7) {
       while (1) switch (_context7.p = _context7.n) {
@@ -1409,7 +1512,7 @@ var syncProfile = /*#__PURE__*/function () {
     }, _callee7, null, [[1, 3]]);
   }));
   return function syncProfile(_x14, _x15) {
-    return _ref9.apply(this, arguments);
+    return _ref1.apply(this, arguments);
   };
 }();
 
@@ -1417,8 +1520,11 @@ var syncProfile = /*#__PURE__*/function () {
 // activity/weighCadence: block state is the one thing that has to remember a long cut,
 // so a new device must not silently restart the clock at 0. Touches only its own four
 // columns, leaving body metrics alone on conflict.
+// `cut_break_load` carries the drain rate (file 03). It is what lets a second device
+// resume a break at the right speed AND decide the early-return guard the same way this
+// one would — the off-day count is re-derived from it on pull, so it needs no column.
 var syncCutBlock = /*#__PURE__*/function () {
-  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, b) {
+  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, b) {
     var _t7;
     return _regenerator().w(function (_context8) {
       while (1) switch (_context8.p = _context8.n) {
@@ -1435,7 +1541,7 @@ var syncCutBlock = /*#__PURE__*/function () {
             id: uid,
             cut_block_start: b.start || null,
             cut_block_load: b.load || 0,
-            cut_load_year: b.yearLoad || 0,
+            cut_break_load: b.breakLoad || 0,
             last_break_end: b.lastBreakEnd || null,
             updated_at: new Date().toISOString()
           }, {
@@ -1453,14 +1559,14 @@ var syncCutBlock = /*#__PURE__*/function () {
     }, _callee8, null, [[1, 3]]);
   }));
   return function syncCutBlock(_x16, _x17) {
-    return _ref0.apply(this, arguments);
+    return _ref10.apply(this, arguments);
   };
 }();
 
 // Persist the compliance consent record onto the profiles row (R2/R6). Upsert
 // touches only the consent columns, leaving body metrics untouched on conflict.
 var syncConsent = /*#__PURE__*/function () {
-  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, meta) {
+  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, meta) {
     var _t8;
     return _regenerator().w(function (_context9) {
       while (1) switch (_context9.p = _context9.n) {
@@ -1494,13 +1600,13 @@ var syncConsent = /*#__PURE__*/function () {
     }, _callee9, null, [[1, 3]]);
   }));
   return function syncConsent(_x18, _x19) {
-    return _ref1.apply(this, arguments);
+    return _ref11.apply(this, arguments);
   };
 }();
 
 // Record consent withdrawal (R2 — withdrawal must be as easy as giving it).
 var syncConsentWithdrawn = /*#__PURE__*/function () {
-  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid) {
+  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid) {
     var _t9;
     return _regenerator().w(function (_context0) {
       while (1) switch (_context0.p = _context0.n) {
@@ -1532,11 +1638,11 @@ var syncConsentWithdrawn = /*#__PURE__*/function () {
     }, _callee0, null, [[1, 3]]);
   }));
   return function syncConsentWithdrawn(_x20) {
-    return _ref10.apply(this, arguments);
+    return _ref12.apply(this, arguments);
   };
 }();
 var syncWeighIns = /*#__PURE__*/function () {
-  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, wis) {
+  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, wis) {
     var now;
     return _regenerator().w(function (_context1) {
       while (1) switch (_context1.n) {
@@ -1563,11 +1669,11 @@ var syncWeighIns = /*#__PURE__*/function () {
     }, _callee1);
   }));
   return function syncWeighIns(_x21, _x22) {
-    return _ref11.apply(this, arguments);
+    return _ref13.apply(this, arguments);
   };
 }();
 var syncSettings = /*#__PURE__*/function () {
-  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, mode, tdeeAdj, customKcal, acked) {
+  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, mode, tdeeAdj, customKcal, acked) {
     var _t0;
     return _regenerator().w(function (_context10) {
       while (1) switch (_context10.p = _context10.n) {
@@ -1600,11 +1706,11 @@ var syncSettings = /*#__PURE__*/function () {
     }, _callee10, null, [[1, 3]]);
   }));
   return function syncSettings(_x23, _x24, _x25, _x26, _x27) {
-    return _ref12.apply(this, arguments);
+    return _ref14.apply(this, arguments);
   };
 }();
 var syncMeals = /*#__PURE__*/function () {
-  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, meals) {
+  var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, meals) {
     var now;
     return _regenerator().w(function (_context11) {
       while (1) switch (_context11.n) {
@@ -1634,11 +1740,11 @@ var syncMeals = /*#__PURE__*/function () {
     }, _callee11);
   }));
   return function syncMeals(_x28, _x29) {
-    return _ref13.apply(this, arguments);
+    return _ref15.apply(this, arguments);
   };
 }();
 var syncBadges = /*#__PURE__*/function () {
-  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, keys) {
+  var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, keys) {
     var now;
     return _regenerator().w(function (_context12) {
       while (1) switch (_context12.n) {
@@ -1664,11 +1770,11 @@ var syncBadges = /*#__PURE__*/function () {
     }, _callee12);
   }));
   return function syncBadges(_x30, _x31) {
-    return _ref14.apply(this, arguments);
+    return _ref16.apply(this, arguments);
   };
 }();
 var syncHistory = /*#__PURE__*/function () {
-  var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid, hist) {
+  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid, hist) {
     var now;
     return _regenerator().w(function (_context13) {
       while (1) switch (_context13.n) {
@@ -1701,11 +1807,11 @@ var syncHistory = /*#__PURE__*/function () {
     }, _callee13);
   }));
   return function syncHistory(_x32, _x33) {
-    return _ref15.apply(this, arguments);
+    return _ref17.apply(this, arguments);
   };
 }();
 var migrateLocalToSupabase = /*#__PURE__*/function () {
-  var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid) {
+  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid) {
     var migKey, pv, wiv, m, ta, ck, ak, mv, bv, hv, hist, _iterator2, _step2, _snap$logs, snap, i, key, v, _t1, _t10, _t11, _t12, _t13, _t14;
     return _regenerator().w(function (_context14) {
       while (1) switch (_context14.p = _context14.n) {
@@ -1887,12 +1993,12 @@ var migrateLocalToSupabase = /*#__PURE__*/function () {
     }, _callee14, null, [[20, 25, 26, 27], [1, 31]]);
   }));
   return function migrateLocalToSupabase(_x34) {
-    return _ref16.apply(this, arguments);
+    return _ref18.apply(this, arguments);
   };
 }();
 var pullFromSupabase = /*#__PURE__*/function () {
-  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(uid) {
-    var _weighR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, block, wi, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, byDate, _iterator6, _step6, _w, _i, _Object$entries, _Object$entries$_i, d, ws, _t15, _t16, _t17, _t18;
+  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(uid) {
+    var _weighR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, load, breakLoad, offRun, block, wi, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, byDate, _iterator6, _step6, _w, _i, _Object$entries, _Object$entries$_i, d, ws, _t15, _t16, _t17, _t18;
     return _regenerator().w(function (_context15) {
       while (1) switch (_context15.p = _context15.n) {
         case 0:
@@ -1966,14 +2072,20 @@ var pullFromSupabase = /*#__PURE__*/function () {
           _context15.p = 10;
           _t16 = _context15.v;
         case 11:
-          if (!(profR.data.cut_block_start || profR.data.cut_load_year)) {
+          if (!(profR.data.cut_block_start || profR.data.last_break_end)) {
             _context15.n = 13;
             break;
           }
+          load = Number(profR.data.cut_block_load) || 0;
+          breakLoad = Number(profR.data.cut_break_load) || 0; // Rest days are algebra, not a stored field: load = breakLoad × (1 − offRun/14),
+          // so the count this device should resume from falls straight out of the two
+          // synced numbers. Nothing to drift, and the guard reads the same on any phone.
+          offRun = breakLoad > 0 ? Math.max(0, Math.min(DIET_BREAK_DAYS, Math.round(DIET_BREAK_DAYS * (1 - load / breakLoad)))) : 0;
           block = _objectSpread(_objectSpread(_objectSpread({}, EMPTY_CUT_BLOCK), localBlock), {}, {
             start: profR.data.cut_block_start || null,
-            load: Number(profR.data.cut_block_load) || 0,
-            yearLoad: Number(profR.data.cut_load_year) || 0,
+            load: load,
+            breakLoad: breakLoad,
+            offRun: offRun,
             lastBreakEnd: profR.data.last_break_end || null
           });
           _context15.n = 12;
@@ -2105,7 +2217,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
             break;
           }
           fullHist = histR.data.map(function (h) {
-            var _ref18, _waterByDate$h$date;
+            var _ref20, _waterByDate$h$date;
             return {
               date: h.date,
               mode: h.mode,
@@ -2114,7 +2226,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
               carbs: h.carbs,
               fat: h.fat,
               training: h.training,
-              water: (_ref18 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref18 !== void 0 ? _ref18 : 0,
+              water: (_ref20 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref20 !== void 0 ? _ref20 : 0,
               logs: foodByDate[h.date] || []
             };
           });
@@ -2202,7 +2314,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
     }, _callee15, null, [[26, 31, 32, 33], [8, 10], [3, 5], [1, 39]]);
   }));
   return function pullFromSupabase(_x35) {
-    return _ref17.apply(this, arguments);
+    return _ref19.apply(this, arguments);
   };
 }();
 
@@ -2212,7 +2324,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
 
 var SCHEMA_VERSION = 1;
 var runMigrations = /*#__PURE__*/function () {
-  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16() {
+  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16() {
     var stored, v;
     return _regenerator().w(function (_context16) {
       while (1) switch (_context16.n) {
@@ -2236,13 +2348,13 @@ var runMigrations = /*#__PURE__*/function () {
     }, _callee16);
   }));
   return function runMigrations() {
-    return _ref19.apply(this, arguments);
+    return _ref21.apply(this, arguments);
   };
 }();
 
 // Current Supabase access token (JWT) — the worker requires it to authorise AI calls.
 var getAccessToken = /*#__PURE__*/function () {
-  var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
+  var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
     var _data$session, client, _yield$client$auth$ge, data, _t19;
     return _regenerator().w(function (_context17) {
       while (1) switch (_context17.p = _context17.n) {
@@ -2269,13 +2381,13 @@ var getAccessToken = /*#__PURE__*/function () {
     }, _callee17, null, [[0, 3]]);
   }));
   return function getAccessToken() {
-    return _ref20.apply(this, arguments);
+    return _ref22.apply(this, arguments);
   };
 }();
 
 // Server-side voucher redemption (Phase A). Sends the code to the worker /redeem endpoint.
 var redeemVoucher = /*#__PURE__*/function () {
-  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(code) {
+  var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(code) {
     var token, res, data;
     return _regenerator().w(function (_context18) {
       while (1) switch (_context18.n) {
@@ -2321,14 +2433,14 @@ var redeemVoucher = /*#__PURE__*/function () {
     }, _callee18);
   }));
   return function redeemVoucher(_x36) {
-    return _ref21.apply(this, arguments);
+    return _ref23.apply(this, arguments);
   };
 }();
 
 // Account deletion (R5). The worker deletes the auth.users row with the service
 // role, which cascades to every table. The client cannot do this itself.
 var deleteAccountRequest = /*#__PURE__*/function () {
-  var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19() {
+  var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19() {
     var token, res, msg, _t20, _t21;
     return _regenerator().w(function (_context19) {
       while (1) switch (_context19.p = _context19.n) {
@@ -2383,14 +2495,14 @@ var deleteAccountRequest = /*#__PURE__*/function () {
     }, _callee19, null, [[4, 7]]);
   }));
   return function deleteAccountRequest() {
-    return _ref22.apply(this, arguments);
+    return _ref24.apply(this, arguments);
   };
 }();
 
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 var callAI = /*#__PURE__*/function () {
-  var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(prompt) {
+  var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(prompt) {
     var maxTokens,
       token,
       ctrl,
@@ -2485,7 +2597,7 @@ var callAI = /*#__PURE__*/function () {
     }, _callee20, null, [[3, 5, 6, 7]]);
   }));
   return function callAI(_x37) {
-    return _ref23.apply(this, arguments);
+    return _ref25.apply(this, arguments);
   };
 }();
 var repairJson = function repairJson(text) {
@@ -2503,7 +2615,7 @@ var repairJson = function repairJson(text) {
   return JSON.parse(s);
 };
 var callAIJson = /*#__PURE__*/function () {
-  var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(prompt) {
+  var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(prompt) {
     var maxTokens,
       text,
       _args21 = arguments;
@@ -2520,7 +2632,7 @@ var callAIJson = /*#__PURE__*/function () {
     }, _callee21);
   }));
   return function callAIJson(_x38) {
-    return _ref24.apply(this, arguments);
+    return _ref26.apply(this, arguments);
   };
 }();
 
@@ -2572,10 +2684,10 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
     }
   }]);
 }(React.Component); // ── Premium Modals ────────────────────────────────────────────
-function PremiumModal(_ref25) {
-  var feature = _ref25.feature,
-    onUpgrade = _ref25.onUpgrade,
-    onDismiss = _ref25.onDismiss;
+function PremiumModal(_ref27) {
+  var feature = _ref27.feature,
+    onUpgrade = _ref27.onUpgrade,
+    onDismiss = _ref27.onDismiss;
   var emoji = feature ? feature.emoji : "⭐";
   var name = feature ? feature.name : "This feature";
   return /*#__PURE__*/React.createElement("div", {
@@ -2642,10 +2754,10 @@ function PremiumModal(_ref25) {
       letterSpacing: "0.1em",
       marginBottom: 10
     }
-  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref26, i) {
-    var _ref27 = _slicedToArray(_ref26, 2),
-      e = _ref27[0],
-      t = _ref27[1];
+  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref28, i) {
+    var _ref29 = _slicedToArray(_ref28, 2),
+      e = _ref29[0],
+      t = _ref29[1];
     return /*#__PURE__*/React.createElement("div", {
       key: i,
       style: {
@@ -2700,9 +2812,9 @@ function PremiumModal(_ref25) {
     }
   }, "Maybe Later")));
 }
-function SignInModal(_ref28) {
-  var onSuccess = _ref28.onSuccess,
-    onCancel = _ref28.onCancel;
+function SignInModal(_ref30) {
+  var onSuccess = _ref30.onSuccess,
+    onCancel = _ref30.onCancel;
   var devMode = !GOOGLE_CLIENT_ID;
   var _useState = useState(devMode ? "payment" : "google"),
     _useState2 = _slicedToArray(_useState, 2),
@@ -2818,7 +2930,7 @@ function SignInModal(_ref28) {
     };
   };
   var handleVoucher = /*#__PURE__*/function () {
-    var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
+    var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23() {
       var _t24;
       return _regenerator().w(function (_context23) {
         while (1) switch (_context23.p = _context23.n) {
@@ -2860,7 +2972,7 @@ function SignInModal(_ref28) {
       }, _callee23, null, [[3, 5]]);
     }));
     return function handleVoucher() {
-      return _ref29.apply(this, arguments);
+      return _ref31.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3134,10 +3246,10 @@ function SignInModal(_ref28) {
     }
   }, "Cancel"))));
 }
-function SignOutModal(_ref30) {
-  var userName = _ref30.userName,
-    onConfirm = _ref30.onConfirm,
-    onCancel = _ref30.onCancel;
+function SignOutModal(_ref32) {
+  var userName = _ref32.userName,
+    onConfirm = _ref32.onConfirm,
+    onCancel = _ref32.onCancel;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -3210,9 +3322,9 @@ function SignOutModal(_ref30) {
 
 // Retroactive / re-consent prompt (R2). Shown when a signed-in user has not yet
 // agreed to the current privacy-policy version. Blocking — they consent or sign out.
-function ConsentModal(_ref31) {
-  var onConsent = _ref31.onConsent,
-    onSignOut = _ref31.onSignOut;
+function ConsentModal(_ref33) {
+  var onConsent = _ref33.onConsent,
+    onSignOut = _ref33.onSignOut;
   var _useState13 = useState(false),
     _useState14 = _slicedToArray(_useState13, 2),
     ok = _useState14[0],
@@ -3329,13 +3441,13 @@ function ConsentModal(_ref31) {
 // ── Account & Privacy screen ──────────────────────────────────
 // Reached by tapping the avatar. Home for data export (R4), account deletion
 // (R5), policy links, consent status, and sign out (LEGAL_ROADMAP Phase B).
-function AccountScreen(_ref32) {
-  var user = _ref32.user,
-    consentInfo = _ref32.consentInfo,
-    onBack = _ref32.onBack,
-    onExport = _ref32.onExport,
-    onSignOut = _ref32.onSignOut,
-    onDelete = _ref32.onDelete;
+function AccountScreen(_ref34) {
+  var user = _ref34.user,
+    consentInfo = _ref34.consentInfo,
+    onBack = _ref34.onBack,
+    onExport = _ref34.onExport,
+    onSignOut = _ref34.onSignOut,
+    onDelete = _ref34.onDelete;
   var _useState15 = useState(false),
     _useState16 = _slicedToArray(_useState15, 2),
     confirm = _useState16[0],
@@ -3353,7 +3465,7 @@ function AccountScreen(_ref32) {
     err = _useState22[0],
     setErr = _useState22[1];
   var runDelete = /*#__PURE__*/function () {
-    var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
+    var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
       var _t25;
       return _regenerator().w(function (_context24) {
         while (1) switch (_context24.p = _context24.n) {
@@ -3377,7 +3489,7 @@ function AccountScreen(_ref32) {
       }, _callee24, null, [[1, 3]]);
     }));
     return function runDelete() {
-      return _ref33.apply(this, arguments);
+      return _ref35.apply(this, arguments);
     };
   }();
   var linkRow = function linkRow(label, href) {
@@ -3666,9 +3778,9 @@ function AccountScreen(_ref32) {
     }
   }, "fuellogadmin@gmail.com"), "."));
 }
-function LapsedModal(_ref34) {
-  var onRenew = _ref34.onRenew,
-    onDismiss = _ref34.onDismiss;
+function LapsedModal(_ref36) {
+  var onRenew = _ref36.onRenew,
+    onDismiss = _ref36.onDismiss;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -3752,10 +3864,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref35) {
-  var title = _ref35.title,
-    onBack = _ref35.onBack,
-    right = _ref35.right;
+function BackHdr(_ref37) {
+  var title = _ref37.title,
+    onBack = _ref37.onBack,
+    right = _ref37.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -3796,10 +3908,10 @@ function BackHdr(_ref35) {
     }
   }, title), right);
 }
-function Chip(_ref36) {
-  var label = _ref36.label,
-    value = _ref36.value,
-    color = _ref36.color;
+function Chip(_ref38) {
+  var label = _ref38.label,
+    value = _ref38.value,
+    color = _ref38.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -3822,11 +3934,11 @@ function Chip(_ref36) {
     }
   }, label));
 }
-function MBar(_ref37) {
-  var label = _ref37.label,
-    value = _ref37.value,
-    target = _ref37.target,
-    color = _ref37.color;
+function MBar(_ref39) {
+  var label = _ref39.label,
+    value = _ref39.value,
+    target = _ref39.target,
+    color = _ref39.color;
   var pct = Math.min(100, value / target * 100);
   var overG = value - target;
   var accent = overG > 15 ? "var(--over)" : overG > 5 ? "var(--warn)" : null;
@@ -3871,14 +3983,14 @@ function MBar(_ref37) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref38) {
-  var mode = _ref38.mode,
-    totals = _ref38.totals,
-    targets = _ref38.targets,
-    streak = _ref38.streak,
-    water = _ref38.water,
-    _ref38$logs = _ref38.logs,
-    logs = _ref38$logs === void 0 ? [] : _ref38$logs;
+function CoachCard(_ref40) {
+  var mode = _ref40.mode,
+    totals = _ref40.totals,
+    targets = _ref40.targets,
+    streak = _ref40.streak,
+    water = _ref40.water,
+    _ref40$logs = _ref40.logs,
+    logs = _ref40$logs === void 0 ? [] : _ref40$logs;
   var _useState23 = useState(""),
     _useState24 = _slicedToArray(_useState23, 2),
     tip = _useState24[0],
@@ -3911,7 +4023,7 @@ function CoachCard(_ref38) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
+    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
       var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, eaten, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t26;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
@@ -3984,7 +4096,7 @@ function CoachCard(_ref38) {
       }, _callee25, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref39.apply(this, arguments);
+      return _ref41.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -4058,14 +4170,14 @@ function CoachCard(_ref38) {
 // ── Tag input (feature #8) ────────────────────────────────────
 // A hybrid combobox: free-text that surfaces selectable suggestions and also
 // lets the user commit a CUSTOM tag the app didn't suggest. Tags are removable pills.
-function TagField(_ref40) {
-  var label = _ref40.label,
-    tags = _ref40.tags,
-    suggestions = _ref40.suggestions,
-    onChange = _ref40.onChange,
-    _ref40$accent = _ref40.accent,
-    accent = _ref40$accent === void 0 ? A : _ref40$accent,
-    placeholder = _ref40.placeholder;
+function TagField(_ref42) {
+  var label = _ref42.label,
+    tags = _ref42.tags,
+    suggestions = _ref42.suggestions,
+    onChange = _ref42.onChange,
+    _ref42$accent = _ref42.accent,
+    accent = _ref42$accent === void 0 ? A : _ref42$accent,
+    placeholder = _ref42.placeholder;
   var _useState31 = useState(""),
     _useState32 = _slicedToArray(_useState31, 2),
     input = _useState32[0],
@@ -4235,9 +4347,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kg)];
     },
-    build: function build(_ref41) {
-      var _ref42 = _slicedToArray(_ref41, 1),
-        a = _ref42[0];
+    build: function build(_ref43) {
+      var _ref44 = _slicedToArray(_ref43, 1),
+        a = _ref44[0];
       return a;
     }
   },
@@ -4246,9 +4358,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kgToLb(kg))];
     },
-    build: function build(_ref43) {
-      var _ref44 = _slicedToArray(_ref43, 1),
-        a = _ref44[0];
+    build: function build(_ref45) {
+      var _ref46 = _slicedToArray(_ref45, 1),
+        a = _ref46[0];
       return lbToKg(a);
     }
   },
@@ -4259,10 +4371,10 @@ var MEASURE_CFG = {
       var x = kgToStLb(kg);
       return [String(x.st), String(x.lb)];
     },
-    build: function build(_ref45) {
-      var _ref46 = _slicedToArray(_ref45, 2),
-        s = _ref46[0],
-        p = _ref46[1];
+    build: function build(_ref47) {
+      var _ref48 = _slicedToArray(_ref47, 2),
+        s = _ref48[0],
+        p = _ref48[1];
       return stLbToKg(s, p);
     }
   },
@@ -4271,9 +4383,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cm)];
     },
-    build: function build(_ref47) {
-      var _ref48 = _slicedToArray(_ref47, 1),
-        a = _ref48[0];
+    build: function build(_ref49) {
+      var _ref50 = _slicedToArray(_ref49, 1),
+        a = _ref50[0];
       return a;
     }
   },
@@ -4282,9 +4394,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cmToInch(cm))];
     },
-    build: function build(_ref49) {
-      var _ref50 = _slicedToArray(_ref49, 1),
-        a = _ref50[0];
+    build: function build(_ref51) {
+      var _ref52 = _slicedToArray(_ref51, 1),
+        a = _ref52[0];
       return inchToCm(a);
     }
   },
@@ -4295,18 +4407,18 @@ var MEASURE_CFG = {
       var x = cmToFtIn(cm);
       return [String(x.ft), String(x["in"])];
     },
-    build: function build(_ref51) {
-      var _ref52 = _slicedToArray(_ref51, 2),
-        ft = _ref52[0],
-        i = _ref52[1];
+    build: function build(_ref53) {
+      var _ref54 = _slicedToArray(_ref53, 2),
+        ft = _ref54[0],
+        i = _ref54[1];
       return ftInToCm(ft, i);
     }
   }
 };
-function MeasureField(_ref53) {
-  var metric = _ref53.metric,
-    unit = _ref53.unit,
-    onChange = _ref53.onChange;
+function MeasureField(_ref55) {
+  var metric = _ref55.metric,
+    unit = _ref55.unit,
+    onChange = _ref55.onChange;
   var cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
   var _useState33 = useState(function () {
       return cfg.seed(metric);
@@ -4364,11 +4476,11 @@ function ThemeToggle() {
       borderRadius: 12,
       padding: 4
     }
-  }, opts.map(function (_ref54) {
-    var _ref55 = _slicedToArray(_ref54, 3),
-      v = _ref55[0],
-      icon = _ref55[1],
-      lbl = _ref55[2];
+  }, opts.map(function (_ref56) {
+    var _ref57 = _slicedToArray(_ref56, 3),
+      v = _ref57[0],
+      icon = _ref57[1],
+      lbl = _ref57[2];
     var on = choice === v;
     return /*#__PURE__*/React.createElement("button", {
       key: v,
@@ -4407,10 +4519,10 @@ function ThemeToggle() {
     }, lbl));
   }));
 }
-function UnitSwitch(_ref56) {
-  var value = _ref56.value,
-    options = _ref56.options,
-    onChange = _ref56.onChange;
+function UnitSwitch(_ref58) {
+  var value = _ref58.value,
+    options = _ref58.options,
+    onChange = _ref58.onChange;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -4420,10 +4532,10 @@ function UnitSwitch(_ref56) {
       borderRadius: 999,
       padding: 2
     }
-  }, options.map(function (_ref57) {
-    var _ref58 = _slicedToArray(_ref57, 2),
-      v = _ref58[0],
-      lbl = _ref58[1];
+  }, options.map(function (_ref59) {
+    var _ref60 = _slicedToArray(_ref59, 2),
+      v = _ref60[0],
+      lbl = _ref60[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -4444,16 +4556,16 @@ function UnitSwitch(_ref56) {
     }, lbl);
   }));
 }
-function ProfileScreen(_ref59) {
-  var profile = _ref59.profile,
-    onSave = _ref59.onSave,
-    onBack = _ref59.onBack,
-    _ref59$tdeeAdj = _ref59.tdeeAdj,
-    tdeeAdj = _ref59$tdeeAdj === void 0 ? 0 : _ref59$tdeeAdj,
-    _ref59$weighIns = _ref59.weighIns,
-    weighIns = _ref59$weighIns === void 0 ? [] : _ref59$weighIns,
-    _ref59$aggressiveCutA = _ref59.aggressiveCutAcked,
-    aggressiveCutAcked = _ref59$aggressiveCutA === void 0 ? false : _ref59$aggressiveCutA;
+function ProfileScreen(_ref61) {
+  var profile = _ref61.profile,
+    onSave = _ref61.onSave,
+    onBack = _ref61.onBack,
+    _ref61$tdeeAdj = _ref61.tdeeAdj,
+    tdeeAdj = _ref61$tdeeAdj === void 0 ? 0 : _ref61$tdeeAdj,
+    _ref61$weighIns = _ref61.weighIns,
+    weighIns = _ref61$weighIns === void 0 ? [] : _ref61$weighIns,
+    _ref61$aggressiveCutA = _ref61.aggressiveCutAcked,
+    aggressiveCutAcked = _ref61$aggressiveCutA === void 0 ? false : _ref61$aggressiveCutA;
   var _useState37 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState38 = _slicedToArray(_useState37, 2),
     f = _useState38[0],
@@ -5004,10 +5116,10 @@ function ProfileScreen(_ref59) {
     mode: "bulk",
     label: "BULK",
     color: "var(--bulk)"
-  }].map(function (_ref60) {
-    var mode = _ref60.mode,
-      label = _ref60.label,
-      color = _ref60.color;
+  }].map(function (_ref62) {
+    var mode = _ref62.mode,
+      label = _ref62.label,
+      color = _ref62.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -5030,11 +5142,11 @@ function ProfileScreen(_ref59) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref61) {
-      var _ref62 = _slicedToArray(_ref61, 3),
-        k = _ref62[0],
-        key = _ref62[1],
-        u = _ref62[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref63) {
+      var _ref64 = _slicedToArray(_ref63, 3),
+        k = _ref64[0],
+        key = _ref64[1],
+        u = _ref64[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -5110,14 +5222,14 @@ function ProfileScreen(_ref59) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref63) {
-  var meal = _ref63.meal,
-    onSave = _ref63.onSave,
-    onCancel = _ref63.onCancel,
-    _ref63$isPremium = _ref63.isPremium,
-    isPremium = _ref63$isPremium === void 0 ? false : _ref63$isPremium,
-    _ref63$onPremiumGate = _ref63.onPremiumGate,
-    onPremiumGate = _ref63$onPremiumGate === void 0 ? function () {} : _ref63$onPremiumGate;
+function MealForm(_ref65) {
+  var meal = _ref65.meal,
+    onSave = _ref65.onSave,
+    onCancel = _ref65.onCancel,
+    _ref65$isPremium = _ref65.isPremium,
+    isPremium = _ref65$isPremium === void 0 ? false : _ref65$isPremium,
+    _ref65$onPremiumGate = _ref65.onPremiumGate,
+    onPremiumGate = _ref65$onPremiumGate === void 0 ? function () {} : _ref65$onPremiumGate;
   var blank = {
     name: "",
     kcal: "",
@@ -5154,7 +5266,7 @@ function MealForm(_ref63) {
   // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
   // Open Food Facts a bounded background refinement that only wins on confidence.
   var estimate = /*#__PURE__*/function () {
-    var _ref64 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+    var _ref66 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
       var fill, upd, oft, _t27, _t28;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
@@ -5229,7 +5341,7 @@ function MealForm(_ref63) {
       }, _callee26, null, [[8, 10], [3, 5]]);
     }));
     return function estimate() {
-      return _ref64.apply(this, arguments);
+      return _ref66.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5388,13 +5500,13 @@ function MealForm(_ref63) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref65) {
-  var weighIns = _ref65.weighIns,
-    onWeighIn = _ref65.onWeighIn,
-    tdeeAdj = _ref65.tdeeAdj,
-    baseTDEE = _ref65.baseTDEE,
-    _ref65$tdeeFloor = _ref65.tdeeFloor,
-    tdeeFloor = _ref65$tdeeFloor === void 0 ? baseTDEE : _ref65$tdeeFloor;
+function WeighInWidget(_ref67) {
+  var weighIns = _ref67.weighIns,
+    onWeighIn = _ref67.onWeighIn,
+    tdeeAdj = _ref67.tdeeAdj,
+    baseTDEE = _ref67.baseTDEE,
+    _ref67$tdeeFloor = _ref67.tdeeFloor,
+    tdeeFloor = _ref67$tdeeFloor === void 0 ? baseTDEE : _ref67$tdeeFloor;
   var _useState53 = useState(""),
     _useState54 = _slicedToArray(_useState53, 2),
     val = _useState54[0],
@@ -5616,15 +5728,15 @@ function WeighInWidget(_ref65) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref66) {
-  var workouts = _ref66.workouts,
-    onAdd = _ref66.onAdd,
-    onRemove = _ref66.onRemove,
-    prof = _ref66.prof,
-    _ref66$earnedToday = _ref66.earnedToday,
-    earnedToday = _ref66$earnedToday === void 0 ? 0 : _ref66$earnedToday,
-    isPremium = _ref66.isPremium,
-    onPremiumGate = _ref66.onPremiumGate;
+function WorkoutLogger(_ref68) {
+  var workouts = _ref68.workouts,
+    onAdd = _ref68.onAdd,
+    onRemove = _ref68.onRemove,
+    prof = _ref68.prof,
+    _ref68$earnedToday = _ref68.earnedToday,
+    earnedToday = _ref68$earnedToday === void 0 ? 0 : _ref68$earnedToday,
+    isPremium = _ref68.isPremium,
+    onPremiumGate = _ref68.onPremiumGate;
   var _useState57 = useState("legs"),
     _useState58 = _slicedToArray(_useState57, 2),
     type = _useState58[0],
@@ -5672,7 +5784,7 @@ function WorkoutLogger(_ref66) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref67 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
+    var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
       var prompt, _t29, _t30;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
@@ -5708,7 +5820,7 @@ function WorkoutLogger(_ref66) {
       }, _callee27, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref67.apply(this, arguments);
+      return _ref69.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -6030,10 +6142,10 @@ function WorkoutLogger(_ref66) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref68) {
-  var user = _ref68.user,
-    _ref68$size = _ref68.size,
-    size = _ref68$size === void 0 ? 34 : _ref68$size;
+function Avatar(_ref70) {
+  var user = _ref70.user,
+    _ref70$size = _ref70.size,
+    size = _ref70$size === void 0 ? 34 : _ref70$size;
   var _useState71 = useState(false),
     _useState72 = _slicedToArray(_useState71, 2),
     failed = _useState72[0],
@@ -6070,12 +6182,12 @@ function Avatar(_ref68) {
 // today-list and the History day view. Every field is editable by all users;
 // the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
 // reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
-function EntryEditor(_ref69) {
-  var entry = _ref69.entry,
-    onSave = _ref69.onSave,
-    onCancel = _ref69.onCancel,
-    isPremium = _ref69.isPremium,
-    onPremiumGate = _ref69.onPremiumGate;
+function EntryEditor(_ref71) {
+  var entry = _ref71.entry,
+    onSave = _ref71.onSave,
+    onCancel = _ref71.onCancel,
+    isPremium = _ref71.isPremium,
+    onPremiumGate = _ref71.onPremiumGate;
   var _useState73 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
@@ -6101,7 +6213,7 @@ function EntryEditor(_ref69) {
     setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref70 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
+    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
       var fill, upd, oft, _t31, _t32;
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.p = _context28.n) {
@@ -6171,7 +6283,7 @@ function EntryEditor(_ref69) {
       }, _callee28, null, [[7, 9], [3, 5]]);
     }));
     return function reestimate() {
-      return _ref70.apply(this, arguments);
+      return _ref72.apply(this, arguments);
     };
   }();
   var save = function save() {
@@ -6336,64 +6448,77 @@ function EntryEditor(_ref69) {
     }
   }, "Save")));
 }
-function Dashboard(_ref71) {
-  var logs = _ref71.logs,
-    totals = _ref71.totals,
-    targets = _ref71.targets,
-    remaining = _ref71.remaining,
-    water = _ref71.water,
-    setWater = _ref71.setWater,
-    mode = _ref71.mode,
-    setMode = _ref71.setMode,
-    setView = _ref71.setView,
-    removeLog = _ref71.removeLog,
-    updateLog = _ref71.updateLog,
-    addToQA = _ref71.addToQA,
-    hasProfile = _ref71.hasProfile,
-    streak = _ref71.streak,
-    streakPop = _ref71.streakPop,
-    badgeGlow = _ref71.badgeGlow,
-    prof = _ref71.prof,
-    weighIns = _ref71.weighIns,
-    onWeighIn = _ref71.onWeighIn,
-    tdeeAdj = _ref71.tdeeAdj,
-    baseTDEE = _ref71.baseTDEE,
-    _ref71$tdeeFloor = _ref71.tdeeFloor,
-    tdeeFloor = _ref71$tdeeFloor === void 0 ? baseTDEE : _ref71$tdeeFloor,
-    _ref71$showWeighNudge = _ref71.showWeighNudge,
-    showWeighNudge = _ref71$showWeighNudge === void 0 ? false : _ref71$showWeighNudge,
-    _ref71$onNudgeDismiss = _ref71.onNudgeDismiss,
-    onNudgeDismiss = _ref71$onNudgeDismiss === void 0 ? function () {} : _ref71$onNudgeDismiss,
-    _ref71$onNudgeMute = _ref71.onNudgeMute,
-    onNudgeMute = _ref71$onNudgeMute === void 0 ? function () {} : _ref71$onNudgeMute,
-    coachKey = _ref71.coachKey,
-    _ref71$cutPrompt = _ref71.cutPrompt,
-    cutPrompt = _ref71$cutPrompt === void 0 ? null : _ref71$cutPrompt,
-    _ref71$onCutNudgeDism = _ref71.onCutNudgeDismiss,
-    onCutNudgeDismiss = _ref71$onCutNudgeDism === void 0 ? function () {} : _ref71$onCutNudgeDism,
-    _ref71$onCutPromptSno = _ref71.onCutPromptSnooze,
-    onCutPromptSnooze = _ref71$onCutPromptSno === void 0 ? function () {} : _ref71$onCutPromptSno,
-    _ref71$onStartDietBre = _ref71.onStartDietBreak,
-    onStartDietBreak = _ref71$onStartDietBre === void 0 ? function () {} : _ref71$onStartDietBre,
-    workouts = _ref71.workouts,
-    onAddWorkout = _ref71.onAddWorkout,
-    onRemoveWorkout = _ref71.onRemoveWorkout,
-    customKcal = _ref71.customKcal,
-    onSetCustomKcal = _ref71.onSetCustomKcal,
-    isCustomMode = _ref71.isCustomMode,
-    aggressiveCutAcked = _ref71.aggressiveCutAcked,
-    onAckAggressiveCut = _ref71.onAckAggressiveCut,
-    authState = _ref71.authState,
-    authUser = _ref71.authUser,
-    onPremiumGate = _ref71.onPremiumGate,
-    onSignOut = _ref71.onSignOut,
-    isOnline = _ref71.isOnline,
-    syncMsg = _ref71.syncMsg;
+function Dashboard(_ref73) {
+  var logs = _ref73.logs,
+    totals = _ref73.totals,
+    targets = _ref73.targets,
+    remaining = _ref73.remaining,
+    water = _ref73.water,
+    setWater = _ref73.setWater,
+    mode = _ref73.mode,
+    setMode = _ref73.setMode,
+    setView = _ref73.setView,
+    removeLog = _ref73.removeLog,
+    updateLog = _ref73.updateLog,
+    addToQA = _ref73.addToQA,
+    hasProfile = _ref73.hasProfile,
+    streak = _ref73.streak,
+    streakPop = _ref73.streakPop,
+    badgeGlow = _ref73.badgeGlow,
+    prof = _ref73.prof,
+    weighIns = _ref73.weighIns,
+    onWeighIn = _ref73.onWeighIn,
+    tdeeAdj = _ref73.tdeeAdj,
+    baseTDEE = _ref73.baseTDEE,
+    _ref73$tdeeFloor = _ref73.tdeeFloor,
+    tdeeFloor = _ref73$tdeeFloor === void 0 ? baseTDEE : _ref73$tdeeFloor,
+    _ref73$showWeighNudge = _ref73.showWeighNudge,
+    showWeighNudge = _ref73$showWeighNudge === void 0 ? false : _ref73$showWeighNudge,
+    _ref73$onNudgeDismiss = _ref73.onNudgeDismiss,
+    onNudgeDismiss = _ref73$onNudgeDismiss === void 0 ? function () {} : _ref73$onNudgeDismiss,
+    _ref73$onNudgeMute = _ref73.onNudgeMute,
+    onNudgeMute = _ref73$onNudgeMute === void 0 ? function () {} : _ref73$onNudgeMute,
+    coachKey = _ref73.coachKey,
+    _ref73$cutPrompt = _ref73.cutPrompt,
+    cutPrompt = _ref73$cutPrompt === void 0 ? null : _ref73$cutPrompt,
+    _ref73$onCutNudgeDism = _ref73.onCutNudgeDismiss,
+    onCutNudgeDismiss = _ref73$onCutNudgeDism === void 0 ? function () {} : _ref73$onCutNudgeDism,
+    _ref73$onCutPromptSno = _ref73.onCutPromptSnooze,
+    onCutPromptSnooze = _ref73$onCutPromptSno === void 0 ? function () {} : _ref73$onCutPromptSno,
+    _ref73$onStartDietBre = _ref73.onStartDietBreak,
+    onStartDietBreak = _ref73$onStartDietBre === void 0 ? function () {} : _ref73$onStartDietBre,
+    _ref73$cutBar = _ref73.cutBar,
+    cutBar = _ref73$cutBar === void 0 ? null : _ref73$cutBar,
+    _ref73$cutGuard = _ref73.cutGuard,
+    cutGuard = _ref73$cutGuard === void 0 ? null : _ref73$cutGuard,
+    _ref73$showRecharged = _ref73.showRecharged,
+    showRecharged = _ref73$showRecharged === void 0 ? false : _ref73$showRecharged,
+    _ref73$onDismissRecha = _ref73.onDismissRecharged,
+    onDismissRecharged = _ref73$onDismissRecha === void 0 ? function () {} : _ref73$onDismissRecha,
+    workouts = _ref73.workouts,
+    onAddWorkout = _ref73.onAddWorkout,
+    onRemoveWorkout = _ref73.onRemoveWorkout,
+    customKcal = _ref73.customKcal,
+    onSetCustomKcal = _ref73.onSetCustomKcal,
+    isCustomMode = _ref73.isCustomMode,
+    aggressiveCutAcked = _ref73.aggressiveCutAcked,
+    onAckAggressiveCut = _ref73.onAckAggressiveCut,
+    authState = _ref73.authState,
+    authUser = _ref73.authUser,
+    onPremiumGate = _ref73.onPremiumGate,
+    onSignOut = _ref73.onSignOut,
+    isOnline = _ref73.isOnline,
+    syncMsg = _ref73.syncMsg;
   var isPremium = authState === "premium";
   var _useState79 = useState(null),
     _useState80 = _slicedToArray(_useState79, 2),
     editingId = _useState80[0],
     setEditingId = _useState80[1];
+  var _useState81 = useState(false),
+    _useState82 = _slicedToArray(_useState81, 2),
+    askCutGuard = _useState82[0],
+    setAskCutGuard = _useState82[1]; // early-return confirm (file 03)
+
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
   var mc = MODES[mode].color;
@@ -6412,22 +6537,22 @@ function Dashboard(_ref71) {
   var intakeShaky = logs.length > 0 && intakeConf < INTAKE_FLAG_BELOW;
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
-  var _useState81 = useState({}),
-    _useState82 = _slicedToArray(_useState81, 2),
-    savedIds = _useState82[0],
-    setSavedIds = _useState82[1];
   var _useState83 = useState({}),
     _useState84 = _slicedToArray(_useState83, 2),
-    qaBlink = _useState84[0],
-    setQaBlink = _useState84[1]; // log.id -> tap nonce, drives re-blink on every tap
-  var _useState85 = useState(false),
+    savedIds = _useState84[0],
+    setSavedIds = _useState84[1];
+  var _useState85 = useState({}),
     _useState86 = _slicedToArray(_useState85, 2),
-    editingTarget = _useState86[0],
-    setEditingTarget = _useState86[1];
-  var _useState87 = useState(""),
+    qaBlink = _useState86[0],
+    setQaBlink = _useState86[1]; // log.id -> tap nonce, drives re-blink on every tap
+  var _useState87 = useState(false),
     _useState88 = _slicedToArray(_useState87, 2),
-    targetInputVal = _useState88[0],
-    setTargetInputVal = _useState88[1];
+    editingTarget = _useState88[0],
+    setEditingTarget = _useState88[1];
+  var _useState89 = useState(""),
+    _useState90 = _slicedToArray(_useState89, 2),
+    targetInputVal = _useState90[0],
+    setTargetInputVal = _useState90[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) {
@@ -6470,7 +6595,7 @@ function Dashboard(_ref71) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(log) {
+    var _ref74 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29(log) {
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.n) {
           case 0:
@@ -6494,7 +6619,7 @@ function Dashboard(_ref71) {
       }, _callee29);
     }));
     return function handleAddToQA(_x40) {
-      return _ref72.apply(this, arguments);
+      return _ref74.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -6642,15 +6767,15 @@ function Dashboard(_ref71) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref73) {
-    var _ref74 = _slicedToArray(_ref73, 2),
-      k = _ref74[0],
-      v = _ref74[1];
+  }, Object.entries(MODES).map(function (_ref75) {
+    var _ref76 = _slicedToArray(_ref75, 2),
+      k = _ref76[0],
+      v = _ref76[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
-        return setMode(k);
+        if (k === "cut" && cutGuard) setAskCutGuard(true);else setMode(k);
       },
       style: {
         flex: 1,
@@ -6664,7 +6789,65 @@ function Dashboard(_ref71) {
         letterSpacing: "0.06em"
       }
     }, v.label);
-  })), /*#__PURE__*/React.createElement(WorkoutLogger, {
+  })), askCutGuard && cutGuard && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--warn-tint-2)",
+      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: AMBER,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 2
+    }
+  }, "BACK TO CUTTING ALREADY?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--gold-dim)",
+      lineHeight: 1.5
+    }
+  }, "About ", cutGuard.daysLeft, " more rest ", cutGuard.daysLeft === 1 ? "day" : "days", " would recharge you fully. It's your call.", /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return setAskCutGuard(false);
+    },
+    style: {
+      flex: 1,
+      padding: "8px",
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("44")),
+      borderRadius: 9,
+      color: A,
+      fontSize: 11.5,
+      fontWeight: 800,
+      cursor: "pointer"
+    }
+  }, "Keep resting"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      setAskCutGuard(false);
+      setMode("cut");
+    },
+    style: {
+      padding: "8px 14px",
+      background: "transparent",
+      border: "1px solid ".concat(BD),
+      borderRadius: 9,
+      color: "var(--text-mid)",
+      fontSize: 11.5,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "Cut anyway")))), /*#__PURE__*/React.createElement(WorkoutLogger, {
     workouts: workouts,
     onAdd: onAddWorkout,
     onRemove: onRemoveWorkout,
@@ -6928,7 +7111,101 @@ function Dashboard(_ref71) {
       marginTop: 4,
       color: "var(--text-mid)"
     }
-  }, "What matters isn't just what you eat \u2014 it's what's left once training has taken its share. At your body composition there isn't much spare to draw on, and running short for weeks at a time tends to show up as flat training, poor sleep, low mood and hormonal changes. One light day is nothing to worry about."))))), cutPrompt && cutPrompt.level === "soft" && /*#__PURE__*/React.createElement("div", {
+  }, "What matters isn't just what you eat \u2014 it's what's left once training has taken its share. At your body composition there isn't much spare to draw on, and running short for weeks at a time tends to show up as flat training, poor sleep, low mood and hormonal changes. One light day is nothing to worry about."))))), cutBar && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      border: "1px solid ".concat(BD),
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      color: cutBar.draining ? A : "var(--text-label)"
+    }
+  }, cutBar.draining ? cutBar.restDays > 0 ? "ON A BREAK \xB7 DAY ".concat(cutBar.restDays) : "ON A BREAK · STARTING TODAY" : "CUTTING \xB7 WEEK ".concat(cutBar.weeks)), cutBar.draining && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      color: "var(--text-mid)"
+    }
+  }, "about ", cutBar.daysLeft, " ", cutBar.daysLeft === 1 ? "day" : "days", " to fully recharged")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 6,
+      borderRadius: 999,
+      background: "var(--surface-2)",
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "".concat(cutBar.pct, "%"),
+      height: "100%",
+      borderRadius: 999,
+      background: cutBar.draining ? A : AMBER,
+      transition: "width 0.4s ease"
+    }
+  })), cutBar.draining && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      color: "var(--text-mid)",
+      lineHeight: 1.5,
+      marginTop: 6
+    }
+  }, "Recharging now sets up your next block.", cutBar.weightUp && " Weight up a little on a break is normal — usually water and glycogen, not fat.")), showRecharged && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("33")),
+      borderRadius: 12,
+      padding: "10px 14px",
+      marginBottom: 12,
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      marginTop: 1
+    }
+  }, "\uD83D\uDD0B"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: A,
+      fontWeight: 800,
+      letterSpacing: "0.06em",
+      marginBottom: 2
+    }
+  }, "RECHARGED"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--gold-dim)",
+      lineHeight: 1.5
+    }
+  }, "You're in good shape to cut again, if you want to.")), /*#__PURE__*/React.createElement("button", {
+    onClick: onDismissRecharged,
+    style: {
+      background: "none",
+      border: "none",
+      color: "var(--text-faint-2)",
+      fontSize: 16,
+      padding: "0 2px",
+      cursor: "pointer",
+      lineHeight: 1
+    }
+  }, "\xD7")), cutPrompt && cutPrompt.level === "soft" && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--warn-tint-2)",
       border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
@@ -6956,13 +7233,13 @@ function Dashboard(_ref71) {
       letterSpacing: "0.06em",
       marginBottom: 2
     }
-  }, "YOU'VE BEEN CUTTING FOR ", cutPrompt.weeks, " WEEKS"), /*#__PURE__*/React.createElement("div", {
+  }, cutPrompt.stalled ? "YOUR LOSS HAS STALLED" : "YOU'VE BEEN CUTTING FOR ".concat(cutPrompt.weeks, " WEEKS")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--gold-dim)",
       lineHeight: 1.5
     }
-  }, "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier.", /*#__PURE__*/React.createElement("details", {
+  }, cutPrompt.stalled ? "The scale hasn't moved in about three weeks. Bodies adapt to a long deficit — a couple of weeks at maintenance is how you reset it." : "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier.", /*#__PURE__*/React.createElement("details", {
     style: {
       marginTop: 4
     }
@@ -6978,7 +7255,7 @@ function Dashboard(_ref71) {
       marginTop: 4,
       color: "var(--text-mid)"
     }
-  }, "Long deficits get harder, not easier \u2014 hunger climbs, training goes flat, and holding the line takes more out of you than it did in week one. A break isn't lost progress: it's what makes the next block work, and it re-checks whether your maintenance estimate is still right.")), /*#__PURE__*/React.createElement("div", {
+  }, cutPrompt.stalled ? "A stall isn't a discipline problem, and eating less is rarely the fix. After a long\n                       stretch in a deficit the body quietly spends less \u2014 you move less without noticing,\n                       and water can hide real fat loss for weeks. Time at maintenance settles all three\n                       and re-checks whether your maintenance estimate is still right." : "Long deficits get harder, not easier \u2014 hunger climbs, training goes flat, and holding\n                       the line takes more out of you than it did in week one. A break isn't lost progress:\n                       it's what makes the next block work, and it re-checks whether your maintenance\n                       estimate is still right.")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -6997,7 +7274,7 @@ function Dashboard(_ref71) {
       fontWeight: 800,
       cursor: "pointer"
     }
-  }, "Switch to maintenance"), /*#__PURE__*/React.createElement("button", {
+  }, "Start a 2-week break"), /*#__PURE__*/React.createElement("button", {
     onClick: onCutNudgeDismiss,
     style: {
       padding: "8px 14px",
@@ -7043,11 +7320,7 @@ function Dashboard(_ref71) {
       color: "var(--gold-dim)",
       lineHeight: 1.5
     }
-  }, cutPrompt.bigLoss ? "You've lost 5% of your bodyweight this block \u2014 a great point to consolidate." : "".concat(cutPrompt.weeks, " weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance."), cutPrompt.escalate && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 4
-    }
-  }, "You've spent a lot of this year in a deficit \u2014 consider a longer maintenance phase."), /*#__PURE__*/React.createElement("details", {
+  }, cutPrompt.bigLoss ? "You've lost 5% of your bodyweight this block \u2014 a great point to consolidate." : "".concat(cutPrompt.weeks, " weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance."), /*#__PURE__*/React.createElement("details", {
     style: {
       marginTop: 4
     }
@@ -7063,7 +7336,7 @@ function Dashboard(_ref71) {
       marginTop: 4,
       color: "var(--text-mid)"
     }
-  }, "There's no day count at which something suddenly goes wrong \u2014 but the deeper the deficit and the longer it runs, the more it costs you in muscle, sleep, training and mood, and the more your body pushes back. Time at maintenance is how you keep the results you've earned", cutPrompt.escalate ? ", and a year with this much dieting in it is worth breaking up properly" : "", ".", " ", "If you're feeling run down with it, it's worth talking to a doctor.")), /*#__PURE__*/React.createElement("div", {
+  }, "There's no day count at which something suddenly goes wrong \u2014 but the deeper the deficit and the longer it runs, the more it costs you in muscle, sleep, training and mood, and the more your body pushes back. Time at maintenance is how you keep the results you've earned. If you're feeling run down with it, it's worth talking to a doctor.")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -7082,7 +7355,7 @@ function Dashboard(_ref71) {
       fontWeight: 800,
       cursor: "pointer"
     }
-  }, "Switch to maintenance"), /*#__PURE__*/React.createElement("button", {
+  }, "Start a 2-week break"), /*#__PURE__*/React.createElement("button", {
     onClick: onCutPromptSnooze,
     style: {
       padding: "8px 14px",
@@ -7984,18 +8257,18 @@ function _searchOFT() {
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref75) {
-  var item = _ref75.item,
-    onReestimate = _ref75.onReestimate,
-    reestimating = _ref75.reestimating;
-  var _useState89 = useState(false),
-    _useState90 = _slicedToArray(_useState89, 2),
-    editing = _useState90[0],
-    setEditing = _useState90[1];
-  var _useState91 = useState(item.name),
+function ItemRow(_ref77) {
+  var item = _ref77.item,
+    onReestimate = _ref77.onReestimate,
+    reestimating = _ref77.reestimating;
+  var _useState91 = useState(false),
     _useState92 = _slicedToArray(_useState91, 2),
-    draft = _useState92[0],
-    setDraft = _useState92[1];
+    editing = _useState92[0],
+    setEditing = _useState92[1];
+  var _useState93 = useState(item.name),
+    _useState94 = _slicedToArray(_useState93, 2),
+    draft = _useState94[0],
+    setDraft = _useState94[1];
   var cc = confColor(item.confidence);
   var itemAllergens = scanAllergens(item.name, DIETARY.allergens); // zero-token backstop
 
@@ -8117,69 +8390,69 @@ function ItemRow(_ref75) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref76) {
-  var onAdd = _ref76.onAdd,
-    onBack = _ref76.onBack;
-  var _useState93 = useState(""),
-    _useState94 = _slicedToArray(_useState93, 2),
-    desc = _useState94[0],
-    setDesc = _useState94[1];
-  var _useState95 = useState(false),
+function AILog(_ref78) {
+  var onAdd = _ref78.onAdd,
+    onBack = _ref78.onBack;
+  var _useState95 = useState(""),
     _useState96 = _slicedToArray(_useState95, 2),
-    loading = _useState96[0],
-    setLoading = _useState96[1];
-  var _useState97 = useState(null),
+    desc = _useState96[0],
+    setDesc = _useState96[1];
+  var _useState97 = useState(false),
     _useState98 = _slicedToArray(_useState97, 2),
-    items = _useState98[0],
-    setItems = _useState98[1];
+    loading = _useState98[0],
+    setLoading = _useState98[1];
   var _useState99 = useState(null),
     _useState100 = _slicedToArray(_useState99, 2),
-    reestIdx = _useState100[0],
-    setReestIdx = _useState100[1];
-  var _useState101 = useState(""),
+    items = _useState100[0],
+    setItems = _useState100[1];
+  var _useState101 = useState(null),
     _useState102 = _slicedToArray(_useState101, 2),
-    error = _useState102[0],
-    setError = _useState102[1];
-  var _useState103 = useState(false),
+    reestIdx = _useState102[0],
+    setReestIdx = _useState102[1];
+  var _useState103 = useState(""),
     _useState104 = _slicedToArray(_useState103, 2),
-    loggedAll = _useState104[0],
-    setLoggedAll = _useState104[1];
-  var _useState105 = useState({}),
+    error = _useState104[0],
+    setError = _useState104[1];
+  var _useState105 = useState(false),
     _useState106 = _slicedToArray(_useState105, 2),
-    loggedCount = _useState106[0],
-    setLoggedCount = _useState106[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedAll = _useState106[0],
+    setLoggedAll = _useState106[1];
+  var _useState107 = useState({}),
+    _useState108 = _slicedToArray(_useState107, 2),
+    loggedCount = _useState108[0],
+    setLoggedCount = _useState108[1]; // idx -> times logged (ephemeral; resets on unmount)
   // Capture adapters — voice transcript + transient photo. The photo lives ONLY
   // here in memory ({base64, preview}); it is never written to storage and never
   // included in the saved record (see logAll). It is discarded when we unmount.
-  var _useState107 = useState(null),
-    _useState108 = _slicedToArray(_useState107, 2),
-    photo = _useState108[0],
-    setPhoto = _useState108[1];
-  var _useState109 = useState(false),
+  var _useState109 = useState(null),
     _useState110 = _slicedToArray(_useState109, 2),
-    listening = _useState110[0],
-    setListening = _useState110[1];
+    photo = _useState110[0],
+    setPhoto = _useState110[1];
   var _useState111 = useState(false),
     _useState112 = _slicedToArray(_useState111, 2),
-    micDenied = _useState112[0],
-    setMicDenied = _useState112[1];
+    listening = _useState112[0],
+    setListening = _useState112[1];
   var _useState113 = useState(false),
     _useState114 = _slicedToArray(_useState113, 2),
-    usedVoice = _useState114[0],
-    setUsedVoice = _useState114[1];
-  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
-  var _useState115 = useState([]),
+    micDenied = _useState114[0],
+    setMicDenied = _useState114[1];
+  var _useState115 = useState(false),
     _useState116 = _slicedToArray(_useState115, 2),
-    followups = _useState116[0],
-    setFollowups = _useState116[1]; // [{idx, ask, name}]
-  var _useState117 = useState({}),
+    usedVoice = _useState116[0],
+    setUsedVoice = _useState116[1];
+  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
+  var _useState117 = useState([]),
     _useState118 = _slicedToArray(_useState117, 2),
-    fuDone = _useState118[0],
-    setFuDone = _useState118[1]; // idx -> true once answered/skipped
-  var _useState119 = useState([]),
+    followups = _useState118[0],
+    setFollowups = _useState118[1]; // [{idx, ask, name}]
+  var _useState119 = useState({}),
     _useState120 = _slicedToArray(_useState119, 2),
-    fuLog = _useState120[0],
-    setFuLog = _useState120[1]; // [{q, a}] persisted with the meal
+    fuDone = _useState120[0],
+    setFuDone = _useState120[1]; // idx -> true once answered/skipped
+  var _useState121 = useState([]),
+    _useState122 = _slicedToArray(_useState121, 2),
+    fuLog = _useState122[0],
+    setFuLog = _useState122[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
   var fileRef = React.useRef(null);
 
@@ -8261,7 +8534,7 @@ function AILog(_ref76) {
     setListening(false);
   };
   var onPickPhoto = /*#__PURE__*/function () {
-    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(e) {
+    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30(e) {
       var file, _t33, _t34;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
@@ -8293,11 +8566,11 @@ function AILog(_ref76) {
       }, _callee30, null, [[1, 3]]);
     }));
     return function onPickPhoto(_x42) {
-      return _ref77.apply(this, arguments);
+      return _ref79.apply(this, arguments);
     };
   }();
   var estimate = /*#__PURE__*/function () {
-    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
+    var _ref80 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
       var parsed, aiItems, oftResults, merged, k, wConf, _t35, _t36;
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.p = _context31.n) {
@@ -8389,7 +8662,7 @@ function AILog(_ref76) {
       }, _callee31, null, [[2, 8]]);
     }));
     return function estimate() {
-      return _ref78.apply(this, arguments);
+      return _ref80.apply(this, arguments);
     };
   }();
 
@@ -8420,7 +8693,7 @@ function AILog(_ref76) {
     }
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref79 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(idx, newName) {
+    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(idx, newName) {
       var updated, oft, u, _final, _t37;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
@@ -8461,7 +8734,7 @@ function AILog(_ref76) {
       }, _callee32, null, [[1, 4]]);
     }));
     return function reestimate(_x43, _x44) {
-      return _ref79.apply(this, arguments);
+      return _ref81.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -8900,25 +9173,25 @@ function AILog(_ref76) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref80) {
-  var onAdd = _ref80.onAdd,
-    onBack = _ref80.onBack,
-    meals = _ref80.meals,
-    setMeals = _ref80.setMeals,
-    _ref80$isPremium = _ref80.isPremium,
-    isPremium = _ref80$isPremium === void 0 ? false : _ref80$isPremium,
-    _ref80$onPremiumGate = _ref80.onPremiumGate,
-    onPremiumGate = _ref80$onPremiumGate === void 0 ? function () {} : _ref80$onPremiumGate;
-  var _useState121 = useState(""),
-    _useState122 = _slicedToArray(_useState121, 2),
-    search = _useState122[0],
-    setSearch = _useState122[1];
-  var _useState123 = useState(null),
+function QuickAdd(_ref82) {
+  var onAdd = _ref82.onAdd,
+    onBack = _ref82.onBack,
+    meals = _ref82.meals,
+    setMeals = _ref82.setMeals,
+    _ref82$isPremium = _ref82.isPremium,
+    isPremium = _ref82$isPremium === void 0 ? false : _ref82$isPremium,
+    _ref82$onPremiumGate = _ref82.onPremiumGate,
+    onPremiumGate = _ref82$onPremiumGate === void 0 ? function () {} : _ref82$onPremiumGate;
+  var _useState123 = useState(""),
     _useState124 = _slicedToArray(_useState123, 2),
-    modal = _useState124[0],
-    setModal = _useState124[1];
+    search = _useState124[0],
+    setSearch = _useState124[1];
+  var _useState125 = useState(null),
+    _useState126 = _slicedToArray(_useState125, 2),
+    modal = _useState126[0],
+    setModal = _useState126[1];
   var save = /*#__PURE__*/function () {
-    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(m) {
+    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(m) {
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.n) {
           case 0:
@@ -8931,7 +9204,7 @@ function QuickAdd(_ref80) {
       }, _callee33);
     }));
     return function save(_x45) {
-      return _ref81.apply(this, arguments);
+      return _ref83.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -9110,31 +9383,31 @@ function QuickAdd(_ref80) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref82) {
-  var onAdd = _ref82.onAdd,
-    onBack = _ref82.onBack;
-  var _useState125 = useState(""),
-    _useState126 = _slicedToArray(_useState125, 2),
-    q = _useState126[0],
-    setQ = _useState126[1];
-  var _useState127 = useState([]),
+function FoodSearch(_ref84) {
+  var onAdd = _ref84.onAdd,
+    onBack = _ref84.onBack;
+  var _useState127 = useState(""),
     _useState128 = _slicedToArray(_useState127, 2),
-    results = _useState128[0],
-    setResults = _useState128[1];
-  var _useState129 = useState(false),
+    q = _useState128[0],
+    setQ = _useState128[1];
+  var _useState129 = useState([]),
     _useState130 = _slicedToArray(_useState129, 2),
-    loading = _useState130[0],
-    setLoading = _useState130[1];
-  var _useState131 = useState(""),
+    results = _useState130[0],
+    setResults = _useState130[1];
+  var _useState131 = useState(false),
     _useState132 = _slicedToArray(_useState131, 2),
-    error = _useState132[0],
-    setError = _useState132[1];
-  var _useState133 = useState(false),
+    loading = _useState132[0],
+    setLoading = _useState132[1];
+  var _useState133 = useState(""),
     _useState134 = _slicedToArray(_useState133, 2),
-    done = _useState134[0],
-    setDone = _useState134[1];
+    error = _useState134[0],
+    setError = _useState134[1];
+  var _useState135 = useState(false),
+    _useState136 = _slicedToArray(_useState135, 2),
+    done = _useState136[0],
+    setDone = _useState136[1];
   var search = /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34() {
+    var _ref85 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34() {
       var res, data, parseServing, parseKcal, valid, _t38;
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.p = _context34.n) {
@@ -9216,7 +9489,7 @@ function FoodSearch(_ref82) {
       }, _callee34, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref83.apply(this, arguments);
+      return _ref85.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -9347,21 +9620,21 @@ function FoodSearch(_ref82) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref84) {
+function History(_ref86) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref84.history,
-    onBack = _ref84.onBack,
-    onUpdateDay = _ref84.onUpdateDay,
-    _ref84$weighIns = _ref84.weighIns,
-    weighIns = _ref84$weighIns === void 0 ? [] : _ref84$weighIns,
-    _ref84$meals = _ref84.meals,
-    meals = _ref84$meals === void 0 ? DEF_MEALS : _ref84$meals,
-    _ref84$setMeals = _ref84.setMeals,
-    setMeals = _ref84$setMeals === void 0 ? function () {} : _ref84$setMeals,
-    _ref84$isPremium = _ref84.isPremium,
-    isPremium = _ref84$isPremium === void 0 ? false : _ref84$isPremium,
-    _ref84$onPremiumGate = _ref84.onPremiumGate,
-    onPremiumGate = _ref84$onPremiumGate === void 0 ? function () {} : _ref84$onPremiumGate;
+  var history = _ref86.history,
+    onBack = _ref86.onBack,
+    onUpdateDay = _ref86.onUpdateDay,
+    _ref86$weighIns = _ref86.weighIns,
+    weighIns = _ref86$weighIns === void 0 ? [] : _ref86$weighIns,
+    _ref86$meals = _ref86.meals,
+    meals = _ref86$meals === void 0 ? DEF_MEALS : _ref86$meals,
+    _ref86$setMeals = _ref86.setMeals,
+    setMeals = _ref86$setMeals === void 0 ? function () {} : _ref86$setMeals,
+    _ref86$isPremium = _ref86.isPremium,
+    isPremium = _ref86$isPremium === void 0 ? false : _ref86$isPremium,
+    _ref86$onPremiumGate = _ref86.onPremiumGate,
+    onPremiumGate = _ref86$onPremiumGate === void 0 ? function () {} : _ref86$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -9397,34 +9670,34 @@ function History(_ref84) {
       unit: "g"
     }
   };
-  var _useState135 = useState("30D"),
-    _useState136 = _slicedToArray(_useState135, 2),
-    range = _useState136[0],
-    setRange = _useState136[1];
-  var _useState137 = useState(["KCAL"]),
+  var _useState137 = useState("30D"),
     _useState138 = _slicedToArray(_useState137, 2),
-    metrics = _useState138[0],
-    setMetrics = _useState138[1];
-  var _useState139 = useState(false),
+    range = _useState138[0],
+    setRange = _useState138[1];
+  var _useState139 = useState(["KCAL"]),
     _useState140 = _slicedToArray(_useState139, 2),
-    showWeight = _useState140[0],
-    setShowWeight = _useState140[1];
-  var _useState141 = useState("line"),
+    metrics = _useState140[0],
+    setMetrics = _useState140[1];
+  var _useState141 = useState(false),
     _useState142 = _slicedToArray(_useState141, 2),
-    chartType = _useState142[0],
-    setChartType = _useState142[1];
-  var _useState143 = useState(Math.max(0, history.length - 1)),
+    showWeight = _useState142[0],
+    setShowWeight = _useState142[1];
+  var _useState143 = useState("line"),
     _useState144 = _slicedToArray(_useState143, 2),
-    dayIdx = _useState144[0],
-    setDayIdx = _useState144[1];
-  var _useState145 = useState(null),
+    chartType = _useState144[0],
+    setChartType = _useState144[1];
+  var _useState145 = useState(Math.max(0, history.length - 1)),
     _useState146 = _slicedToArray(_useState145, 2),
-    addCtx = _useState146[0],
-    setAddCtx = _useState146[1];
+    dayIdx = _useState146[0],
+    setDayIdx = _useState146[1];
   var _useState147 = useState(null),
     _useState148 = _slicedToArray(_useState147, 2),
-    editId = _useState148[0],
-    setEditId = _useState148[1];
+    addCtx = _useState148[0],
+    setAddCtx = _useState148[1];
+  var _useState149 = useState(null),
+    _useState150 = _slicedToArray(_useState149, 2),
+    editId = _useState150[0],
+    setEditId = _useState150[1];
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -10047,10 +10320,10 @@ function History(_ref84) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref85) {
-    var _ref86 = _slicedToArray(_ref85, 2),
-      k = _ref86[0],
-      m = _ref86[1];
+  }, Object.entries(MM).map(function (_ref87) {
+    var _ref88 = _slicedToArray(_ref87, 2),
+      k = _ref88[0],
+      m = _ref88[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -10088,10 +10361,10 @@ function History(_ref84) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref87) {
-    var _ref88 = _slicedToArray(_ref87, 2),
-      t = _ref88[0],
-      e = _ref88[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref89) {
+    var _ref90 = _slicedToArray(_ref89, 2),
+      t = _ref90[0],
+      e = _ref90[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -10257,10 +10530,10 @@ function History(_ref84) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref89) {
-    var _ref90 = _slicedToArray(_ref89, 2),
-      k = _ref90[0],
-      m = _ref90[1];
+  }, Object.entries(MM).map(function (_ref91) {
+    var _ref92 = _slicedToArray(_ref91, 2),
+      k = _ref92[0],
+      m = _ref92[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -10393,9 +10666,9 @@ function History(_ref84) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref91) {
-  var earnedBdgs = _ref91.earnedBdgs,
-    onBack = _ref91.onBack;
+function Achievements(_ref93) {
+  var earnedBdgs = _ref93.earnedBdgs,
+    onBack = _ref93.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -10494,17 +10767,17 @@ function Achievements(_ref91) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref92) {
-  var badge = _ref92.badge,
-    onDone = _ref92.onDone;
+function BadgeFanfare(_ref94) {
+  var badge = _ref94.badge,
+    onDone = _ref94.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState149 = useState(0),
-    _useState150 = _slicedToArray(_useState149, 2),
-    count = _useState150[0],
-    setCount = _useState150[1];
-  var _useState151 = useState(function () {
+  var _useState151 = useState(0),
+    _useState152 = _slicedToArray(_useState151, 2),
+    count = _useState152[0],
+    setCount = _useState152[1];
+  var _useState153 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -10518,8 +10791,8 @@ function BadgeFanfare(_ref92) {
         };
       });
     }),
-    _useState152 = _slicedToArray(_useState151, 1),
-    floaters = _useState152[0];
+    _useState154 = _slicedToArray(_useState153, 1),
+    floaters = _useState154[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -10617,9 +10890,9 @@ function BadgeFanfare(_ref92) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref93) {
-  var streak = _ref93.streak,
-    onDone = _ref93.onDone;
+function StreakPip(_ref95) {
+  var streak = _ref95.streak,
+    onDone = _ref95.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -10670,9 +10943,9 @@ function StreakPip(_ref93) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref94) {
-  var badge = _ref94.badge,
-    onDone = _ref94.onDone;
+function BadgeToast(_ref96) {
+  var badge = _ref96.badge,
+    onDone = _ref96.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -10732,106 +11005,152 @@ function BadgeToast(_ref94) {
   }, b.name))));
 }
 
+// Plain text toast — the badge one carries a tier and an emoji, this one just says a
+// thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
+function NoteToast(_ref97) {
+  var text = _ref97.text,
+    onDone = _ref97.onDone;
+  useEffect(function () {
+    var t = setTimeout(onDone, 2800);
+    return function () {
+      return clearTimeout(t);
+    };
+  }, []); // eslint-disable-line
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onDone,
+    style: {
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 24,
+      display: "flex",
+      justifyContent: "center",
+      zIndex: 1000,
+      pointerEvents: "none",
+      padding: "0 16px"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, "@keyframes bt_in { 0%{transform:translateY(20px);opacity:0} 100%{transform:translateY(0);opacity:1} }"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      pointerEvents: "auto",
+      background: CARD,
+      border: "1px solid ".concat(aA("44")),
+      borderRadius: 999,
+      padding: "10px 16px",
+      maxWidth: "100%",
+      textAlign: "center",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+      animation: "bt_in 0.3s ease-out",
+      fontSize: 12.5,
+      fontWeight: 800,
+      color: "var(--text-hi)"
+    }
+  }, text));
+}
+
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState153 = useState("dashboard"),
-    _useState154 = _slicedToArray(_useState153, 2),
-    view = _useState154[0],
-    setView = _useState154[1];
-  var _useState155 = useState([]),
+  var _useState155 = useState("dashboard"),
     _useState156 = _slicedToArray(_useState155, 2),
-    logs = _useState156[0],
-    setLogs = _useState156[1];
-  var _useState157 = useState(0),
+    view = _useState156[0],
+    setView = _useState156[1];
+  var _useState157 = useState([]),
     _useState158 = _slicedToArray(_useState157, 2),
-    water = _useState158[0],
-    setWater = _useState158[1];
-  var _useState159 = useState("cut"),
+    logs = _useState158[0],
+    setLogs = _useState158[1];
+  var _useState159 = useState(0),
     _useState160 = _slicedToArray(_useState159, 2),
-    mode = _useState160[0],
-    setMode = _useState160[1];
-  var _useState161 = useState(null),
+    water = _useState160[0],
+    setWater = _useState160[1];
+  var _useState161 = useState("cut"),
     _useState162 = _slicedToArray(_useState161, 2),
-    prof = _useState162[0],
-    setProf = _useState162[1];
-  var _useState163 = useState([]),
+    mode = _useState162[0],
+    setMode = _useState162[1];
+  var _useState163 = useState(null),
     _useState164 = _slicedToArray(_useState163, 2),
-    hist = _useState164[0],
-    setHist = _useState164[1];
-  var _useState165 = useState([].concat(DEF_MEALS)),
+    prof = _useState164[0],
+    setProf = _useState164[1];
+  var _useState165 = useState([]),
     _useState166 = _slicedToArray(_useState165, 2),
-    meals = _useState166[0],
-    setMeals = _useState166[1];
-  var _useState167 = useState([]),
+    hist = _useState166[0],
+    setHist = _useState166[1];
+  var _useState167 = useState([].concat(DEF_MEALS)),
     _useState168 = _slicedToArray(_useState167, 2),
-    workouts = _useState168[0],
-    setWorkouts = _useState168[1];
+    meals = _useState168[0],
+    setMeals = _useState168[1];
+  var _useState169 = useState([]),
+    _useState170 = _slicedToArray(_useState169, 2),
+    workouts = _useState170[0],
+    setWorkouts = _useState170[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState169 = useState([0, 0]),
-    _useState170 = _slicedToArray(_useState169, 2),
-    priorWorkoutKcal = _useState170[0],
-    setPriorWorkoutKcal = _useState170[1];
-  var _useState171 = useState([]),
+  var _useState171 = useState([0, 0]),
     _useState172 = _slicedToArray(_useState171, 2),
-    earnedBdgs = _useState172[0],
-    setEarnedBdgs = _useState172[1];
-  var _useState173 = useState(null),
+    priorWorkoutKcal = _useState172[0],
+    setPriorWorkoutKcal = _useState172[1];
+  var _useState173 = useState([]),
     _useState174 = _slicedToArray(_useState173, 2),
-    newBadge = _useState174[0],
-    setNewBadge = _useState174[1];
-  var _useState175 = useState(false),
+    earnedBdgs = _useState174[0],
+    setEarnedBdgs = _useState174[1];
+  var _useState175 = useState(null),
     _useState176 = _slicedToArray(_useState175, 2),
-    ready = _useState176[0],
-    setReady = _useState176[1];
-  var _useState177 = useState([]),
+    newBadge = _useState176[0],
+    setNewBadge = _useState176[1];
+  var _useState177 = useState(false),
     _useState178 = _slicedToArray(_useState177, 2),
-    weighIns = _useState178[0],
-    setWeighIns = _useState178[1];
-  var _useState179 = useState(0),
+    ready = _useState178[0],
+    setReady = _useState178[1];
+  var _useState179 = useState([]),
     _useState180 = _slicedToArray(_useState179, 2),
-    tdeeAdj = _useState180[0],
-    setTdeeAdj = _useState180[1];
-  var _useState181 = useState([]),
+    weighIns = _useState180[0],
+    setWeighIns = _useState180[1];
+  var _useState181 = useState(0),
     _useState182 = _slicedToArray(_useState181, 2),
-    adjLog = _useState182[0],
-    setAdjLog = _useState182[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState183 = useState(null),
+    tdeeAdj = _useState182[0],
+    setTdeeAdj = _useState182[1];
+  var _useState183 = useState([]),
     _useState184 = _slicedToArray(_useState183, 2),
-    weighNudgeAt = _useState184[0],
-    setWeighNudgeAt = _useState184[1]; // last weigh-in-nudge dismissal (ms; local-only)
-  var _useState185 = useState(EMPTY_CUT_BLOCK),
+    adjLog = _useState184[0],
+    setAdjLog = _useState184[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState185 = useState(null),
     _useState186 = _slicedToArray(_useState185, 2),
-    cutBlock = _useState186[0],
-    setCutBlock = _useState186[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState187 = useState(0),
+    weighNudgeAt = _useState186[0],
+    setWeighNudgeAt = _useState186[1]; // last weigh-in-nudge dismissal (ms; local-only)
+  var _useState187 = useState(EMPTY_CUT_BLOCK),
     _useState188 = _slicedToArray(_useState187, 2),
-    coachKey = _useState188[0],
-    setCoachKey = _useState188[1];
-  var _useState189 = useState(null),
+    cutBlock = _useState188[0],
+    setCutBlock = _useState188[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState189 = useState(0),
     _useState190 = _slicedToArray(_useState189, 2),
-    streakPop = _useState190[0],
-    setStreakPop = _useState190[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState190[0],
+    setCoachKey = _useState190[1];
   var _useState191 = useState(null),
     _useState192 = _slicedToArray(_useState191, 2),
-    badgeToast = _useState192[0],
-    setBadgeToast = _useState192[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
-  var _useState193 = useState(false),
+    streakPop = _useState192[0],
+    setStreakPop = _useState192[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+  var _useState193 = useState(null),
     _useState194 = _slicedToArray(_useState193, 2),
-    badgeGlow = _useState194[0],
-    setBadgeGlow = _useState194[1]; // the 🏆 glow paired with the toast
+    badgeToast = _useState194[0],
+    setBadgeToast = _useState194[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
   var _useState195 = useState(null),
     _useState196 = _slicedToArray(_useState195, 2),
-    customKcal = _useState196[0],
-    setCustomKcal = _useState196[1];
+    noteToast = _useState196[0],
+    setNoteToast = _useState196[1]; // plain one-line confirmations
   var _useState197 = useState(false),
     _useState198 = _slicedToArray(_useState197, 2),
-    aggressiveCutAcked = _useState198[0],
-    setAggressiveCutAcked = _useState198[1];
-  var _useState199 = useState(0),
+    badgeGlow = _useState198[0],
+    setBadgeGlow = _useState198[1]; // the 🏆 glow paired with the toast
+  var _useState199 = useState(null),
     _useState200 = _slicedToArray(_useState199, 2),
-    setThemeTick = _useState200[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    customKcal = _useState200[0],
+    setCustomKcal = _useState200[1];
+  var _useState201 = useState(false),
+    _useState202 = _slicedToArray(_useState201, 2),
+    aggressiveCutAcked = _useState202[0],
+    setAggressiveCutAcked = _useState202[1];
+  var _useState203 = useState(0),
+    _useState204 = _slicedToArray(_useState203, 2),
+    setThemeTick = _useState204[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -10857,46 +11176,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState201 = useState("anonymous"),
-    _useState202 = _slicedToArray(_useState201, 2),
-    authState = _useState202[0],
-    setAuthState = _useState202[1];
-  var _useState203 = useState(null),
-    _useState204 = _slicedToArray(_useState203, 2),
-    authUser = _useState204[0],
-    setAuthUser = _useState204[1];
-  var _useState205 = useState(null),
+  var _useState205 = useState("anonymous"),
     _useState206 = _slicedToArray(_useState205, 2),
-    premiumGate = _useState206[0],
-    setPremiumGate = _useState206[1]; // {emoji, name} | null
-  var _useState207 = useState(false),
+    authState = _useState206[0],
+    setAuthState = _useState206[1];
+  var _useState207 = useState(null),
     _useState208 = _slicedToArray(_useState207, 2),
-    showSignIn = _useState208[0],
-    setShowSignIn = _useState208[1];
-  var _useState209 = useState(false),
+    authUser = _useState208[0],
+    setAuthUser = _useState208[1];
+  var _useState209 = useState(null),
     _useState210 = _slicedToArray(_useState209, 2),
-    showSignOut = _useState210[0],
-    setShowSignOut = _useState210[1];
+    premiumGate = _useState210[0],
+    setPremiumGate = _useState210[1]; // {emoji, name} | null
   var _useState211 = useState(false),
     _useState212 = _slicedToArray(_useState211, 2),
-    showLapsed = _useState212[0],
-    setShowLapsed = _useState212[1];
+    showSignIn = _useState212[0],
+    setShowSignIn = _useState212[1];
   var _useState213 = useState(false),
     _useState214 = _slicedToArray(_useState213, 2),
-    needsConsent = _useState214[0],
-    setNeedsConsent = _useState214[1]; // retroactive Art. 9 consent (R2)
-  var _useState215 = useState(null),
+    showSignOut = _useState214[0],
+    setShowSignOut = _useState214[1];
+  var _useState215 = useState(false),
     _useState216 = _slicedToArray(_useState215, 2),
-    consentInfo = _useState216[0],
-    setConsentInfo = _useState216[1]; // parsed local health_consent for display
-  var _useState217 = useState(navigator.onLine),
+    showLapsed = _useState216[0],
+    setShowLapsed = _useState216[1];
+  var _useState217 = useState(false),
     _useState218 = _slicedToArray(_useState217, 2),
-    isOnline = _useState218[0],
-    setIsOnline = _useState218[1];
-  var _useState219 = useState(""),
+    needsConsent = _useState218[0],
+    setNeedsConsent = _useState218[1]; // retroactive Art. 9 consent (R2)
+  var _useState219 = useState(null),
     _useState220 = _slicedToArray(_useState219, 2),
-    syncMsg = _useState220[0],
-    setSyncMsg = _useState220[1];
+    consentInfo = _useState220[0],
+    setConsentInfo = _useState220[1]; // parsed local health_consent for display
+  var _useState221 = useState(navigator.onLine),
+    _useState222 = _slicedToArray(_useState221, 2),
+    isOnline = _useState222[0],
+    setIsOnline = _useState222[1];
+  var _useState223 = useState(""),
+    _useState224 = _slicedToArray(_useState223, 2),
+    syncMsg = _useState224[0],
+    setSyncMsg = _useState224[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -10936,7 +11255,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35() {
+      var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35() {
         var k, lv, wv, mv, pv, pp, mv2, wkv, prior, d, pwv, bv, hv, wiv, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, u, hc, hcParsed;
         return _regenerator().w(function (_context35) {
           while (1) switch (_context35.n) {
@@ -11138,7 +11457,7 @@ function App() {
         }, _callee35);
       }));
       return function load() {
-        return _ref95.apply(this, arguments);
+        return _ref98.apply(this, arguments);
       };
     }();
     load();
@@ -11192,7 +11511,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(l) {
+    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(l) {
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.n) {
           case 0:
@@ -11207,11 +11526,11 @@ function App() {
       }, _callee36);
     }));
     return function saveLogs(_x46) {
-      return _ref96.apply(this, arguments);
+      return _ref99.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(w) {
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(w) {
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.n) {
           case 0:
@@ -11226,11 +11545,11 @@ function App() {
       }, _callee37);
     }));
     return function saveWater(_x47) {
-      return _ref97.apply(this, arguments);
+      return _ref100.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(m) {
+    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(m) {
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.n) {
           case 0:
@@ -11245,11 +11564,11 @@ function App() {
       }, _callee38);
     }));
     return function saveMode(_x48) {
-      return _ref98.apply(this, arguments);
+      return _ref101.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(p) {
+    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(p) {
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
           case 0:
@@ -11265,11 +11584,11 @@ function App() {
       }, _callee39);
     }));
     return function saveProf(_x49) {
-      return _ref99.apply(this, arguments);
+      return _ref102.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(w) {
+    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(w) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -11284,7 +11603,7 @@ function App() {
       }, _callee40);
     }));
     return function saveWorkouts(_x50) {
-      return _ref100.apply(this, arguments);
+      return _ref103.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -11298,7 +11617,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(e) {
+    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
@@ -11338,7 +11657,7 @@ function App() {
       }, _callee41);
     }));
     return function addLog(_x51) {
-      return _ref101.apply(this, arguments);
+      return _ref104.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -11364,7 +11683,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(kcal) {
+    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(kcal) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -11389,11 +11708,11 @@ function App() {
       }, _callee42);
     }));
     return function saveCustomKcal(_x52) {
-      return _ref102.apply(this, arguments);
+      return _ref105.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
+    var _ref106 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -11411,11 +11730,11 @@ function App() {
       }, _callee43);
     }));
     return function handleSetMode(_x53) {
-      return _ref103.apply(this, arguments);
+      return _ref106.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44() {
+    var _ref107 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44() {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -11430,11 +11749,11 @@ function App() {
       }, _callee44);
     }));
     return function handleAckAggressiveCut() {
-      return _ref104.apply(this, arguments);
+      return _ref107.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(updated) {
+    var _ref108 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(updated) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
@@ -11449,11 +11768,11 @@ function App() {
       }, _callee45);
     }));
     return function saveMeals(_x54) {
-      return _ref105.apply(this, arguments);
+      return _ref108.apply(this, arguments);
     };
   }();
   var addToQA = /*#__PURE__*/function () {
-    var _ref106 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(entry) {
+    var _ref109 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(entry) {
       var name, clean;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
@@ -11483,14 +11802,14 @@ function App() {
       }, _callee46);
     }));
     return function addToQA(_x55) {
-      return _ref106.apply(this, arguments);
+      return _ref109.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref107 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(googleUser, grantedBy, consentMeta) {
+    var _ref110 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t39;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.p = _context47.n) {
@@ -11589,13 +11908,13 @@ function App() {
       }, _callee47, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x56, _x57, _x58) {
-      return _ref107.apply(this, arguments);
+      return _ref110.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref108 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
+    var _ref111 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
       var meta, rec;
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
@@ -11626,11 +11945,11 @@ function App() {
       }, _callee48);
     }));
     return function handleConsent() {
-      return _ref108.apply(this, arguments);
+      return _ref111.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref109 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
+    var _ref112 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
       var clearKeys, _i2, _clearKeys, k, i, key, _t40;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.p = _context49.n) {
@@ -11698,7 +12017,7 @@ function App() {
       }, _callee49, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref109.apply(this, arguments);
+      return _ref112.apply(this, arguments);
     };
   }();
 
@@ -11755,7 +12074,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref110 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
+    var _ref113 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
@@ -11770,7 +12089,7 @@ function App() {
       }, _callee50);
     }));
     return function handleDeleteAccount() {
-      return _ref110.apply(this, arguments);
+      return _ref113.apply(this, arguments);
     };
   }();
   useEffect(function () {
@@ -11799,7 +12118,7 @@ function App() {
   }, [logs, water, workouts, mode, ready]); // eslint-disable-line
 
   var updateDay = /*#__PURE__*/function () {
-    var _ref111 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(upd) {
+    var _ref114 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(upd) {
       var nh;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.n) {
@@ -11823,11 +12142,11 @@ function App() {
       }, _callee51);
     }));
     return function updateDay(_x59) {
-      return _ref111.apply(this, arguments);
+      return _ref114.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref112 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(weight) {
+    var _ref115 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.n) {
@@ -11899,7 +12218,7 @@ function App() {
       }, _callee52);
     }));
     return function onWeighIn(_x60) {
-      return _ref112.apply(this, arguments);
+      return _ref115.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -11924,7 +12243,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref113 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
+    var _ref116 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
       var ts;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.n) {
@@ -11939,11 +12258,11 @@ function App() {
       }, _callee53);
     }));
     return function dismissWeighNudge() {
-      return _ref113.apply(this, arguments);
+      return _ref116.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref114 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref117 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.n) {
           case 0:
@@ -11960,7 +12279,7 @@ function App() {
       }, _callee54);
     }));
     return function muteWeighNudge() {
-      return _ref114.apply(this, arguments);
+      return _ref117.apply(this, arguments);
     };
   }();
 
@@ -12028,14 +12347,32 @@ function App() {
   // Loss since this block opened, for BLOCK_LOSS_TRIGGER (5% of bodyweight).
   var blockNowAvg = weighRollingAvg(weighIns, dateKey(new Date(Date.now() + 86400000)), 7);
   var blockLossFrac = cutBlock.start && cutBlock.startWeight && blockNowAvg ? (cutBlock.startWeight - blockNowAvg) / cutBlock.startWeight : null;
+  // Three weeks of scale, for the stall check. Same rolling averages, longer span.
+  var stallRate = trendLossFrac(weighIns, todayK, STALL_WEEKS * 7);
   var cutPrompt = cutPromptFor({
     block: cutBlock,
     profile: p,
     todayK: todayK,
-    lossFrac: blockLossFrac
+    lossFrac: blockLossFrac,
+    stallRate: stallRate,
+    cutting: cuttingToday
   });
+  // The gauge, the guard and the one celebration card (file 03).
+  var cutBar = cutBarFor({
+    block: cutBlock,
+    profile: p,
+    todayK: todayK,
+    cutting: cuttingToday,
+    weightUp: lossRate != null && lossRate < 0
+  });
+  var cutGuard = cutGuardFor({
+    block: cutBlock,
+    profile: p,
+    cutting: cuttingToday
+  });
+  var showRecharged = rechargedCardDue(cutBlock, todayK);
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref115 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55(next) {
+    var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55(next) {
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.n) {
           case 0:
@@ -12050,7 +12387,7 @@ function App() {
       }, _callee55);
     }));
     return function saveCutBlock(_x61) {
-      return _ref115.apply(this, arguments);
+      return _ref118.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -12063,12 +12400,17 @@ function App() {
       snoozeAt: Date.now()
     }));
   };
-  // Minimal break for now: switch to Maintain and clear the snoozes so the card goes
-  // quiet honestly (no load accrues at maintenance, and BLOCK_END_GRACE closes the block
-  // after a week). The full tracked 2-week break — with its own state and a proper "back
-  // to cutting" hand-off — is file 03, the next thing to build.
+  var dismissRecharged = function dismissRecharged() {
+    return saveCutBlock(_objectSpread(_objectSpread({}, cutBlock), {}, {
+      rechargedOn: null
+    }));
+  };
+  // Starting a break is one tap and nothing more: it switches to Maintain, which IS the
+  // break. There is no state to enter, so there is nothing here to fail at later — from
+  // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
+  // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref116 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
           case 0:
@@ -12081,12 +12423,14 @@ function App() {
               snoozeAt: null
             }));
           case 2:
+            setNoteToast("Break started — eat at maintenance and recharge");
+          case 3:
             return _context56.a(2);
         }
       }, _callee56);
     }));
     return function startDietBreak() {
-      return _ref116.apply(this, arguments);
+      return _ref119.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -12148,10 +12492,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref117) {
-    var _ref118 = _slicedToArray(_ref117, 2),
-      lbl = _ref118[0],
-      fn = _ref118[1];
+  }]].map(function (_ref120) {
+    var _ref121 = _slicedToArray(_ref120, 2),
+      lbl = _ref121[0],
+      fn = _ref121[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -12174,6 +12518,11 @@ function App() {
     badge: badgeToast,
     onDone: function onDone() {
       return setBadgeToast(null);
+    }
+  }), noteToast && /*#__PURE__*/React.createElement(NoteToast, {
+    text: noteToast,
+    onDone: function onDone() {
+      return setNoteToast(null);
     }
   }), premiumGate && !showSignIn && /*#__PURE__*/React.createElement(PremiumModal, {
     feature: premiumGate,
@@ -12242,6 +12591,10 @@ function App() {
     onCutNudgeDismiss: dismissCutNudge,
     onCutPromptSnooze: snoozeCutPrompt,
     onStartDietBreak: startDietBreak,
+    cutBar: cutBar,
+    cutGuard: cutGuard,
+    showRecharged: showRecharged,
+    onDismissRecharged: dismissRecharged,
     workouts: workouts,
     onAddWorkout: addWorkout,
     onRemoveWorkout: removeWorkout,

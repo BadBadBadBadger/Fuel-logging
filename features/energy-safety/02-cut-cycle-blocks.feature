@@ -74,9 +74,11 @@
 #   only if it proves noisy in practice.
 #
 #   "CONSECUTIVE" IS DELIBERATELY NOT STRICT: one maintain day must not reset
-#   the counter, or the protection is trivially defeatable. Non-cut days simply
-#   add no load. A block ends only via a completed diet break or
-#   BLOCK_END_GRACE consecutive non-cut days.
+#   the counter, or the protection is trivially defeatable. AMENDED by file 03 —
+#   a non-cut day no longer merely adds nothing, it pays the block DOWN pro rata,
+#   and a block ends when that drain reaches zero. So rest days genuinely push a
+#   break further out (which is the point), while a block can never be cancelled
+#   by a long weekend.
 #
 # ── COPY MUST SHOW REAL WEEKS, NOT LOAD ──────────────────────
 #   The TRIGGER is load; the NUMBER ON SCREEN is real elapsed calendar time.
@@ -102,14 +104,9 @@
 #       LEAN_MODIFIER: reuses the EXISTING isLeanBody()/LEAN_BF from Step 4
 #                 (app.jsx:379 — 15% M / 23% F) → soft 42 / hard 56 load-days.
 #                 Do NOT introduce a second leanness threshold for this file.
-#       CUMULATIVE_CUT_ESCALATE = 168 load-days in the rolling past year
-#       MAINTENANCE_DECAY = 1.0 load-day removed from the YEARLY total per day
-#                 spent at genuine maintenance (floored at 0). A break taken has
-#                 to be worth something, or there is no reason to take one.
-#                 Decay applies to the yearly total only — the BLOCK counter is
-#                 reset outright by a completed diet break.
 #       TREND_CUT_RATE   = 0.25% of bodyweight per week of sustained loss
-#       BLOCK_END_GRACE  = 7 consecutive non-cut days ends a block
+#       DIET_BREAK_DAYS  = 14 rest days fully drain a block (owned by file 03,
+#                 which replaced this file's BLOCK_END_GRACE — see below)
 #
 # ── REJECTED, WITH REASONS (do not re-litigate without new evidence) ─
 #   • A ~42-day default cut / ~14-day forced maintenance cycle. These are
@@ -132,12 +129,32 @@
 #     different times, would contradict each other on screen. Keep it clean:
 #     cut load = magnitude × duration; training load stays in the EA warning.
 #
-# ── PERSISTENCE (needs new Supabase columns — founder is adding them) ─
+# ── AMENDED BY FILE 03, BUILT 2026-08-09 ─────────────────────
+#   • BLOCK_END_GRACE is GONE. Seven consecutive rest days used to wipe a block
+#     to zero outright; a block now closes only when its load has been DRAINED to
+#     zero, which takes DIET_BREAK_DAYS of rest. Partial rest is never wasted and
+#     never free: seven days pay half, three days leave a fifth-sized dent that
+#     stands. The scenarios below say so.
+#   • The rolling-year track (CUMULATIVE_CUT_ESCALATE / MAINTENANCE_DECAY) is
+#     REMOVED, not amended. It escalated the break message after roughly a year
+#     of dieting, and that is the wrong measure of harm: what hurts tracks energy
+#     availability (Step 4) and how much bodyweight has come off
+#     (BLOCK_LOSS_TRIGGER), neither of which is calendar time under a mild
+#     deficit. A year of gentle, working dieting is what slow fat loss looks
+#     like. Its replacement as the real backstop is file 03's STALL check — a
+#     break is suggested because the scale stopped moving, not because the
+#     calendar turned over.
+#   • This file's known deviation is CLOSED: the prompt button now says
+#     "Start a 2-week break" honestly, because the drain gauge tracks it.
+#
+# ── PERSISTENCE (columns are live on Supabase) ───────────────
 #   Block state must survive a device change, or a long cut is forgotten by the
 #   one thing meant to remember it. Unlike activity/weighCadence this may NOT be
 #   local-only. Columns on `profiles`: cut_block_start (date),
-#   cut_block_load (NUMERIC — fractional, not an int), cut_load_year (NUMERIC),
-#   last_break_end (date). Add the columns FIRST, then wire syncProfile/pull.
+#   cut_block_load (NUMERIC — fractional, not an int), cut_break_load (NUMERIC,
+#   added by file 03 — the drain rate), last_break_end (date). `cut_load_year`
+#   is retired and no longer written. Add a column FIRST, then wire
+#   syncProfile/pull.
 # The diet-break FLOW itself lives in 03-diet-break-intervention.
 # ─────────────────────────────────────────────────────────────
 
@@ -200,6 +217,9 @@ Feature: Cut runs as load-weighted blocks, not an open-ended deficit
     Then those days have accumulated cut load
     And I am treated as being in an open cut block
 
+  # This card has a SECOND way in, added by file 03: a stall. Accumulated load is the
+  # trigger here; a flat scale for STALL_WEEKS is the trigger there. Same card, different
+  # opening line — the rule and its copy are owned by 03, not duplicated in this file.
   Scenario: A soft nudge appears at the soft-nudge threshold
     Given I have accumulated CUT_BLOCK_SOFT_NUDGE (56) cut load in the current block
     And I am not yet at the hard-prompt threshold
@@ -208,7 +228,7 @@ Feature: Cut runs as load-weighted blocks, not an open-ended deficit
     Then I see a dismissable amber card "You've been cutting for 11 weeks"
     And the card says "A break at maintenance now can ease diet fatigue and make the next stretch easier"
     And the card does not claim a break will reset my metabolism
-    And the card shows a "Plan a diet break" button
+    And the card shows a "Start a 2-week break" button
     And the card shows a "Not yet" button that dismisses it for 7 days
 
   Scenario: A hard prompt appears at the hard-prompt threshold
@@ -217,7 +237,8 @@ Feature: Cut runs as load-weighted blocks, not an open-ended deficit
     When I open the dashboard
     Then I see a non-dismissable red-bordered card "Time for a diet break"
     And the card says "16 weeks is a long stretch in a deficit — let's spend 2 weeks at maintenance"
-    And the card shows a primary "Start 2-week diet break" button
+    And the card shows a primary "Start a 2-week break" button
+    # Honest as of file 03: the button switches to Maintain, and the drain gauge tracks it.
     And the card shows a secondary "Remind me in 3 days" button
     And I can still use the rest of the app while the card is shown
 
@@ -256,35 +277,26 @@ Feature: Cut runs as load-weighted blocks, not an open-ended deficit
       | lean     | 42   | soft nudge      |
       | lean     | 56   | hard diet-break |
 
-  Scenario: A block ends after a sustained stretch off Cut, without a diet break
+  # AMENDED by file 03 (was: BLOCK_END_GRACE — 7 rest days wiped the block outright).
+  # Time off now BUYS the block down rather than cancelling it, so a week off is worth
+  # exactly a week and nothing is either wasted or free.
+  Scenario: A block ends when rest has drained it, not after a fixed stretch off Cut
     Given I have accumulated 50 cut load in the current block
-    When I spend BLOCK_END_GRACE (7) consecutive days not cutting
+    When I spend 7 consecutive days not cutting
+    Then my block load is 25 and the block is still open
+    When I spend another 7 consecutive days not cutting
     Then the current cut block is closed
     And a later switch back to "Cut" starts a new block from 0
-    And that 50 still counts towards my cut load for the year
 
   Scenario: Completing a diet break starts a fresh block
-    Given I have completed a diet break
+    Given I have completed a diet break, so my block load reached 0
     When I switch back to "Cut" mode
     Then the app records the start of the next cut block
-    And my cut load for the block resets to 0
-    And the app remembers my cut load for the year across all blocks
-
-  Scenario: Time at maintenance pays down the yearly total
-    Given my cut load for the year is 150
-    When I spend 14 days at genuine maintenance
-    Then my cut load for the year is 136
-    And my yearly total never falls below 0 however long I maintain
+    And my cut load for the block starts from 0
 
   Scenario: Block state survives moving to a new device
     Given I have accumulated 60 cut load in the current block on my phone
     When I sign in on a different device
     Then that device shows the same cut block and the same 60 cut load
     And the diet-break prompts fire at the same point they would have on my phone
-
-  Scenario: A year of heavy dieting escalates the message
-    Given my cut load for the year exceeds CUMULATIVE_CUT_ESCALATE (168)
-    When a diet-break prompt appears
-    Then the card additionally says "You've spent a lot of this year in a deficit — consider a longer maintenance phase"
-    And the card links to the low-energy-availability check
-    And the card does not attribute any specific symptom or hormonal effect to that total
+    And a break already under way keeps draining at the same rate — see file 03

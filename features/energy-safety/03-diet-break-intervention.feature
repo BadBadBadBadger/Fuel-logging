@@ -1,6 +1,8 @@
 # ─────────────────────────────────────────────────────────────
-# DRAFT v2 — for founder proofread. Energy-safety workstream, file 3 of 5.
-# Rewritten 2026-08-08 (session 14) after founder review killed the v1 draft.
+# BUILT 2026-08-09 (session 15). Energy-safety workstream, file 3 of 5.
+# v2, rewritten 2026-08-08 after founder review killed the v1 draft; proofread and
+# locked by the founder 2026-08-09, with one addition made at proofread — THE STALL
+# CHECK (see its own section below). Exact numbers live in __tests__/logic.test.js.
 #
 # WHY — AND WHAT A BREAK ACTUALLY IS (decided, session 14):
 #   A break is simply NOT CUTTING. Switching to Maintain — or Bulk — IS the
@@ -58,21 +60,50 @@
 #      Switching to Bulk is NEVER guarded. Accepting a break is never
 #      guarded, confirmed, or made into a decision — it is one tap.
 #
-# ── SUPERSEDES (02 amendments — make them in the same build) ──
+# ── THE STALL CHECK (added at proofread, founder + coach hat) ─
+#   A third way into 02's soft nudge, and the honest one. Cutting for STALL_WEEKS
+#   with the scale refusing to move means one of three things: adherence has
+#   drifted, the body has compensated, or water is masking a real loss. In all
+#   three "cut harder" is the wrong answer and time at maintenance is the fix.
+#   Calendar time alone never triggers this — a gentle cut that IS working stays
+#   unbothered however long it runs.
+#     • THE COPY MUST BE BLAMELESS. In a calorie tracker, the reflex answer to
+#       "you're doing it wrong" is to eat less. Never imply fault; name the three
+#       ordinary causes and point at maintenance.
+#     • It measures over THREE WEEKS, not one: a fortnight of water retention is
+#       not a stall, and saying so would be a lie we'd have to walk back.
+#     • Not enough weigh-ins ⇒ SILENCE, never a guess (trendLossFrac returns null).
+#   This replaces the rolling-year track as the app's backstop against endless
+#   dieting, and aims it far better — see the removal note below.
+#
+# ── SUPERSEDES (02 amendments — made in the same build) ───────
 #   • BLOCK_END_GRACE (7 non-cut days → block wiped to 0) is REPLACED by the
 #     pro-rata drain: a block now closes when its load DRAINS to 0, which
-#     takes DIET_BREAK_DAYS of rest. 02's scenario "A block ends after a
-#     sustained stretch off Cut" must be rewritten to match. The yearly
-#     total's own decay (MAINTENANCE_DECAY = 1.0/day) is unchanged.
-#   • 02's known deviation is closed: the hard prompt's primary button can
-#     now honestly say "Start a 2-week break" — it switches mode to Maintain
+#     takes DIET_BREAK_DAYS of rest. 02's block-ends scenario is rewritten.
+#   • The rolling-year track (CUMULATIVE_CUT_ESCALATE = 168 / MAINTENANCE_DECAY)
+#     is REMOVED outright, at the founder's call. It escalated the break message
+#     after ~a year of dieting, which is the wrong measure of harm: what hurts
+#     tracks energy availability (Step 4) and how much bodyweight has come off
+#     (BLOCK_LOSS_TRIGGER), not calendar time under a mild deficit. A year of
+#     gentle, working dieting is what slow fat loss looks like. The `cut_load_year`
+#     column is left in place, unwritten, rather than dropped.
+#   • 02's known deviation is closed: the hard prompt's primary button now
+#     honestly says "Start a 2-week break" — it switches mode to Maintain
 #     and the drain gauge is the real, tracked feedback v1's countdown
 #     pretended to be.
 #
 # ── NUMBERS CONTRACT (read before writing code) ──────────────
 #   POLICY CONSTANTS (owned by __tests__/logic.test.js):
 #       DIET_BREAK_DAYS = 14 — rest days that fully drain a block, whatever
-#                 its size. Drain per non-cut day = loadAtBreakStart / 14.
+#                 its size. Remaining = loadAtBreakStart × (1 − restDays/14),
+#                 computed from the original rather than by repeated
+#                 subtraction, so fourteen days land exactly on zero.
+#       STALL_WEEKS = 3 — weeks of a flat scale, while cutting, that read as a
+#                 stall. The RATE it compares against is TREND_CUT_RATE, which
+#                 02 already owns — losing slower than the backstop calls
+#                 "cutting" is precisely what a stall is. No new rate constant.
+#       RECHARGED_CARD_DAYS = 3 — after which the celebration card retires
+#                 itself, dismissed or not.
 #       GUARD threshold: the early-return confirm fires only when
 #                 loadAtBreakStart ≥ the block's soft-nudge threshold
 #                 (cutThresholds — lean-adjusted, per 02). Reuse it; do NOT
@@ -99,13 +130,17 @@
 #     dormant hook here would be dead code pretending otherwise. Moved to
 #     05's remit.
 #
-# ── PERSISTENCE ──────────────────────────────────────────────
-#   The drain mutates cut_block_load in place, so the existing four synced
-#   columns carry the headline state. The break-start load (drain rate) and
-#   the off-day cursor are working fields; decide at build whether they ride
-#   the local cut_block blob (a fresh device mid-break would re-derive the
-#   rate from the synced load — acceptable) or earn a column. Same ordering
-#   rule as always if a column is added: column first, wiring second.
+# ── PERSISTENCE (as built) ───────────────────────────────────
+#   The drain mutates cut_block_load in place, so the synced columns carry the
+#   headline state. The break-start load earned ONE new column,
+#   `cut_break_load` — without it a second device resumes the break at the wrong
+#   speed and skips the guard, which the continuity scenario below forbids. The
+#   off-day cursor needed no column: it is algebra on the two synced numbers,
+#   offRun = DIET_BREAK_DAYS × (1 − load ÷ breakLoad), re-derived on pull.
+#   ⚠️ Run the ALTER TABLE before deploying — an upsert naming a missing column
+#   400s and takes the whole profile sync down with it.
+#   Local-only, deliberately: `rechargedOn` (the celebration card). Missing one
+#   card on a second device is a trivial loss; a column is not worth it.
 # ─────────────────────────────────────────────────────────────
 
 Feature: A break is time not cutting — measured, encouraged, and guarded
@@ -125,7 +160,9 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
     Then my mode is "Maintain" — the same Maintain as the mode picker's chip
     And no confirmation dialog interrupted me
     And I see a toast "Break started — eat at maintenance and recharge"
-    And the cut-load bar now drains instead of fills
+    And the bar switches to its draining face, reading "On a break · starting today"
+    # Today already accrued as a cut day before I tapped, so the first rest day is
+    # tomorrow. Calling it "day 1" now would be a day's worth of flattery.
 
   Scenario Outline: Maintain and Bulk are the same break — identical drain
     Given my block had 84 load when I stopped cutting
@@ -172,6 +209,52 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
     When I switch back to "Cut" and cut for a day
     Then the drain stops and that day's load is added per file 02
     And the load I already paid down is not restored — the dent stands
+
+  # ── The stall: the honest reason to break ──────────────────
+
+  Scenario: Three weeks of cutting with a flat scale suggests a break
+    Given I have been in an open cut block for STALL_WEEKS (3) weeks or more
+    And my weight trend over those three weeks is flatter than TREND_CUT_RATE
+    When I open the dashboard
+    Then I see file 02's soft nudge card, opening "Your loss has stalled"
+    And it says the scale hasn't moved in about three weeks, and that bodies
+      adapt to a long deficit
+    And it offers the same "Start a 2-week break" and "Not yet" buttons
+    And nothing in it suggests eating less, or implies I am at fault
+
+  Scenario Outline: The stall is about the scale, never the calendar
+    Given I have been cutting for <weeks> weeks with a load below the soft threshold
+    And my three-week weight trend is <trend>
+    When I open the dashboard
+    Then the stall nudge is <shown>
+
+    # A cut that IS working stays unbothered however long it runs — this is what
+    # replaced the rolling-year escalation, and it aims at the right person.
+    Examples:
+      | weeks | trend                       | shown     |
+      | 12    | flat                        | shown     |
+      | 3     | flat                        | shown     |
+      | 2     | flat                        | not shown |
+      | 12    | losing at TREND_CUT_RATE    | not shown |
+
+  Scenario: Without enough weigh-ins the stall check says nothing
+    Given I have been cutting for 8 weeks
+    And I have too few weigh-ins to establish a three-week trend
+    When I open the dashboard
+    Then no stall nudge is shown
+    And the app does not guess, or ask me to weigh in more as a condition of it
+
+  Scenario: A flat scale on a break is not a stall
+    Given my mode is "Maintain" and my weight has been flat for three weeks
+    When I open the dashboard
+    Then no stall nudge is shown — a flat scale is exactly what a break looks like
+
+  Scenario: The more serious message wins — only one card speaks
+    Given my block has reached the hard-prompt threshold
+    And my three-week weight trend is also flat
+    When I open the dashboard
+    Then I see only the "Time for a diet break" card
+    And the stall copy is not shown alongside it
 
   Scenario: A break in name only does not recharge
     Given I switched to "Maintain" but my 7-day average weight is still

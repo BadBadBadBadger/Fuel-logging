@@ -233,12 +233,12 @@ const CUT_BLOCK_HARD_PROMPT   = 84;
 const CUT_BLOCK_LEAN_SOFT     = 42;
 const CUT_BLOCK_LEAN_HARD     = 56;
 const BLOCK_LOSS_TRIGGER      = 0.05;
-const CUMULATIVE_CUT_ESCALATE = 168;
-const MAINTENANCE_DECAY       = 1.0;
 const TREND_CUT_RATE          = 0.0025;
-const BLOCK_END_GRACE         = 7;
 const CUT_NUDGE_SNOOZE_DAYS   = 7;
 const CUT_PROMPT_SNOOZE_DAYS  = 3;
+const DIET_BREAK_DAYS         = 14;
+const STALL_WEEKS             = 3;
+const RECHARGED_CARD_DAYS     = 3;
 
 const dayCutLoad = (targetKcal, maintenanceKcal) => {
   if (!maintenanceKcal || maintenanceKcal <= 0) return 0;
@@ -251,30 +251,39 @@ const cutThresholds = p => isLeanBody(p)
   ? { soft: CUT_BLOCK_LEAN_SOFT, hard: CUT_BLOCK_LEAN_HARD }
   : { soft: CUT_BLOCK_SOFT_NUDGE, hard: CUT_BLOCK_HARD_PROMPT };
 
-const weeklyLossFrac = (weighIns, todayK) => {
+const trendLossFrac = (weighIns, todayK, spanDays = 7) => {
   const t = new Date(todayK + "T12:00:00");
   const recent = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() + 86400000)), 7);
-  const older  = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - 7 * 86400000)), 7);
+  const older  = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - spanDays * 86400000)), 7);
   if (!recent || !older || older <= 0) return null;
-  return (older - recent) / older;
+  return ((older - recent) / older) * (7 / spanDays);
 };
+const weeklyLossFrac = (weighIns, todayK) => trendLossFrac(weighIns, todayK, 7);
 
-const EMPTY_CUT_BLOCK = { start:null, load:0, yearLoad:0, startWeight:null,
-  offRun:0, lastAccrued:null, lastBreakEnd:null, nudgeAt:null, snoozeAt:null };
+const EMPTY_CUT_BLOCK = { start:null, load:0, startWeight:null, offRun:0, breakLoad:0,
+  lastAccrued:null, lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null };
 
 const stepCutBlock = (block, day) => {
   const b = { ...block, lastAccrued: day.date };
   if (day.cutting && day.load > 0) {
     if (!b.start) { b.start = day.date; b.load = 0; b.startWeight = day.weight ?? null; }
     if (b.startWeight == null && day.weight != null) b.startWeight = day.weight;
-    b.load     = Math.round((b.load + day.load) * 100) / 100;
-    b.yearLoad = Math.round((b.yearLoad + day.load) * 100) / 100;
-    b.offRun   = 0;
+    b.load      = Math.round((b.load + day.load) * 100) / 100;
+    b.offRun    = 0;
+    b.breakLoad = 0;
     return b;
   }
-  b.offRun   = (b.offRun || 0) + 1;
-  b.yearLoad = Math.max(0, Math.round((b.yearLoad - MAINTENANCE_DECAY) * 100) / 100);
-  if (b.start && b.offRun >= BLOCK_END_GRACE) { b.start = null; b.load = 0; b.startWeight = null; }
+  b.offRun = (b.offRun || 0) + 1;
+  if (b.start) {
+    if (b.offRun === 1 || !b.breakLoad) { b.breakLoad = b.load; b.offRun = 1; }
+    const left = 1 - b.offRun / DIET_BREAK_DAYS;
+    b.load = left <= 0 ? 0 : Math.round(b.breakLoad * left * 100) / 100;
+    if (b.load <= 0) {
+      b.start = null; b.load = 0; b.startWeight = null; b.breakLoad = 0; b.offRun = 0;
+      b.lastBreakEnd = day.date; b.rechargedOn = day.date;
+      b.nudgeAt = null; b.snoozeAt = null;
+    }
+  }
   return b;
 };
 
@@ -294,21 +303,45 @@ const accrueCutBlock = (block, todayK, day) => {
 const daysBetween = (fromK, toK) =>
   Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
 
-const cutPromptFor = ({ block, profile, todayK, lossFrac = null, now = Date.now() }) => {
+const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = null,
+    cutting = false, now = Date.now() }) => {
   if (!block || !block.start) return null;
   const th = cutThresholds(profile || {});
   const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
+  const stalled = cutting && stallRate != null && stallRate < TREND_CUT_RATE &&
+                  daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
   const level = (block.load >= th.hard || bigLoss) ? "hard"
-              : block.load >= th.soft ? "soft" : null;
+              : (block.load >= th.soft || stalled) ? "soft" : null;
   if (!level) return null;
   const snoozedFor = level === "hard"
     ? (block.snoozeAt ? now - block.snoozeAt < CUT_PROMPT_SNOOZE_DAYS * 86400000 : false)
     : (block.nudgeAt  ? now - block.nudgeAt  < CUT_NUDGE_SNOOZE_DAYS  * 86400000 : false);
   if (snoozedFor) return null;
   return { level, bigLoss,
-    weeks:    Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)),
-    escalate: block.yearLoad > CUMULATIVE_CUT_ESCALATE };
+    stalled: stalled && level === "soft" && block.load < th.soft,
+    weeks:   Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)) };
 };
+
+const cutBarFor = ({ block, profile, todayK, cutting = false, weightUp = false }) => {
+  if (!block || !block.start || block.load <= 0) return null;
+  const th  = cutThresholds(profile || {});
+  const pct = Math.max(0, Math.min(100, Math.round((block.load / th.soft) * 100)));
+  if (cutting) return { draining: false, pct,
+    weeks: Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)) };
+  const restDays = block.offRun || 0;
+  return { draining: true, pct, restDays, weightUp,
+    daysLeft: Math.max(0, DIET_BREAK_DAYS - restDays) };
+};
+
+const cutGuardFor = ({ block, profile, cutting = false }) => {
+  if (!block || !block.start || cutting || block.load <= 0) return null;
+  if ((block.breakLoad || 0) < cutThresholds(profile || {}).soft) return null;
+  return { daysLeft: Math.max(1, DIET_BREAK_DAYS - (block.offRun || 0)) };
+};
+
+const rechargedCardDue = (block, todayK) =>
+  !!(block && block.rechargedOn && !block.start &&
+     daysBetween(block.rechargedOn, todayK) < RECHARGED_CARD_DAYS);
 
 // calcStreak needs a controllable "today" so we inject a date factory
 const makeCalcStreak = (getNow) => (hist) => {
@@ -1631,38 +1664,43 @@ describe("cut blocks — a gentle cut runs longer, a deep one is cautioned soone
     expect(cutPromptFor({ block: b, profile: {}, todayK: "2026-01-31" })).toBe(null);
   });
 
-  test("a single day off Cut does not reset the counter", () => {
+  test("a single day off Cut dents the counter without resetting it", () => {
     let b = runDays(30, cutDay(0.20));
     expect(b.load).toBe(30);
     b = stepCutBlock(b, { ...offDay, date: "2026-01-31" });
+    expect(b.load).toBe(27.86);         // one rest day pays 1/14 of the block (file 03)
     b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-02-01" });
-    expect(b.start).toBe("2026-01-01"); // same block
-    expect(b.load).toBe(31);            // continued, not restarted
+    expect(b.start).toBe("2026-01-01"); // same block, continued — never restarted
+    expect(b.load).toBe(28.86);
   });
 
-  test("BLOCK_END_GRACE consecutive non-cut days closes the block, but the year remembers", () => {
+  // Replaces the old BLOCK_END_GRACE rule (7 rest days wiped the block outright). A block
+  // now closes only when its load has been DRAINED to zero — see the file-03 describes.
+  test("a block closes when a full break drains it, not on a fixed number of rest days", () => {
     let b = runDays(50, cutDay(0.20));
     expect(b.load).toBe(50);
-    b = runDays(BLOCK_END_GRACE, offDay, "2026-02-20", b);
+    b = runDays(DIET_BREAK_DAYS - 1, offDay, "2026-02-20", b);
+    expect(b.start).toBe("2026-01-01");            // still open on day 13
+    expect(b.load).toBeGreaterThan(0);
+    b = runDays(1, offDay, "2026-03-05", b);       // the fourteenth rest day
     expect(b.start).toBe(null);
     expect(b.load).toBe(0);
-    expect(b.yearLoad).toBe(50 - BLOCK_END_GRACE * MAINTENANCE_DECAY); // 43
-    b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-03-01" });
-    expect(b.start).toBe("2026-03-01");  // a NEW block, from zero
+    b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-03-06" });
+    expect(b.start).toBe("2026-03-06");            // a NEW block, from zero
     expect(b.load).toBe(1);
   });
 
-  test("six days off does NOT close the block — the grace window is not trivially trippable", () => {
+  test("a week off dents the block by half rather than erasing it", () => {
     let b = runDays(50, cutDay(0.20));
-    b = runDays(BLOCK_END_GRACE - 1, offDay, "2026-02-20", b);
+    b = runDays(7, offDay, "2026-02-20", b);
     expect(b.start).toBe("2026-01-01");
-    expect(b.load).toBe(50);
+    expect(b.load).toBe(25);
   });
 });
 
 describe("cut load — not logging never pauses the clock", () => {
   test("days the app was never opened are caught up on the next open", () => {
-    const start = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 40, yearLoad: 40,
+    const start = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 40,
       lastAccrued: "2026-02-09" };
     const b = accrueCutBlock(start, "2026-02-15", cutDay(0.20)); // 6 days closed
     expect(b.load).toBe(46);
@@ -1786,24 +1824,247 @@ describe("cutPromptFor — thresholds, real weeks, and snoozing", () => {
   });
 });
 
-describe("cut load for the year — maintenance pays it down", () => {
-  const anyBody = { weight: 90, bodyFat: 25, sex: "male" };
+// ── The break drain (energy Step 5; features/energy-safety/03) ────────
+// A break is simply not cutting. Every non-cut day pays down the open block pro rata, so
+// DIET_BREAK_DAYS of rest clear it at any size and a partial break keeps its dent.
+describe("the drain — a break is time not cutting, measured", () => {
+  const openBlock = load => ({ ...EMPTY_CUT_BLOCK, start: "2026-01-01", load,
+    breakLoad: 0, offRun: 0 });
 
-  test("14 days at maintenance removes 14 load-days", () => {
-    const b = runDays(14, offDay, "2026-03-01", { ...EMPTY_CUT_BLOCK, yearLoad: 150 });
-    expect(b.yearLoad).toBe(136);
+  test("each rest day pays down a fixed share of the block, whatever the load", () => {
+    // after = pause × (1 − days/DIET_BREAK_DAYS) — contrasting loads prove the rate is
+    // derived from the block, not a fixed number.
+    expect(runDays(7, offDay, "2026-03-01", openBlock(84)).load).toBe(42);
+    expect(runDays(7, offDay, "2026-03-01", openBlock(42)).load).toBe(21);
+    expect(runDays(3, offDay, "2026-03-01", openBlock(84)).load).toBe(66);
   });
 
-  test("the yearly total never goes negative however long you maintain", () => {
-    const b = runDays(30, offDay, "2026-03-01", { ...EMPTY_CUT_BLOCK, yearLoad: 5 });
-    expect(b.yearLoad).toBe(0);
+  test("a full break clears any block, however deep", () => {
+    for (const load of [84, 30, 7.5]) {
+      const b = runDays(DIET_BREAK_DAYS, offDay, "2026-03-01", openBlock(load));
+      expect(b.load).toBe(0);
+      expect(b.start).toBe(null);          // the block is closed
+      expect(b.lastBreakEnd).toBe("2026-03-14");
+    }
   });
 
-  test("a heavy year escalates the message; a light one does not", () => {
-    const heavy = { ...EMPTY_CUT_BLOCK, start: "2026-01-01",
-      load: CUT_BLOCK_HARD_PROMPT, yearLoad: CUMULATIVE_CUT_ESCALATE + 1 };
-    const light = { ...heavy, yearLoad: CUMULATIVE_CUT_ESCALATE - 1 };
-    expect(cutPromptFor({ block: heavy, profile: anyBody, todayK: "2026-04-23" }).escalate).toBe(true);
-    expect(cutPromptFor({ block: light, profile: anyBody, todayK: "2026-04-23" }).escalate).toBe(false);
+  test("Maintain and Bulk are the same break — it's the days not in cut that count", () => {
+    // Neither mode accrues load, so both arrive at stepCutBlock as the identical non-cut
+    // day. A surplus earns no faster drain because no defensible number exists for one.
+    const maintain = runDays(7, { cutting: false, load: 0, weight: null }, "2026-03-01", openBlock(84));
+    const bulk     = runDays(7, { cutting: false, load: 0, weight: null }, "2026-03-01", openBlock(84));
+    expect(maintain.load).toBe(bulk.load);
+    expect(maintain.load).toBe(42);
+  });
+
+  test("cutting mid-break keeps the credit already earned — the dent stands", () => {
+    let b = runDays(5, offDay, "2026-03-01", openBlock(84));
+    const paidDown = b.load;
+    expect(paidDown).toBe(54);                          // 84 × 9/14
+    b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-03-06" });
+    expect(b.load).toBe(55);                            // resumed from the dent, not from 84
+    expect(b.offRun).toBe(0);
+    expect(b.breakLoad).toBe(0);                        // a later break re-reads the load then
+  });
+
+  test("a second break drains from the load as it stands, not the original", () => {
+    let b = runDays(7, offDay, "2026-03-01", openBlock(84));   // 84 → 42
+    b = stepCutBlock(b, { ...cutDay(0.20), date: "2026-03-08" });
+    expect(b.load).toBe(43);
+    b = runDays(7, offDay, "2026-03-09", b);                   // half of 43, not of 84
+    expect(b.load).toBe(21.5);
+  });
+
+  test("a block stored by a pre-drain build starts its break cleanly from today", () => {
+    // Upgrade path: offRun survived from the old rule but breakLoad never existed.
+    const legacy = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 56, offRun: 4 };
+    const b = stepCutBlock(legacy, { ...offDay, date: "2026-03-01" });
+    expect(b.offRun).toBe(1);
+    expect(b.breakLoad).toBe(56);
+    expect(b.load).toBe(52);   // 56 × 13/14, i.e. day one — not a four-day jump
+  });
+
+  test("the drain only ever runs on an open block", () => {
+    const closed = { ...EMPTY_CUT_BLOCK, load: 0 };
+    const b = runDays(30, offDay, "2026-03-01", closed);
+    expect(b.load).toBe(0);
+    expect(b.start).toBe(null);
+  });
+});
+
+describe("the break gauge — one bar, read in two directions", () => {
+  const normal = { weight: 90, bodyFat: 25, sex: "male" };
+
+  test("while cutting the bar fills toward the soft nudge and shows REAL weeks", () => {
+    const b = runDays(112, cutDay(0.15));   // 84 load at a gentle deficit = 16 real weeks
+    const bar = cutBarFor({ block: b, profile: normal, todayK: "2026-04-23", cutting: true });
+    expect(bar.draining).toBe(false);
+    expect(bar.weeks).toBe(16);
+    expect(bar.pct).toBe(100);              // capped — past the threshold the card speaks
+    expect(bar.restDays).toBe(undefined);   // no break language while cutting
+  });
+
+  test("the fill is the load as a share of the lean-adjusted soft threshold", () => {
+    const half = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: CUT_BLOCK_SOFT_NUDGE / 2 };
+    expect(cutBarFor({ block: half, profile: normal, todayK: "2026-02-01", cutting: true }).pct).toBe(50);
+    const lean = { weight: 80, bodyFat: 12, sex: "male" };   // pulled earlier, so fuller
+    expect(cutBarFor({ block: half, profile: lean, todayK: "2026-02-01", cutting: true }).pct).toBe(67);
+  });
+
+  test("while a break is under way the bar drains and counts real rest days", () => {
+    const b = runDays(5, offDay, "2026-03-01", { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 84 });
+    const bar = cutBarFor({ block: b, profile: normal, todayK: "2026-03-05", cutting: false });
+    expect(bar.draining).toBe(true);
+    expect(bar.restDays).toBe(5);
+    expect(bar.daysLeft).toBe(9);           // "about 9 days to fully recharged"
+  });
+
+  test("the bar appears only when there is something to show", () => {
+    const shown = (load, cutting) => !!cutBarFor({
+      block: { ...EMPTY_CUT_BLOCK, start: load > 0 ? "2026-01-01" : null, load },
+      profile: normal, todayK: "2026-03-01", cutting });
+    expect(shown(10, true)).toBe(true);     // cutting → always
+    expect(shown(40, false)).toBe(true);    // not cutting but load remains → shown
+    expect(shown(0,  false)).toBe(false);   // a long bulk with nothing owed → nothing
+    expect(shown(0,  true)).toBe(false);    // no block yet → nothing
+  });
+
+  test("weight up early in a break is flagged for reassurance, not alarm", () => {
+    const b = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 60, offRun: 3 };
+    const up = cutBarFor({ block: b, profile: normal, todayK: "2026-03-01", cutting: false, weightUp: true });
+    expect(up.weightUp).toBe(true);
+    expect(up.draining).toBe(true);
+  });
+});
+
+describe("the early-return guard — friction only where the advice existed", () => {
+  const normal = { weight: 90, bodyFat: 25, sex: "male" };
+  const mid = (breakLoad, load = 20) =>
+    ({ ...EMPTY_CUT_BLOCK, start: "2026-01-01", load, breakLoad, offRun: 5 });
+
+  test("a break the app advised is guarded on the way back to Cut", () => {
+    const g = cutGuardFor({ block: mid(CUT_BLOCK_SOFT_NUDGE), profile: normal, cutting: false });
+    expect(g.daysLeft).toBe(9);
+  });
+
+  test("a short casual cut never meets the guard", () => {
+    expect(cutGuardFor({ block: mid(20), profile: normal, cutting: false })).toBe(null);
+  });
+
+  test("the bite point is the same lean-adjusted threshold file 02 already uses", () => {
+    const lean = { weight: 80, bodyFat: 12, sex: "male" };
+    const block = mid(CUT_BLOCK_LEAN_SOFT);
+    expect(cutGuardFor({ block, profile: lean,   cutting: false })).not.toBe(null);
+    expect(cutGuardFor({ block, profile: normal, cutting: false })).toBe(null);
+  });
+
+  test("nothing is guarded once the block is paid off, or while still cutting", () => {
+    expect(cutGuardFor({ block: mid(84, 0), profile: normal, cutting: false })).toBe(null);
+    expect(cutGuardFor({ block: mid(84), profile: normal, cutting: true })).toBe(null);
+    expect(cutGuardFor({ block: EMPTY_CUT_BLOCK, profile: normal, cutting: false })).toBe(null);
+  });
+});
+
+describe("finishing quietly — one card, then silence", () => {
+  test("draining to zero arms the card and records the break end", () => {
+    const b = runDays(DIET_BREAK_DAYS, offDay, "2026-03-01",
+      { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 84, nudgeAt: 1, snoozeAt: 1 });
+    expect(b.rechargedOn).toBe("2026-03-14");
+    expect(rechargedCardDue(b, "2026-03-14")).toBe(true);
+    expect(b.nudgeAt).toBe(null);      // the old prompts go quiet with it
+    expect(b.snoozeAt).toBe(null);
+  });
+
+  test("the card retires itself after RECHARGED_CARD_DAYS even if never dismissed", () => {
+    const b = { ...EMPTY_CUT_BLOCK, rechargedOn: "2026-03-14" };
+    expect(rechargedCardDue(b, "2026-03-16")).toBe(true);
+    expect(rechargedCardDue(b, "2026-03-17")).toBe(false);   // day 3 — then nothing, ever
+  });
+
+  test("dismissing it silences it immediately", () => {
+    expect(rechargedCardDue({ ...EMPTY_CUT_BLOCK, rechargedOn: null }, "2026-03-14")).toBe(false);
+  });
+
+  test("a new cut block outranks a stale celebration", () => {
+    const b = { ...EMPTY_CUT_BLOCK, rechargedOn: "2026-03-14", start: "2026-03-15", load: 1 };
+    expect(rechargedCardDue(b, "2026-03-15")).toBe(false);
+  });
+});
+
+describe("the stall check — the honest reason to break, not elapsed time", () => {
+  const normal = { weight: 90, bodyFat: 25, sex: "male" };
+  const block  = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 20 };   // well under soft
+  const at = (over, opts = {}) => cutPromptFor({ block, profile: normal, todayK: "2026-03-01",
+    stallRate: over, cutting: true, ...opts });
+
+  test("three weeks of cutting with a flat scale reaches the soft nudge", () => {
+    const p = at(0);
+    expect(p.level).toBe("soft");
+    expect(p.stalled).toBe(true);
+  });
+
+  test("a cut that IS working stays unbothered however long it runs", () => {
+    expect(at(TREND_CUT_RATE)).toBe(null);
+    expect(at(0.01)).toBe(null);
+  });
+
+  test("too few weigh-ins says nothing rather than guessing", () => {
+    expect(at(null)).toBe(null);
+  });
+
+  test("a break is not a stall — the check only speaks while actually cutting", () => {
+    expect(at(0, { cutting: false })).toBe(null);
+  });
+
+  test("a cut younger than STALL_WEEKS is just noise, not a stall", () => {
+    const fresh = { ...EMPTY_CUT_BLOCK, start: "2026-02-20", load: 20 };
+    expect(cutPromptFor({ block: fresh, profile: normal, todayK: "2026-03-01",
+      stallRate: 0, cutting: true })).toBe(null);
+    // …and the day it turns three weeks old, it speaks
+    expect(cutPromptFor({ block: fresh, profile: normal, todayK: "2026-03-13",
+      stallRate: 0, cutting: true }).stalled).toBe(true);
+  });
+
+  test("the hard prompt outranks the stall copy — one message, the more serious one", () => {
+    const long = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: CUT_BLOCK_HARD_PROMPT };
+    const p = cutPromptFor({ block: long, profile: normal, todayK: "2026-03-01",
+      stallRate: 0, cutting: true });
+    expect(p.level).toBe("hard");
+    expect(p.stalled).toBe(false);
+  });
+
+  test("a stall nudge snoozes on 'Not yet' exactly like the load-driven one", () => {
+    const now = Date.parse("2026-03-01T12:00:00Z");
+    expect(at(0, { now, block: { ...block, nudgeAt: now - 6 * 86400000 } })).toBe(null);
+  });
+});
+
+describe("trendLossFrac — the same averages over a longer span", () => {
+  // 28 daily weigh-ins losing a steady 0.1 kg/day from 100 kg
+  const steady = Array.from({ length: 28 }, (_, i) => ({
+    date: dateKey(new Date(new Date("2026-01-01T12:00:00").getTime() + i * 86400000)),
+    weight: 100 - i * 0.1,
+  }));
+
+  test("a steady loss reads as the same per-week rate at either span", () => {
+    const wk  = trendLossFrac(steady, "2026-01-28", 7);
+    const thr = trendLossFrac(steady, "2026-01-28", 21);
+    expect(wk).toBeGreaterThan(TREND_CUT_RATE);
+    expect(thr).toBeGreaterThan(TREND_CUT_RATE);
+    expect(Math.abs(wk - thr) / wk).toBeLessThan(0.2);   // same rate, longer lens
+  });
+
+  test("a flat three weeks reads as a stall, and beats a one-week wobble", () => {
+    const flat = steady.map(w => ({ ...w, weight: 100 }));
+    expect(trendLossFrac(flat, "2026-01-28", 21)).toBe(0);
+    // a single heavy water week can fake a one-week stall the longer span sees through
+    const wobble = steady.map((w, i) => ({ ...w, weight: w.weight + (i >= 21 ? 0.7 : 0) }));
+    expect(trendLossFrac(wobble, "2026-01-28", 7)).toBeLessThan(TREND_CUT_RATE);
+    expect(trendLossFrac(wobble, "2026-01-28", 21)).toBeGreaterThan(TREND_CUT_RATE);
+  });
+
+  test("not enough weigh-ins yields null at any span", () => {
+    expect(trendLossFrac(steady.slice(0, 2), "2026-01-28", 21)).toBe(null);
+    expect(trendLossFrac([], "2026-01-28", 21)).toBe(null);
   });
 });
