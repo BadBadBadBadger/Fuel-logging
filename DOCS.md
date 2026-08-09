@@ -538,7 +538,7 @@ Two more spec sets sit alongside it:
 | Path | Covers | State |
 |---|---|---|
 | `features/ai-capture.feature` | v6.7 voice/photo meal capture | `@wip` until the batch device-test |
-| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 06 and 07 are **built** (their files were rewritten to match what shipped), 02–05 are not |
+| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 06 and 07 are **built** (their files were rewritten to match what shipped); 04's second half and 05 are not |
 
 Specs in `features/energy-safety/` carry a **NUMBERS CONTRACT** header: kcal figures in scenarios are worked
 examples derived from the formulas, never values to hardcode — the exact arithmetic is owned by
@@ -1398,6 +1398,35 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### Energy Step 5b — the break drain: a break is time not cutting (Aug 2026)
+A break is **simply not cutting**. Switching to Maintain — or Bulk — *is* the break: no fourth mode, no
+countdown, nothing to start, nothing to finish, and so nothing to fail at. Step 5a's cut load becomes a bar
+you can see, and the whole feature is that one gauge read in two directions. Tests **199/199** (27 new),
+sw `v61→v62`. **DB change: 1 new `profiles` column (`cut_break_load`) — run it before deploying.**
+- **The bar fills while cutting and drains while not.** Every non-cut day pays down the open block pro rata:
+  `DIET_BREAK_DAYS` (14) rest days clear it whatever its size, 7 clear half, 3 leave a fifth-sized dent that
+  **stands** if you go back to cutting. Maintain and Bulk drain **identically** — it's the days not in cut
+  that count, and no surplus multiplier exists that we could defend.
+- **It shows only when there's something to show:** always inside an open cut block, and in Maintain/Bulk
+  only while load remains. A months-long bulk with nothing owed shows nothing. The label is real elapsed
+  weeks or real rest days — never a load number.
+- **Nothing ever changes mode by itself.** The three chips are the only mode surface; no card duplicates them
+  with buttons. One guarded action exists: going back to **Cut** mid-break, and only where the block had
+  reached the soft-nudge threshold, so a short casual cut never meets friction. **Bulk is never guarded**, and
+  "Cut anyway" is honoured immediately.
+- **Finishing is quiet.** At zero, one dismissible **"Recharged"** card that retires itself after 3 days
+  whether or not it's tapped — then nothing about breaks is shown at all.
+- **New: the stall check.** Cutting for `STALL_WEEKS` (3) with the scale flatter than `TREND_CUT_RATE` opens
+  the same soft nudge with its own copy — *your loss has stalled*. A stall means adherence has drifted, the
+  body has compensated, or water is masking the loss; in all three, eating less is the wrong answer.
+  **The copy is deliberately blameless**, and too few weigh-ins means silence rather than a guess.
+- **Removed: the rolling-year track** (`CUMULATIVE_CUT_ESCALATE` / `MAINTENANCE_DECAY`). Escalating after ~a
+  year of dieting measured the wrong thing — harm tracks energy availability (Step 4) and bodyweight lost
+  (`BLOCK_LOSS_TRIGGER`), not calendar time under a mild deficit. The stall check is the better-aimed
+  backstop. The `cut_load_year` column is retired in place, not dropped.
+- **Weight up early in a break** gets a reassurance line (water and glycogen, not fat) and never a
+  "over target" alarm. The calibration misread behind it is fixed globally by the auto-lowering fix.
+
 ### Energy Step 5a — cut cycling: a cut runs as load-weighted blocks (Aug 2026)
 Nothing capped how *long* a cut ran. A deficit from January to June with no structured break is the harm this
 whole workstream exists to prevent. A cut is now a **time-boxed block** that prompts a diet break — but the
@@ -1417,13 +1446,12 @@ clock is not a calendar. Tests **172/172** (30 new), sw `v60→v61`. **DB change
   block forces the prompt early. The hard card snoozes 3 days at a time and can never be permanently killed.
 - **The card shows REAL elapsed weeks, not load.** Telling a 16-week gentle cutter "you've been cutting for 8
   weeks" because that is their load would simply be false.
-- **A block ends** via a completed break or 7 consecutive non-cut days; one day off never resets it. Time at
-  maintenance **pays down** the rolling year total (`MAINTENANCE_DECAY`), so a break taken is worth something.
+- **A block ends** when rest has drained it to zero; one day off never resets it. *(Amended by Step 5b —
+  originally 7 consecutive non-cut days wiped the block, and a rolling year total was tracked alongside.)*
 - **Copy constraint (coach, binding):** no day count is presented as the point at which something happens to
   the body. There is no threshold at which testosterone falls or metabolism "breaks" — risk rises with
   severity × duration, and in people with obesity weight loss often *improves* testosterone.
-- **Known gap:** the primary button says **"Switch to maintenance"**, not the spec's "Start 2-week diet
-  break" — the tracked break is file 03, not yet built. See §5.2 and `START-HERE.md`.
+- ~~**Known gap:** the primary button says "Switch to maintenance"~~ — **closed by Step 5b below.**
 
 ### Energy Step 4 — energy floor: steady-loss clamp + low-fuel warning (Aug 2026)
 The flat safe minimum (1,400 M / 1,200 F) is no longer the thing protecting you — it protected nobody in

@@ -132,7 +132,7 @@ Standard activity factors (1.2–1.725) are meant to be **whole-day incl. exerci
 | **2** | ✅ **DONE 2026-08-07 — Strengthen adaptive TDEE.** Flat ±150 integrator → **dead-time-compensated, confidence-scaled** convergence (gain 0.8; per-run cap 100/150/200 by tier; engages at **6** weigh-ins, was 8). Root fix: the old loop slammed to the ±600 cap and pinned there ~10 days (lag overshoot); subtracting the in-flight adjustment kills it. **Plus weigh-in engagement (file 06):** invite (not "log daily"), progress cue, cadence picker, one gentle 7-day nudge with mute — because calibrate needs weigh-ins the seed no longer *requires*. sw v58, Jest 117. | coach + eng + design + QA | ✅ Simulation closes a 500 kcal gap by day 19 (≤3 wk), never pins the cap, max step 100; nudge/cadence unit-tested. |
 | **3** | ✅ **DONE 2026-08-07 — Smooth earn-to-eat.** A session's kcal are spread FORWARD across a 3-day window as an energy-conserving weighted average (`SMOOTH_WEIGHTS = [0.5, 0.3, 0.2]` over today/−1d/−2d, Σ=1 — total training energy unchanged, just un-spiked). Same-day bonus halved; a rest day after training still carries fuel; back-to-back days average instead of stacking. Prior-2-days workout kcal loaded from `workouts__<date>` into `priorWorkoutKcal` state; `smoothedBonus` replaces the raw same-day total into `calcTargets`. Workout-card copy reworked ("kcal burned" + "+X added to today, the rest fuels the next couple of days"). New `07-smoothed-earn-to-eat.feature` (@draft). sw v59, Jest 125. | coach (maths) + design | ✅ No same-day full unlock; rest-day fuel sane; back-to-back averaged; 8 unit tests green. |
 | **4** | ✅ **DONE 2026-08-07 — Energy floor, re-seated as TWO protections.** The draft's single EA-30 clamp did not survive its own numbers (see §5.1), so it was split: (a) **steady-loss floor** — the hard clamp, all users: a preset target never sits more than `MAX_DEFICIT_FRAC` (0.25) below believable maintenance + the applied training bonus, so it scales with body size and eases rather than blocks; (b) **low-fuel warning** — energy availability `(target − raw burn) ÷ FFM`, **warning only**, shown for a lean body (`LEAN_BF` 15% M / 23% F) on a day it trained when EA < 30. `EA_OK = 45` **dropped** (unreachable by construction). `SAFE_MIN` survives as the absolute backstop + body-fat-unset fallback. Custom targets are warned about, never overridden. sw v60, Jest 142. | coach (numbers), design (copy/UX), QA | ✅ A 98.5 kg cut keeps its full 500 kcal deficit; a 60 kg cut is eased; low-fuel fires only for lean + trained + genuinely low. |
-| **5** | **Sustainability system** — cut-cycling (02), diet break (03), **the auto-lowering fix** (file 04's unbuilt half: don't cut the target when weight rises during a deficit; the BMR×1.2 maintain floor half is already live). Meaningful only once a cut is a real deficit. **02 ✅ BUILT 2026-08-07** (see §5.2): a cut is measured as **cut load** — days weighted by deficit depth (`dayLoad = deficitFrac / REFERENCE_DEFICIT`), *not* a flat day count and *not* read from food logs. Thresholds 56 / 84 load-days (lean 42 / 56), so a 10% cut reaches the prompt at ~24 real weeks and a 25% cut at ~9.5. Cards show **real elapsed weeks**. 4 new `profiles` columns run (loads `NUMERIC`); `activity` now syncs too. Jest 172, sw v61. **03 and the auto-lowering fix still unbuilt and not yet proofread** — 03 also replaces 02's interim "Switch to maintenance" button. | coach + QA | 02 ✅ 30 unit tests green; 03/04 per-feature specs pending. |
+| **5** | **Sustainability system** — cut-cycling (02), diet break (03), **the auto-lowering fix** (file 04's unbuilt half: don't cut the target when weight rises during a deficit; the BMR×1.2 maintain floor half is already live). Meaningful only once a cut is a real deficit. **02 ✅ BUILT 2026-08-07** (see §5.2): a cut is measured as **cut load** — days weighted by deficit depth (`dayLoad = deficitFrac / REFERENCE_DEFICIT`), *not* a flat day count and *not* read from food logs. Thresholds 56 / 84 load-days (lean 42 / 56), so a 10% cut reaches the prompt at ~24 real weeks and a 25% cut at ~9.5. Cards show **real elapsed weeks**. 4 new `profiles` columns run (loads `NUMERIC`); `activity` now syncs too. Jest 172, sw v61. **03 ✅ BUILT 2026-08-09** (see §5.3): a break is simply **not cutting**, and the same load becomes a bar that fills while cutting and **drains** while not — `DIET_BREAK_DAYS` (14) rest days clear any block, 7 clear half, a partial break keeps its dent. Adds the **stall check** (a flat scale for `STALL_WEEKS`) and **removes the rolling-year track**. One new column, `cut_break_load`. Jest 199, sw v62. **The auto-lowering fix (04's second half) is the remaining unbuilt piece of this step.** | coach + QA | 02 ✅ 30 unit tests green; 03 ✅ 27 more; 04 spec pending. |
 | **6** | **LEA symptom check (file 05).** Sex-neutral → *"see a healthcare professional."* **Trigger decided 2026-08-07** (spec'd, not built): `LEA_WEEKS_TO_PROMPT` (3) consecutive weeks whose *average* logged intake sits at or below the steady-loss floor, counting only weeks with ≥ `LEA_MIN_LOGGED_DAYS` (4) logged days — unlogged days excluded, never zero-filled — then a 14-day cooldown after "Not now". Explicitly **not** driven by the low-fuel note (lean-body/training-day only, so it would miss the founder's own harm case) and **not** by time spent cutting (that's 02/03). | coach + design | Per-spec; no diagnosis. |
 
 ### 5.1 Why Step 4 was re-shaped at build time (2026-08-07)
@@ -215,6 +215,56 @@ diet fatigue, aids adherence and re-tests the maintenance estimate.
 
 **Cross-cutting:** design runs an ED-safety review on every calorie-facing warning; consultant runs the believability gate before each deploy; the **BMR×1.2 maintenance floor already live** (file 04a, `bmrFloorApplied`) stays as-is — it's a harmless subset of this model.
 
+### 5.3 What a break is, and why the yearly track was removed (2026-08-09)
+
+Decided in a founder review, with the coach hat on the removal. Spec:
+`features/energy-safety/03-diet-break-intervention.feature`.
+
+**A break is simply not cutting.** Switching to Maintain — or Bulk — *is* the break. There is no break
+mode, no countdown, no completion card and nothing to fail at. An earlier draft built exactly that
+(a tracked 14-day state) and it was rejected outright: a break with a contract is a promise the user
+can break, whereas a mode you are merely in cannot be failed.
+
+**One gauge, read in two directions.** 02's cut load becomes a bar. Cutting fills it (toward the
+soft-nudge threshold, labelled in real weeks); every non-cut day drains it:
+
+| Rest days | Block left | In words |
+|---|---|---|
+| 3 | 79% | a real dent, and it stands |
+| 7 | 50% | half a break, half the load |
+| 14 (`DIET_BREAK_DAYS`) | 0 | block closed, whatever its size |
+
+Remaining load is `loadAtBreakStart × (1 − restDays ÷ 14)`, computed from the original rather than by
+repeated subtraction so fourteen days land exactly on zero at any block size (`stepCutBlock`,
+`app.jsx:598`). Maintain and Bulk drain **identically** — it's the days not in cut that count, and no
+surplus multiplier exists that we could defend.
+
+Two consequences, both accepted knowingly. Rest days genuinely push a break further out, which is the
+point — but because each pays a *share* of the current load, one day off cancels roughly four cut days
+deep in a block. A 6-on-1-off pattern still climbs to the prompt; a 5-on-2-off pattern settles below
+the nudge and never trips it. That is the correct answer for a ~14% average weekly deficit, and the
+stall check below is what catches the same pattern when it *isn't* working.
+
+**Nothing ever changes mode automatically.** The three chips are the only mode surface; no card
+duplicates them with buttons. The one piece of friction is returning to Cut mid-break, and only where
+the block had reached the soft-nudge threshold — friction exactly where advice existed, nowhere else.
+Bulk is never guarded. "Cut anyway" is honoured immediately.
+
+**The stall check replaces the rolling-year track.** `CUMULATIVE_CUT_ESCALATE` (168 load-days a year)
+and `MAINTENANCE_DECAY` are **removed**. The coach case for removal: harm tracks energy availability
+(Step 4) and how much bodyweight has come off (`BLOCK_LOSS_TRIGGER`) — not calendar time under a mild
+deficit. A year of gentle, working dieting is what slow fat loss looks like, and a third, weaker proxy
+for duration earned its place only by looking protective. What replaced it is aimed better: cutting
+for `STALL_WEEKS` (3) with the scale flatter than `TREND_CUT_RATE` opens 02's soft nudge with its own
+copy. A stall means adherence has drifted, the body has compensated, or water is masking the loss —
+and in all three, eating less is the wrong answer while maintenance is the fix.
+
+Two guardrails on it, both binding: the copy is **blameless** (in a calorie tracker the reflex answer
+to "you're doing it wrong" is to eat less), and it measures over **three weeks**, because a fortnight
+of water retention is not a stall. Too few weigh-ins ⇒ silence, never a guess.
+
+The `cut_load_year` column is left in place, unwritten — dropping a live column can only go wrong.
+
 ---
 
 ## 6. Still-open decisions (before/inside each step)
@@ -234,10 +284,16 @@ diet fatigue, aids adherence and re-tests the maintenance estimate.
    a *moderate* cut behaves like the familiar 8/12-week framing, with gentler and deeper cuts scaling
    off it. No trial fixes any of these three numbers; they are a defensible default, not a finding.
    Re-check the real-week spread they produce once usage data exists.
-8. **`MAINTENANCE_DECAY = 1.0` load-day per maintenance day** (Step 5) — there is **no validated
-   formula** for how fast a break "pays down" accumulated restriction. Chosen so a full 2-week break is
-   visibly worth taking. Concept over precision; revisit if it makes the yearly escalation unreachable.
-9. **Load uses the prescribed deficit, not the achieved one** (§5.2) — accepted for v1 because it needs
+8. **`DIET_BREAK_DAYS = 14` and the pro-rata drain** (Step 5, §5.3) — there is **no validated formula**
+   for how fast a break "pays down" accumulated restriction. 14 is sized to the best-studied break
+   length (MATADOR, Byrne 2018), and the drain being *proportional* is a choice, not a finding: it makes
+   a rest day worth more the deeper you are, which is why ~2 rest days a week hold the bar below the
+   nudge indefinitely. Judged correct (that is a gentle cut) with the stall check as the real backstop —
+   but it is the number to re-check first if breaks look too cheap in real usage.
+9. **`STALL_WEEKS = 3`** (Step 5, §5.3) — a coaching judgement, not a trial figure. Two weeks is inside
+   normal water-weight noise; four would leave someone stuck for a month. Re-check once weigh-in data
+   exists: if the nudge fires on people who are in fact losing, the window is too short.
+10. **Load uses the prescribed deficit, not the achieved one** (§5.2) — accepted for v1 because it needs
    no logging and errs toward earlier breaks. If it proves noisy (people setting deep targets they
    never eat to), gate it on the weight trend.
 
@@ -247,6 +303,7 @@ diet fatigue, aids adherence and re-tests the maintenance estimate.
 
 | Date | Change |
 |---|---|
+| 2026-08-09 | **Step 5b BUILT — file 03 (the break drain).** A break is **not cutting** — no break mode, no countdown, nothing to fail at (§5.3). 02's cut load becomes a **bar read in two directions**: it fills while cutting (labelled in real weeks) and **drains** while not, by `loadAtBreakStart × (1 − restDays ÷ DIET_BREAK_DAYS)` — 14 rest days clear any block, 7 clear half, a partial break keeps its dent. Maintain and Bulk drain identically. New pure logic in `app.jsx`: the drain inside `stepCutBlock`, plus `cutBarFor` / `cutGuardFor` / `rechargedCardDue` / `trendLossFrac`. One guarded action (back to Cut mid-break, only past the soft threshold); Bulk never guarded; **nothing ever changes mode automatically**. One dismissible "Recharged" card that self-retires after `RECHARGED_CARD_DAYS` (3), then silence. **Adds the stall check** — cutting `STALL_WEEKS` (3) with a flat scale opens 02's soft nudge with blameless copy. **Removes the rolling-year track** (`CUMULATIVE_CUT_ESCALATE` / `MAINTENANCE_DECAY`) as the wrong measure of harm; `cut_load_year` is retired but not dropped. **Two 02 amendments land here:** `BLOCK_END_GRACE` is gone (a block closes only when drained), and the prompt button is now honestly *"Start a 2-week break"*. ⚠️ **Needs one new column before deploy:** `cut_break_load` (`setup/supabase-schema.sql`) — the drain rate, without which a second device resumes at the wrong speed and skips the guard. Jest **199** (27 new), sw **v62**. |
 | 2026-08-07 | **Step 5a BUILT — file 02 (cut cycling).** The load model below, implemented: `dayCutLoad` / `stepCutBlock` / `accrueCutBlock` / `cutPromptFor` / `weeklyLossFrac` + `cutThresholds`, block state in `cutBlock` (local blob `cut_block`, four durable fields synced to `profiles`). Soft nudge + non-dismissable hard prompt on the dashboard, both showing **real elapsed weeks**. `syncProfile` now also writes `activity` (its column exists at last). Jest **172** (30 new), sw **v61**. **Deviation from the locked spec:** the primary button reads *"Switch to maintenance"*, not *"Start 2-week diet break"* — file 03 owns the tracked break and isn't built, so promising a 2-week break nothing tracks would have been a lie. Switching to Maintain accrues no load and `BLOCK_END_GRACE` closes the block after a week, so the behaviour is honest in the meantime. Next: 03 (diet break) replaces that button. |
 | 2026-08-07 | **Step 5 spec decided for file 02** (spec only — not built). A cut is measured as **cut load**: each day weighted by deficit depth (`dayLoad = deficitFrac / REFERENCE_DEFICIT`, ref 0.20), reusing `kcal`/`effTDEE` already inside `calcTargets` — so a gentle cut runs longer and a deep one is cautioned sooner (~24 / 12 / ~9.5 real weeks at 10 / 20 / 25%). Whether a day counts is read from the **declared daily mode**, never food logs, with a weight-trend backstop; unlogged days don't pause the clock. Thresholds 56 / 84 load-days (lean 42 / 56, reusing Step 4's `isLeanBody`); `MAINTENANCE_DECAY` pays down the yearly total. **Copy shows real elapsed weeks, not load.** Rejected (with reasons, §5.2): a ~42-day universal cut default (bodybuilder cadence — inverts the lean modifier and penalises higher-body-fat users); a GREEN/AMBER/RED traffic light over sleep/fatigue/recovery/hunger (the app logs none of it — belongs in file 05); folding training load into the load term (Step 4's EA warning already owns that interaction). Also rejected the earlier draft's "deficit logged on ≥4 of 7 days" week — it goes quiet for the patchy logger this feature exists to protect. Needs 4 new `profiles` columns before wiring (`setup/supabase-schema.sql`; loads are `NUMERIC`). |
 | 2026-08-07 | **Step 6 trigger decided** (spec only — file 05 is still `@draft`, unbuilt). The symptom check is offered after 3 consecutive weeks whose *average* logged intake sits at or below the steady-loss floor, counting only weeks with ≥4 logged days; unlogged days are excluded rather than zero-filled; 14-day cooldown after "Not now". Rejected: triggering off the low-fuel note (lean-body + training-day only — would have missed the 30%-body-fat harm case that started this workstream) and triggering off weeks spent cutting (that's files 02/03; a well-fuelled cut is not a welfare concern). Also resolved the "low fuel" naming collision — that phrase now means only file 01's single-day note; file 05 says "under-eating". |
