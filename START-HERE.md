@@ -1,15 +1,17 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-09 (session 15). **Jest 209/209 · sw v63 · branch `energy-safety-bmr-floor`.**
+**Updated:** 2026-08-10 (session 15). **Jest 213/213 · sw v65 · `main` @ `270d76c` — LIVE.**
 
 > ## ▶ START HERE
 >
-> **Step 5 is complete — including the fix for the harm that started all of this — and the Supabase
-> column is run.** ✅ `cut_break_load` added 2026-08-09; the sync wiring is live-safe.
+> **The energy-safety workstream is MERGED AND DEPLOYED.** Steps 1–5 of `ENERGY_MODEL.md` are live on
+> Pages, including the auto-lowering fix that closes the original harm. Rollback tag:
+> **`pre-energy-safety`**. `cut_break_load` is run on Supabase. File 05 is **SHELVED** (see below).
 >
-> **The only work left is the batched on-device test + deploy of the whole energy-safety set**
-> (Next up 2). Nothing on this branch has ever run on a device. **File 05 is SHELVED** (founder,
-> 2026-08-09; see below) — don't start it, and don't treat it as an obligation.
+> **The one job left is to test it on the phone: `DEVICE-TEST.md`.** Fully close and reopen the PWA
+> first or you're still on v56. One open question is parked in that file — whether *"Below your resting
+> metabolism"* should become a one-time acknowledgement, since it currently shows for every sedentary
+> cutter forever.
 >
 > ⚠️ **Reminder learned the hard way, again, on 2026-08-09:** running the *whole* schema file against
 > the live database fails on `CREATE POLICY` (42710) and the single-transaction rollback silently
@@ -32,8 +34,8 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v63**.
-- Run `npx jest` before claiming anything works. Currently **209/209**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v65**.
+- Run `npx jest` before claiming anything works. Currently **213/213**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -56,19 +58,21 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 ## Where the code is
 
-`main` @ `88a283a` is what's **live on Pages** (sw v56) — the harm-fix flooring *Maintain* at sedentary
-TDEE (BMR × 1.2). Everything since lives on **`energy-safety-bmr-floor`**, **none of it deployed or
-device-tested**. The device test is deliberately **batched** into one pass at the end (Next up 2).
+`main` @ `270d76c` is what is **live on Pages** (sw **v65**) — the whole energy-safety workstream,
+Steps 1–5, merged and deployed 2026-08-10. Rollback tag **`pre-energy-safety`** is the state before it
+(`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch `energy-safety-bmr-floor` is now
+merged and can be deleted once the device test passes. **Deployed ≠ verified** — nothing here has been
+used on a real phone yet; that's `DEVICE-TEST.md`.
 
 | Step | What changed | State |
 |---|---|---|
-| 1 | Flat BMR×1.2 → a 4-chip lifestyle (NEAT) multiplier, 1.20–1.55, seeding a believable target | ✅ committed |
-| 2 | Adaptive TDEE converges properly (no more cap-pinning) + the app *invites* weigh-ins | ✅ committed |
-| 3 | A workout's calories spread forward over 3 days instead of unlocking the same day | ✅ committed |
-| 4 | A body-sized **steady-loss floor** replaces the flat safe minimum; energy availability becomes a **warning**, not an override | ✅ committed |
-| 5a | A cut runs as **load-weighted blocks** that prompt a diet break (file 02) | ✅ committed |
-| 5b | A break is **time not cutting** — the load bar drains while you rest; plus the **stall check**; minus the rolling-year track (file 03) | ✅ committed |
-| 5c | **The auto-lowering fix** — the app only lowers its estimate of what you burn when you're *not* cutting (file 04). The original harm, closed. | ⚠️ **built, UNCOMMITTED** |
+| 1 | Flat BMR×1.2 → a 4-chip lifestyle (NEAT) multiplier, 1.20–1.55, seeding a believable target | ✅ live |
+| 2 | Adaptive TDEE converges properly (no more cap-pinning) + the app *invites* weigh-ins | ✅ live |
+| 3 | A workout's calories spread forward over 3 days instead of unlocking the same day | ✅ live |
+| 4 | A body-sized **steady-loss floor** replaces the flat safe minimum; energy availability becomes a **warning**, not an override | ✅ live |
+| 5a | A cut runs as **load-weighted blocks** that prompt a diet break (file 02) | ✅ live |
+| 5b | A break is **time not cutting** — the load bar drains while you rest; plus the **stall check**; minus the rolling-year track (file 03) | ✅ live |
+| 5c | **The auto-lowering fix** — the app only lowers its estimate of what you burn when you're *not* cutting (file 04). The original harm, closed. | ✅ live |
 
 ---
 
@@ -78,13 +82,13 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 
 | File | What it does | State |
 |---|---|---|
-| 01 energy floor | steady-loss floor + low-fuel warning | ✅ built |
-| 02 cut cycling | load-weighted blocks + diet-break prompts | ✅ built |
-| 03 the break bar | a break is just *not cutting*; the load bar drains pro-rata over 14 rest days, + the stall check | ✅ built (uncommitted) |
-| 06 weigh-in engagement | invites check-ins, cadence picker | ✅ built |
-| 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ built |
-| 04 **first half** | *Maintain* floored at BMR × 1.2 | ✅ built + **live on `main`** |
-| 04 **second half** — *"the auto-lowering fix"* | the app only lowers its estimate of what you burn when you're *not* cutting | ✅ built (uncommitted) |
+| 01 energy floor | steady-loss floor + low-fuel warning | ✅ live |
+| 02 cut cycling | load-weighted blocks + diet-break prompts | ✅ live |
+| 03 the break bar | a break is just *not cutting*; the load bar drains pro-rata over 14 rest days, + the stall check | ✅ live |
+| 06 weigh-in engagement | invites check-ins, cadence picker | ✅ live |
+| 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ live |
+| 04 **first half** | *Maintain* floored at BMR × 1.2 | ✅ live |
+| 04 **second half** — *"the auto-lowering fix"* | the app only lowers its estimate of what you burn when you're *not* cutting | ✅ live |
 | 05 symptom check | asks how you're feeling after a long under-eat | 🗄️ **SHELVED** (founder, 2026-08-09) |
 
 > **Terminology fix:** earlier notes called the last unbuilt half of file 04 **"04-rest"**. That name meant
@@ -94,14 +98,25 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 > **Closed 2026-08-09** — the correction is now one-directional while cutting (`ENERGY_MODEL.md` §5.4).
 
 **Note on `@draft` tags:** 06 and 07 still carry `@draft` and 04 says so in a comment, but **their code is
-built**. The tag is stale, not a to-do. Clear the tags during the batched device test (Next up 2).
+built**. The tag is stale, not a to-do. Clear the tags during the device test (`DEVICE-TEST.md`).
 
 ---
 
 ## Right now
 
-**Session 15 proofread and BUILT file 03.** Jest **199/199** (27 new), sw **v62**, `app.js` rebuilt,
-**uncommitted**. A break is simply **not cutting** — the mode picker is the only mode surface, nothing
+**Session 15 shipped the whole workstream.** Built file 03, rewrote and built file 04, shelved 05,
+merged to `main` and deployed. Jest **213/213**, sw **v65**. The remaining job is `DEVICE-TEST.md`.
+
+**Two bugs were caught by actually running it, not by the tests** — both worth remembering, because
+213 green unit tests said nothing about either. (1) The preview harness had **no theme CSS at all**,
+so every colour variable resolved to nothing and the UI flattened to white-on-dark; it now borrows
+`index.html`'s block instead of keeping a copy that would drift. (2) The break bar announced *"ON A
+BREAK · STARTING TODAY — about 14 days to fully recharged"* **on a fresh install with nothing logged**,
+because Cut is the default mode, so opening the app for one day opened a block — and the pro-rata drain
+then needed a full fortnight to clear that one day. Fixed with `CUT_BAR_MIN_LOAD` (7): the counter still
+runs from day one, but the app stays quiet until there's about a week of real cutting to talk about.
+
+**What file 03 does.** A break is simply **not cutting** — the mode picker is the only mode surface, nothing
 ever switches for you, and there is no break state to fail at. 02's cut load became a **bar read in two
 directions**: it fills while cutting and drains while not, by `loadAtBreakStart × (1 − restDays ÷ 14)`,
 so 14 rest days clear any block, 7 clear half, and a partial break keeps its dent. Maintain and Bulk
@@ -115,8 +130,8 @@ under a mild deficit. (2) **The stall check replaces it** — cutting 3 weeks wi
 soft nudge with blameless copy ("your loss has stalled"). That's the honest trigger, and it aims at the
 person who needs it rather than at everyone who's been at it a while. Full reasoning: `ENERGY_MODEL.md` §5.3.
 
-**Session 15 then rewrote file 04 in plain English and BUILT it — Step 5 is complete.** Jest **209/209**,
-sw **v63**. The rewrite found that three of 04's four protections had already shipped, and that its draft
+**Session 15 then rewrote file 04 in plain English and BUILT it — Step 5 is complete.** Jest **213/213**,
+sw **v65**. The rewrite found that three of 04's four protections had already shipped, and that its draft
 contradicted 03 in two places (a card with mode buttons; a duplicated break recommendation) — both fixed.
 The one real piece left was **the asymmetry**, and it closes the original harm: *the app only lowers its
 estimate of what you burn when you are NOT cutting.* While your target sits below maintenance a
@@ -125,10 +140,6 @@ does, because there the evidence is clean. Raising is never slowed. Nothing is l
 surfaces as a stall → the stall check suggests a break → a break is Maintain, where the correction runs.
 Two new cards: *"Weight up while eating less than maintenance"* and *"Below your resting metabolism"*.
 Reasoning: `ENERGY_MODEL.md` **§5.4**.
-
-**⚠️ One SQL line is owed before any deploy** — see START HERE at the top. `cut_break_load` is the drain
-rate; the app writes it now, and an upsert naming a column that doesn't exist 400s and takes the whole
-profile sync down. Not urgent (nothing is deployed), but it must precede the batched device test.
 
 **What 02 does, in one paragraph.** A cut is measured as **cut load**, not calendar days: each day is
 weighted by how deep the deficit is, so a gentle cut runs much longer before prompting a break and an
@@ -173,21 +184,13 @@ that §4 warns against leaning on.
    > genuinely lost is the ability to catch someone whose numbers look fine but who feels awful; that
    > needs data the app doesn't have and would have to ask for. Worth revisiting only if real usage
    > shows people sailing past every structural guardrail.
-3. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7)
-   checks in one pass (**hard-reload first** — PWA cache): (a) v55 optional follow-up flow; (b) ⚐
-   Report-wrong opens a prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI
-   ("Eased to a steady pace", "Low on fuel today", "Held at your minimum maintenance", the cut-cycling
-   nudge + hard prompt, and their "Why?" toggles) **and the file-03 surfaces** — the bar filling while
-   cutting, the same bar draining on Maintain *and* on Bulk, the guard confirm on the Cut chip (and its
-   absence on Bulk), the "Recharged" card, and the stall nudge — **plus the file-04 pair**: "Weight up
-   while eating less than maintenance" (needs a rising 2-week trend while in Cut) and "Below your resting
-   metabolism" (needs a cut target under BMR that isn't already floored). ✅ The `cut_break_load` SQL is
-   done.
-   **Note:** the steady-loss floor only *visibly* bites on smaller bodies — to see it, temporarily set a
-   ~60 kg profile. Cut-cycling and the drain need a long history to trip naturally, so seed `cut_block` in
-   local storage (set `start`, `load`, and for a break `breakLoad` + `offRun`) rather than waiting weeks.
-   When green, clear the stale `@draft`/`@wip` tags. **Then bind `RATE_LIMIT` KV** (blocker below) before
-   any launch.
+3. **◀ Device-test the live release** — the checklist is **`DEVICE-TEST.md`**, written for this go-live
+   and deletable once done. It covers what you can check in normal use on your phone, plus Chrome
+   console snippets for the time-dependent surfaces (cut blocks, the drain, the guard, the stall) that
+   need weeks of history and will otherwise never appear. **Sign out or use incognito before seeding** —
+   block state syncs to Supabase and would overwrite your real row. **Fully close and reopen the PWA
+   first**, or you're testing v56. When green, clear the stale `@draft`/`@wip` tags and **bind
+   `RATE_LIMIT` KV** (blocker below).
 4. **🗓️ carb floor** (deferred): hold carbs at 2 g/kg bodyweight on aggressive cuts, reducing **fat** first
    (to its 0.6 g/kg hormonal floor). Its blocker (the energy floor) is built — but "aggressive cut" now needs
    redefining, since a preset can't go deeper than 25%; it really only applies to typed custom targets.
