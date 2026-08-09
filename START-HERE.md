@@ -15,8 +15,9 @@
 > below). Until it exists, the profile upsert 400s and takes the *whole* profile sync down with it.
 > Nothing is deployed yet, so nothing is broken today — but this must precede the device test.
 >
-> **2. Then Step 6 — file 05, the symptom check.** Trigger already decided, spec still needs a
-> proofread. After that: the one batched device test + deploy of everything.
+> **2. Then the batched on-device test + deploy of the whole energy-safety set** (Next up 2). That is
+> the only work left — **file 05 is SHELVED** (founder, 2026-08-09; see below). Don't start it, and
+> don't treat it as an obligation.
 
 ---
 
@@ -28,7 +29,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 | Task | Read |
 |---|---|
 | Anything touching calorie targets | `ENERGY_MODEL.md` §5, §5.1, §5.2, §5.3 — **mandatory, it owns the model** |
-| Building feature 04 / 05 | that one `.feature` file + `ENERGY_MODEL.md` §5 |
+| Building an energy-safety feature | that one `.feature` file + `ENERGY_MODEL.md` §5 |
 | Product behaviour / changelog | `DOCS.md` §37 |
 | Legal, privacy, deploy checklist | `LEGAL_ROADMAP.md` |
 | Known bugs & severities | `ARCHITECTURE_REVIEW.md` |
@@ -74,7 +75,7 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 | 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ built |
 | 04 **first half** | *Maintain* floored at BMR × 1.2 | ✅ built + **live on `main`** |
 | 04 **second half** — *"the auto-lowering fix"* | the app only lowers its estimate of what you burn when you're *not* cutting | ✅ built (uncommitted) |
-| 05 symptom check | asks how you're feeling after a long under-eat | ⬜ unbuilt; trigger already decided |
+| 05 symptom check | asks how you're feeling after a long under-eat | 🗄️ **SHELVED** (founder, 2026-08-09) |
 
 > **Terminology fix:** earlier notes called the last unbuilt half of file 04 **"04-rest"**. That name meant
 > nothing. It is **the auto-lowering fix** — use that. It was the exact mechanism that caused the founder's
@@ -148,9 +149,20 @@ that §4 warns against leaning on.
 
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
    earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
-   ✅5c the auto-lowering fix (04) → **◀ 6 the symptom check (05)** — trigger already decided, spec needs
-   a proofread first (it inherits 03's "stay at maintenance longer" idea). Then Jest green, commit,
-   and the **batched on-device test + deploy of every feature file**.
+   ✅5c the auto-lowering fix (04). **Step 6 (file 05, the symptom check) is SHELVED** — the founder
+   called it on 2026-08-09, after the structural protections that it sat on top of had all landed.
+   **The energy plan is therefore done.** What remains is the `cut_break_load` SQL and the
+   **batched on-device test + deploy of every feature file** (2 below).
+
+   > **Why shelving 05 is defensible, so nobody reopens it on a hunch.** 05 was the self-report layer:
+   > ask the user how they're sleeping/feeling after a long under-eat, then point at a doctor. Everything
+   > underneath it now exists and works without asking anyone anything — the steady-loss floor, the
+   > low-fuel warning, the BMR×1.2 maintain floor, load-weighted cut blocks with break prompts, the
+   > stall check, and the auto-lowering fix. The one line 05 uniquely owned — *"if you're feeling run
+   > down with it, it's worth talking to a doctor"* — is already in the hard break prompt. What is
+   > genuinely lost is the ability to catch someone whose numbers look fine but who feels awful; that
+   > needs data the app doesn't have and would have to ask for. Worth revisiting only if real usage
+   > shows people sailing past every structural guardrail.
 3. **Batch device-test everything** — the whole energy-safety set AND the still-open AI-capture (v6.7)
    checks in one pass (**hard-reload first** — PWA cache): (a) v55 optional follow-up flow; (b) ⚐
    Report-wrong opens a prefilled email; (c) + Log all lands in today's food; plus the energy-safety UI

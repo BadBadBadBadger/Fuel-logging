@@ -538,7 +538,7 @@ Two more spec sets sit alongside it:
 | Path | Covers | State |
 |---|---|---|
 | `features/ai-capture.feature` | v6.7 voice/photo meal capture | `@wip` until the batch device-test |
-| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 04, 06 and 07 are **built** (their files were rewritten to match what shipped); only 05 is not |
+| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 04, 06 and 07 are **built** (their files were rewritten to match what shipped); **05 is shelved** (`ENERGY_MODEL.md` §5.5) |
 
 Specs in `features/energy-safety/` carry a **NUMBERS CONTRACT** header: kcal figures in scenarios are worked
 examples derived from the formulas, never values to hardcode — the exact arithmetic is owned by

@@ -1,5 +1,14 @@
 # ─────────────────────────────────────────────────────────────
-# DRAFT — for review. Energy-safety workstream, file 5 of 5.
+# 🗄️ SHELVED 2026-08-09 (founder). Energy-safety workstream, file 5 of 5.
+#
+# NOT a to-do. Do not start building this, and do not treat it as an unpaid
+# debt. It was designed when it was the only thing standing between a user and
+# an open-ended deficit; Steps 4, 02, 03 and 04 now cover every risk it watched
+# for — structurally, without asking the user anything — and its one unique
+# line ("worth talking to a doctor") already lives in the hard break prompt.
+# The accepted loss, and the evidence from real usage that would justify
+# reopening it, are in ENERGY_MODEL.md §5.5. What follows is the record of a
+# decided design, kept so the thinking isn't lost. It is not a plan.
 #
 # WHY: The app has no concept of the SYMPTOMS of under-fuelling. A user can
 # grind a deficit for months while libido, mood, sleep and recovery quietly
