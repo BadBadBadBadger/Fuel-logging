@@ -1,12 +1,16 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.1 (Cream-grey UI refresh, WCAG-AA readability, top-aligned navigation)
-**Last Updated:** June 2026
+**Version:** 6.7 (AI meal capture) + energy-plan Steps 1–4 (built, not yet deployed)
+**Last Updated:** 7 August 2026
 
-> **What's new in 6.1** — The neon-lime palette was replaced with a warm cream-grey
-> theme; all text lifted to ≥WCAG-AA contrast; every screen now opens top-aligned;
-> the Google avatar is more robust (no-referrer + graceful fallback); and the
-> service worker is skipped on `localhost` for friction-free local dev. See
-> §35 Design System, §36 Local Development, and §37 Changelog.
+> **What's new** — the **energy plan** rebuilt how targets are worked out, in four steps:
+> a lifestyle activity chip seeds a believable TDEE (Step 1); the adaptive engine converges
+> on your real one instead of over-correcting (Step 2); a workout's calories spread across
+> three days rather than all unlocking at once (Step 3); and a **body-sized steady-loss
+> floor** replaced the flat safe minimum as the real protection, with energy availability
+> demoted to a rare warning (Step 4). Steps 1–4 are **built and Jest-green on branch
+> `energy-safety-bmr-floor` but not deployed** — what's live is v6.7 plus the BMR × 1.2
+> maintenance floor. See §3 Calorie Calculation (its **Calorie floors** table), §10 Safe Minimum, §37 Changelog, and
+> `ENERGY_MODEL.md` for the model behind it.
 
 ---
 
@@ -55,11 +59,13 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 ```
 LBM    = weight × (1 − bodyFat / 100)
 BMR    = 370 + (21.6 × LBM)
-TDEE   = (BMR × 1.2) + tdeeAdj        ← fixed baseline; adaptive engine adjusts tdeeAdj over time
-Target = TDEE + mode adjustment + workout kcal
+TDEE   = (BMR × activityMult) + tdeeAdj   ← activityMult: 1.20/1.35/1.45/1.55 (NEAT seed); adaptive tunes tdeeAdj
+Target = TDEE + mode adjustment + smoothed workout kcal   ← earn-to-eat spread over 3 days (§ Workout kcal)
+         (maintenance floored at BMR × 1.20 — the adaptive auto-lowering can't sink it below sedentary)
+         (then floored by the strictest of: steady-loss 75% · min maintenance · safe minimum — see § Calorie floors)
 ```
 
-Activity multipliers were removed in v5.1. The fixed ×1.2 (sedentary baseline) is intentionally conservative — any real activity above sedentary shows up as logged workout kcal, and the adaptive TDEE engine corrects the remainder within 2 weeks of weigh-ins.
+Activity multipliers were removed in v5.1 and **re-introduced in Energy Step 1** (Aug 2026) as a NEAT-only lifestyle seed (see §37). Sedentary (1.20) equals the old flat baseline, so unset/desk users are unchanged; anything above sedentary is now seeded from the activity chip *and* still gains logged workout kcal on top, with the adaptive TDEE engine calibrating `tdeeAdj` toward real expenditure within ~2 weeks of weigh-ins.
 
 ### Mode adjustments
 | Mode | Adjustment |
@@ -68,14 +74,18 @@ Activity multipliers were removed in v5.1. The fixed ×1.2 (sedentary baseline) 
 | MAINTAIN | 0 kcal |
 | BULK | +500 kcal |
 
-### Workout kcal
-Logged workouts add to the calorie target for the day. Each workout entry is stored and persists; multiple per day supported.
+### Workout kcal (smoothed earn-to-eat, Energy Step 3)
+Logged workouts feed the calorie target, but their energy is **spread forward across 3 days** rather than added all on the day of the session (energy-model Step 3 — see §37). Each workout entry is stored and persists; multiple per day supported.
 
 ```javascript
 // MET-based estimate per workout:
 kcal = Math.round(MET[type][intensity] × weight × (LBM/70) × (duration/60))
 
-// Target = TDEE + mode adj + sum of all workout kcal today
+// Earn-to-eat is SMOOTHED: today's applied bonus is an energy-conserving 3-day
+// weighted average of workout kcal — SMOOTH_WEIGHTS = [0.5, 0.3, 0.2] over
+// [today, −1d, −2d] (Σ = 1, so total training energy is unchanged, just re-timed).
+smoothedBonus = round(0.5×todayKcal + 0.3×yesterdayKcal + 0.2×twoDaysAgoKcal)
+// Target = TDEE + mode adj + smoothedBonus
 ```
 
 ### MET values
@@ -106,17 +116,30 @@ Fat targets:
 
 If `sex` is not set, male ratios are used as the default.
 
-### Safe minimum calorie floors
+### Calorie floors — strictest wins (Energy Step 4)
 
-| Sex | Safe minimum |
-|---|---|
-| Male | 1,400 kcal |
-| Female | 1,200 kcal |
+A target is floored by whichever of these bites hardest:
 
-If a calculated or user-set target falls below the safe minimum it is **clamped** to that floor and a banner warning is shown on the dashboard linking to the profile screen.
+| Floor | Value | Applies to | Flag |
+|---|---|---|---|
+| **Steady-loss** | 75% of (believable maintenance + applied training bonus) — `MAX_DEFICIT_FRAC = 0.25` | preset modes (a deficit only) | `deficitFloorApplied` |
+| **Minimum maintenance** | sedentary TDEE (BMR × 1.20) | MAINTAIN only | `bmrFloorApplied` |
+| **Safe minimum** (backstop) | 1,400 kcal male / 1,200 kcal female | everything, incl. custom targets | `safeMinApplied` |
 
-`calcTargets` signature: `calcTargets(profile, mode, totalWorkoutKcal=0, tdeeAdj=0)`
-Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus, safeMinApplied}`.
+The steady-loss floor is the one that scales with the body: ~1,673 kcal for a 98.5 kg profile, ~1,208 for a
+60 kg one. The flat safe minimum is now only an absolute backstop (and the fallback when body fat isn't set).
+A **custom** target is raised by the safe minimum only — the steady-loss floor *warns* rather than
+overriding a number the user typed. Each floor shows its own dashboard banner.
+
+**Low-fuel warning (never changes the target):** energy availability = `(target − today's raw training burn) ÷ fat-free
+mass`. Below **30 kcal/kg FFM** an amber "Low on fuel today" note appears — only for a lean body
+(`LEAN_BF` 15% male / 23% female) on a day training was logged. `lowFuel` / `ea`. See §37 for why this warns
+instead of moving the target, and why there is no 45 kcal/kg "all clear" band.
+
+`calcTargets` signature: `calcTargets(profile, mode, totalWorkoutKcal=0, tdeeAdj=0, rawBurnKcal=0)` —
+`totalWorkoutKcal` is the **smoothed** bonus (Step 3), `rawBurnKcal` today's **actual** burn (for EA).
+Returns `{kcal, protein, carbs, fat, tdee, bmr, lbm, bonus, safeMinApplied, bmrFloorApplied,
+deficitFloorApplied, deficitFloor, ea, lowFuel, bodyFatUnset, floorsExceedKcal}`.
 
 ---
 
@@ -144,8 +167,8 @@ With 28+ weigh-ins the confidence level reaches "Calibrated" and the adjustment 
 ```javascript
 discrepancy    = actualChange - expectedChange        // kg
 rawAdj         = -discrepancy × 7700 / 7             // kcal
-adj            = clamp(round(rawAdj / 50) × 50, -150, +150)   // rounded to 50, capped per run
-cumulativeAdj  = clamp(cumulativeAdj + adj, -600, +600)        // lifetime cap
+adj            = round(rawAdj / 50) × 50, held within -150…+150   // rounded to 50, capped per run
+cumulativeAdj  = cumulativeAdj + adj, held within -600…+600       // lifetime cap
 ```
 
 ### Noise safeguards
@@ -240,7 +263,7 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `Dashboard` | `...existing... authState, authUser, onPremiumGate, onSignOut, isOnline, syncMsg` | Shows all today's data; derives `isPremium = authState === "premium"`; gates AI LOG button and CoachCard; renders `<Avatar>` in the header when premium |
 | `Avatar` | `user, size = 34` | Google profile pic with graceful fallback. Uses `referrerPolicy="no-referrer"` so `googleusercontent` images don't 403/429, and an `onError` handler that falls back to the user's initial (cream on dark) instead of a broken-image icon |
 | `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
-| `WorkoutLogger` | `workouts, onAdd, onRemove, prof, isPremium, onPremiumGate` | Paste log button calls `onPremiumGate` when `isPremium` is false; no UI change otherwise |
+| `WorkoutLogger` | `workouts, onAdd, onRemove, prof, earnedToday, isPremium, onPremiumGate` | `earnedToday` = the smoothed earn-to-eat bonus applied to today (`targets.bonus`); shown as "+{Y} added to today". Paste log button calls `onPremiumGate` when `isPremium` is false |
 | `CoachCard` | `mode, totals, targets, streak, water` | Only rendered when `isPremium` is true — no AI call is made for anonymous users |
 | `ProfileScreen` | `tdeeAdj, weighIns, aggressiveCutAcked` | Unchanged |
 | `StreakCelebration` | `anim, onDone` | Full-screen emoji overlay; Web Audio whoosh+thud; auto-dismisses after 1.5s |
@@ -323,7 +346,9 @@ fat     = round(baseTargets.fat × scale)
 The ratio of macros as a percentage of total calories remains constant.
 
 ### Safe minimum enforcement
-If a custom target falls below the sex-specific safe minimum (1,400 kcal male / 1,200 kcal female), it is clamped and a contextual banner appears: *"That's below the safe minimum for your body. We've set it to X kcal to keep you safe."*
+If a custom target falls below the sex-specific safe minimum (1,400 kcal male / 1,200 kcal female), it is raised to that minimum and a contextual banner appears: *"That's below the safe minimum for your body. We've set it to X kcal to keep you safe."*
+
+A custom target below the **steady-loss floor** (§3) is *not* raised — a typed number stays as typed. It earns an amber warning naming the floor we'd have set, slotted into the existing custom-target ladder below the −750 / −1,000 kcal rungs so the stronger warnings still win.
 
 ### Persistence
 The custom target persists via `target_kcal` in localStorage and survives page reloads.
@@ -332,13 +357,16 @@ The custom target persists via `target_kcal` in localStorage and survives page r
 
 ## 10. Safe Minimum Calorie Guard
 
+> Since Energy Step 4 this is the **backstop**, not the main protection — the body-sized steady-loss floor
+> (§3) is what normally binds. It remains the fallback when body fat isn't set.
+
 | Sex | Safe minimum |
 |---|---|
 | Male | 1,400 kcal |
 | Female | 1,200 kcal |
 
 Applies to both calculated targets (e.g. an aggressive CUT on a low body weight) and manually entered custom targets. When the floor is hit:
-- Target is clamped to the safe minimum
+- Target is raised to the safe minimum
 - An amber banner appears on the dashboard with a link to the profile screen
 - Banner message is context-aware: preset mode vs manual entry shows different wording
 
@@ -474,19 +502,30 @@ npm test
 
 Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them in Node.
 
+Current as of 2026-08-07 (`npx jest`).
+
 | Group | Tests | What's covered |
 |---|---|---|
-| `calcTargets — Katch-McArdle` | 15 | BMR, TDEE, all modes, training bonus, session override, macros, carb floor, and sex-specific safe-minimum clamping (`safeMinApplied`) |
-| `estimateSessionKcal — MET-based` | 6 | MET scaling by type/intensity/weight/duration/body fat, unknown type fallback |
-| `calcStreak` | 5 | Consecutive days, gap breaks streak, empty logs, empty history |
-| `sumLogs` | 4 | Multi-entry accumulation, empty array, partial fields |
-| `calcTargets — tdeeAdj` | 3 | Positive/negative adjustments propagate to kcal and tdee fields |
-| `weighRollingAvg` | 4 | Average accuracy, cutoff exclusion, insufficient data, empty array |
-| `runCalibration` | 3 | Insufficient data guards, positive adjustment when burning more than expected |
-| `runMigrations` | 4 | Stamps schema version when absent, no-op when current, never overwrites user data, applies once across calls |
-| **Total** | **44** | |
+| `calcTargets — Katch-McArdle` | 12 | BMR, seeded TDEE per activity chip, all modes, training bonus, macros, carb floor, LBM |
+| `computeMacros — floors hold, carbs absorb` | 8 | Protein/fat floors held across modes; carbs absorb the remainder |
+| `scanAllergens — zero-token output backstop` | 7 | Allergen + synonym matching without an AI round-trip |
+| `dietaryPromptBlock — prompt injection` | 4 | Diet/allergy/dislike constraints reach the prompt safely |
+| `paceVerdict — computed pace with safeguards` | 7 | Pace verdict from the first logged meal, never a wall clock |
+| `estimateSessionKcal — MET-based` | 6 | MET scaling by type/intensity/weight/duration/body fat |
+| `calcStreak` / `sumLogs` | 5 / 4 | Streak gaps + empty cases; multi-entry accumulation |
+| `calcTargets — tdeeAdj` | 3 | Adjustments propagate to kcal and the tdee field |
+| `calcTargets — maintenance BMR×1.2 floor` | 8 | Maintenance never below sedentary TDEE; floor is derived, not baked in |
+| **`Step 4 — steady-loss floor`** | **8** | Floor tracks body size; a large body keeps its full deficit, a small one is eased; training bonus raises it; adaptive adjustment can't deepen the cut past the cap; SAFE_MIN still wins when stricter |
+| **`Step 4 — energy availability`** | **9** | EA uses the raw burn not the smoothed bonus; flags a lean body training hard; **never changes the target**; no flag for a body with reserves, a rest day, or unset body fat; lean gate is sex-specific |
+| `Smoothed earn-to-eat (Step 3)` | 8 | Energy-conserving 3-day spread; back-to-back averages, never stacks |
+| `weighRollingAvg` / `weighCadenceOf` / `shouldNudgeWeighIn` | 4 / 2 / 4 | Trend window; cadence choice; the one gentle nudge + cooldown + mute |
+| `runCalibration` (+ AI-estimated days) | 6 / 2 | Convergence guards; low-confidence intake days can't retrain TDEE |
+| `runMigrations` | 4 | Stamps schema version, no-op when current, never overwrites user data |
+| Capture/confidence groups (`unit conversions`, `MeasureField`, `tag suggestion`, `confidence model`, `normConf`, `confLabel`, `pickFollowups`, `refineElement`) | 31 | v6.6/v6.7 AI-capture maths and follow-up logic |
+| **Total** | **142** | |
 
-(Safe-minimum behaviour is verified inside the `calcTargets — Katch-McArdle` group, not a separate suite.)
+Safe-minimum behaviour is verified inside the `calcTargets` groups rather than a suite of its own — since
+Step 4 it is the backstop beneath the steady-loss floor, so it is asserted where that ordering is tested.
 
 ---
 
@@ -494,7 +533,18 @@ Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them 
 
 Feature behaviour is documented as executable Gherkin scenarios in `features/fuel-log.feature`. This file is the source of truth for UX decisions (colour thresholds, warning copy, animation timing, etc.) and should be updated before any implementation change.
 
-Current features covered:
+Two more spec sets sit alongside it:
+
+| Path | Covers | State |
+|---|---|---|
+| `features/ai-capture.feature` | v6.7 voice/photo meal capture | `@wip` until the batch device-test |
+| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 04, 06 and 07 are **built** (their files were rewritten to match what shipped); **05 is shelved** (`ENERGY_MODEL.md` §5.5) |
+
+Specs in `features/energy-safety/` carry a **NUMBERS CONTRACT** header: kcal figures in scenarios are worked
+examples derived from the formulas, never values to hardcode — the exact arithmetic is owned by
+`__tests__/logic.test.js`. Policy constants are named in the header and are the only literals.
+
+Current features covered in `fuel-log.feature`:
 1. Sex setting on profile screen
 2. Calorie tolerance — forgiving colour logic
 3. Macro tolerance — forgiving colour logic
@@ -1347,6 +1397,163 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Energy Step 5c — the auto-lowering fix: the app can't talk you into under-eating (Aug 2026)
+The app guesses what you burn, then corrects that guess against the scale each week. Good idea, one
+blind spot — and it's the one that caused the harm this workstream exists to answer. **The scale going
+the wrong way does not mean your metabolism slowed.** Water held from stress or under-eating, a
+glycogen swing, a salty meal, a full gut, muscle built while training: none of them mean you burn less,
+and the app couldn't tell any of them from a real slowdown. So it did the one thing that makes all of
+them worse and lowered your target. Tests **209/209** (10 new), sw `v62→v63`. No DB change.
+- **The rule, in one line: the app only lowers its estimate when you're not cutting.** While your
+  target sits below maintenance a disappointing scale never moves your number down — not on a gain,
+  not on a stall. In Maintain or Bulk it does, because there the evidence is clean: eating at
+  maintenance and still not losing genuinely does mean a lower burn.
+- **Good news is never slowed.** Losing faster than predicted raises your target at full speed, in
+  every mode. Only the downward direction is guarded.
+- **Nothing is thrown away, only deferred.** If the app really did over-estimate you, that shows up as
+  a stall → the stall check suggests a break → a break *is* Maintain, where the correction runs again.
+- **Whether the week counted as a cut comes from your declared daily mode**, by majority over the
+  measured week — the same signal cut-cycling uses, so it still works if you log patchily.
+- **New card: "Weight up while eating less than maintenance."** Explains that this is usually water,
+  glycogen or muscle, says plainly that your target hasn't been lowered, and never suggests eating
+  less. Carries an optional link to update your body-fat % (the recomposition case). No mode buttons —
+  the picker is the only thing that changes mode.
+- **New note: "Below your resting metabolism."** A cut target under your BMR is *allowed* — a cut is a
+  deliberate choice, and for a lean body the arithmetic lands there with nothing wrong — so the app
+  names it honestly rather than hiding or forbidding it. Silent when a floor has already spoken.
+
+### Energy Step 5b — the break drain: a break is time not cutting (Aug 2026)
+A break is **simply not cutting**. Switching to Maintain — or Bulk — *is* the break: no fourth mode, no
+countdown, nothing to start, nothing to finish, and so nothing to fail at. Step 5a's cut load becomes a bar
+you can see, and the whole feature is that one gauge read in two directions. Tests **199/199** (27 new),
+sw `v61→v62`. **DB change: 1 new `profiles` column (`cut_break_load`) — run it before deploying.**
+- **The bar fills while cutting and drains while not.** Every non-cut day pays down the open block pro rata:
+  `DIET_BREAK_DAYS` (14) rest days clear it whatever its size, 7 clear half, 3 leave a fifth-sized dent that
+  **stands** if you go back to cutting. Maintain and Bulk drain **identically** — it's the days not in cut
+  that count, and no surplus multiplier exists that we could defend.
+- **It shows only when there's something to show:** always inside an open cut block, and in Maintain/Bulk
+  only while load remains. A months-long bulk with nothing owed shows nothing. The label is real elapsed
+  weeks or real rest days — never a load number.
+- **Nothing ever changes mode by itself.** The three chips are the only mode surface; no card duplicates them
+  with buttons. One guarded action exists: going back to **Cut** mid-break, and only where the block had
+  reached the soft-nudge threshold, so a short casual cut never meets friction. **Bulk is never guarded**, and
+  "Cut anyway" is honoured immediately.
+- **Finishing is quiet.** At zero, one dismissible **"Recharged"** card that retires itself after 3 days
+  whether or not it's tapped — then nothing about breaks is shown at all.
+- **New: the stall check.** Cutting for `STALL_WEEKS` (3) with the scale flatter than `TREND_CUT_RATE` opens
+  the same soft nudge with its own copy — *your loss has stalled*. A stall means adherence has drifted, the
+  body has compensated, or water is masking the loss; in all three, eating less is the wrong answer.
+  **The copy is deliberately blameless**, and too few weigh-ins means silence rather than a guess.
+- **Removed: the rolling-year track** (`CUMULATIVE_CUT_ESCALATE` / `MAINTENANCE_DECAY`). Escalating after ~a
+  year of dieting measured the wrong thing — harm tracks energy availability (Step 4) and bodyweight lost
+  (`BLOCK_LOSS_TRIGGER`), not calendar time under a mild deficit. The stall check is the better-aimed
+  backstop. The `cut_load_year` column is retired in place, not dropped.
+- **Weight up early in a break** gets a reassurance line (water and glycogen, not fat) and never a
+  "over target" alarm. The calibration misread behind it is fixed globally by the auto-lowering fix.
+
+### Energy Step 5a — cut cycling: a cut runs as load-weighted blocks (Aug 2026)
+Nothing capped how *long* a cut ran. A deficit from January to June with no structured break is the harm this
+whole workstream exists to prevent. A cut is now a **time-boxed block** that prompts a diet break — but the
+clock is not a calendar. Tests **172/172** (30 new), sw `v60→v61`. **DB change: 4 new `profiles` columns.**
+- **The unit is a deficit-weighted day ("cut load"), not a calendar day.** `dayLoad = deficitFrac ÷
+  REFERENCE_DEFICIT` (0.20), where `deficitFrac = 1 − target ÷ believable maintenance`. So a **gentle cut runs
+  much longer before being asked to break, and an aggressive one is cautioned sooner** — ~24 / 12 / ~9.5 real
+  weeks at a 10 / 20 / 25% deficit, bounded above by Step 4's `MAX_DEFICIT_FRAC`. That *is* the protection,
+  which is why there is deliberately no short universal calendar default (`ENERGY_MODEL.md` §5.2 records the
+  rejected alternatives, including why a ~42-day bodybuilder cadence would penalise higher-body-fat users).
+- **Whether a day counts is read from the declared daily mode, never from food logs** — plus a weight-trend
+  backstop (`TREND_CUT_RATE`, 0.25%/wk) that catches switching to "Maintain" to silence the prompts while
+  still under-eating. Days the app wasn't opened inherit the last known mode; **not logging never pauses the
+  clock**, because the patchy logger is exactly who this protects. Accrual is idempotent by date.
+- **Prompts:** dismissable amber nudge at **56** load-days, non-dismissable **84** (lean bodies 42 / 56,
+  reusing Step 4's `isLeanBody` — not a second leanness threshold). Losing **5%** of bodyweight inside one
+  block forces the prompt early. The hard card snoozes 3 days at a time and can never be permanently killed.
+- **The card shows REAL elapsed weeks, not load.** Telling a 16-week gentle cutter "you've been cutting for 8
+  weeks" because that is their load would simply be false.
+- **A block ends** when rest has drained it to zero; one day off never resets it. *(Amended by Step 5b —
+  originally 7 consecutive non-cut days wiped the block, and a rolling year total was tracked alongside.)*
+- **Copy constraint (coach, binding):** no day count is presented as the point at which something happens to
+  the body. There is no threshold at which testosterone falls or metabolism "breaks" — risk rises with
+  severity × duration, and in people with obesity weight loss often *improves* testosterone.
+- ~~**Known gap:** the primary button says "Switch to maintenance"~~ — **closed by Step 5b below.**
+
+### Energy Step 4 — energy floor: steady-loss floor + low-fuel warning (Aug 2026)
+The flat safe minimum (1,400 M / 1,200 F) is no longer the thing protecting you — it protected nobody in
+particular, sitting below a large user's resting metabolism and above a small user's sensible target only by
+accident. Two body-derived protections replace it. Tests **142/142**, sw `v59→v60`. No worker/DB change.
+- **Steady-loss floor (the one that moves your target, everyone):** a preset target never sits more than **25%**
+  (`MAX_DEFICIT_FRAC`) below believable maintenance plus the day's applied training bonus. It scales with the
+  body — ~1,673 kcal for a 98.5 kg profile, ~1,208 for a 60 kg one — so a flat −500 keeps its full bite on a
+  large body and is *eased* on a small one, where the same 500 is a third of everything they burn. It eases,
+  never blocks: the target still sits below maintenance, so weight loss still works. Measured against the
+  *floored* effective TDEE, so adaptive auto-lowering can't quietly deepen the real deficit past the cap.
+  Amber **"Eased to a steady pace"** note with a "Why?" toggle (`deficitFloorApplied`).
+- **Low-fuel warning (never changes the target):** energy availability = `(target − today's RAW training burn) ÷ fat-free
+  mass`. Below **30 kcal/kg FFM** you get an amber **"Low on fuel today"** note — *only* for a lean body
+  (`LEAN_BF` 15% M / 23% F) on a day training was actually logged. It changes no number. EA deliberately uses
+  the **raw** burn while the target uses Step 3's **smoothed** bonus: the question is what today's body
+  actually had left.
+- **What changed from the draft spec and why:** the drafted EA-30 *floor* would have capped a 98.5 kg / 30%
+  body-fat user's cut at a **161 kcal deficit** — those thresholds come from lean athletes with no fat store
+  to cover the gap. And the drafted EA-45 "all clear" band is **unreachable by construction** here (NEAT-only
+  multipliers, max 1.55, with training subtracted back out of EA), so it would have been permanently amber for
+  everyone — wallpaper, not safety. EA-45 is dropped; EA-30 warns instead of moving the target. Full persona numbers:
+  `ENERGY_MODEL.md` §5.1.
+- **Custom targets are warned about, never overridden** — a number you typed stays the number you typed, with
+  an amber note naming the floor we'd have set. The flat `SAFE_MIN` survives as the absolute backstop and the
+  fallback when body fat isn't set (no EA figure is produced at all in that case).
+- Spec: `features/energy-safety/01-energy-availability-floor.feature` (rewritten to match).
+
+### Energy Step 3 — smoothed earn-to-eat (Aug 2026)
+A logged workout no longer unlocks its full energy on the same day. Its kcal are spread **forward across a
+3-day window** as an energy-conserving weighted average, so one big session doesn't all land at once. Tests
+**125/125**, sw `v58→v59`. No worker/DB change.
+- **Smoothing (`smoothWorkoutKcal`):** today's earn-to-eat bonus = `0.5×today + 0.3×yesterday + 0.2×2-days-ago`
+  of logged workout kcal (`SMOOTH_WEIGHTS`, Σ = 1 — total training energy is unchanged, just re-timed).
+  Front-loaded so today still visibly nudges today, but a session's same-day share is halved.
+- **Why:** protects the deficit from a same-day binge, still fuels the day *after* a hard session (recovery
+  runs 24–48h), and averages back-to-back training days instead of stacking them. A 600 kcal session → +300
+  today, +180 tomorrow, +120 the day after; back-to-back 600+600 → +480, not +1200; a rest day after training
+  still carries fuel.
+- **Copy:** the workout card now reads "{X} kcal **burned**" + "+{Y} added to today — the rest fuels the next
+  couple of days," replacing the old "{X} kcal added." Spec: `features/energy-safety/07-smoothed-earn-to-eat.feature`.
+- **Prior-day data:** the last 2 days' workout kcal load from `workouts__<date>` into `priorWorkoutKcal`
+  (mount + sync pulls) — device-local, no migration. A brand-new device shows 0 prior fuel until those days sync.
+
+### Energy Step 2 — adaptive-TDEE convergence + weigh-in engagement (Aug 2026)
+The adaptive engine learns your real TDEE faster and cleanly, and the app now *invites* weigh-ins
+instead of assuming daily ones. Tests **117/117**, sw `v57→v58`. No worker/DB change.
+- **Convergence (`runCalibration`):** the flat ±150 integrator is replaced by a **dead-time-compensated,
+  confidence-scaled** controller — it subtracts adjustments still "in flight" (the 7-day weight window
+  hasn't caught up) so it stops overshooting, and takes bigger steps when it has more data (cap 100/150/200
+  by confidence tier, gain 0.8). Engages at **6** weigh-ins (was 8). A simulation closes a 500 kcal
+  under-estimate by ~day 19 and settles without pinning the ±600 cap.
+- **Weigh-in engagement:** the widget's "log daily" line is gone. Uncalibrated state now **invites** ("weigh
+  in a few times a week — we use your 7-day trend, not any single day") and shows a **progress cue** counting
+  down to the 6th check-in. A **cadence picker** (a few times a week / daily / weekly / "I'd rather not")
+  sits by the activity chips. One **gentle dashboard nudge** appears after a week with no weigh-in —
+  dismissable, 14-day cooldown, and "Don't remind me" mutes it entirely. No streaks; a weight change is
+  never celebrated or shamed. Spec: `features/energy-safety/06-weigh-in-engagement.feature`.
+- **Local-only:** `weighCadence`, the nudge dismissal, and the convergence log are device-local (survive
+  cloud pulls; no migration).
+
+### Energy Step 1 — activity input + seeded NEAT multiplier (Aug 2026)
+First build of the re-sequenced energy-safety plan (`ENERGY_MODEL.md`). The flat sedentary baseline
+(BMR × 1.2) is replaced by a **4-chip lifestyle multiplier** so the app stops under-estimating TDEE for
+anyone who isn't desk-bound. Tests **108/108**, sw `v56→v57`. No worker/DB change.
+- **Activity chips (Profile → Body Stats):** Sedentary **1.20** · Lightly active **1.35** · Active **1.45**
+  · Very active **1.55**. NEAT-only (deliberately below textbook whole-day factors) because logged
+  workouts are still added separately as "earn to eat" — a whole-day factor would double-count training.
+  Framed as *"a starting point — we fine-tune this automatically as you log."*
+- **Believability gate passed:** day-one seed for 3 personas landed within ~7.5% of MyFitnessPal
+  (sedentary +0.5%, active lifter −2.5%, manual worker −7.4%).
+- **Backwards-compatible:** sedentary == the old ×1.2, so existing/unset users are unchanged; unset shows a
+  gentle "pick your activity" nudge and defaults to sedentary.
+- **Maintenance floor unchanged & correct:** still **sedentary (BMR × 1.20)**, not the seed — a negative
+  adaptive adjustment on a higher-activity seed still calibrates maintenance down to sedentary (never below).
+- **Local-only for now:** the `profiles` table has no `activity` column yet; the chip lives in the local
+  profile blob and survives cloud pulls. Cloud sync is a documented fast-follow (`setup/supabase-schema.sql`).
 
 ### v6.7 — AI meal capture: voice + photo + confidence follow-ups (June 2026)
 The AI Meal Log gains two new input adapters and a confidence-gated follow-up layer. One pipeline,

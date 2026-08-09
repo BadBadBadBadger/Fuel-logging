@@ -1,6 +1,16 @@
 -- ─────────────────────────────────────────────────────────────
 -- Fuel Log — Supabase Schema
--- Run this entire file in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
+-- FIRST-TIME SETUP: run this entire file in Supabase SQL Editor
+-- (Dashboard → SQL Editor → New Query).
+--
+-- ⚠️ EXISTING DATABASE: do NOT re-run the whole file. Nothing here deletes data —
+-- there is no DROP/TRUNCATE/DELETE, and the CREATE TABLE / ADD COLUMN / CREATE INDEX
+-- statements are all idempotent — BUT `CREATE POLICY` has no IF NOT EXISTS in Postgres,
+-- so the RLS block below fails with 42710 "policy already exists". The SQL Editor runs
+-- the file in one transaction, so that abort ROLLS BACK any ALTER TABLE above it: the
+-- columns you were adding silently never land. To add columns to a live database, run
+-- just the ALTER TABLE lines you need, then confirm with:
+--   SELECT column_name FROM information_schema.columns WHERE table_name = 'profiles';
 -- ─────────────────────────────────────────────────────────────
 
 -- ── User profiles ─────────────────────────────────────────────
@@ -23,6 +33,40 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS age_confirmed_at            TIMEST
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_at           TIMESTAMPTZ;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS consent_policy_version      TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS health_consent_withdrawn_at TIMESTAMPTZ;
+
+-- Energy-model Step 1 (activity / NEAT seed). Currently LOCAL-ONLY in the app: run this
+-- column FIRST, then wire it into syncProfile()/pullFromSupabase() in app.jsx — do NOT add
+-- it to the upsert before the column exists or the whole profile upsert 400s silently.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS activity TEXT
+  CHECK (activity IN ('sedentary', 'light', 'active', 'very'));
+
+-- Energy-model Step 5 (cut cycling — features/energy-safety/02-cut-cycle-blocks.feature).
+-- These may NOT be local-only: block state is the one thing that has to remember a long cut,
+-- so a new device must not silently restart the clock at 0. Same ordering rule as above —
+-- run these columns FIRST, then wire syncProfile()/pullFromSupabase().
+-- NOTE the loads are NUMERIC, not INTEGER: a day is weighted by how deep the deficit is
+-- (a 10% cut adds 0.5, a 25% cut adds 1.25), so these accumulate fractionally.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_block_start DATE;    -- start of the open cut block; NULL = not cutting
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_block_load  NUMERIC DEFAULT 0;  -- load-days accumulated in that block
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_load_year   NUMERIC DEFAULT 0;  -- RETIRED (see below) — left in place, no longer written
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_break_end  DATE;    -- end of the most recent completed diet break
+
+-- Energy-model Step 5, file 03 (the break drain). A break is time not cutting, and each
+-- rest day pays down 1/DIET_BREAK_DAYS of the load the block held when the break began.
+-- That starting load IS the drain rate, so it has to survive a device change: without it
+-- a second phone would resume the break at the wrong speed and skip the early-return
+-- guard. The rest-day count needs no column — it is re-derived on pull from
+--   offRun = DIET_BREAK_DAYS × (1 − cut_block_load ÷ cut_break_load).
+-- ⚠️ RUN THIS BEFORE deploying the build that writes it: an upsert naming a column that
+-- doesn't exist 400s and takes the whole profile sync down with it.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cut_break_load  NUMERIC DEFAULT 0;  -- block load when the current break began
+
+-- RETIRED 2026-08-09 (file 03): cut_load_year held a rolling-year cut total that escalated
+-- the break message after ~a year of dieting. Removed as the wrong measure of harm — that
+-- tracks energy availability and how much bodyweight has come off (both already covered),
+-- not calendar time under a mild deficit. The app no longer reads or writes this column.
+-- Deliberately NOT dropped: dropping a live column can only go wrong, and an unused one
+-- costs nothing. Safe to drop by hand later if you ever want the tidy-up.
 
 -- ── Daily food log entries ─────────────────────────────────────
 -- entry_id is the client-side timestamp used as the log entry id

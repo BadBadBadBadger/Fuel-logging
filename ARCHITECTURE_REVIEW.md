@@ -32,7 +32,7 @@ These are real strengths — worth stating so the criticism below lands in conte
 | **API key kept server-side** in the Cloudflare Worker | The right instinct — the Anthropic key never reaches the browser. |
 | **Real Supabase auth** via `signInWithIdToken` | `auth.uid()` is a true verified identity, so RLS actually enforces. Many apps get this wrong and fake it client-side. |
 | **Row-Level Security correctly scoped** to `auth.uid()` on every table | This is what makes the public anon key safe. The policies are complete and consistent. |
-| **Pure logic extracted & unit-tested** (`__tests__/logic.test.js`, 446 lines) | TDEE / macro / streak math is separated from UI and tested — the highest-value thing to test. |
+| **Pure logic extracted & unit-tested** (`__tests__/logic.test.js`, 1,461 lines / 142 tests as of 2026-08-07) | TDEE / macro / streak / energy-floor math is separated from UI and tested — the highest-value thing to test. |
 | **Offline-first**: SW + localStorage + offline queue + graceful degradation | A proper PWA. Falls back cleanly when Google/Supabase are unavailable. |
 | **Schema migration scaffold** (`SCHEMA_VERSION` / `runMigrations`) | Forward-thinking; you can evolve stored data safely. |
 | **`ErrorBoundary`** + no `dangerouslySetInnerHTML` / `eval` | React's auto-escaping plus no raw HTML injection means AI output rendering is XSS-safe. |

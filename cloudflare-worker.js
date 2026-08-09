@@ -226,11 +226,29 @@ async function sweepDormantAccounts(env) {
   return { scanned, deleted };
 }
 
+// Keep-alive ping — a minimal PostgREST query so the free-tier Supabase project
+// registers activity and doesn't auto-pause after ~7 idle days. RLS returns no
+// rows to the anon key, but the query still hits Postgres, which is what counts.
+// Needs only the public anon key (no service role). Best-effort: a failed ping
+// just means we try again on the next scheduled fire.
+async function keepAliveSupabase() {
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/entitlements?select=id&limit=1", {
+      headers: { apikey: SUPABASE_ANON, Authorization: "Bearer " + SUPABASE_ANON },
+    });
+    console.log("Keep-alive ping: " + r.status);
+  } catch (e) {
+    console.log("Keep-alive ping failed (will retry next fire)");
+  }
+}
+
 export default {
   // Cron Trigger entrypoint (configure schedule in wrangler / dashboard — see SETUP).
   async scheduled(event, env, ctx) {
-    if (!env.SUPABASE_SERVICE_ROLE) return;
-    ctx.waitUntil(sweepDormantAccounts(env));
+    // Keep the free-tier project awake every fire — needs only the anon key.
+    ctx.waitUntil(keepAliveSupabase());
+    // Retention sweep needs the service-role secret; skipped until it's set.
+    if (env.SUPABASE_SERVICE_ROLE) ctx.waitUntil(sweepDormantAccounts(env));
   },
 
   async fetch(request, env) {
@@ -372,12 +390,17 @@ export default {
 //   /delete-account : POST with a valid Bearer JWT → deletes the caller's
 //   own account (cascades to all tables). No extra setup beyond the secret.
 //
-//   Retention cron (24-month dormant sweep) : add a Cron Trigger so scheduled()
-//   runs. In the dashboard: worker → Settings → Triggers → Cron Triggers → Add,
-//   e.g. weekly "0 3 * * 0". Or in wrangler.toml:
+//   Cron Trigger : add ONE so scheduled() runs. It drives both the keep-alive
+//   ping (keeps the free-tier Supabase project awake — needs no secret) AND the
+//   24-month dormant sweep (only fires once SUPABASE_SERVICE_ROLE is set).
+//   In the dashboard: worker → Settings → Triggers → Cron Triggers → Add.
+//   Use every-3-days, NOT weekly — Supabase pauses after ~7 idle days, so a
+//   weekly cron sits right at the edge:
+//       0 3 */3 * *      (03:00 UTC every 3rd day)
+//   Or in wrangler.toml:
 //       [triggers]
-//       crons = ["0 3 * * 0"]
-//   Until a trigger exists, scheduled() simply never fires (no harm); deletion
-//   on request still works. Test manually with: npx wrangler dev --test-scheduled
+//       crons = ["0 3 */3 * *"]
+//   Until a trigger exists, scheduled() never fires (no harm); deletion on
+//   request still works. Test manually with: npx wrangler dev --test-scheduled
 //   then curl "http://localhost:8787/__scheduled".
 // ─────────────────────────────────────────────────────────────

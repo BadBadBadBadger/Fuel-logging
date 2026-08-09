@@ -59,7 +59,7 @@ const TIERS      = [3, 6, 12, 24, 48, 96];
 const TIER_NAMES = ["Bronze","Silver","Gold","Platinum","Diamond","Elite"];
 const TIER_ICONS = ["🟤","⚪","🟡","🔵","💎","👑"];
 
-const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null };
+const DEF_PROFILE = { weight:80, height:178, bodyFat:18, sex:null, activity:null, weighCadence:null };
 
 // ── Display units ─────────────────────────────────────────────────
 // Storage is ALWAYS metric (weight kg, height cm). These are per-device
@@ -305,29 +305,120 @@ const computeMacros = (p, mode, kcal) => {
   return { protein, carbs, fat, lbm: Math.round(lbm), floorsExceedKcal };
 };
 
-const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0) => {
-  const w   = Number(p.weight)  || 80;
-  const bf  = Number(p.bodyFat) || 18;
+// ── Activity / NEAT seed (energy-model Step 1) ────────────────────
+// Seed TDEE from one coarse lifestyle question (seed → calibrate; ENERGY_MODEL.md §3).
+// These are NEAT-ONLY multipliers — deliberately below the textbook whole-day factors
+// (1.375–1.725) because logged workouts are added separately as "earn to eat"; a
+// whole-day factor would double-count training. Sedentary == 1.20 == the old flat
+// baseline, so existing/unset users and the BMR×1.2 maintenance floor are unchanged.
+// Values locked against the believability gate (ENERGY_MODEL.md §4); the exact numbers
+// are owned here + mirrored in __tests__/logic.test.js.
+const ACTIVITY = {
+  sedentary: { mult: 1.20, label: "Sedentary",      hint: "Mostly seated — desk job, under ~5k steps" },
+  light:     { mult: 1.35, label: "Lightly active", hint: "Some walking on your feet, ~5–8k steps" },
+  active:    { mult: 1.45, label: "Active",         hint: "On your feet often, ~8–12k steps" },
+  very:      { mult: 1.55, label: "Very active",    hint: "Manual/physical job, ~12k+ steps" },
+};
+const ACTIVITY_ORDER = ["sedentary", "light", "active", "very"];
+const activityMult = p => (p && ACTIVITY[p.activity] ? ACTIVITY[p.activity].mult : ACTIVITY.sedentary.mult);
+const bmrOf = p => Math.round(370 + 21.6 * ((Number(p.weight) || 80) * (1 - (Number(p.bodyFat) || 18) / 100)));
+// Day-one seed estimate; the adaptive tdeeAdj becomes the source of truth over time.
+const seedTDEE = p => Math.round(bmrOf(p) * activityMult(p));
+// Absolute MAINTAIN floor — nobody's true maintenance sits below sedentary energy use,
+// so the adaptive auto-lowering can never drag maintenance there even for a user who
+// seeded a higher activity level (adaptive may calibrate that seed DOWN to sedentary,
+// never below). Stays BMR×1.2 regardless of the seed.
+const sedentaryFloorOf = p => Math.round(bmrOf(p) * 1.2);
+
+// ── Smoothed earn-to-eat (energy-model Step 3) ────────────────────
+// A logged workout no longer unlocks its full energy the same day. Its kcal are
+// spread FORWARD across a 3-day window as an ENERGY-CONSERVING weighted average
+// (weights sum to 1 — total training energy is unchanged, only un-spiked). This
+// protects the deficit from a same-day binge, still fuels the day AFTER a hard
+// session, and averages back-to-back days instead of stacking them. Front-loaded
+// [today, −1d, −2d] so today's own session still visibly nudges today. See
+// ENERGY_MODEL.md §5 Step 3 + features/energy-safety/07; mirrored in logic.test.js.
+const SMOOTH_WEIGHTS = [0.5, 0.3, 0.2];
+// kcalByOffset[0] = today's workout kcal, [1] = yesterday's, [2] = 2 days ago.
+const smoothWorkoutKcal = kcalByOffset =>
+  Math.round(SMOOTH_WEIGHTS.reduce((s, w, i) => s + w * (kcalByOffset[i] || 0), 0));
+
+// ── Energy floor + low-fuel warning (energy-model Step 4) ─────────
+// features/energy-safety/01. Two DIFFERENT protections, deliberately separated —
+// the draft spec conflated them into one EA-30 floor, which doesn't survive the
+// numbers (see ENERGY_MODEL.md §5 Step 4):
+//
+//  1. MOVES THE TARGET — rate of loss. A preset target never takes more than
+//     MAX_DEFICIT_FRAC off believable maintenance (+ today's applied training
+//     bonus, so the Step-3 smoothing isn't undone). This scales with body size,
+//     which is what the flat SAFE_MIN never did: a 98.5 kg body floors ~1,673,
+//     a 60 kg body ~1,208. SAFE_MIN survives only as the absolute backstop.
+//  2. WARNING ONLY — energy availability. EA = (intake − today's training burn)
+//     / fat-free mass; below EA_HARD the RED-S literature (Loucks & Thuma 2003;
+//     IOC consensus, Mountjoy et al.) documents endocrine/recovery harm. Those
+//     thresholds were derived in LEAN athletes, who have no large fat store to
+//     cover the gap — applied to a 30%-body-fat dieter EA-30 sits ABOVE a normal
+//     cut target and would forbid weight loss entirely. So EA never moves the
+//     target; it warns, and only for lean bodies on days they actually trained.
+//     That keeps it rare AND true, and keeps a persistent "you're under-eating"
+//     banner off a calorie tracker (ED-safety guardrail).
+//
+// EA_OK (45) is deliberately NOT implemented as a band: our multipliers are
+// NEAT-only (max 1.55) with training added separately and subtracted back out of
+// EA, so 45 kcal/kg FFM is unreachable by construction — a band nothing can
+// satisfy is wallpaper, not safety.
+const EA_HARD          = 30;   // kcal per kg fat-free mass per day
+const MAX_DEFICIT_FRAC = 0.25; // a preset target never sits >25% below maintenance
+// Where the EA thresholds' source population starts. App policy informed by the
+// standard athletic/fitness body-fat ranges — not a clinical cut-off, and only
+// ever used to decide whether to SHOW a warning.
+const LEAN_BF = { male: 15, female: 23 };
+
+const ffmOf      = p => (Number(p.weight) || 80) * (1 - (Number(p.bodyFat) || 18) / 100);
+const bodyFatSet = p => { const bf = Number(p && p.bodyFat); return bf > 0 && bf < 100; };
+const isLeanBody = p => bodyFatSet(p) && Number(p.bodyFat) <= LEAN_BF[p.sex === "female" ? "female" : "male"];
+
+// The steady-loss floor: 75% of the energy the day is actually built on.
+const deficitFloorOf = (effTDEE, appliedBonus = 0) =>
+  Math.round((1 - MAX_DEFICIT_FRAC) * (effTDEE + (appliedBonus || 0)));
+
+// EA uses TODAY'S RAW burn (what the body actually spent), not the smoothed bonus
+// the target was built from — the question is what's left over today.
+const energyAvailability = (kcal, rawBurnKcal, p) =>
+  bodyFatSet(p) ? Math.round(((kcal - (rawBurnKcal || 0)) / ffmOf(p)) * 10) / 10 : null;
+
+const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0, rawBurnKcal = 0) => {
   const sex = p.sex || "male";
-  const lbm = w * (1 - bf / 100);
-  const bmr  = Math.round(370 + 21.6 * lbm);
-  // Sedentary TDEE (BMR × 1.2) is the lowest a real MAINTENANCE can sit — nobody
-  // lives at raw BMR. The adaptive tdeeAdj calibrates this estimate, but a large
-  // negative adjustment (the "ratchet") must never drag maintenance below it, which
-  // previously produced a sub-resting, physiologically-impossible maintain target.
+  const bmr  = bmrOf(p);
+  // Seed TDEE from the lifestyle NEAT multiplier (was a flat ×1.2). The adaptive
+  // tdeeAdj then calibrates this estimate; a large negative adjustment (the
+  // auto-lowering) must never drag MAINTENANCE below sedentary (see sedentaryFloorOf),
+  // which previously produced a sub-resting, physiologically-impossible maintain target.
   // A deliberate cut is a chosen deficit bounded separately (SAFE_MIN today, the
-  // energy-availability floor later), so the BMR×1.2 floor is MAINTAIN-ONLY.
+  // energy-availability floor later), so the floor is MAINTAIN-ONLY.
+  const seed = Math.round(bmr * activityMult(p));
   const sedentaryTDEE = Math.round(bmr * 1.2);
-  const tdee = sedentaryTDEE + tdeeAdj;
+  const tdee = seed + tdeeAdj;
   let kcal   = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   const bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
+  // Steady-loss floor (Step 4). Measured against BELIEVABLE maintenance — the same
+  // floored effective TDEE the rest of the app trusts — so a negative adaptive
+  // adjustment can't quietly deepen the real deficit past the cap.
+  const effTDEE = Math.max(sedentaryTDEE, tdee);
+  const deficitFloor = deficitFloorOf(effTDEE, totalWorkoutKcal);
+  const deficitFloorApplied = kcal < deficitFloor;
+  if (deficitFloorApplied) kcal = deficitFloor;
   const safeMin = SAFE_MIN[sex] || 1400;
   const safeMinApplied = kcal < safeMin;
   if (safeMinApplied) kcal = safeMin;
   const m = computeMacros(p, mode, kcal);
+  // Low-fuel signal: warning only — it never changes the target (see the block above).
+  const ea = energyAvailability(kcal, rawBurnKcal, p);
+  const lowFuel = ea != null && isLeanBody(p) && (rawBurnKcal || 0) > 0 && ea < EA_HARD;
   return { kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, tdee, bmr,
     lbm: m.lbm, bonus: totalWorkoutKcal || 0, safeMinApplied, bmrFloorApplied,
+    deficitFloorApplied, deficitFloor, ea, lowFuel, bodyFatUnset: !bodyFatSet(p),
     floorsExceedKcal: m.floorsExceedKcal };
 };
 
@@ -362,8 +453,29 @@ const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
 };
 
-const runCalibration = (history, weighIns, baseTDEE) => {
-  if (weighIns.length < 8) return null;
+// Adaptive-TDEE convergence (energy-model Step 2). The estimate error (in kcal/day) is
+// measured from the gap between actual and expected weight change, then applied as a
+// DAMPED, per-run-capped step so it converges without lurching. Two structural fixes over
+// the old flat ±150 integrator (which slammed to the ±600 cap and pinned there for ~10
+// days before settling — a lag-induced overshoot):
+//   • Dead-time compensation: the 7-day trailing weight window can't yet reflect an
+//     adjustment made in the last 7 days, so we SUBTRACT that in-flight adjustment from
+//     the measured error — otherwise the integrator re-counts a correction already working
+//     its way through and overshoots.
+//   • Confidence-scaled step cap: sparser data (low confidence) moves cautiously; a
+//     well-established history is allowed larger steps, so a real 500 kcal gap closes in
+//     ~3 weeks (simulated) yet never lurches.
+// The accumulated adjustment is still bounded by ADJ_CAP (±600, feature-04 policy) and the
+// maintenance BMR×1.2 floor at the target layer. Engages at 6 weigh-ins (was 8).
+const CAL_MIN_WEIGHINS = 6;
+const CAL_GAIN         = 0.8;                              // proportional gain toward the measured error
+const CAL_STEP_CAP     = { low: 100, medium: 150, high: 200 }; // per-run cap by confidence tier
+const CAL_STEP_ROUND   = 25;                              // step granularity (kcal)
+const CAL_MIN_STEP     = 25;                              // ignore sub-25 nudges (applied at the call site)
+const ADJ_CAP          = 600;                             // accumulated adjustment limit (feature 04)
+
+const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
+  if (weighIns.length < CAL_MIN_WEIGHINS) return null;
   const today = new Date();
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoKey = dateKey(weekAgo);
@@ -389,11 +501,297 @@ const runCalibration = (history, weighIns, baseTDEE) => {
   const avgDeficit   = baseTDEE - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
-  const adj = Math.max(-150, Math.min(150, Math.round(-discrepancy * 7700 / 7 / 50) * 50));
+  const errKcal      = -discrepancy * 7700 / 7;           // signed estimate error, kcal/day
+  const effErr       = errKcal - inFlightAdj;             // dead-time compensation
+  const confidence   = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
+  const cap          = CAL_STEP_CAP[confidence];
+  const rawAdj = Math.max(-cap, Math.min(cap,
+    Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
 
-  const confidence = weighIns.length >= 28 ? "high" : weighIns.length >= 14 ? "medium" : "low";
-  return { adj, confidence, actualChange: Math.round(actualChange * 10) / 10,
+  // ── THE ASYMMETRY (features/energy-safety/04) ──
+  // The loop above is symmetric: it lowers the estimate for a disappointing scale
+  // exactly as readily as it raises it for a good one. Those two directions are not
+  // equally safe. Guessing high costs some progress; guessing low walks a dieter toward
+  // under-eating 25 kcal at a time while telling them it is correct — which is the
+  // mechanism that started this workstream.
+  //
+  // So: the estimate is only ever LOWERED when the user was NOT cutting. A weight rise
+  // (or a stall) while eating below maintenance has five innocent explanations — water
+  // from stress or under-eating, glycogen, a full gut, salt, lean mass gained while
+  // training — and none of them mean a lower burn. Eating AT or ABOVE maintenance and
+  // still not losing is clean evidence, and there we act on it.
+  //
+  // This defers the correction, it doesn't discard it: an over-estimated maintenance
+  // surfaces as a stall, file 03's stall check suggests a break, and a break is Maintain
+  // — where this refusal lifts and the loop converges normally. Raising is NEVER damped.
+  //
+  // "Was I cutting" reads the DECLARED daily mode from the history snapshots, the same
+  // signal file 02 uses, so it holds up for a patchy logger.
+  const weekDays   = history.filter(d => d.date >= weekAgoKey);
+  const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
+  const refused    = rawAdj < 0 && wasCutting;
+
+  return { adj: refused ? 0 : rawAdj, refused, wouldHaveBeen: rawAdj, confidence,
+    actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
+};
+
+
+// ── Cut cycling (energy-model Step 5; features/energy-safety/02) ──────
+// Nothing in the app capped how LONG a cut ran. A deficit from January to June with
+// no structured break is the harm this whole workstream exists to prevent.
+//
+// The unit is a DEFICIT-WEIGHTED DAY ("cut load"), not a calendar day, and it is never
+// read from food logs:
+//   • WHETHER a day counts comes from the DECLARED daily mode (already stored per day
+//     and synced) plus a weight-trend backstop. A log-derived counter goes quiet for
+//     the patchy logger — who is exactly the user this protects. Days the app wasn't
+//     opened inherit the last known mode; not logging never pauses the clock.
+//   • HOW MUCH it counts is dayLoad = deficitFrac / REFERENCE_DEFICIT, where
+//     deficitFrac = 1 − target ÷ believable maintenance. So a gentle cut runs much
+//     longer before prompting a break and an aggressive one is cautioned sooner
+//     (~24 / 12 / ~9.5 real weeks at a 10 / 20 / 25% deficit, bounded above by Step 4's
+//     MAX_DEFICIT_FRAC). That IS the protection — which is why this file does NOT also
+//     impose a short calendar default. See ENERGY_MODEL.md §5.2 for what was rejected.
+//   • Load uses the PRESCRIBED deficit, not the achieved one: the target is known every
+//     day without logging, and the error runs toward prompting a break EARLIER than
+//     strictly earned, which is the right failure direction for a safety feature.
+//
+// Coach constraint, binding on all copy here: no day count may be presented as the
+// point at which something happens to the body. There is no threshold at which
+// testosterone falls or metabolism "breaks"; risk rises with severity × duration, and
+// in people with obesity weight loss often IMPROVES testosterone. The card shows REAL
+// elapsed weeks, never load — telling a 16-week gentle cutter "you've been cutting for
+// 8 weeks" because that is their load would simply be false.
+// Exact numbers mirrored in __tests__/logic.test.js.
+const REFERENCE_DEFICIT       = 0.20;  // the deficit depth that counts as one full day
+const CUT_MIN_FRAC            = 0.05;  // shallower than this is noise, not a cut
+const CUT_BLOCK_SOFT_NUDGE    = 56;    // load-days → dismissable amber nudge
+const CUT_BLOCK_HARD_PROMPT   = 84;    // load-days → non-dismissable prompt
+const CUT_BLOCK_LEAN_SOFT     = 42;    // lean bodies are pulled earlier (Helms)
+const CUT_BLOCK_LEAN_HARD     = 56;
+const BLOCK_LOSS_TRIGGER      = 0.05;  // 5% of bodyweight lost inside one block
+const TREND_CUT_RATE          = 0.0025;// ≥0.25%/wk of sustained loss reads as cutting
+const CUT_NUDGE_SNOOZE_DAYS   = 7;     // soft nudge "Not yet"
+const CUT_PROMPT_SNOOZE_DAYS  = 3;     // hard prompt "Remind me in 3 days"
+const DIET_BREAK_DAYS         = 14;    // rest days that fully drain a block (file 03)
+const CUT_BAR_MIN_LOAD        = 7;     // ~a week of real cutting before the gauge says anything
+const STALL_WEEKS             = 3;     // weeks of a flat scale that read as stalled
+const RECHARGED_CARD_DAYS     = 3;     // the "Recharged" card retires itself after this
+
+// One day's contribution. Returns 0 for anything shallower than CUT_MIN_FRAC so a
+// rounding-error "deficit" can't accrue in slow motion.
+const dayCutLoad = (targetKcal, maintenanceKcal) => {
+  if (!maintenanceKcal || maintenanceKcal <= 0) return 0;
+  const frac = 1 - targetKcal / maintenanceKcal;
+  if (frac < CUT_MIN_FRAC) return 0;
+  return Math.round((frac / REFERENCE_DEFICIT) * 100) / 100;
+};
+
+// Lean bodies have less to give, so both thresholds move earlier. Reuses Step 4's
+// isLeanBody — deliberately NOT a second leanness threshold.
+const cutThresholds = p => isLeanBody(p)
+  ? { soft: CUT_BLOCK_LEAN_SOFT, hard: CUT_BLOCK_LEAN_HARD }
+  : { soft: CUT_BLOCK_SOFT_NUDGE, hard: CUT_BLOCK_HARD_PROMPT };
+
+// Weight-trend backstop: fraction of bodyweight lost PER WEEK, measured between two
+// 7-day rolling averages `spanDays` apart — the same averages the adaptive TDEE uses.
+// At the default 7-day span this catches switching to "Maintain" to silence the prompts
+// while still under-eating. Over a longer span it is the stall check (file 03): three
+// weeks is long enough that a fortnight of water retention can't masquerade as a stall.
+// null when there aren't enough weigh-ins — silence beats a confident wrong reading.
+const trendLossFrac = (weighIns, todayK, spanDays = 7) => {
+  const t = new Date(todayK + "T12:00:00");
+  const recent = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() + 86400000)), 7);
+  const older  = weighRollingAvg(weighIns, dateKey(new Date(t.getTime() - spanDays * 86400000)), 7);
+  if (!recent || !older || older <= 0) return null;
+  return ((older - recent) / older) * (7 / spanDays);
+};
+const weeklyLossFrac = (weighIns, todayK) => trendLossFrac(weighIns, todayK, 7);
+
+// Weight up while eating below maintenance (features/energy-safety/04). Derived every
+// render rather than stored as an event: the explanation should be on screen whenever the
+// situation is real, not only in the moments after a weigh-in. Two weeks rather than one,
+// because a single week of water is exactly the noise this is here to explain away.
+const gainWhileCutting = ({ weighIns, todayK, cutting }) => {
+  if (!cutting) return false;
+  const rate = trendLossFrac(weighIns, todayK, 14);
+  return rate != null && rate < 0;   // a negative loss rate is a gain
+};
+
+const EMPTY_CUT_BLOCK = { start:null, load:0, startWeight:null, offRun:0, breakLoad:0,
+  lastAccrued:null, lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null };
+
+// Advance the block by ONE day. Pure, and idempotent at the call site via lastAccrued,
+// so re-opening the app can't double-count. `day.cutting` already folds in the mode and
+// the trend backstop; `day.load` is 0 on a day that doesn't qualify.
+//
+// THE DRAIN (file 03). A break is simply not cutting — there is no break state to enter
+// or fail. Every non-cut day pays down the open block PRO RATA: DIET_BREAK_DAYS of rest
+// clear it whatever its size, seven days clear half, three days leave a real dent that
+// stands. The rate is fixed from the load the block held when THIS off-stretch began
+// (`breakLoad`), which is what makes a partial break worth exactly its length. Maintain
+// and Bulk drain identically — it's the days not in cut that count, and no surplus
+// multiplier exists that we could defend.
+const stepCutBlock = (block, day) => {
+  const b = { ...block, lastAccrued: day.date };
+  if (day.cutting && day.load > 0) {
+    if (!b.start) { b.start = day.date; b.load = 0; b.startWeight = day.weight ?? null; }
+    if (b.startWeight == null && day.weight != null) b.startWeight = day.weight;
+    b.load      = Math.round((b.load + day.load) * 100) / 100;
+    b.offRun    = 0;
+    b.breakLoad = 0;   // the break is over; the next one re-reads the load as it stands then
+    return b;
+  }
+  // Not cutting today. A sub-CUT_MIN_FRAC "deficit" lands here too — it is maintenance in
+  // all but name. Remaining load is computed from the ORIGINAL breakLoad rather than by
+  // repeated subtraction, so fourteen rest days land exactly on zero at any block size.
+  b.offRun = (b.offRun || 0) + 1;
+  if (b.start) {
+    // First rest day sets the rate. A block stored by a pre-drain build arrives mid-run
+    // with no breakLoad, so it starts its break cleanly from today rather than guessing.
+    if (b.offRun === 1 || !b.breakLoad) { b.breakLoad = b.load; b.offRun = 1; }
+    const left = 1 - b.offRun / DIET_BREAK_DAYS;
+    b.load = left <= 0 ? 0 : Math.round(b.breakLoad * left * 100) / 100;
+    if (b.load <= 0) {
+      // Fully recharged: the block closes, and the one celebration card is armed. Nothing
+      // changes mode — the app never resumes a cut on the user's behalf. A block too small
+      // to have been worth mentioning gets no celebration either: congratulating someone for
+      // recovering from two days of cutting is the app talking to hear itself.
+      const worthSaying = b.breakLoad >= CUT_BAR_MIN_LOAD;
+      b.start = null; b.load = 0; b.startWeight = null; b.breakLoad = 0; b.offRun = 0;
+      b.lastBreakEnd = day.date;
+      if (worthSaying) b.rechargedOn = day.date;
+      b.nudgeAt = null; b.snoozeAt = null;
+    }
+  }
+  return b;
+};
+
+// Catch up from lastAccrued to today. Gap days INHERIT today's cutting/load — the whole
+// point is that closing the app doesn't stop the clock. Capped so a year-dormant install
+// doesn't spin.
+const accrueCutBlock = (block, todayK, day) => {
+  const b0 = block || EMPTY_CUT_BLOCK;
+  if (b0.lastAccrued === todayK) return b0;
+  const today = new Date(todayK + "T12:00:00");
+  const days = [];
+  if (b0.lastAccrued) {
+    const from = new Date(b0.lastAccrued + "T12:00:00");
+    for (let d = new Date(from.getTime() + 86400000); d <= today; d = new Date(d.getTime() + 86400000))
+      days.push(dateKey(d));
+  } else days.push(todayK);
+  return days.slice(-370).reduce((b, date) => stepCutBlock(b, { ...day, date }), b0);
+};
+
+const daysBetween = (fromK, toK) =>
+  Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
+
+// Which prompt (if any) to show. Returns REAL elapsed weeks, never load — see the copy
+// constraint above. `lossFrac` is loss since the block started, for BLOCK_LOSS_TRIGGER.
+//
+// THE STALL (file 03). A third route into the soft nudge, and the honest one: cutting for
+// STALL_WEEKS with the scale refusing to move means adherence has drifted, the body has
+// compensated, or water is masking the loss — and in every one of those "cut harder" is
+// the wrong answer while a spell at maintenance is the fix. `stallRate` is the per-week
+// loss over that longer span; null (not enough weigh-ins) says nothing rather than
+// guessing. Calendar time alone never triggers this — a gentle cut that IS working stays
+// unbothered however long it runs.
+const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = null,
+    cutting = false, now = Date.now() }) => {
+  if (!block || !block.start) return null;
+  const th    = cutThresholds(profile || {});
+  const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
+  const stalled = cutting && stallRate != null && stallRate < TREND_CUT_RATE &&
+                  daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
+  const level = (block.load >= th.hard || bigLoss) ? "hard"
+              : (block.load >= th.soft || stalled) ? "soft" : null;
+  if (!level) return null;
+  const snoozedFor = level === "hard"
+    ? (block.snoozeAt ? now - block.snoozeAt < CUT_PROMPT_SNOOZE_DAYS * 86400000 : false)
+    : (block.nudgeAt  ? now - block.nudgeAt  < CUT_NUDGE_SNOOZE_DAYS  * 86400000 : false);
+  if (snoozedFor) return null;
+  return { level, bigLoss,
+    // Only claim a stall on the card that can say it kindly; the hard prompt outranks it.
+    stalled: stalled && level === "soft" && block.load < th.soft,
+    weeks:   Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)) };
+};
+
+// ── The break gauge (energy Step 5; features/energy-safety/03) ────────
+// One number read in two directions: the same cut load fills while cutting and drains
+// while not. The bar shows whenever there is something to show — always inside an open
+// block, never once the block is closed and nothing is owed. A months-long bulk with a
+// clean slate shows nothing at all.
+//
+// CUT_BAR_MIN_LOAD decides whether any of this is worth mentioning yet, and it matters
+// more than it looks. Cut is the DEFAULT mode, so merely opening the app for a day accrues
+// load and opens a block — and the drain is pro rata, so a one-day block would spend a
+// fortnight announcing "about 14 days to fully recharged" over a single day of cutting.
+// Nonsense to read, and it spends the user's trust on nothing. The counter still runs from
+// day one (that is the protection); only the TALKING waits for about a week of cutting.
+//
+// The two directions ask about different numbers, deliberately. While filling, the bar
+// appears once your CURRENT load reaches the minimum. While draining, it stays up as long
+// as the load was above the minimum when the break BEGAN — otherwise the bar would vanish
+// just as you were about to finish, which is the worst possible moment to lose it.
+const cutBarFor = ({ block, profile, todayK, cutting = false, weightUp = false }) => {
+  if (!block || !block.start || block.load <= 0) return null;
+  if (cutting ? block.load < CUT_BAR_MIN_LOAD
+              : (block.breakLoad || block.load) < CUT_BAR_MIN_LOAD) return null;
+  const th  = cutThresholds(profile || {});
+  const pct = Math.max(0, Math.min(100, Math.round((block.load / th.soft) * 100)));
+  if (cutting) return { draining: false, pct,
+    weeks: Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)) };
+  // Draining. The rest-day count is 0 on the day the break is declared, because today
+  // already accrued as a cut day — saying "day 1" would be a day's worth of flattery.
+  const restDays = block.offRun || 0;
+  return { draining: true, pct, restDays, weightUp,
+    daysLeft: Math.max(0, DIET_BREAK_DAYS - restDays) };
+};
+
+// The one guarded action: going back to Cut mid-break, and only where the app had
+// actually advised the break (the block reached its soft-nudge threshold before it
+// stopped). A short casual cut never meets friction, and Bulk is never guarded at all.
+const cutGuardFor = ({ block, profile, cutting = false }) => {
+  if (!block || !block.start || cutting || block.load <= 0) return null;
+  if ((block.breakLoad || 0) < cutThresholds(profile || {}).soft) return null;
+  return { daysLeft: Math.max(1, DIET_BREAK_DAYS - (block.offRun || 0)) };
+};
+
+// One dismissible card when the load reaches zero, which retires itself after
+// RECHARGED_CARD_DAYS whether or not it is ever tapped. Then silence — nothing about
+// breaks is shown again until there is a new block to talk about.
+const rechargedCardDue = (block, todayK) =>
+  !!(block && block.rechargedOn && !block.start &&
+     daysBetween(block.rechargedOn, todayK) < RECHARGED_CARD_DAYS);
+
+// ── Weigh-in engagement (energy Step 2 companion; features/energy-safety/06) ──
+// Seed → calibrate only calibrates if the user weighs in, but the seed stands on its
+// own — so we INVITE check-ins, never demand them. The cadence states intent; the
+// nudge is one simple universal backstop (a week with no weigh-in). Calibration just
+// uses whatever weigh-ins exist. Coach guardrails: default is a few-times-a-week (never
+// "daily"); "I'd rather not" fully mutes; supportive, never shaming; no streaks.
+const WEIGH_NUDGE_GAP_DAYS      = 7;   // a week with no weigh-in ⇒ a gentle nudge
+const WEIGH_NUDGE_COOLDOWN_DAYS = 14;  // silence for this long after a dismissal
+const WEIGH_CADENCE = {
+  few:    { label: "A few times a week", hint: "Suggested — enough to fine-tune, easy to keep up" },
+  daily:  { label: "Daily",              hint: "You like to track your weight day to day" },
+  weekly: { label: "Weekly",             hint: "A weekly check-in is plenty" },
+  off:    { label: "I'd rather not",     hint: "We'll rely on your profile estimate — no reminders" },
+};
+const WEIGH_CADENCE_ORDER = ["few", "daily", "weekly", "off"]; // suggested option first
+const weighCadenceOf = p => (p && WEIGH_CADENCE[p.weighCadence] ? p.weighCadence : "few");
+const daysBetweenTs  = (aTs, bTs) => Math.floor((bTs - aTs) / 86400000);
+// Pure: should the escalated check-in nudge show? `lastActivityTs` = the last weigh-in,
+// or (if the user has never weighed) the first day they were active; null when there is
+// no anchor yet (brand-new). Muted entirely when cadence is "off".
+const shouldNudgeWeighIn = ({ cadence, lastActivityTs, dismissedTs, now,
+  gapDays = WEIGH_NUDGE_GAP_DAYS, cooldownDays = WEIGH_NUDGE_COOLDOWN_DAYS }) => {
+  if (cadence === "off") return false;
+  if (lastActivityTs == null) return false;
+  if (daysBetweenTs(lastActivityTs, now) < gapDays) return false;
+  if (dismissedTs != null && daysBetweenTs(dismissedTs, now) < cooldownDays) return false;
+  return true;
 };
 
 const sg = async k => {
@@ -461,8 +859,30 @@ const syncProfile = async (uid, p) => {
   try {
     await sb().from("profiles").upsert({
       id:uid, weight:p.weight, height:p.height,
-      body_fat:p.bodyFat, sex:p.sex||null, updated_at:new Date().toISOString()
+      body_fat:p.bodyFat, sex:p.sex||null, activity:p.activity||null,
+      updated_at:new Date().toISOString()
     });
+  } catch(e) {}
+};
+
+// Cut-cycling block state (energy Step 5). Deliberately NOT local-only like
+// activity/weighCadence: block state is the one thing that has to remember a long cut,
+// so a new device must not silently restart the clock at 0. Touches only its own four
+// columns, leaving body metrics alone on conflict.
+// `cut_break_load` carries the drain rate (file 03). It is what lets a second device
+// resume a break at the right speed AND decide the early-return guard the same way this
+// one would — the off-day count is re-derived from it on pull, so it needs no column.
+const syncCutBlock = async (uid, b) => {
+  if (!uid || !navigator.onLine || !b) return;
+  try {
+    await sb().from("profiles").upsert({
+      id: uid,
+      cut_block_start: b.start || null,
+      cut_block_load:  b.load || 0,
+      cut_break_load:  b.breakLoad || 0,
+      last_break_end:  b.lastBreakEnd || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
   } catch(e) {}
 };
 
@@ -591,10 +1011,36 @@ const pullFromSupabase = async uid => {
     ]);
     const result = {};
     if (profR.data) {
-      const p = { weight:profR.data.weight, height:profR.data.height,
-        bodyFat:profR.data.body_fat, sex:profR.data.sex };
+      // Preserve local-only profile fields the profiles table doesn't carry (weighCadence,
+      // dietary config) so a cloud pull doesn't wipe them; the synced columns below stay
+      // authoritative. `activity` now HAS a column, but an older row may still be null —
+      // in that case keep the local pick rather than resetting the user to sedentary.
+      let local = {}; try { const pv = await sg("profile"); if (pv) local = JSON.parse(pv); } catch(e) {}
+      const p = { ...local, weight:profR.data.weight, height:profR.data.height,
+        bodyFat:profR.data.body_fat, sex:profR.data.sex,
+        activity: profR.data.activity || local.activity || null };
       await ss("profile", JSON.stringify(p));
       result.profile = p;
+      // Cut-cycling block state. The local blob carries the working fields (accrual
+      // cursor, dismissals); the cloud carries the four durable ones, so a new device
+      // resumes an open cut instead of restarting it.
+      let localBlock = {}; try { const cv = await sg("cut_block"); if (cv) localBlock = JSON.parse(cv); } catch(e) {}
+      if (profR.data.cut_block_start || profR.data.last_break_end) {
+        const load      = Number(profR.data.cut_block_load) || 0;
+        const breakLoad = Number(profR.data.cut_break_load) || 0;
+        // Rest days are algebra, not a stored field: load = breakLoad × (1 − offRun/14),
+        // so the count this device should resume from falls straight out of the two
+        // synced numbers. Nothing to drift, and the guard reads the same on any phone.
+        const offRun = breakLoad > 0
+          ? Math.max(0, Math.min(DIET_BREAK_DAYS, Math.round(DIET_BREAK_DAYS * (1 - load / breakLoad))))
+          : 0;
+        const block = { ...EMPTY_CUT_BLOCK, ...localBlock,
+          start:        profR.data.cut_block_start || null,
+          load, breakLoad, offRun,
+          lastBreakEnd: profR.data.last_break_end || null };
+        await ss("cut_block", JSON.stringify(block));
+        result.cutBlock = block;
+      }
     }
     if (weighR.data?.length) {
       const wi = weighR.data.map(r => ({ date:r.date, weight:Number(r.weight) }));
@@ -1577,10 +2023,11 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   const bfVal = Number(f.bodyFat);
   const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   const prev     = calcTargets(f, "cut", 0, 0);
-  const formulaTDEE = prev.tdee;
-  const adjTDEE     = Math.max(formulaTDEE, formulaTDEE + tdeeAdj); // never below sedentary TDEE
-  const tdeeFloored = formulaTDEE + tdeeAdj < formulaTDEE;          // adaptive adj hit the floor
-  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 7 ? "Estimating" : null;
+  const formulaTDEE = prev.tdee;                            // seeded estimate (activity-adjusted)
+  const tdeeFloor   = sedentaryFloorOf(f);                  // absolute floor = sedentary (BMR × 1.2)
+  const adjTDEE     = Math.max(tdeeFloor, formulaTDEE + tdeeAdj); // never below sedentary TDEE
+  const tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor;    // adaptive adj hit the floor
+  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 6 ? "Estimating" : null;
 
   useEffect(() => {
     if (!valid) return;
@@ -1591,7 +2038,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
       setTimeout(() => setSaved(false), 1800);
     }, 600);
     return () => clearTimeout(t);
-  }, [f.weight, f.height, f.bodyFat, f.sex]); // eslint-disable-line
+  }, [f.weight, f.height, f.bodyFat, f.sex, f.activity, f.weighCadence]); // eslint-disable-line
 
   const row = (label, val, unit, color = "var(--text-hi)") => (
     <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
@@ -1670,8 +2117,57 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
             Targets may need adjusting around your cycle — override anytime.
           </div>
         )}
-        <div style={{ fontSize:11, color:"var(--text-lo-2)", marginBottom:14, lineHeight:1.5 }}>
-          Base TDEE uses BMR × 1.2 (sedentary baseline). Workout calories are added when you log sessions.
+        <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
+          ACTIVITY <span style={{ color:"var(--text-label)", fontSize:10, fontWeight:400 }}>— your typical day, not counting workouts</span>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:6 }}>
+          {ACTIVITY_ORDER.map(k => {
+            const on = (f.activity || "sedentary") === k;
+            const set_ = f.activity == null;
+            return (
+              <button key={k} onClick={() => set("activity", k)}
+                style={{ textAlign:"left", padding:"9px 12px", borderRadius:10,
+                  border:`1px solid ${on && !set_ ? aA("88") : BD}`,
+                  background: on && !set_ ? aA("18") : "var(--bg)",
+                  color: on && !set_ ? A : "var(--text-mid)", lineHeight:1.35 }}>
+                <div style={{ fontSize:12, fontWeight:900, letterSpacing:"0.02em" }}>{ACTIVITY[k].label}</div>
+                <div style={{ fontSize:10, color:"var(--text-label)", fontWeight:400, marginTop:1 }}>{ACTIVITY[k].hint}</div>
+              </button>
+            );
+          })}
+        </div>
+        {f.activity == null ? (
+          <div style={{ fontSize:11, color:"var(--warn)", marginBottom:10, lineHeight:1.5 }}>
+            Pick your typical activity for a more accurate starting target — defaulting to sedentary until you do.
+          </div>
+        ) : (
+          <div style={{ fontSize:11, color:"var(--text-mid-2)", marginBottom:10, lineHeight:1.5 }}>
+            A starting point — we fine-tune this automatically as you log weight. Workout calories are added
+            separately when you log a session, so pick how active your day is <em>without</em> training.
+          </div>
+        )}
+        <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>
+          WEIGH-INS <span style={{ color:"var(--text-label)", fontSize:10, fontWeight:400 }}>— how often you'd like to check in</span>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6 }}>
+          {WEIGH_CADENCE_ORDER.map(k => {
+            const cur = f.weighCadence || "few";
+            const on  = cur === k;
+            return (
+              <button key={k} onClick={() => set("weighCadence", k)}
+                style={{ padding:"8px 12px", borderRadius:10, fontSize:12, fontWeight:800,
+                  border:`1px solid ${on ? aA("88") : BD}`,
+                  background: on ? aA("18") : "var(--bg)", color: on ? A : "var(--text-label)" }}>
+                {WEIGH_CADENCE[k].label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize:11, color:"var(--text-mid-2)", marginBottom:14, lineHeight:1.5 }}>
+          {WEIGH_CADENCE[f.weighCadence || "few"].hint}. We use your 7-day trend, not any single day —
+          {(f.weighCadence || "few") === "off"
+            ? " your targets run on your profile estimate."
+            : " weigh in when it suits and we auto-tune your targets."}
         </div>
       </div>
 
@@ -1877,7 +2373,7 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
+function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE }) {
   const [val, setVal]   = useState(""); // kg · lb · or stone (when st mode)
   const [val2, setVal2] = useState(""); // pounds (st mode only)
   const wUnit = getWUnit();
@@ -1886,7 +2382,6 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
                 : Number(val);
   const today       = todayKey();
   const todayEntry  = weighIns.find(w => w.date === today);
-  const weeks       = Math.floor(weighIns.length / 7);
 
   const trend7 = (() => {
     if (weighIns.length < 4) return null;
@@ -1898,6 +2393,8 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
 
   const confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
   const confColor2 = weighIns.length >= 28 ? A : weighIns.length >= 14 ? "var(--warn)" : "var(--text-mid)";
+  const calibrating  = weighIns.length >= CAL_MIN_WEIGHINS; // 6 — matches the engine's engagement point
+  const checkInsToGo = Math.max(0, CAL_MIN_WEIGHINS - weighIns.length);
 
   return (
     <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 20px", marginBottom:14 }}>
@@ -1922,12 +2419,14 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ fontSize:10, color:confColor2, letterSpacing:"0.08em", fontWeight:800 }}>{confidence.toUpperCase()}</div>
-          {weeks >= 1
+          {calibrating
             ? <>
-                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{Math.max(baseTDEE, baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
+                <div style={{ fontSize:15, fontWeight:900, color:A, marginTop:2 }}>~{Math.max(tdeeFloor, baseTDEE + tdeeAdj).toLocaleString()} kcal</div>
                 <div style={{ fontSize:10, color:"var(--text-label)", marginTop:1 }}>est. TDEE{tdeeAdj !== 0 && <span style={{ color: tdeeAdj > 0 ? A : "var(--bulk)" }}> {tdeeAdj > 0 ? "+" : ""}{tdeeAdj}</span>}</div>
               </>
-            : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:100, textAlign:"right", lineHeight:1.4 }}>Log daily to calibrate your TDEE</div>
+            : <div style={{ fontSize:11, color:"var(--text-lo-2)", marginTop:4, maxWidth:110, textAlign:"right", lineHeight:1.4 }}>
+                {checkInsToGo} more check-in{checkInsToGo === 1 ? "" : "s"} until we fine-tune
+              </div>
           }
         </div>
       </div>
@@ -1962,10 +2461,9 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
       )}
 
       <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5 }}>
-        {weeks < 1 && "Targets use the Katch-McArdle formula. Once you have a week of weigh-ins, they'll self-adjust to your real metabolism."}
-        {weeks >= 1 && weeks < 2 && `🔄 ${confidence} — ${weighIns.length} weigh-ins so far. 2+ weeks unlocks calibration.`}
-        {weeks >= 2 && tdeeAdj === 0 && "Formula TDEE matches your results — no adjustment needed yet."}
-        {weeks >= 2 && tdeeAdj !== 0 && `Your real TDEE is ${tdeeAdj > 0 ? "higher" : "lower"} than the formula predicts. Targets adjusted accordingly.`}
+        {!calibrating && `Your target is already set from your profile. Weigh in a few times a week and we auto-tune it — we use your 7-day trend, not any single day. ${checkInsToGo} more check-in${checkInsToGo === 1 ? "" : "s"} until we start fine-tuning.`}
+        {calibrating && tdeeAdj === 0 && `🔄 ${confidence} — your logged results match the estimate, no adjustment needed yet.`}
+        {calibrating && tdeeAdj !== 0 && `🔄 ${confidence} — your real TDEE looks ${tdeeAdj > 0 ? "higher" : "lower"} than the estimate, so targets are adjusted to match.`}
       </div>
     </div>
   );
@@ -1973,7 +2471,7 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE }) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGate }) {
+function WorkoutLogger({ workouts, onAdd, onRemove, prof, earnedToday = 0, isPremium, onPremiumGate }) {
   const [type,      setType]      = useState("legs");
   const [dur,       setDur]       = useState(45);
   const [intensity, setIntensity] = useState("moderate");
@@ -2019,9 +2517,16 @@ function WorkoutLogger({ workouts, onAdd, onRemove, prof, isPremium, onPremiumGa
           WORKOUTS {workouts.length > 0 && <span style={{ color:A }}>· ⚡{workouts.length}</span>}
         </div>
         {workouts.length > 0 && (
-          <span style={{ fontSize:12, fontWeight:900, color:A }}>{totalKcal} kcal added</span>
+          <span style={{ fontSize:12, fontWeight:900, color:A }}>{totalKcal} kcal burned</span>
         )}
       </div>
+
+      {workouts.length > 0 && (
+        <div style={{ fontSize:10, color:"var(--text-mid-3)", marginBottom:10, lineHeight:1.4 }}>
+          +{earnedToday} kcal added to today — the rest fuels the next couple of days,
+          so one big session doesn&rsquo;t all land at once.
+        </div>
+      )}
 
       {workouts.length > 0 && (
         <div style={{ marginBottom:10 }}>
@@ -2232,7 +2737,11 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
 function Dashboard({ logs, totals, targets, remaining, water, setWater,
   mode, setMode, setView, removeLog, updateLog, addToQA,
   hasProfile, streak, streakPop, badgeGlow, prof,
-  weighIns, onWeighIn, tdeeAdj, baseTDEE, coachKey,
+  weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
+  showWeighNudge = false, onNudgeDismiss = () => {}, onNudgeMute = () => {}, coachKey,
+  cutPrompt = null, onCutNudgeDismiss = () => {}, onCutPromptSnooze = () => {}, onStartDietBreak = () => {},
+  cutBar = null, cutGuard = null, showRecharged = false, onDismissRecharged = () => {},
+  showGainWhileCutting = false,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
   aggressiveCutAcked, onAckAggressiveCut,
@@ -2241,11 +2750,13 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
   const isPremium = authState === "premium";
   const [editingId, setEditingId] = useState(null);
+  const [askCutGuard, setAskCutGuard] = useState(false);   // early-return confirm (file 03)
 
   const overAmt    = Math.round(totals.kcal - targets.kcal);
   const pct        = Math.min(100, (totals.kcal / targets.kcal) * 100);
   const mc         = MODES[mode].color;
   const isTraining = workouts.length > 0;
+  const todayWorkoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0); // raw, for the low-fuel copy
   // Graduated calorie status: ok (≤100 over) | amber-soft (100-200) | amber (200-500) | red (500+)
   const AMBER = "var(--warn)";
   const RED   = "var(--over)";
@@ -2273,7 +2784,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   // effective TDEE (mirrors App effectiveTDEE and the maintenance floor) so a
   // custom target isn't judged against a sub-floor baseline when a negative
   // adaptive adjustment is active — otherwise a real deficit would read as smaller.
-  const tdee = Math.max(baseTDEE, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
+  const tdee = Math.max(tdeeFloor, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
   const targetWarning = (() => {
     if (!isCustomMode || targets.safeMinApplied) return null;
     const diff = customKcal - tdee; // negative = deficit
@@ -2281,6 +2792,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       text: "This deficit is not recommended. Extreme cuts cause muscle loss, fatigue and metabolic damage. Are you sure?" };
     if (diff < -750)  return { level:"amber",
       text:`This is an aggressive deficit. You may lose muscle alongside fat. Consider ${(tdee - 750).toLocaleString()} kcal or above.` };
+    // Steady-loss floor (Step 4). A typed target isn't overridden — but a number below
+    // the floor we'd set for this body earns the same plain-English explanation.
+    if (targets.deficitFloor && customKcal < targets.deficitFloor) return { level:"amber",
+      text:`That's below the ${targets.deficitFloor.toLocaleString()} kcal we'd set as your steady-loss floor — losing faster than that mostly costs muscle and is harder to stick to.` };
     if (diff >= -150 && diff < 0) return { level:"info",
       text:"Deficit is small — progress will be slow but sustainable 👍" };
     if (diff > 0 && diff <= 150) return { level:"info",
@@ -2338,12 +2853,13 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       </div>
 
-      {/* Mode selector */}
+      {/* Mode selector — the ONLY surface that changes mode. No card anywhere duplicates
+          these three chips with buttons of its own. */}
       <div style={{ display:"flex", gap:6, marginBottom:12 }}>
         {Object.entries(MODES).map(([k, v]) => {
           const active = !isCustomMode && mode === k;
           return (
-            <button key={k} onClick={() => setMode(k)}
+            <button key={k} onClick={() => { if (k === "cut" && cutGuard) setAskCutGuard(true); else setMode(k); }}
               style={{ flex:1, padding:"9px 4px",
                 background: active ? mix(v.color, "22") : "var(--surface-2)",
                 color:      active ? v.color : "var(--text-label)",
@@ -2355,9 +2871,37 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         })}
       </div>
 
+      {/* The one guarded action: back to Cut mid-break, and only where the app had
+          actually advised the break. Bulk and Maintain are never guarded, and "Cut
+          anyway" is honoured on the spot — this asks once, it doesn't argue. */}
+      {askCutGuard && cutGuard && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
+          borderRadius:12, padding:"10px 14px", marginBottom:12 }}>
+          <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+            BACK TO CUTTING ALREADY?
+          </div>
+          <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+            About {cutGuard.daysLeft} more rest {cutGuard.daysLeft === 1 ? "day" : "days"} would
+            recharge you fully. It's your call.
+            <div style={{ display:"flex", gap:8, marginTop:8 }}>
+              <button onClick={() => setAskCutGuard(false)}
+                style={{ flex:1, padding:"8px", background:"var(--surface-2)", border:`1px solid ${aA("44")}`,
+                  borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                Keep resting
+              </button>
+              <button onClick={() => { setAskCutGuard(false); setMode("cut"); }}
+                style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${BD}`,
+                  borderRadius:9, color:"var(--text-mid)", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                Cut anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Workout logger */}
       <WorkoutLogger workouts={workouts} onAdd={onAddWorkout} onRemove={onRemoveWorkout} prof={prof}
-        isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+        earnedToday={targets.bonus || 0} isPremium={isPremium} onPremiumGate={onPremiumGate}/>
 
       {!hasProfile && (
         <button onClick={() => setView("profile")}
@@ -2424,7 +2968,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
       )}
 
       {/* Minimum-maintenance floor: the adaptive adjustment tried to pull maintenance
-          below sedentary TDEE (BMR × 1.2). Held there — the ratchet can't starve a
+          below sedentary TDEE (BMR × 1.2). Held there — the auto-lowering can't starve a
           stalling dieter. Suppressed when SAFE_MIN already speaks. */}
       {targets.bmrFloorApplied && !targets.safeMinApplied && (
         <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
@@ -2438,6 +2982,269 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
               Your maintenance can't sit below your body's sedentary energy use, so we've held
               today's target at {targets.kcal.toLocaleString()} kcal. If the scale keeps rising, a
               short diet break usually beats eating less.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Steady-loss floor (Step 4): the preset target asked for a deeper cut than 25%
+          of maintenance. Eased, not blocked. Suppressed when a stricter floor speaks. */}
+      {targets.deficitFloorApplied && !targets.safeMinApplied && !targets.bmrFloorApplied && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🛡️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              EASED TO A STEADY PACE
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              A {MODES[mode].label.toLowerCase()} at your size would have taken too big a bite out of
+              today, so we've set it to {targets.kcal.toLocaleString()} kcal.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  Your floor is worked out from your own body — it's a quarter below what we think you
+                  burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle,
+                  sleep and training quality, and it's much harder to stick to.
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Below resting metabolism (file 04). A cut IS a deliberate choice to eat below
+          what you burn, and for a lean body the arithmetic lands under BMR with nothing
+          wrong — so this is allowed, and named rather than hidden or forbidden. Silent
+          when a floor already spoke, and silent outside Cut, where it would be alarming
+          rather than informative. */}
+      {mode === "cut" && targets.kcal < targets.bmr && !targets.safeMinApplied &&
+       !targets.bmrFloorApplied && !targets.deficitFloorApplied && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🌙</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              BELOW YOUR RESTING METABOLISM
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              Fine short-term, not a level to live at.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  Your resting metabolism ({targets.bmr.toLocaleString()} kcal) is what your body
+                  would use doing nothing at all — but you don't do nothing, so eating under it for a
+                  stretch is normal on a cut and is not the same as starving. It's a reasonable place
+                  to be for a few weeks, not a place to settle. The break prompts will tell you when
+                  you've been at it a while.
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Low fuel (Step 4, warning only — never changes the target). Rare by design: lean body +
+          a day you actually trained + what's left after training is genuinely low. */}
+      {targets.lowFuel && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>⛽</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              LOW ON FUEL TODAY
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              Today's training used about {todayWorkoutKcal.toLocaleString()} kcal, which doesn't leave
+              much behind for recovery. Eating a bit more today would be worth it.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  What matters isn't just what you eat — it's what's left once training has taken its
+                  share. At your body composition there isn't much spare to draw on, and running short
+                  for weeks at a time tends to show up as flat training, poor sleep, low mood and
+                  hormonal changes. One light day is nothing to worry about.
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Weight up while eating below maintenance (file 04). The calibration has already
+          refused to lower the target off this — see runCalibration's asymmetry block —
+          and this card is the honest explanation of why nothing moved. No mode buttons:
+          the picker is the only thing that changes mode. Never says "eat less", and never
+          frames the rise as a failure. */}
+      {showGainWhileCutting && (
+        <div style={{ background:CARD, border:`1px solid ${aA("33")}`, borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>💧</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:A, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              WEIGHT UP WHILE EATING LESS THAN MAINTENANCE
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              This is usually water, glycogen or muscle — not a slower metabolism. Your target
+              hasn't been lowered.
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:A, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  The scale weighs everything, not just fat. Under-eating and stress both make you
+                  hold water, glycogen swings a kilo either way, and training builds tissue that
+                  weighs more than it looks. None of that means you burn less than we thought, so
+                  the app leaves your number where it is rather than asking you to eat less.
+                  {" "}If you've been training hard, updating your body-fat % in your profile keeps
+                  your targets tracking your real lean mass.
+                </div>
+              </details>
+              <button onClick={() => setView("profile")}
+                style={{ background:"none", border:"none", color:A, fontSize:11, fontWeight:700,
+                  padding:"6px 0 0", cursor:"pointer", textDecoration:"underline" }}>
+                Update my body-fat %
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The break gauge (Step 5, file 03). One bar, read in two directions: it fills
+          while cutting and drains while not. It carries no advice of its own — at the
+          soft threshold the nudge card below takes the messaging, and the bar never
+          duplicates it. The label is real elapsed weeks or real rest days; the load
+          number itself is never shown. */}
+      {cutBar && (
+        <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:12,
+          padding:"10px 14px", marginBottom:12 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+            <div style={{ fontSize:11, fontWeight:800, letterSpacing:"0.06em",
+              color: cutBar.draining ? A : "var(--text-label)" }}>
+              {cutBar.draining
+                ? (cutBar.restDays > 0 ? `ON A BREAK · DAY ${cutBar.restDays}` : "ON A BREAK · STARTING TODAY")
+                : `CUTTING · WEEK ${cutBar.weeks}`}
+            </div>
+            {cutBar.draining && (
+              <div style={{ fontSize:10.5, color:"var(--text-mid)" }}>
+                about {cutBar.daysLeft} {cutBar.daysLeft === 1 ? "day" : "days"} to fully recharged
+              </div>
+            )}
+          </div>
+          <div style={{ height:6, borderRadius:999, background:"var(--surface-2)", overflow:"hidden" }}>
+            <div style={{ width:`${cutBar.pct}%`, height:"100%", borderRadius:999,
+              background: cutBar.draining ? A : AMBER, transition:"width 0.4s ease" }}/>
+          </div>
+          {cutBar.draining && (
+            <div style={{ fontSize:10.5, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
+              Recharging now sets up your next block.
+              {cutBar.weightUp && " Weight up a little on a break is normal — usually water and glycogen, not fat."}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Fully recharged. One card, dismissible, and it retires itself after three days
+          whether or not it is ever tapped — then nothing about breaks is shown at all.
+          No mode buttons: the picker above is the only way to start cutting again. */}
+      {showRecharged && (
+        <div style={{ background:"var(--surface-2)", border:`1px solid ${aA("33")}`, borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🔋</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:A, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              RECHARGED
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              You're in good shape to cut again, if you want to.
+            </div>
+          </div>
+          <button onClick={onDismissRecharged}
+            style={{ background:"none", border:"none", color:"var(--text-faint-2)", fontSize:16,
+              padding:"0 2px", cursor:"pointer", lineHeight:1 }}>×</button>
+        </div>
+      )}
+
+      {/* Cut cycling (Step 5, file 02). The TRIGGER is deficit-weighted load; the number
+          shown is REAL elapsed weeks — a gentle cutter genuinely has been at it longer
+          than their load implies, and saying otherwise would be false. Coach constraint:
+          never present a week count as the point something happens to the body. */}
+      {cutPrompt && cutPrompt.level === "soft" && (
+        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🔄</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              {cutPrompt.stalled ? "YOUR LOSS HAS STALLED" : `YOU'VE BEEN CUTTING FOR ${cutPrompt.weeks} WEEKS`}
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              {cutPrompt.stalled
+                ? "The scale hasn't moved in about three weeks. Bodies adapt to a long deficit — a couple of weeks at maintenance is how you reset it."
+                : "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier."}
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  {cutPrompt.stalled
+                    ? `A stall isn't a discipline problem, and eating less is rarely the fix. After a long
+                       stretch in a deficit the body quietly spends less — you move less without noticing,
+                       and water can hide real fat loss for weeks. Time at maintenance settles all three
+                       and re-checks whether your maintenance estimate is still right.`
+                    : `Long deficits get harder, not easier — hunger climbs, training goes flat, and holding
+                       the line takes more out of you than it did in week one. A break isn't lost progress:
+                       it's what makes the next block work, and it re-checks whether your maintenance
+                       estimate is still right.`}
+                </div>
+              </details>
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                <button onClick={onStartDietBreak}
+                  style={{ flex:1, padding:"8px", background:"var(--surface-2)", border:`1px solid ${aA("44")}`,
+                    borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                  Start a 2-week break
+                </button>
+                <button onClick={onCutNudgeDismiss}
+                  style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${BD}`,
+                    borderRadius:9, color:"var(--text-mid)", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                  Not yet
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The hard prompt. Snoozable for 3 days, never permanently dismissable — and the
+          week count it shows keeps climbing each time it comes back. */}
+      {cutPrompt && cutPrompt.level === "hard" && (
+        <div style={{ background:"var(--over-tint-2)", border:"1px solid var(--over-tint)", borderRadius:12,
+          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <div style={{ fontSize:15, marginTop:1 }}>🔄</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:"var(--over)", fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
+              TIME FOR A DIET BREAK
+            </div>
+            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
+              {cutPrompt.bigLoss
+                ? `You've lost 5% of your bodyweight this block — a great point to consolidate.`
+                : `${cutPrompt.weeks} weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance.`}
+              <details style={{ marginTop:4 }}>
+                <summary style={{ cursor:"pointer", color:"var(--over)", fontWeight:700, fontSize:11 }}>Why?</summary>
+                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
+                  There's no day count at which something suddenly goes wrong — but the deeper the
+                  deficit and the longer it runs, the more it costs you in muscle, sleep, training and
+                  mood, and the more your body pushes back. Time at maintenance is how you keep the
+                  results you've earned. If you're feeling run down with it, it's worth talking to a doctor.
+                </div>
+              </details>
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                <button onClick={onStartDietBreak}
+                  style={{ flex:1, padding:"8px", background:"var(--surface-2)", border:"1px solid var(--over-tint)",
+                    borderRadius:9, color:"var(--over)", fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                  Start a 2-week break
+                </button>
+                <button onClick={onCutPromptSnooze}
+                  style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${BD}`,
+                    borderRadius:9, color:"var(--text-mid)", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                  Remind me in 3 days
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2571,9 +3378,36 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       </div>
 
+      {/* Gentle weigh-in check-in nudge (energy Step 2 companion). Supportive, dismissable,
+          mutable — never guilt. Sits directly above the widget so "Log weight" is one glance away. */}
+      {showWeighNudge && (
+        <div style={{ background:"var(--surface-2)", border:`1px solid ${aA("33")}`, borderRadius:16,
+          padding:"14px 16px", marginBottom:12, display:"flex", gap:12, alignItems:"flex-start" }}>
+          <div style={{ fontSize:18, marginTop:1 }}>⚖️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:"var(--text-hi)", marginBottom:2 }}>Time for a quick check-in?</div>
+            <div style={{ fontSize:12, color:"var(--text-mid-2)", lineHeight:1.5, marginBottom:10 }}>
+              It's been a week since your last weigh-in. A quick one keeps your targets accurate —
+              we use your 7-day trend, not any single day. No pressure, whenever suits.
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              <button onClick={onNudgeDismiss}
+                style={{ padding:"8px 14px", borderRadius:9, fontSize:12, fontWeight:800, border:"none",
+                  background:A, color:"var(--bg)" }}>Log weight</button>
+              <button onClick={onNudgeDismiss}
+                style={{ padding:"8px 14px", borderRadius:9, fontSize:12, fontWeight:700,
+                  border:`1px solid ${BD}`, background:"transparent", color:"var(--text-mid)" }}>Not now</button>
+              <button onClick={onNudgeMute}
+                style={{ padding:"8px 10px", borderRadius:9, fontSize:12, fontWeight:600,
+                  border:"none", background:"transparent", color:"var(--text-label)" }}>Don't remind me</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Weigh-in */}
       <WeighInWidget weighIns={weighIns} onWeighIn={onWeighIn}
-        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}/>
+        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}/>
 
       {/* Add food */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
@@ -2723,7 +3557,8 @@ const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 // sometimes hand back a 0–1 fraction (e.g. 0.72) despite the prompt asking for
 // 0–100 — without this, 0.72 renders as "0.72%", mis-gates follow-ups, and gets
 // stored as ~1% confident (wrongly flagging the day + dropping it from
-// calibration). A bare value <=1 is treated as a fraction; everything is clamped.
+// calibration). A bare value <=1 is treated as a fraction; everything is then
+// held within 0–100.
 const normConf = c => {
   let n = Number(c);
   if (!isFinite(n)) return 50;
@@ -4021,6 +4856,24 @@ function BadgeToast({ badge, onDone }) {
   );
 }
 
+// Plain text toast — the badge one carries a tier and an emoji, this one just says a
+// thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
+function NoteToast({ text, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 2800); return () => clearTimeout(t); }, []); // eslint-disable-line
+  return (
+    <div onClick={onDone} style={{ position:"fixed", left:0, right:0, bottom:24, display:"flex",
+      justifyContent:"center", zIndex:1000, pointerEvents:"none", padding:"0 16px" }}>
+      <style>{`@keyframes bt_in { 0%{transform:translateY(20px);opacity:0} 100%{transform:translateY(0);opacity:1} }`}</style>
+      <div style={{ pointerEvents:"auto", background:CARD, border:`1px solid ${aA("44")}`,
+        borderRadius:999, padding:"10px 16px", maxWidth:"100%", textAlign:"center",
+        boxShadow:"0 8px 24px rgba(0,0,0,0.35)", animation:"bt_in 0.3s ease-out",
+        fontSize:12.5, fontWeight:800, color:"var(--text-hi)" }}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
@@ -4032,14 +4885,21 @@ function App() {
   const [hist,       setHist]       = useState([]);
   const [meals,      setMeals]      = useState([...DEF_MEALS]);
   const [workouts,   setWorkouts]   = useState([]);
+  // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
+  // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
+  const [priorWorkoutKcal, setPriorWorkoutKcal] = useState([0, 0]);
   const [earnedBdgs, setEarnedBdgs] = useState([]);
   const [newBadge,   setNewBadge]   = useState(null);
   const [ready,      setReady]      = useState(false);
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
+  const [adjLog,     setAdjLog]     = useState([]); // recent {date,adj} events — dead-time comp (local-only)
+  const [weighNudgeAt, setWeighNudgeAt] = useState(null); // last weigh-in-nudge dismissal (ms; local-only)
+  const [cutBlock,   setCutBlock]   = useState(EMPTY_CUT_BLOCK); // cut-cycling state (Step 5); 4 fields sync
   const [coachKey,         setCoachKey]         = useState(0);
   const [streakPop,        setStreakPop]        = useState(null);  // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   const [badgeToast,       setBadgeToast]       = useState(null);  // Bronze/Silver badge → quiet toast + 🏆 glow
+  const [noteToast,        setNoteToast]        = useState(null);  // plain one-line confirmations
   const [badgeGlow,        setBadgeGlow]        = useState(false); // the 🏆 glow paired with the toast
   const [customKcal,       setCustomKcal]       = useState(null);
   const [aggressiveCutAcked, setAggressiveCutAcked] = useState(false);
@@ -4098,10 +4958,20 @@ function App() {
       const pv = await sg("profile");     if (pv)  { const pp = JSON.parse(pv); setProf(pp); setDietaryCache(pp.dietary); }
       const mv2 = await sg("meals");      if (mv2) setMeals(JSON.parse(mv2));
       const wkv = await sg("workouts__" + k); if (wkv) setWorkouts(JSON.parse(wkv));
+      // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
+      const prior = [];
+      for (let d = 1; d <= 2; d++) {
+        const pwv = await sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
+        prior.push(pwv ? JSON.parse(pwv).reduce((s, w) => s + (w.kcal || 0), 0) : 0);
+      }
+      setPriorWorkoutKcal(prior);
       const bv = await sg("badges");     if (bv)  setEarnedBdgs(JSON.parse(bv));
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
       const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
       const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
+      const alv = await sg("tdee_adj_log"); if (alv) { try { setAdjLog(JSON.parse(alv) || []); } catch(e) {} }
+      const wnv = await sg("weigh_nudge_dismissed"); if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
+      const cbv = await sg("cut_block"); if (cbv) { try { setCutBlock({ ...EMPTY_CUT_BLOCK, ...JSON.parse(cbv) }); } catch(e) {} }
       const ckv = await sg("target_kcal"); if (ckv) { const n = parseInt(ckv); if (n > 0) setCustomKcal(n); }
       const acv = await sg("aggressive_cut_acked"); if (acv) setAggressiveCutAcked(true);
 
@@ -4126,6 +4996,7 @@ function App() {
           if (u.id && navigator.onLine) {
             pullFromSupabase(u.id).then(pulled => {
               if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
+              if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
               if (pulled.weighIns) setWeighIns(pulled.weighIns);
               if (pulled.meals)    setMeals(pulled.meals);
               if (pulled.badges)   setEarnedBdgs(pulled.badges);
@@ -4141,7 +5012,10 @@ function App() {
                 const snap = pulled.history.find(h => h.date === tod);
                 if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
               }
-              if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+              if (pulled.workouts) {
+                setWorkouts(pulled.workouts[todayKey()] || []);
+                setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
+              }
             }).catch(() => {});
           }
         }
@@ -4217,6 +5091,12 @@ function App() {
     if (authState === "premium" && authUser?.id)
       syncWorkouts(authUser.id, todayKey(), w).catch(() => {});
   };
+  // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
+  // earn-to-eat window, Step 3). Used on sync pulls where we have the whole byDate map.
+  const priorFromByDate = byDate => [1, 2].map(d => {
+    const arr = byDate[dateKey(new Date(Date.now() - d * 86400000))] || [];
+    return arr.reduce((s, w) => s + (w.kcal || 0), 0);
+  });
 
   const addLog = async e => {
     haptic();
@@ -4318,6 +5198,7 @@ function App() {
         await migrateLocalToSupabase(user.id);
         const pulled = await pullFromSupabase(user.id);
         if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
+        if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
         if (pulled.weighIns) setWeighIns(pulled.weighIns);
         if (pulled.meals)    setMeals(pulled.meals);
         if (pulled.badges)   setEarnedBdgs(pulled.badges);
@@ -4333,7 +5214,10 @@ function App() {
           const snap = pulled.history.find(h => h.date === tod);
           if (snap) { setLogs(snap.logs || []); setWater(snap.water || 0); }
         }
-        if (pulled.workouts) setWorkouts(pulled.workouts[todayKey()] || []);
+        if (pulled.workouts) {
+          setWorkouts(pulled.workouts[todayKey()] || []);
+          setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
+        }
       } catch(e) {}
       setSyncMsg("");
     }
@@ -4352,7 +5236,7 @@ function App() {
   const handleSignOut = async () => {
     if (sb()) { try { await sb().auth.signOut(); } catch(e) {} }
     const clearKeys = ["auth_state","auth_user","profile","meals","history","badges",
-      "weighins","tdee_adj","target_kcal","aggressive_cut_acked","health_consent"];
+      "weighins","tdee_adj","tdee_adj_log","weigh_nudge_dismissed","cut_block","target_kcal","aggressive_cut_acked","health_consent"];
     for (const k of clearKeys) await ss(k, "");
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -4368,7 +5252,8 @@ function App() {
     setAuthState("anonymous"); setAuthUser(null);
     setLogs([]); setWater(0); setMode("cut"); setProf(null);
     setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
-    setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setCustomKcal(null);
+    setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setAdjLog([]); setWeighNudgeAt(null); setCustomKcal(null);
+    setCutBlock(EMPTY_CUT_BLOCK);
     setConsentInfo(null); setNeedsConsent(false);
     setShowSignOut(false);
     setView("dashboard");
@@ -4459,29 +5344,64 @@ function App() {
     const updatedProf = { ...(prof || DEF_PROFILE), weight };
     await saveProf(updatedProf);
 
-    // Run calibration whenever a new weigh-in arrives
-    const base = Math.round((370 + 21.6 * (updatedProf.weight * (1 - updatedProf.bodyFat/100))) * 1.2);
-    const result = runCalibration(hist, updated, base + tdeeAdj);
-    if (result && Math.abs(result.adj) >= 50) {
-      const newAdj = Math.max(-600, Math.min(600, tdeeAdj + result.adj));
-      setTdeeAdj(newAdj);
-      await ss("tdee_adj", String(newAdj));
-      if (authState === "premium" && authUser?.id)
-        syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked).catch(() => {});
+    // Run calibration whenever a new weigh-in arrives — measure the deficit against the
+    // seeded estimate (activity-adjusted) currently shown to the user, plus any adaptive adj.
+    // Dead-time compensation: the 7-day weight window can't yet reflect adjustments made in
+    // the last 7 days, so pass their sum so the controller doesn't re-count them (kills the
+    // overshoot the old ±150 integrator had). The log is local-only convergence bookkeeping.
+    const base = seedTDEE(updatedProf);
+    const wk = new Date(); wk.setDate(wk.getDate() - 7);
+    const weekAgoKey = dateKey(wk);
+    const inFlight = adjLog.filter(a => a.date > weekAgoKey).reduce((s, a) => s + a.adj, 0);
+    const result = runCalibration(hist, updated, base + tdeeAdj, inFlight);
+    if (result && Math.abs(result.adj) >= CAL_MIN_STEP) {
+      const newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
+      const applied = newAdj - tdeeAdj;
+      if (applied !== 0) {
+        setTdeeAdj(newAdj);
+        await ss("tdee_adj", String(newAdj));
+        const nextLog = [...adjLog, { date: todayKey(), adj: applied }].slice(-14);
+        setAdjLog(nextLog);
+        await ss("tdee_adj_log", JSON.stringify(nextLog));
+        if (authState === "premium" && authUser?.id)
+          syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked).catch(() => {});
+      }
     }
   };
 
-  const p        = prof || DEF_PROFILE;
-  const baseTDEE = Math.round((370 + 21.6 * (p.weight * (1 - p.bodyFat/100))) * 1.2);
-  // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull
-  // it below sedentary TDEE (BMR × 1.2). baseTDEE already IS that floor.
-  const effectiveTDEE = Math.max(baseTDEE, baseTDEE + tdeeAdj);
+  const p         = prof || DEF_PROFILE;
+  const baseTDEE  = seedTDEE(p);            // seeded estimate (activity-adjusted); may exceed sedentary
+  const tdeeFloor = sedentaryFloorOf(p);    // absolute maintenance floor (BMR × 1.2)
+  // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull it
+  // below sedentary TDEE (BMR × 1.2). The floor is sedentary, NOT the seed — so a negative
+  // adjustment on a higher-activity seed still bites down to sedentary.
+  const effectiveTDEE = Math.max(tdeeFloor, baseTDEE + tdeeAdj);
   const effectiveMode = customKcal != null
     ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
     : mode;
 
-  const workoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
-  const baseTargets = calcTargets(p, effectiveMode, workoutKcal, tdeeAdj);
+  // Weigh-in check-in nudge (energy Step 2 companion; features/energy-safety/06). Anchor on
+  // the last weigh-in, or (if never weighed) the first day the user was active, so a week of
+  // silence surfaces one gentle, cadence-respecting prompt.
+  const weighNudgeAnchorTs = weighIns.length
+    ? new Date(weighIns[weighIns.length - 1].date).getTime()
+    : (hist.length ? hist.reduce((m, d) => Math.min(m, new Date(d.date).getTime()), Infinity) : null);
+  const showWeighNudge = shouldNudgeWeighIn({
+    cadence: weighCadenceOf(p), lastActivityTs: weighNudgeAnchorTs,
+    dismissedTs: weighNudgeAt, now: Date.now() });
+  const dismissWeighNudge = async () => {
+    const ts = Date.now(); setWeighNudgeAt(ts); await ss("weigh_nudge_dismissed", String(ts));
+  };
+  const muteWeighNudge = async () => { await dismissWeighNudge(); await saveProf({ ...p, weighCadence: "off" }); };
+
+  // Earn-to-eat is SMOOTHED (Step 3): today's applied bonus is a weighted average of
+  // today's + the prior two days' workout kcal, not today's raw session total. This
+  // damps the same-day spike and carries a hard session's fuel into the next days.
+  const todayWorkoutKcal = workouts.reduce((s, w) => s + (w.kcal || 0), 0);
+  const smoothedBonus = smoothWorkoutKcal([todayWorkoutKcal, ...priorWorkoutKcal]);
+  // Raw (unsmoothed) burn goes in separately: the target is built from the smoothed
+  // bonus, but energy availability asks what today's body actually spent (Step 4).
+  const baseTargets = calcTargets(p, effectiveMode, smoothedBonus, tdeeAdj, todayWorkoutKcal);
   const targets = (() => {
     if (customKcal == null) return baseTargets;
     const safeMin = SAFE_MIN[p.sex || "male"] || 1400;
@@ -4498,8 +5418,77 @@ function App() {
       floorsExceedKcal:  m.floorsExceedKcal,
       safeMinApplied:    safeKcal > customKcal,
       customKcalApplied: true,
+      // A typed target is the user's own choice: the steady-loss floor WARNS here
+      // (see targetWarning) instead of silently overriding the number they set.
+      deficitFloorApplied: false,
+      ea:      energyAvailability(safeKcal, todayWorkoutKcal, p),
+      lowFuel: isLeanBody(p) && todayWorkoutKcal > 0 &&
+               energyAvailability(safeKcal, todayWorkoutKcal, p) < EA_HARD,
     };
   })();
+
+  // ── Cut cycling (energy Step 5; features/energy-safety/02) ──────
+  // How much today weighs comes from the PRESCRIBED deficit depth. Whether it counts at
+  // all comes from the declared mode + the weight-trend backstop — never from food logs,
+  // because a patchy logger is exactly the user this protects.
+  const todayK       = todayKey();
+  const todayLoad    = dayCutLoad(targets.kcal, effectiveTDEE);
+  const lossRate     = weeklyLossFrac(weighIns, todayK);
+  const trendCutting = lossRate != null && lossRate >= TREND_CUT_RATE;
+  const cuttingToday = (effectiveMode === "cut" && todayLoad > 0) || trendCutting;
+  // A trend-detected cut still needs a weight. If the label says "Maintain" the
+  // prescribed deficit is ~0, so fall back to the reference deficit rather than
+  // accruing nothing — the scale is the evidence here, not the setting.
+  const todayCutLoad = cuttingToday ? (todayLoad > 0 ? todayLoad : 1) : 0;
+
+  // Catch up every day since the last accrual, so closing the app never stops the clock.
+  // Idempotent by date — re-opening today cannot double-count.
+  useEffect(() => {
+    if (!ready || cutBlock.lastAccrued === todayK) return;
+    const next = accrueCutBlock(cutBlock, todayK, {
+      cutting: cuttingToday, load: todayCutLoad,
+      weight: weighIns.length ? weighIns[weighIns.length - 1].weight : (p.weight || null),
+    });
+    setCutBlock(next);
+    ss("cut_block", JSON.stringify(next));
+    if (authState === "premium" && authUser?.id) syncCutBlock(authUser.id, next).catch(() => {});
+  }, [ready, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
+
+  // Loss since this block opened, for BLOCK_LOSS_TRIGGER (5% of bodyweight).
+  const blockNowAvg = weighRollingAvg(weighIns, dateKey(new Date(Date.now() + 86400000)), 7);
+  const blockLossFrac = cutBlock.start && cutBlock.startWeight && blockNowAvg
+    ? (cutBlock.startWeight - blockNowAvg) / cutBlock.startWeight
+    : null;
+  // Three weeks of scale, for the stall check. Same rolling averages, longer span.
+  const stallRate = trendLossFrac(weighIns, todayK, STALL_WEEKS * 7);
+  const cutPrompt = cutPromptFor({ block: cutBlock, profile: p, todayK,
+    lossFrac: blockLossFrac, stallRate, cutting: cuttingToday });
+  // The gauge, the guard and the one celebration card (file 03).
+  const cutBar   = cutBarFor({ block: cutBlock, profile: p, todayK, cutting: cuttingToday,
+    weightUp: lossRate != null && lossRate < 0 });
+  const cutGuard = cutGuardFor({ block: cutBlock, profile: p, cutting: cuttingToday });
+  const showRecharged = rechargedCardDue(cutBlock, todayK);
+  // File 04: the scale went up over two weeks while eating below maintenance. The
+  // calibration has already refused to act on it; this card is the explanation.
+  const showGainWhileCutting = gainWhileCutting({ weighIns, todayK, cutting: cuttingToday });
+
+  const saveCutBlock = async next => {
+    setCutBlock(next);
+    await ss("cut_block", JSON.stringify(next));
+    if (authState === "premium" && authUser?.id) syncCutBlock(authUser.id, next).catch(() => {});
+  };
+  const dismissCutNudge = () => saveCutBlock({ ...cutBlock, nudgeAt:  Date.now() });
+  const snoozeCutPrompt = () => saveCutBlock({ ...cutBlock, snoozeAt: Date.now() });
+  const dismissRecharged = () => saveCutBlock({ ...cutBlock, rechargedOn: null });
+  // Starting a break is one tap and nothing more: it switches to Maintain, which IS the
+  // break. There is no state to enter, so there is nothing here to fail at later — from
+  // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
+  // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
+  const startDietBreak = async () => {
+    await handleSetMode("maintain");
+    await saveCutBlock({ ...cutBlock, nudgeAt: null, snoozeAt: null });
+    setNoteToast("Break started — eat at maintenance and recharge");
+  };
 
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
@@ -4547,6 +5536,7 @@ function App() {
 
       {/* Bronze/Silver badge → quiet toast (the paired 🏆 chip glow lives in the header) */}
       {badgeToast && <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />}
+      {noteToast  && <NoteToast text={noteToast} onDone={() => setNoteToast(null)} />}
 
       {/* Auth modals */}
       {premiumGate && !showSignIn && (
@@ -4582,8 +5572,14 @@ function App() {
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}
-          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE}
+          weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
+          showWeighNudge={showWeighNudge} onNudgeDismiss={dismissWeighNudge} onNudgeMute={muteWeighNudge}
           coachKey={coachKey}
+          cutPrompt={cutPrompt} onCutNudgeDismiss={dismissCutNudge} onCutPromptSnooze={snoozeCutPrompt}
+          onStartDietBreak={startDietBreak}
+          cutBar={cutBar} cutGuard={cutGuard}
+          showRecharged={showRecharged} onDismissRecharged={dismissRecharged}
+          showGainWhileCutting={showGainWhileCutting}
           workouts={workouts} onAddWorkout={addWorkout} onRemoveWorkout={removeWorkout}
           customKcal={customKcal} onSetCustomKcal={saveCustomKcal} isCustomMode={customKcal != null}
           aggressiveCutAcked={aggressiveCutAcked} onAckAggressiveCut={handleAckAggressiveCut}
