@@ -46,7 +46,7 @@ const activityMult = p => ACTIVITY[p && p.activity] || ACTIVITY.sedentary;
 
 // ── Energy floor + low-fuel warning (Step 4) — mirror of app.jsx ──────────────
 // The floor that moves your target is RATE OF LOSS (scales with body size); energy availability is a
-// WARNING ONLY, gated to lean bodies on days they trained. EA_OK (45) is not a band —
+// WARNING ONLY, shown only to lean bodies on days they trained. EA_OK (45) is not a band —
 // it is unreachable given NEAT-only multipliers with training subtracted back out.
 const EA_HARD          = 30;
 const MAX_DEFICIT_FRAC = 0.25;
@@ -339,8 +339,9 @@ const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = nul
 
 const cutBarFor = ({ block, profile, todayK, cutting = false, weightUp = false }) => {
   if (!block || !block.start || block.load <= 0) return null;
-  // Filling gates on the CURRENT load; draining on the load at break start, so a break
-  // worth announcing is seen through to zero rather than vanishing part-way.
+  // While filling, the bar appears once the CURRENT load reaches the minimum. While
+  // draining, it stays up as long as the load was above the minimum when the break BEGAN,
+  // so a break worth announcing is seen through to zero rather than vanishing part-way.
   if (cutting ? block.load < CUT_BAR_MIN_LOAD
               : (block.breakLoad || block.load) < CUT_BAR_MIN_LOAD) return null;
   const th  = cutThresholds(profile || {});
@@ -963,7 +964,7 @@ describe("runCalibration", () => {
 });
 
 // ── Weigh-in engagement (energy Step 2 companion; features/energy-safety/06) ──
-// Mirror of app.jsx: cadence default + the pure nudge gate (a week with no weigh-in,
+// Mirror of app.jsx: cadence default + the pure rule deciding when to nudge (a week with no weigh-in,
 // respecting the mute and the post-dismissal cooldown).
 const WEIGH_NUDGE_GAP_DAYS = 7, WEIGH_NUDGE_COOLDOWN_DAYS = 14;
 const WEIGH_CADENCE = { few:1, daily:1, weekly:1, off:1 };
@@ -1263,7 +1264,7 @@ const normConf = c => {
 };
 
 const FOLLOWUP_BELOW = 80; // = INTAKE_FLAG_BELOW
-const FOLLOWUP_BANK = { fat: {}, portion: {}, version: {} }; // keys gate pickFollowups
+const FOLLOWUP_BANK = { fat: {}, portion: {}, version: {} }; // these keys are what pickFollowups looks up
 
 const refineElement = (el, mode, factor, conf) => {
   if (conf == null) return el;
@@ -1582,12 +1583,12 @@ describe("Step 4 — energy availability (warning only — never changes the tar
     expect(lowFuel).toBe(false);
   });
 
-  test("the lean gate is sex-specific and uses the profile's own body fat", () => {
+  test("the leanness rule is sex-specific and uses the profile's own body fat", () => {
     const leanWoman  = { weight: 62, bodyFat: 22, sex: "female", activity: "very" };
     const otherWoman = { weight: 62, bodyFat: 30, sex: "female", activity: "very" };
     expect(calcTargets(leanWoman,  "cut", 300, 0, 600).lowFuel).toBe(true);
     expect(calcTargets(otherWoman, "cut", 300, 0, 600).lowFuel).toBe(false);
-    // a man at the woman's threshold is NOT lean by the male gate
+    // a man at the woman's threshold is NOT lean by the male threshold
     expect(calcTargets({ ...leanWoman, sex: "male" }, "cut", 300, 0, 600).lowFuel).toBe(false);
   });
 
@@ -1958,7 +1959,7 @@ describe("the break gauge — one bar, read in two directions", () => {
       todayK: "2026-01-02", cutting: false })).toBe(null);
   });
 
-  test("the gate opens at about a week of real cutting, and not before", () => {
+  test("the bar starts speaking at about a week of real cutting, and not before", () => {
     const at = load => !!cutBarFor({ block: { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load },
       profile: normal, todayK: "2026-01-08", cutting: true });
     expect(at(CUT_BAR_MIN_LOAD - 1)).toBe(false);
@@ -1966,7 +1967,7 @@ describe("the break gauge — one bar, read in two directions", () => {
   });
 
   test("a break worth announcing is seen through to zero, not dropped part-way", () => {
-    // Gating the drain on the CURRENT load would hide the bar exactly when the user is
+    // Judging the drain by the CURRENT load would hide the bar exactly when the user is
     // closest to finishing — so it reads the load the block held when the break began.
     const late = { ...EMPTY_CUT_BLOCK, start: "2026-01-01", load: 2, breakLoad: 56, offRun: 13 };
     const bar = cutBarFor({ block: late, profile: normal, todayK: "2026-03-01", cutting: false });

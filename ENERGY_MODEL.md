@@ -102,11 +102,11 @@ Standard activity factors (1.2–1.725) are meant to be **whole-day incl. exerci
 > ✅ **LOCKED 2026-08-07 — believability gate passed** (see §4). Values live in `app.jsx` `ACTIVITY` +
 > mirrored in `logic.test.js`. Sedentary stays **1.20** (== the old flat baseline, so unset/desk users
 > and the BMR×1.2 maintenance floor are unchanged). The top end was **widened from the proposed 1.45 to
-> 1.55**: the gate's manual-worker persona came out ~13% below MyFitnessPal at 1.45 (and has no logged
+> 1.55**: the believability check's manual-worker persona came out ~13% below MyFitnessPal at 1.45 (and has no logged
 > workouts to add back), which would under-fuel exactly the person we're trying to protect. Still below
 > the textbook whole-day 1.725 because formal training is added separately.
 >
-> **Gate results (day-one seed, male; Fuel Log Katch-McArdle vs MFP Mifflin × textbook factor):**
+> **Believability-check results (day-one seed, male; Fuel Log Katch-McArdle vs MFP Mifflin × textbook factor):**
 > sedentary office worker **2102 vs 2091 (+0.5%)** · active lifter **2720 vs 2790 (−2.5%)** · on-feet
 > manual worker **2793 vs 3017 (−7.4%)**. All within ~7.5% → plausible. Reproduce: the node snippet in
 > the session that shipped Step 1.
@@ -118,7 +118,7 @@ Standard activity factors (1.2–1.725) are meant to be **whole-day incl. exerci
 - **Rare + true.** A warning that fires constantly is wallpaper. Every calorie-facing warning must be uncommon and genuinely earned, or it loses force *and* becomes noise.
 - **Safeguarding first (ED vector).** A persistent "you're not eating enough" banner is not neutral on a calorie tracker. Supportive, factual copy; never alarmist, never celebrating a low number, never shaming. Symptom-level concerns always route to *"see a healthcare professional"* (file 05).
 - **Believability gate (launch).** Before any step ships, the day-one seeded target for **three canonical personas — sedentary office worker · active lifter · on-feet manual worker** — must look plausible next to MyFitnessPal for the same inputs. If it doesn't, the multipliers are wrong; fix before ship.
-- **Minimise taps.** One activity question, four chips (not a slider — sliders imply false precision). Never gate the primary log/save action behind it.
+- **Minimise taps.** One activity question, four chips (not a slider — sliders imply false precision). Never make the primary log/save action wait on it.
 - **Numbers are estimates, named as such.** No fabricated science. Anchors: EA 30/45 (IOC RED-S consensus, already cited in file 01), activity factors (standard Mifflin/Harris-Benedict ranges), 0.5–1%/wk loss-rate ceiling.
 
 ---
@@ -155,7 +155,7 @@ Run against the three canonical personas plus the founder profile, neither holds
    §1.1 collision, unresolved by the resequencing. The EA thresholds were derived in lean athletes,
    who have no large fat store to cover the gap — a body with reserves is a different case.
 
-So EA became a **warning gated to the population the evidence is drawn from**, and the job of actually
+So EA became a **warning shown only to the population the evidence is drawn from**, and the job of actually
 moving the target passed to a **rate-of-loss floor**, which is what file 01's stated WHY actually asked for: a floor derived
 from the user's own energy instead of a flat number that protects nobody in particular (a 98.5 kg body
 floors at 1,673 kcal, a 60 kg body at 1,208 — the flat 1,400 served neither).
@@ -354,7 +354,7 @@ someone re-reading this file and feeling uneasy.
 5. **`MAX_DEFICIT_FRAC = 0.25`** (Step 4) — set at build time to sit just above the flat −500 preset for
    a ~2,200 kcal maintenance, so it eases small bodies without touching large ones. Worth re-checking
    against real usage once weigh-in data exists: if it binds for a large share of users it is too tight.
-6. **`LEAN_BF = 15% M / 23% F`** (Step 4) — the gate deciding who *sees* the low-fuel warning. Informed
+6. **`LEAN_BF = 15% M / 23% F`** (Step 4) — the rule deciding who sees the low-fuel warning. Informed
    by standard athletic/fitness body-fat ranges, not a clinical cut-off, and it rests on a **self-reported**
    body-fat figure. Over-reporting leanness over-warns (noisy but safe); under-reporting silences the
    warning. Revisit if the warning proves either constant or never seen.
@@ -373,7 +373,7 @@ someone re-reading this file and feeling uneasy.
    exists: if the nudge fires on people who are in fact losing, the window is too short.
 10. **Load uses the prescribed deficit, not the achieved one** (§5.2) — accepted for v1 because it needs
    no logging and errs toward earlier breaks. If it proves noisy (people setting deep targets they
-   never eat to), gate it on the weight trend.
+   never eat to), make it depend on the weight trend.
 
 ---
 
@@ -387,7 +387,7 @@ someone re-reading this file and feeling uneasy.
 | 2026-08-07 | **Step 5a BUILT — file 02 (cut cycling).** The load model below, implemented: `dayCutLoad` / `stepCutBlock` / `accrueCutBlock` / `cutPromptFor` / `weeklyLossFrac` + `cutThresholds`, block state in `cutBlock` (local blob `cut_block`, four durable fields synced to `profiles`). Soft nudge + non-dismissable hard prompt on the dashboard, both showing **real elapsed weeks**. `syncProfile` now also writes `activity` (its column exists at last). Jest **172** (30 new), sw **v61**. **Deviation from the locked spec:** the primary button reads *"Switch to maintenance"*, not *"Start 2-week diet break"* — file 03 owns the tracked break and isn't built, so promising a 2-week break nothing tracks would have been a lie. Switching to Maintain accrues no load and `BLOCK_END_GRACE` closes the block after a week, so the behaviour is honest in the meantime. Next: 03 (diet break) replaces that button. |
 | 2026-08-07 | **Step 5 spec decided for file 02** (spec only — not built). A cut is measured as **cut load**: each day weighted by deficit depth (`dayLoad = deficitFrac / REFERENCE_DEFICIT`, ref 0.20), reusing `kcal`/`effTDEE` already inside `calcTargets` — so a gentle cut runs longer and a deep one is cautioned sooner (~24 / 12 / ~9.5 real weeks at 10 / 20 / 25%). Whether a day counts is read from the **declared daily mode**, never food logs, with a weight-trend backstop; unlogged days don't pause the clock. Thresholds 56 / 84 load-days (lean 42 / 56, reusing Step 4's `isLeanBody`); `MAINTENANCE_DECAY` pays down the yearly total. **Copy shows real elapsed weeks, not load.** Rejected (with reasons, §5.2): a ~42-day universal cut default (bodybuilder cadence — inverts the lean modifier and penalises higher-body-fat users); a GREEN/AMBER/RED traffic light over sleep/fatigue/recovery/hunger (the app logs none of it — belongs in file 05); folding training load into the load term (Step 4's EA warning already owns that interaction). Also rejected the earlier draft's "deficit logged on ≥4 of 7 days" week — it goes quiet for the patchy logger this feature exists to protect. Needs 4 new `profiles` columns before wiring (`setup/supabase-schema.sql`; loads are `NUMERIC`). |
 | 2026-08-07 | **Step 6 trigger decided** (spec only — file 05 is still `@draft`, unbuilt). The symptom check is offered after 3 consecutive weeks whose *average* logged intake sits at or below the steady-loss floor, counting only weeks with ≥4 logged days; unlogged days are excluded rather than zero-filled; 14-day cooldown after "Not now". Rejected: triggering off the low-fuel note (lean-body + training-day only — would have missed the 30%-body-fat harm case that started this workstream) and triggering off weeks spent cutting (that's files 02/03; a well-fuelled cut is not a welfare concern). Also resolved the "low fuel" naming collision — that phrase now means only file 01's single-day note; file 05 says "under-eating". |
-| 2026-08-07 | **Step 4 built** (energy floor, re-seated). The draft's single EA-30 floor was **split into two protections** after it failed its own persona numbers (§5.1): a **steady-loss floor** that holds every preset target at or above 75% of believable maintenance + the applied training bonus (`MAX_DEFICIT_FRAC = 0.25`; scales with body size; eases, never blocks), and a **low-fuel warning** on energy availability `(target − raw burn) ÷ FFM` that is **warning-only**, gated to lean bodies (`LEAN_BF` 15% M / 23% F) on days they trained, EA < 30. **`EA_OK = 45` dropped** — unreachable given NEAT-only multipliers with training subtracted back out. EA deliberately uses the **raw** burn while the target uses Step 3's smoothed bonus. Custom targets warn, never override. `SAFE_MIN` retained as absolute backstop + body-fat-unset fallback. `01-energy-availability-floor.feature` rewritten to match. sw v60, Jest 142. Step 5 (sustainability: 02 cut-cycling / 03 diet break / the auto-lowering fix) is next. Device-test still batched. |
+| 2026-08-07 | **Step 4 built** (energy floor, re-seated). The draft's single EA-30 floor was **split into two protections** after it failed its own persona numbers (§5.1): a **steady-loss floor** that holds every preset target at or above 75% of believable maintenance + the applied training bonus (`MAX_DEFICIT_FRAC = 0.25`; scales with body size; eases, never blocks), and a **low-fuel warning** on energy availability `(target − raw burn) ÷ FFM` that is **warning-only**, shown only to lean bodies (`LEAN_BF` 15% M / 23% F) on days they trained, EA < 30. **`EA_OK = 45` dropped** — unreachable given NEAT-only multipliers with training subtracted back out. EA deliberately uses the **raw** burn while the target uses Step 3's smoothed bonus. Custom targets warn, never override. `SAFE_MIN` retained as absolute backstop + body-fat-unset fallback. `01-energy-availability-floor.feature` rewritten to match. sw v60, Jest 142. Step 5 (sustainability: 02 cut-cycling / 03 diet break / the auto-lowering fix) is next. Device-test still batched. |
 | 2026-08-07 | **Step 3 built** (smooth earn-to-eat). A logged workout's kcal are spread forward across a 3-day window as an energy-conserving weighted average (`SMOOTH_WEIGHTS = [0.5, 0.3, 0.2]`, Σ=1) instead of a full same-day unlock — damps the same-day spike, still fuels the day after a hard session, averages back-to-back days. `priorWorkoutKcal` state loads the prior 2 days from `workouts__<date>`; `smoothedBonus` feeds `calcTargets`; workout-card copy reworked. New `07-smoothed-earn-to-eat.feature` (@draft). sw v59, Jest 125. Step 4 (EA floor, file 01, re-seated on the corrected TDEE) is next. Device-test still batched. |
 | 2026-08-07 | **Step 2 built** (adaptive-TDEE convergence) + **weigh-in engagement (file 06)**. Dead-time compensation + confidence-scaled steps replace the flat ±150 integrator; engages at 6 weigh-ins. Simulation: 500 kcal gap closed by day 19, no cap-pinning. Engagement = invite/progress/cadence-picker/7-day nudge (Coach+Design+QA). sw v58, Jest 117. New `06-weigh-in-engagement.feature` (@draft). Step 3 (smooth earn-to-eat) is next. Device-test still batched. |
 | 2026-08-07 | **Step 1 shipped** (activity input + seeded NEAT multiplier). Multipliers LOCKED 1.20/1.35/1.45/1.55 (top widened from 1.45 after the believability gate); sedentary == old flat baseline. Activity local-only (no DB column yet). sw v57, Jest 108. Device-test batched (Next-up 2). Step 2 (adaptive-TDEE strengthening) is now next. |

@@ -37,6 +37,11 @@ the repo for orientation. Open further docs only when the task actually needs th
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
+- **Write plainly. Do not use the word "clamp"** — not in docs, specs, comments, or chat. It has been
+  removed repeatedly and keeps creeping back in. Say what actually happens instead:
+  a rule either **moves your target** (*"raises the target to the floor"*) or it **only warns**
+  (*"warns, never changes the target"*). Same rule for any other jargon noun: if a plain sentence
+  needs more words, use more words. (`clamp` survives only as a code identifier in `seed-data.js`.)
 
 ---
 
@@ -64,7 +69,7 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 
 | File | What it does | State |
 |---|---|---|
-| 01 energy floor | steady-loss clamp + low-fuel warning | ✅ built |
+| 01 energy floor | steady-loss floor + low-fuel warning | ✅ built |
 | 02 cut cycling | load-weighted blocks + diet-break prompts | ✅ built |
 | 03 the break bar | a break is just *not cutting*; the load bar drains pro-rata over 14 rest days, + the stall check | ✅ built (uncommitted) |
 | 06 weigh-in engagement | invites check-ins, cadence picker | ✅ built |
@@ -174,7 +179,7 @@ that §4 warns against leaning on.
    local storage (set `start`, `load`, and for a break `breakLoad` + `offRun`) rather than waiting weeks.
    When green, clear the stale `@draft`/`@wip` tags. **Then bind `RATE_LIMIT` KV** (blocker below) before
    any launch.
-4. **🗓️ carb floor** (deferred): clamp carbs to 2 g/kg bodyweight on aggressive cuts, reducing **fat** first
+4. **🗓️ carb floor** (deferred): hold carbs at 2 g/kg bodyweight on aggressive cuts, reducing **fat** first
    (to its 0.6 g/kg hormonal floor). Its blocker (the energy floor) is built — but "aggressive cut" now needs
    redefining, since a preset can't go deeper than 25%; it really only applies to typed custom targets.
 5. **Build: more badge categories** (`DOCS §23`: Protein King, Cut Champion, Bulk Mode, Balanced) — reuses

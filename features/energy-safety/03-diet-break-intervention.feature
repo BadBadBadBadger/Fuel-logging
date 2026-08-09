@@ -106,9 +106,10 @@
 #                 "about 14 days to fully recharged" — over a single day of
 #                 cutting, with nothing logged. The counter still runs from day
 #                 one (that is the protection); only the TALKING waits.
-#                 Filling gates on the CURRENT load; draining gates on the load
-#                 at BREAK START, so a break worth announcing is seen through to
-#                 zero instead of vanishing when the user is closest to done.
+#                 While filling, the bar appears once the CURRENT load reaches
+#                 the minimum. While draining, it stays up as long as the load
+#                 was above the minimum when the break BEGAN — otherwise it
+#                 would vanish just as the user was about to finish.
 #       STALL_WEEKS = 3 — weeks of a flat scale, while cutting, that read as a
 #                 stall. The RATE it compares against is TREND_CUT_RATE, which
 #                 02 already owns — losing slower than the backstop calls

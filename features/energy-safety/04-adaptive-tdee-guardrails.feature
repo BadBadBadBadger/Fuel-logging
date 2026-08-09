@@ -203,8 +203,8 @@ Feature: The app's own guess can never talk you into under-eating
     Then my TDEE estimate is unchanged by the weight rise
     And the same card invites me to update my body-fat % so targets track lean mass
     And the invitation is a link to my profile, optional, and blocks nothing
-    # Simplified at build: the draft gated this on "logged strength workouts have
-    # increased over the past month". That gate bought nothing — the invitation is
+    # Simplified at build: the draft only showed this if "logged strength workouts
+    # have increased over the past month". That condition bought nothing — the invitation is
     # harmless and useful in every gain-while-cutting case, and a month of workout
     # history is machinery to maintain for no change in what the user sees. The
     # invitation therefore rides the card that already exists rather than needing

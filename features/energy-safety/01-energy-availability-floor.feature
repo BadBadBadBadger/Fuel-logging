@@ -60,7 +60,7 @@
 #   proof a value is computed, not baked in.
 #   POLICY CONSTANTS (the only literals; also owned by logic.test.js):
 #       MAX_DEFICIT_FRAC = 0.25 · EA_HARD = 30 kcal/kg FFM/day
-#       LEAN_BF = 15% male / 23% female (warning gate only)
+#       LEAN_BF = 15% male / 23% female (decides who SEES the warning; nothing else)
 #       flat SAFE_MIN = 1400/1200 (absolute backstop + body-fat-unset fallback)
 # ─────────────────────────────────────────────────────────────
 

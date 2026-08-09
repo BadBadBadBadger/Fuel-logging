@@ -77,7 +77,7 @@ respect the Phase 0 gate — no feature ships a new unauthenticated AI path.
 
 - [x] **Require identity.** `callAI` attaches `Authorization: Bearer <supabase access token>` (via `getAccessToken()` → `sb().auth.getSession()`); worker validates it through Supabase `/auth/v1/user` and rejects anonymous/expired with `401`. *(Token validation via the auth endpoint handles both HS256 and asymmetric signing without needing the JWT secret.)*
 - [x] **Server-side `model` allowlist.** Only `claude-sonnet-4-6`; client value ignored/overridden.
-- [x] **Cap `max_tokens`** server-side (clamped to 2000).
+- [x] **Cap `max_tokens`** server-side (capped at 2000).
 - [x] **Lock CORS** to the GitHub Pages origin instead of `*`; `Authorization` added to allowed headers.
 - [x] **Return generic errors** — no more echoing `err.message`.
 - [~] **Per-user rate limit.** Code in place (KV-backed, `DAILY_LIMIT = 100`/user/day → `429`); **activates once a `RATE_LIMIT` KV namespace is bound** (setup steps in the worker file footer). Until then auth is still enforced; only the limit is skipped.

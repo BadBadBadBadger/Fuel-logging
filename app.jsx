@@ -723,16 +723,17 @@ const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = nul
 // block, never once the block is closed and nothing is owed. A months-long bulk with a
 // clean slate shows nothing at all.
 //
-// CUT_BAR_MIN_LOAD is the "is this worth mentioning yet" gate, and it matters more than it
-// looks. Cut is the DEFAULT mode, so merely opening the app for a day accrues load and
-// opens a block — and the drain is pro rata, so a one-day block would spend a fortnight
-// announcing "about 14 days to fully recharged" over a single day of cutting. Nonsense to
-// read, and it spends the user's trust on nothing. The counter still runs from day one
-// (that is the protection); only the TALKING waits for about a week of real cutting.
+// CUT_BAR_MIN_LOAD decides whether any of this is worth mentioning yet, and it matters
+// more than it looks. Cut is the DEFAULT mode, so merely opening the app for a day accrues
+// load and opens a block — and the drain is pro rata, so a one-day block would spend a
+// fortnight announcing "about 14 days to fully recharged" over a single day of cutting.
+// Nonsense to read, and it spends the user's trust on nothing. The counter still runs from
+// day one (that is the protection); only the TALKING waits for about a week of cutting.
 //
-// Note which side each direction is gated on. Filling reads the CURRENT load, so the bar
-// appears once there's something to show. Draining reads the load at BREAK START, so a
-// break that was worth announcing is seen through to zero instead of vanishing mid-way.
+// The two directions ask about different numbers, deliberately. While filling, the bar
+// appears once your CURRENT load reaches the minimum. While draining, it stays up as long
+// as the load was above the minimum when the break BEGAN — otherwise the bar would vanish
+// just as you were about to finish, which is the worst possible moment to lose it.
 const cutBarFor = ({ block, profile, todayK, cutting = false, weightUp = false }) => {
   if (!block || !block.start || block.load <= 0) return null;
   if (cutting ? block.load < CUT_BAR_MIN_LOAD

@@ -24,7 +24,7 @@
 #   • DESIGN: the workout card must stop implying the whole session is "added"
 #     today. Copy reflects that a session fuels today AND the next couple of days;
 #     the number applied to TODAY's allowance is the smoothed bonus. No new taps,
-#     no gate on logging a workout.
+#     logging a workout is never blocked or made conditional.
 #   • QA: this file owns the user-visible behaviour ONLY. The exact weighted-sum
 #     arithmetic and the rounding are owned by __tests__/logic.test.js. Scenarios
 #     assert observable outcomes (target moves up/down, rest-day still fuels),
@@ -115,7 +115,7 @@ Feature: Spreading earned workout calories across days
     Given I log a workout today
     Then the card does not claim the full session is "added" to today alone
     And it communicates that the session fuels today and the next couple of days
-    And logging the workout never adds an extra tap or gates my food logging
+    And logging the workout never adds an extra tap or blocks my food logging
 
   # ── Interaction with the safety floors is unchanged in shape ──
   Scenario: Smoothed earned calories still sit on top of the seeded/calibrated TDEE
