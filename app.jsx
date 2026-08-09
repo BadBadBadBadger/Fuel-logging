@@ -2003,7 +2003,8 @@ function UnitSwitch({ value, options, onChange }) {
   );
 }
 
-function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false }) {
+function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false,
+  onResetAdjustment = () => {} }) {
   const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
   const [bfFocused, setBfFocused] = useState(false);
@@ -2200,6 +2201,27 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
               <span style={{ fontSize:13, fontWeight:700, color: tdeeAdj > 0 ? A : "var(--bulk)" }}>
                 {tdeeAdj > 0 ? "+" : ""}{tdeeAdj} <span style={{ fontSize:11, color:"var(--text-label)" }}>kcal/day</span>
               </span>
+            </div>
+          )}
+          {/* Start clean. The adjustment carried across from the old symmetric calibration,
+              which lowered the estimate for a disappointing scale as readily as it raised it
+              for a good one — so a long deficit could walk it down and leave it there. That
+              rule is fixed now, but the fix only stops it going FURTHER down; it can't know
+              which part of an existing number was honest. One tap sets it back to zero and
+              the app re-learns from your weigh-ins. No confirm: it costs a few weeks of
+              re-converging, not data. */}
+          {tdeeAdj !== 0 && (
+            <div style={{ padding:"10px 0 2px" }}>
+              <button onClick={onResetAdjustment}
+                style={{ width:"100%", padding:"9px", background:"var(--surface-2)", border:`1px solid ${BD}`,
+                  borderRadius:9, color:A, fontSize:11.5, fontWeight:800, cursor:"pointer" }}>
+                Start clean — reset the adjustment to 0
+              </button>
+              <div style={{ fontSize:10.5, color:"var(--text-label)", lineHeight:1.5, marginTop:6 }}>
+                Wipes what the app has learned about your metabolism and starts over from your
+                body stats. Your weigh-ins and history are kept. It takes a few weeks of
+                check-ins to build the estimate back up.
+              </div>
             </div>
           )}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
@@ -5260,6 +5282,20 @@ function App() {
   };
 
   // Assemble a portable copy of everything stored for this user (R4 — access/portability).
+  // Start clean (Profile). Zeroes the adaptive adjustment and the dead-time log it uses,
+  // then pushes the zero to Supabase in the same breath — otherwise the next background
+  // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
+  // alone: they are data, and the estimate rebuilds itself from them.
+  const resetTdeeAdj = async () => {
+    setTdeeAdj(0);
+    setAdjLog([]);
+    await ss("tdee_adj", "0");
+    await ss("tdee_adj_log", JSON.stringify([]));
+    if (authState === "premium" && authUser?.id)
+      syncSettings(authUser.id, mode, 0, customKcal, aggressiveCutAcked).catch(() => {});
+    setNoteToast("Adjustment reset — the app will re-learn from your weigh-ins");
+  };
+
   const handleExport = () => {
     const workoutsByDate = {};
     try {
@@ -5587,7 +5623,7 @@ function App() {
           onPremiumGate={feature => setPremiumGate(feature)}
           onSignOut={() => setShowSignOut(true)}
           isOnline={isOnline} syncMsg={syncMsg}/>}
-      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked}/>}
+      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}

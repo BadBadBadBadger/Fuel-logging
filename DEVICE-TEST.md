@@ -1,9 +1,9 @@
-# Device test — the energy-safety release (sw v65)
+# Device test — the energy-safety release (sw v66)
 
 **One-time checklist for the 2026-08-10 go-live.** Delete this file once it's done; it is not a
 living doc. Everything durable lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
-**Live as of:** `main` @ `270d76c`, service worker **v65**. Rollback tag: **`pre-energy-safety`**.
+**Live as of:** `main`, service worker **v66**. Rollback tag: **`pre-energy-safety`**.
 
 > ### Before anything else
 > An installed PWA serves the **old bundle** until the service worker fully cycles. Backgrounding the
@@ -11,7 +11,7 @@ living doc. Everything durable lives in `ENERGY_MODEL.md` / `DOCS.md`.
 > below doesn't match, you're testing the old code and everything after this is meaningless.
 >
 > To check: Settings → scroll to the bottom, or in Chrome devtools console:
-> `caches.keys().then(console.log)` → expect `fuel-log-v65`.
+> `caches.keys().then(console.log)` → expect `fuel-log-v66`.
 
 ---
 
@@ -45,6 +45,7 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [ ] Switch **Cut → Maintain → Bulk** — target moves sensibly each time, no confirm interrupts you
 - [ ] Nothing mentions breaks, recharging or stalls **at all** (you've no cut history yet — silence is correct)
 - [ ] **"Below your resting metabolism"** — see the open question at the bottom of this file
+- [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there and works
 
 ### AI capture (still outstanding from v6.7)
 - [ ] Voice/photo capture → the optional follow-up questions flow

@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-10 (session 15). **Jest 213/213 · sw v65 · `main` @ `270d76c` — LIVE.**
+**Updated:** 2026-08-10 (session 15). **Jest 213/213 · sw v66 · `main` — LIVE.**
 
 > ## ▶ START HERE
 >
@@ -34,7 +34,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v65**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v66**.
 - Run `npx jest` before claiming anything works. Currently **213/213**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
@@ -58,7 +58,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 ## Where the code is
 
-`main` @ `270d76c` is what is **live on Pages** (sw **v65**) — the whole energy-safety workstream,
+`main` @ `270d76c` is what is **live on Pages** (sw **v66**) — the whole energy-safety workstream,
 Steps 1–5, merged and deployed 2026-08-10. Rollback tag **`pre-energy-safety`** is the state before it
 (`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch `energy-safety-bmr-floor` is now
 merged and can be deleted once the device test passes. **Deployed ≠ verified** — nothing here has been
