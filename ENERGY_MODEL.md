@@ -371,7 +371,15 @@ someone re-reading this file and feeling uneasy.
 9. **`STALL_WEEKS = 3`** (Step 5, §5.3) — a coaching judgement, not a trial figure. Two weeks is inside
    normal water-weight noise; four would leave someone stuck for a month. Re-check once weigh-in data
    exists: if the nudge fires on people who are in fact losing, the window is too short.
-10. **Load uses the prescribed deficit, not the achieved one** (§5.2) — accepted for v1 because it needs
+10. **`SAFE_MIN` (1,400 M / 1,200 F) is NOT defensible as a flat number — 🗄️ deliberately deferred
+    2026-08-10.** Found in testing at 50 kg: the flat floor overrides the body-sized one and a 50 kg man
+    selecting *Cut* gets a **16 kcal deficit** while the screen says "Cut". Structurally the same failure
+    §5.1 rejected for EA-30, and the sex split has no physiology behind it. The fix is a body-aware floor
+    with an absolute **nutrition** minimum underneath — the honest justification for a floor near 1,200 was
+    never energy, it is that you cannot hit protein and micronutrients below it on ordinary food, and that
+    requirement does not scale down with body size. Shelved because the only user is 98.5 kg, where it never
+    binds. Full analysis, worked numbers and the custom-target complication: `ARCHITECTURE_REVIEW.md` §4.I.
+11. **Load uses the prescribed deficit, not the achieved one** (§5.2) — accepted for v1 because it needs
    no logging and errs toward earlier breaks. If it proves noisy (people setting deep targets they
    never eat to), make it depend on the weight trend.
 

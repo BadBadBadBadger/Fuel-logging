@@ -139,6 +139,10 @@ location.reload();
 
 ---
 
+> **Already known, don't re-report:** at very low weights (~50 kg) the flat safe minimum overrides the
+> body-sized floor and a cut collapses to almost no deficit — a 50 kg man gets 16 kcal. Real, understood,
+> and **deliberately shelved** because the only user is 98.5 kg. `ARCHITECTURE_REVIEW.md` §4.I.
+
 ## Part C — the small body case
 
 The steady-loss floor only visibly bites on smaller bodies. Temporarily set a **~60 kg** profile

@@ -142,6 +142,49 @@ Sync and auth failures are swallowed. For a paid app whose promise is "log on an
 No error reporting, no AI-cost metric, no worker logs. For a paid product you're blind to failures and spend.
 **Recommendation:** Add lightweight error reporting (e.g. Sentry) and log per-request token usage in the worker.
 
+### I. The flat safe minimum forbids a small body from cutting at all — 🗄️ SHELVED 2026-08-10
+**Found by the founder in testing, at 50 kg.** `SAFE_MIN` (`app.jsx:269`, 1,400 male / 1,200 female) is the
+last survivor of the flat-number model that Step 4 otherwise replaced with body-sized protections. Laid over
+a light body it **overrides** the body-sized floor and removes the deficit entirely:
+
+| Profile | Maintenance | Cut wants | App gives | Real deficit |
+|---|---|---|---|---|
+| 50 kg, 25% BF, male | 1,416 | 916 | **1,400** | **16 kcal — 1.1%** |
+| 50 kg, 18% BF, male | 1,507 | 1,007 | **1,400** | 107 kcal — 7.1% |
+| 50 kg, 18% BF, female | 1,507 | 1,007 | 1,200 | 307 kcal — 20.4% |
+| 98.5 kg, 30% BF, male | 2,231 | 1,731 | 1,731 | 500 kcal — 22.4% |
+
+A 50 kg man selects **Cut** and receives a 16-calorie deficit while the screen says "Cut". The app is lying
+to him. This is structurally the same failure that got EA-30 rejected in `ENERGY_MODEL.md` §5.1 — a flat
+number over a small body forbids weight loss — and the male/female gap has no physiology behind it: two
+identical 50 kg bodies get a workable cut or no cut at all depending on the sex field.
+
+**Not hypothetical.** Adults with achondroplasia are typically 40–60 kg, and obesity is both common and
+clinically serious in that group. Small-framed women, older adults who have lost mass, and several Asian
+populations sit in the same range.
+
+**One thing the app gets right, worth not breaking:** metabolism is estimated with Katch-McArdle
+(`bmrOf`, `app.jsx:324`) which uses **lean mass only — height is not in the formula anywhere.** The
+equations that do use height (Mifflin-St Jeor, Harris-Benedict) are known to misfire on atypical body
+proportions, so this app is *better* placed for that population than most. The 100 cm in the founder's test
+changed nothing; the 50 kg changed everything.
+
+**The fix, when it's worth doing:** make the floor body-aware — derived from the person, with an absolute
+**nutrition** floor underneath. That last part matters and is the reason not to simply delete `SAFE_MIN`:
+its honest justification was never energy, it is that below roughly 1,200 kcal of ordinary food you cannot
+reliably hit protein and micronutrients, and *that* requirement does not shrink with body size. A smaller
+person needs less energy but not proportionally less iron, calcium or B12. The number is doing a nutrition
+job under an energy name, and nobody tells the user.
+
+**Complication for whoever picks this up:** `SAFE_MIN` is the *only* protection on typed custom targets —
+the steady-loss floor is deliberately switched off for those, since a typed number is the user's own choice
+(`app.jsx` custom-target branch). So lowering it universally also lets a 98 kg man type 1,200 and get it.
+
+**Why shelved:** founder's call, 2026-08-10 — n=1 user at 98.5 kg, where this never binds. Revisit if the
+app ever has a second user, or before any public launch. Answers the coach persona's standing open thread
+("is a flat `SAFE_MIN` defensible, or should it scale with body size?") — **it is not defensible; it is
+deliberately deferred.**
+
 ### H. Test breadth
 Only pure logic is covered. The Gherkin spec (`features/fuel-log.feature`) appears unwired. Fine for now — the right things are tested first. Add a couple of integration tests around the new persistence layer (B) and the entitlement check (SEC-2) when you build them, since those are the money-and-data paths.
 
