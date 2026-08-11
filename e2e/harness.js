@@ -34,14 +34,34 @@ const daysAgo = n => `@-${n}d`;
  * Seed localStorage before any app script runs. addInitScript is essential — the app reads
  * storage in its first effect, so seeding after load would race it.
  */
-async function seed(page, { profile, cutBlock, mode, weighIns, dayOffset, premium } = {}) {
+/**
+ * Generate a weigh-in series in the page, relative to its own today.
+ *   { days: 21, startWeight: 98, perDay: 0.05 }  → 21 daily entries, rising
+ *   { days: 24, startWeight: 98, perDay: 0 }     → flat, which reads as a stall
+ * Built in-page rather than in Node so the dates track the simulated clock, and so a run
+ * that crosses midnight can't seed a series that ends yesterday.
+ */
+async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium,
+    meals, history, extra } = {}) {
   await page.addInitScript(
-    ({ profile, cutBlock, mode, weighIns, dayOffset, premium, keyExpr }) => {
+    ({ profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, extra,
+       keyExpr }) => {
+      // Seed ONCE per page context, not once per navigation. addInitScript re-runs on every
+      // load, so without this guard a page.reload() would clear storage and re-apply the seed —
+      // silently undoing whatever the test just did, and making "does it survive a reload?"
+      // impossible to ask. sessionStorage is the right latch: it survives reload, and
+      // localStorage.clear() does not touch it.
+      if (sessionStorage.getItem("__fuel_seeded")) return;
+      sessionStorage.setItem("__fuel_seeded", "1");
+
       localStorage.clear();
       if (dayOffset) localStorage.setItem("dev_date_offset", String(dayOffset));
       const todayKey = eval(keyExpr);
 
       if (profile) localStorage.setItem("profile", JSON.stringify(profile));
+      if (meals)   localStorage.setItem("meals", JSON.stringify(meals));
+      if (history) localStorage.setItem("history", JSON.stringify(history));
+      if (extra)   for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, v);
       if (cutBlock) {
         // Pin accrual to today, or the daily accrual effect advances the very state under test.
         const b = { ...cutBlock };
@@ -59,6 +79,18 @@ async function seed(page, { profile, cutBlock, mode, weighIns, dayOffset, premiu
       }
       if (mode)     localStorage.setItem("mode__" + todayKey, mode);
       if (weighIns) localStorage.setItem("weighins", JSON.stringify(weighIns));
+      if (weighInsSpec) {
+        const { days, startWeight, perDay } = weighInsSpec;
+        const off = parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
+        const fmt = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+          "-" + String(d.getDate()).padStart(2, "0");
+        const series = [];
+        for (let i = days - 1; i >= 0; i--) {
+          const d = new Date(Date.now() + off * 86400000 - i * 86400000);
+          series.push({ date: fmt(d), weight: Math.round((startWeight + (days - 1 - i) * perDay) * 100) / 100 });
+        }
+        localStorage.setItem("weighins", JSON.stringify(series));
+      }
 
       // Mirrors the harness's 🔓 Premium button. id:null keeps every sync path in app.jsx
       // dormant, so a test can never write to or overwrite real Supabase rows.
@@ -78,7 +110,8 @@ async function seed(page, { profile, cutBlock, mode, weighIns, dayOffset, premiu
         }));
       }
     },
-    { profile, cutBlock, mode, weighIns, dayOffset, premium, keyExpr: TODAY_KEY_EXPR }
+    { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, extra,
+      keyExpr: TODAY_KEY_EXPR }
   );
 }
 

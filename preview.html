@@ -175,6 +175,23 @@
         document.head.prepend(el);   // first, so this page's own rules still win
       })
       .catch(e => console.warn("[preview] theme vars unavailable:", e.message));
+
+    // Borrowing index.html's CSS was only half the job. index.html ALSO runs a theme-init
+    // script before first paint (see its "Flash-free theme init"), which reads fuel_theme and
+    // sets data-theme. Without it the harness loads every session on the default palette: the
+    // switcher appears to work, then silently forgets on reload — so the harness would show
+    // theme behaviour the real app doesn't have. Same failure family as the missing CSS.
+    //
+    // Kept deliberately short rather than scraped from index.html: it must run before paint,
+    // and the fetch above is already async. __fuelSyncChrome is stubbed because applyTheme()
+    // calls it and there is no browser chrome to tint here.
+    (function () {
+      try {
+        var t = localStorage.getItem("fuel_theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+      window.__fuelSyncChrome = window.__fuelSyncChrome || function () {};
+    })();
   </script>
 
   <!-- App dependencies (same as index.html) -->

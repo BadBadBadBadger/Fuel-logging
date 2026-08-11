@@ -6,7 +6,8 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 18 tests · 18 passing · runtime ~12s · last updated 2026-08-11
+**Current:** 38 tests · 38 passing · runtime ~20s · last updated 2026-08-11
+**Plan items 15–29 are all complete.** Jest 220/220 alongside, unchanged.
 
 | | |
 |---|---|
@@ -134,41 +135,74 @@ wrong day under BST between 00:00 and 00:59 and pass against a screen that was n
 | 13 | Unlocked: the same feature opens straight up, no sign-in | ✅ |
 | 14 | The unlock never reaches Supabase | ✅ |
 
+### Suite: `adaptive-guardrails.spec.js` — DEVICE-TEST B5 + B6
+
+| # | Scenario | Status |
+|---|---|---|
+| 17a | The card explains the gain, and says the target was left alone | ✅ |
+| 17b | It offers a body-fat update, and carries no mode buttons | ✅ |
+| 18a | At Maintain it stays silent — there the evidence is clean | ✅ |
+| 18b | A scale going the right way says nothing at all | ✅ |
+| 19a | Three flat weeks while cutting offers a break, blamelessly | ✅ |
+| 19b | The stall outranks the plain week-count copy — one message, not two | ✅ |
+| 19c | A moving scale is not a stall | ✅ |
+
+> **The stall check needs 30 days of weigh-ins, not 24.** It reads a 21-day span, and
+> `weighRollingAvg` returns `null` unless at least THREE entries predate `today − 21`. On 24 days
+> it silently evaluates to "no data" — the card never shows, which reads as a broken feature, and
+> a *negative* test written on 24 days passes without proving anything.
+
+### Suite: `quick-add.spec.js` — the v68 fix
+
+| # | Scenario | Status |
+|---|---|---|
+| 20 | The "Reset to defaults" button is gone | ✅ |
+| 21a | A custom meal list renders, and delete removes it for good | ✅ |
+| 21b | Deleting a meal reaches the cloud, not just localStorage | ✅ |
+| 23a | The revive rebuilds from logged history when there's no cloud copy | ✅ |
+| 23b | It marks itself done and never runs a second time | ✅ |
+
+### Suite: `smoke.spec.js` — Part A
+
+| # | Scenario | Status |
+|---|---|---|
+| 24a | The dashboard comes up, not a blank screen | ✅ |
+| 24b | It survives all three device widths | ✅ |
+| 25a | Light resolves its colour variables, and survives a reload | ✅ |
+| 25b | Dark resolves its colour variables, and survives a reload | ✅ |
+| 25c | Light and dark are actually different | ✅ |
+| 26 | Logging a meal lands it in today's list and moves the macros | ✅ |
+| 27 | A logged workout says its calories are spread forward | ✅ |
+| 29 | Switching mode moves the target, with no confirm in the way | ✅ |
+
+> **25 asserts the variables RESOLVE**, not merely that a class is applied. That is what catches
+> the session-15 failure, where every `var()` resolved to nothing and the UI flattened while every
+> DOM assertion still passed.
+
 ---
 
 ## Planned
 
 Worked **one at a time**, in this order. Each lands green before the next starts.
 
-### Next up
+### Complete
 
 | # | Scenario | Maps to | Status |
 |---|---|---|---|
-| 15 | Rework #3 into a genuine differential sync test | guardrail | ✅ **done 2026-08-11** |
-| 16 | Mid-cut the bar fills, labelled in real weeks | B1 | ✅ **done 2026-08-11** (3 tests) |
-| 17 | Weight up while cutting: the card appears, and the target is **not** lowered | B5 | 🔄 **next** |
-| 18 | The same evidence at Maintain **is** acted on | §5.4 | ⬜ |
-| 19 | The stall nudge, with blameless copy and no "eat less" | B6 | ⬜ |
+| 15 | Rework #3 into a genuine differential sync test | guardrail | ✅ 2026-08-11 |
+| 16 | Mid-cut the bar fills, labelled in real weeks | B1 | ✅ 2026-08-11 |
+| 17 | Weight up while cutting: the target is **not** lowered | B5 | ✅ 2026-08-11 |
+| 18 | At Maintain the explanation stays silent | §5.4 | ✅ 2026-08-11 |
+| 19 | The stall nudge, blameless, outranking the week count | B6 | ✅ 2026-08-11 |
+| 20–23 | Quick Add v68: no reset button, delete sticks, revive runs once | v68 | ✅ 2026-08-11 |
+| 24–27, 29 | Part A smoke: render, theme, log meal, log workout, mode switch | A | ✅ 2026-08-11 |
 
-### Quick Add (v68) — shipped today, no UI coverage
-
-The `sw v68` fix went live with Jest coverage of the merge logic only. Nothing verifies the UI.
-
-| # | Scenario | Status |
-|---|---|---|
-| 20 | The "Reset to defaults" button is **gone** from Quick Add | ⬜ |
-| 21 | Deleting a meal removes it and it does not return on reload | ⬜ |
-| 22 | Renaming a meal retires the old name rather than duplicating it | ⬜ |
-| 23 | The revive runs once, unions the list, and never runs again | ⬜ |
-
-### Part A smoke — render and theme
+### Still open
 
 | # | Scenario | Status |
 |---|---|---|
-| 24 | App renders at all three device sizes, no blank screen | ⬜ |
-| 25 | Light / dark / system survives a reload (the theme-CSS bug) | ⬜ |
-| 26 | Log a food item — lands in today's list, macros update | ⬜ |
-| 27 | Log a workout — copy says calories are spread forward | ⬜ |
+| 22 | Renaming a meal retires the old name rather than duplicating it | ⬜ **not written** |
+| 28 | Weigh in — accepted, trend updates, no scary messaging | ⬜ **not written** |
 | 28 | Weigh in — accepted, trend updates, no scary messaging | ⬜ |
 | 29 | Mode switch moves the target sensibly, no confirm | ⬜ |
 
@@ -183,6 +217,50 @@ The `sw v68` fix went live with Jest coverage of the merge logic only. Nothing v
 | 🚫 PWA install, SW cycling | no service worker on the harness by design | device only |
 | 🚫 Haptics | no API in headless Chromium | device only |
 | 🚫 Threshold arithmetic | already owned by Jest | `__tests__/logic.test.js` |
+
+---
+
+## Findings from the first full run (2026-08-11)
+
+**No production bugs found.** Every failure was either the harness misrepresenting the app, a
+documentation defect, or a fault in the tests themselves. Details for review:
+
+### F1 · Harness never applied a saved theme — **fixed**
+
+`preview.html` borrowed `index.html`'s `<style>` block but **not** its flash-free theme-init script,
+so `data-theme` was never set on load. The switcher appeared to work, then silently forgot on
+reload, and the harness showed theme behaviour the real app does not have. Production
+(`index.html`) was never affected.
+
+Same failure family as session 15's missing theme CSS — the harness borrowed half the mechanism.
+Fixed by adding the bootstrap to `preview.html`, plus `__fuelSyncChrome` stubbed since `applyTheme()`
+calls it and there is no browser chrome here to tint. Caught by tests 25a–c.
+
+### F2 · `DEVICE-TEST.md` seeds the wrong day — **open**
+
+Its snippets use `new Date().toISOString().slice(0,10)` (**UTC**); `todayKey()` (`app.jsx:214`) uses
+**local** date parts. Under BST they disagree between **00:00 and 00:59**, so `mode__<key>` lands on
+yesterday and B1/B2/B3/B6 render a screen that was never configured — silently, with no error.
+
+### F3 · `DEVICE-TEST.md` B6 clears its threshold by one entry — **open**
+
+B6 seeds 25 weigh-ins. The stall check needs at least three predating `today − 21`, and 25 supplies
+exactly three. Any trimming, or a gap in the series, drops it to "no data" and the card never
+appears — which reads as a broken feature rather than an under-seeded fixture. Recommend 30.
+
+### Test-authoring traps hit while writing this suite
+
+Recorded because they cost time and will recur:
+
+- **`addInitScript` re-runs on every navigation.** Its `localStorage.clear()` fired again on
+  `page.reload()`, re-seeding state and undoing whatever the test had just done — which made "does
+  it survive a reload?" impossible to ask. Latched with `sessionStorage`, which `clear()` doesn't
+  touch.
+- **Unscoped locators catch the harness.** `/Reset/i` matched the dev panel's "Reset to Today", and
+  `/\d+ kcal/` matched the workout's burn figure before the target chip. Scope to `#root`.
+- **A negative test on insufficient data passes vacuously.** See F3: "a moving scale is not a stall"
+  was green while the stall check was returning `null` for want of history. Every negative assertion
+  needs a positive control proving the mechanism fires at all.
 
 ---
 
@@ -209,8 +287,9 @@ under 44px, overflow and clipping, `axe-core` — which is pass/fail and needs n
 3. **No baselines.** Screenshots are for eyes, not diffed. Visual regression means committing to and
    maintaining a baseline set — likely overkill at n=1.
 
-The rig is the instrument; the personas still do the reading. Not scheduled — revisit when the
-functional suite below is done.
+Building this only saves the tedious half — manufacturing the states and capturing them. Someone
+still has to look at every screenshot and judge it. (The lint pass above is the exception: it's
+pass/fail and needs no reviewer.) Not scheduled — revisit when the functional suite below is done.
 
 ---
 
