@@ -2285,3 +2285,61 @@ describe("Quick Add revive — putting back what the reset button wiped", () => 
     expect(out).toHaveLength(2);
   });
 });
+
+// ── How long the scale has really been flat — mirror of app.jsx stalledWeeks ──────────────────
+// The stall check FIRES on a 3-week window, but the card should say how long it has actually been.
+// Telling someone eight weeks in that it's "been about three weeks" reads as an app that hasn't
+// noticed, and it undersells the case for a break.
+const STALL_MAX_WEEKS = 26;
+const stalledWeeks = (weighIns, todayK) => {
+  let weeks = 0;
+  for (let w = STALL_WEEKS; w <= STALL_MAX_WEEKS; w++) {
+    const rate = trendLossFrac(weighIns, todayK, w * 7);
+    if (rate == null || rate >= TREND_CUT_RATE) break;
+    weeks = w;
+  }
+  return weeks;
+};
+
+describe("stalledWeeks — saying how long it has really been", () => {
+  const todayK = "2026-08-11";
+  // Build a series ending yesterday, oldest first, from a per-day weight function.
+  const series = (days, fn) => {
+    const out = [];
+    for (let i = days; i >= 1; i--) {
+      const d = new Date("2026-08-11T12:00:00");
+      d.setDate(d.getDate() - i);
+      out.push({ date: d.toISOString().slice(0, 10), weight: fn(days - i) });
+    }
+    return out;
+  };
+
+  test("no stall at all reads as zero, not as three", () => {
+    expect(stalledWeeks(series(60, i => 98 - i * 0.065), todayK)).toBe(0);
+  });
+
+  test("a flat two months reports roughly two months, not the trigger window", () => {
+    const weeks = stalledWeeks(series(60, () => 98), todayK);
+    expect(weeks).toBeGreaterThanOrEqual(7);
+    expect(weeks).toBeLessThanOrEqual(9);
+  });
+
+  test("it never claims more than the weigh-ins can support", () => {
+    // Only four weeks of data: it cannot honestly say the scale has been flat for eight.
+    expect(stalledWeeks(series(28, () => 98), todayK)).toBeLessThanOrEqual(4);
+  });
+
+  test("losing for a month then stalling for three weeks reports the stall, not the lot", () => {
+    // Weight drops for the first 5 weeks, then holds. The answer is the flat part.
+    const s = series(56, i => (i < 35 ? 98 - i * 0.07 : 98 - 35 * 0.07));
+    const weeks = stalledWeeks(s, todayK);
+    expect(weeks).toBeGreaterThanOrEqual(3);
+    expect(weeks).toBeLessThan(8);
+  });
+
+  test("a stall shorter than the trigger window is not a stall", () => {
+    // Ten flat days on the end of a losing run: the 3-week span still shows real loss.
+    const s = series(60, i => (i < 50 ? 98 - i * 0.07 : 98 - 50 * 0.07));
+    expect(stalledWeeks(s, todayK)).toBe(0);
+  });
+});

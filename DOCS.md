@@ -1398,6 +1398,23 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### The weight card stops claiming agreement it doesn't have (Aug 2026)
+Two reporting defects found by the two-month weigh-in tests. Neither changed a calorie target — both
+made the app describe its own state wrongly, in the screen a stalled dieter reads most carefully.
+Jest **225/225** (5 new), Playwright **49/49** (3 new), sw `v68→v69`. No DB change.
+- **A refused correction was reported as agreement.** `runCalibration` returns `refused: true` when
+  it declines to lower the estimate because you were cutting, but nothing consumed the flag, so
+  `tdeeAdj` stayed 0 and the card said *"your logged results match the estimate, no adjustment
+  needed yet."* After two months of eating ~500 kcal under the estimate without losing, that states
+  the opposite of the data. Someone reading it could reasonably decide the app has nothing further
+  to offer and cut their intake by hand — the exact path this workstream exists to close. The card
+  now says the scale disagrees, that the target is **not** being lowered while cutting, why (water
+  and glycogen can hold bodyweight flat while fat is coming off), and that the estimate updates at
+  maintenance where a flat scale does mean a lower burn.
+- **The stall card always said "about three weeks."** That was the width of the measurement window,
+  not the length of the stall. `stalledWeeks()` now widens the span a week at a time while the scale
+  still reads flat, and reports the real figure, never claiming more than the weigh-ins support.
+
 ### Quick Add: the reset button is gone, and a UI test suite exists (Aug 2026)
 A faint dashed **"Reset to defaults"** button sat at the foot of Quick Add and replaced your entire
 meal library on a single tap — no confirmation, no undo. A destructive action dressed as a footnote.

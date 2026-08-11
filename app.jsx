@@ -609,6 +609,26 @@ const trendLossFrac = (weighIns, todayK, spanDays = 7) => {
 };
 const weeklyLossFrac = (weighIns, todayK) => trendLossFrac(weighIns, todayK, 7);
 
+// How long the scale has ACTUALLY been flat, in whole weeks — not the length of the window we
+// happened to measure. Telling someone eight weeks into a stall that it's "been about three weeks"
+// reads as an app that hasn't noticed, and it undersells the case for taking a break.
+//
+// Widen the span a week at a time and keep going while it still reads as stalled. The first span
+// that shows real movement is the point the stall began, so the previous one is the answer. Stops
+// when the weigh-ins run out (trendLossFrac returns null), so it can never claim more than the data
+// supports. Returns 0 when there is no stall at all.
+const STALL_MAX_WEEKS = 26;   // half a year; past this the exact number stops being useful
+
+const stalledWeeks = (weighIns, todayK) => {
+  let weeks = 0;
+  for (let w = STALL_WEEKS; w <= STALL_MAX_WEEKS; w++) {
+    const rate = trendLossFrac(weighIns, todayK, w * 7);
+    if (rate == null || rate >= TREND_CUT_RATE) break;
+    weeks = w;
+  }
+  return weeks;
+};
+
 // Weight up while eating below maintenance (features/energy-safety/04). Derived every
 // render rather than stored as an event: the explanation should be on screen whenever the
 // situation is real, not only in the moments after a weigh-in. Two weeks rather than one,
@@ -698,7 +718,7 @@ const daysBetween = (fromK, toK) =>
 // guessing. Calendar time alone never triggers this — a gentle cut that IS working stays
 // unbothered however long it runs.
 const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = null,
-    cutting = false, now = Date.now() }) => {
+    stallSpanWeeks = 0, cutting = false, now = Date.now() }) => {
   if (!block || !block.start) return null;
   const th    = cutThresholds(profile || {});
   const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
@@ -714,6 +734,9 @@ const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = nul
   return { level, bigLoss,
     // Only claim a stall on the card that can say it kindly; the hard prompt outranks it.
     stalled: stalled && level === "soft" && block.load < th.soft,
+    // How long it has really been flat, so the card can say eight weeks when it has been eight.
+    // Falls back to the trigger threshold if the caller didn't measure it.
+    stallWeeks: Math.max(STALL_WEEKS, stallSpanWeeks || 0),
     weeks:   Math.max(1, Math.round(daysBetween(block.start, todayK) / 7)) };
 };
 
@@ -2502,7 +2525,8 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE }) {
+function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
+    correctionHeld = false }) {
   const [val, setVal]   = useState(""); // kg · lb · or stone (when st mode)
   const [val2, setVal2] = useState(""); // pounds (st mode only)
   const wUnit = getWUnit();
@@ -2591,8 +2615,15 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
 
       <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5 }}>
         {!calibrating && `Your target is already set from your profile. Weigh in a few times a week and we auto-tune it — we use your 7-day trend, not any single day. ${checkInsToGo} more check-in${checkInsToGo === 1 ? "" : "s"} until we start fine-tuning.`}
-        {calibrating && tdeeAdj === 0 && `🔄 ${confidence} — your logged results match the estimate, no adjustment needed yet.`}
-        {calibrating && tdeeAdj !== 0 && `🔄 ${confidence} — your real TDEE looks ${tdeeAdj > 0 ? "higher" : "lower"} than the estimate, so targets are adjusted to match.`}
+        {/* tdeeAdj stays 0 in two different situations: the measured error was too small to act
+            on, and runCalibration returned refused:true because the user was cutting. Those are
+            not the same thing. Reporting the second as "your logged results match the estimate"
+            states the opposite of what the data shows, and someone reading it while stalled could
+            reasonably conclude the app has nothing further to offer and reduce their intake
+            manually. correctionHeld distinguishes the two. */}
+        {calibrating && correctionHeld && `🔄 ${confidence} — the scale disagrees with this estimate. Your target is not being lowered while you're cutting: water and glycogen can keep bodyweight flat while fat is still coming off. The estimate updates at maintenance, where a flat scale does mean a lower burn.`}
+        {calibrating && !correctionHeld && tdeeAdj === 0 && `🔄 ${confidence} — your logged results match the estimate, no adjustment needed yet.`}
+        {calibrating && !correctionHeld && tdeeAdj !== 0 && `🔄 ${confidence} — your real TDEE looks ${tdeeAdj > 0 ? "higher" : "lower"} than the estimate, so targets are adjusted to match.`}
       </div>
     </div>
   );
@@ -2870,7 +2901,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   showWeighNudge = false, onNudgeDismiss = () => {}, onNudgeMute = () => {}, coachKey,
   cutPrompt = null, onCutNudgeDismiss = () => {}, onCutPromptSnooze = () => {}, onStartDietBreak = () => {},
   cutBar = null, cutGuard = null, showRecharged = false, onDismissRecharged = () => {},
-  showGainWhileCutting = false,
+  showGainWhileCutting = false, correctionHeld = false,
   workouts, onAddWorkout, onRemoveWorkout,
   customKcal, onSetCustomKcal, isCustomMode,
   aggressiveCutAcked, onAckAggressiveCut,
@@ -3306,7 +3337,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
             </div>
             <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
               {cutPrompt.stalled
-                ? "The scale hasn't moved in about three weeks. Bodies adapt to a long deficit — a couple of weeks at maintenance is how you reset it."
+                ? `The scale hasn't moved in about ${cutPrompt.stallWeeks} weeks. Bodies adapt to a long deficit — a couple of weeks at maintenance is how you reset it.`
                 : "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier."}
               <details style={{ marginTop:4 }}>
                 <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
@@ -3536,7 +3567,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
 
       {/* Weigh-in */}
       <WeighInWidget weighIns={weighIns} onWeighIn={onWeighIn}
-        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}/>
+        tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
+        correctionHeld={correctionHeld}/>
 
       {/* Add food */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
@@ -5537,6 +5569,16 @@ function App() {
   // below sedentary TDEE (BMR × 1.2). The floor is sedentary, NOT the seed — so a negative
   // adjustment on a higher-activity seed still bites down to sedentary.
   const effectiveTDEE = Math.max(tdeeFloor, baseTDEE + tdeeAdj);
+
+  // Is the adaptive loop currently WITHHOLDING a downward correction? runCalibration already
+  // works this out and returns `refused`, but nothing consumed it, so the weight card said
+  // "your logged results match the estimate" in the one situation where they flatly don't.
+  //
+  // Derived every render rather than stored at weigh-in time, so the card reflects the evidence
+  // as it stands today — the same reasoning as gainWhileCutting above.
+  const heldWeekAgo = new Date(); heldWeekAgo.setDate(heldWeekAgo.getDate() - 7);
+  const heldInFlight = adjLog.filter(a => a.date > dateKey(heldWeekAgo)).reduce((s, a) => s + a.adj, 0);
+  const correctionHeld = !!(runCalibration(hist, weighIns, baseTDEE + tdeeAdj, heldInFlight) || {}).refused;
   const effectiveMode = customKcal != null
     ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
     : mode;
@@ -5622,8 +5664,11 @@ function App() {
     : null;
   // Three weeks of scale, for the stall check. Same rolling averages, longer span.
   const stallRate = trendLossFrac(weighIns, todayK, STALL_WEEKS * 7);
+  // Measured separately from the trigger: the check fires at three weeks, but the card should say
+  // how long it has really been, which is often much longer.
+  const stallSpanWeeks = stalledWeeks(weighIns, todayK);
   const cutPrompt = cutPromptFor({ block: cutBlock, profile: p, todayK,
-    lossFrac: blockLossFrac, stallRate, cutting: cuttingToday });
+    lossFrac: blockLossFrac, stallRate, stallSpanWeeks, cutting: cuttingToday });
   // The gauge, the guard and the one celebration card (file 03).
   const cutBar   = cutBarFor({ block: cutBlock, profile: p, todayK, cutting: cuttingToday,
     weightUp: lossRate != null && lossRate < 0 });
@@ -5734,6 +5779,7 @@ function App() {
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
+          correctionHeld={correctionHeld}
           showWeighNudge={showWeighNudge} onNudgeDismiss={dismissWeighNudge} onNudgeMute={muteWeighNudge}
           coachKey={coachKey}
           cutPrompt={cutPrompt} onCutNudgeDismiss={dismissCutNudge} onCutPromptSnooze={snoozeCutPrompt}

@@ -97,7 +97,7 @@ test.describe("Two months of weigh-ins — the scale hasn't moved", () => {
   });
 
   // Two months of eating ~500 kcal under maintenance while the scale refuses to move. The
-  // symmetric controller wants to conclude "your burn is lower" and walk the target down. That
+  // symmetric controller computes a negative adjustment, which would reduce the target. That
   // conclusion is exactly the harm — water, glycogen and a full gut look identical to fat gain.
   const DEFICIT_HISTORY = { days: DAYS, kcal: 2241, mode: "cut", endDaysAgo: 1 };
   // Identical evidence, declared at maintenance — where it IS clean, and the loop should act.
@@ -125,6 +125,44 @@ test.describe("Two months of weigh-ins — the scale hasn't moved", () => {
     await shot(page, "weighin-60d-stalled-target-held");
   });
 
+  test("the stall card says how long it has REALLY been, not the trigger window", async ({ page }) => {
+    // It used to say "about three weeks" no matter what, because three weeks is the window the
+    // check measures. Eight weeks in, that reads as an app that hasn't noticed — and it undersells
+    // the case for taking a break.
+    await open(page, { weighInsSpec: STALLED, historySpec: DEFICIT_HISTORY,
+      cutBlock: LONG_BLOCK, mode: "cut" });
+
+    await expect(page.getByText("YOUR LOSS HAS STALLED")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/The scale hasn't moved in about 8 weeks/)).toBeVisible();
+    await expect(page.getByText(/about three weeks/)).toHaveCount(0);
+  });
+
+  test("the weight card admits the estimate is being overridden, not agreed with", async ({ page }) => {
+    // The defect this replaced: with a refused correction tdeeAdj stays 0, and the card read
+    // "your logged results match the estimate, no adjustment needed yet" — while the logs and the
+    // estimate disagreed by ~500 kcal/day. Someone reading that could reasonably conclude the app
+    // has nothing left to offer and start cutting by hand, which is the exact harm path.
+    await open(page, { weighInsSpec: STALLED, historySpec: DEFICIT_HISTORY,
+      cutBlock: LONG_BLOCK, mode: "cut" });
+    await expect(page.getByText("BODY WEIGHT")).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.getByText(/the scale disagrees with this estimate/i)).toBeVisible();
+    await expect(page.getByText(/your target is not being lowered while you're cutting/i)).toBeVisible();
+    await expect(page.getByText(/your logged results match the estimate/i)).toHaveCount(0);
+
+    await shot(page, "weighin-60d-stalled-correction-held");
+  });
+
+  test("when the estimate genuinely does fit, it still says so", async ({ page }) => {
+    // The control. The honest-agreement copy must survive — losing steadily at the predicted rate
+    // is agreement, and overwriting that with the override message would be its own lie.
+    await open(page, { weighInsSpec: LOSING, historySpec: { ...DEFICIT_HISTORY, endDaysAgo: 0 },
+      cutBlock: LONG_BLOCK, mode: "cut" });
+    await expect(page.getByText("BODY WEIGHT")).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.getByText(/the scale disagrees with this estimate/i)).toHaveCount(0);
+  });
+
   test("the target stays above the safe floor, not merely unchanged", async ({ page }) => {
     // Unchanged is not the same as safe. SAFE_MIN for a male body is 1400 kcal (app.jsx:569 area),
     // and the steady-loss floor caps any deficit at 25% of maintenance.
@@ -149,7 +187,8 @@ test.describe("Two months of weigh-ins — the scale hasn't moved", () => {
 
     // Eating below the estimate and not losing, at maintenance, genuinely does mean the estimate
     // was too high — so it comes DOWN here. That it moves at all is the point: it proves the
-    // cutting case above is an active refusal, not an inert loop.
+    // cutting case above is runCalibration returning refused:true, and not runCalibration
+    // returning null or an adjustment below CAL_MIN_STEP.
     const adjAfter = await storedAdj(page);
     expect(adjAfter).toBeLessThan(adjBefore);
     await shot(page, "weighin-60d-stalled-maintain");

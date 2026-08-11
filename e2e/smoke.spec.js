@@ -34,7 +34,7 @@ test.describe("It renders", () => {
 test.describe("Theme", () => {
   // The exact bug from session 15: the harness carried no theme CSS, every var() resolved to
   // nothing, and the UI flattened. Asserting the variables RESOLVE is what catches that class —
-  // a DOM-only assertion sails straight past it.
+  // an assertion that only checks the DOM structure passes while the page is unreadable.
   for (const choice of ["light", "dark"]) {
     test(`${choice} resolves its colour variables, and survives a reload`, async ({ page }) => {
       await open(page, { extra: { fuel_theme: choice } });

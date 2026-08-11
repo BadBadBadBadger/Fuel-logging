@@ -71,7 +71,7 @@ test.describe("No cloud from the harness", () => {
     return page.evaluate(() => window.__sbCalls);
   }
 
-  test("with a real clock, a sync genuinely fires — the probe is wired up", async ({ page }) => {
+  test("with a real clock, a sync genuinely fires — the recorder captures it", async ({ page }) => {
     const calls = await armSyncProbe(page, 0);
     expect(calls).toContain("water_logs");
   });

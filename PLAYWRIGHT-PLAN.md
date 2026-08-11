@@ -68,7 +68,7 @@ test asserts that it is *displayed*, not that it is *correct*.
 
 ## Hard constraints
 
-**No cloud from the harness. Ever.** A faked clock plus a real account is a data-corruption machine:
+**No cloud from the harness. Ever.** A faked clock and a real account together corrupt live data:
 signing in for real on the harness while it sat on a future date wrote future-dated `food_logs` to
 Supabase, and when the real date caught up the rows were already there and corrupted that day's
 logging. Two independent defences, both tested:
@@ -87,13 +87,13 @@ wrong day under BST between 00:00 and 00:59 and pass against a screen that was n
 
 ## Status
 
-### Suite: `no-cloud-from-harness.spec.js` — the guardrail
+### Suite: `no-cloud-from-harness.spec.js` — preview.html reaches no cloud
 
 | # | Scenario | Status |
 |---|---|---|
 | 1 | No Supabase client and no Google Identity script on the page | ✅ |
 | 2 | A faked future date issues no network calls to Supabase at all | ✅ |
-| 3a | With a real clock, a sync genuinely fires — the probe is wired up | ✅ |
+| 3a | With a real clock, a sync genuinely fires — the recorder captures it | ✅ |
 | 3b | With a faked clock, the identical action reaches nothing | ✅ |
 | 4 | The harness still runs fully without a cloud client | ✅ |
 
@@ -196,7 +196,8 @@ the original harm: a long deficit walking the target down.
 > **28f is what makes 28d mean anything.** An adjustment that never fires looks identical to one
 > deliberately refused. Both seed the same 60 days of eating ~500 kcal under maintenance against a
 > scale that never moves; only the declared mode differs. At Maintain the adjustment must move
-> **down** — proving the cutting case is an active refusal, not an inert loop.
+> **down** — proving the cutting case is runCalibration returning refused:true, and not it returning
+> null or an adjustment too small to apply.
 >
 > Getting there needed a real `historySpec`: `runCalibration` returns `null` unless at least four of
 > the last seven days carry logged intake (`app.jsx:489`), so an earlier version of 28d ran with no
@@ -229,7 +230,7 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 
 | # | Scenario | Maps to | Status |
 |---|---|---|---|
-| 15 | Rework #3 into a genuine differential sync test | guardrail | ✅ 2026-08-11 |
+| 15 | Rework #3 into a genuine differential sync test | no-cloud | ✅ 2026-08-11 |
 | 16 | Mid-cut the bar fills, labelled in real weeks | B1 | ✅ 2026-08-11 |
 | 17 | Weight up while cutting: the target is **not** lowered | B5 | ✅ 2026-08-11 |
 | 18 | At Maintain the explanation stays silent | §5.4 | ✅ 2026-08-11 |

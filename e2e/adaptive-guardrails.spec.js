@@ -76,7 +76,8 @@ test.describe("The stall nudge", () => {
     await open(page, { cutBlock: STALLED_BLOCK, weighInsSpec: FLAT, mode: "cut" });
 
     await expect(page.getByText("YOUR LOSS HAS STALLED")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/The scale hasn't moved in about three weeks/)).toBeVisible();
+    // The card reports the measured number of weeks, so this matches a digit, not the word.
+    await expect(page.getByText(/The scale hasn't moved in about \d+ weeks/)).toBeVisible();
     // Blameless by construction: bodies adapt, rather than you failed.
     await expect(page.getByText(/Bodies adapt to a long deficit/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Start a 2-week break" })).toBeVisible();

@@ -63,8 +63,9 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
       if (history) localStorage.setItem("history", JSON.stringify(history));
       // Daily snapshots of logged intake. runCalibration needs at least FOUR days with kcal > 0
       // in the last seven or it returns null before measuring anything (app.jsx:489) — so without
-      // this the adaptive loop never runs and any test of it passes vacuously. `mode` per day is
-      // also what the asymmetry guard reads to decide "was I cutting" (app.jsx:529).
+      // this runCalibration returns null and any test of it passes vacuously. `mode` per day is
+      // also what runCalibration counts to decide whether the user was cutting (app.jsx:529): it
+      // sets refused:true when a downward adjustment coincides with a majority of cut days.
       if (historySpec) {
         const { days, kcal, mode: dayMode = "cut", endDaysAgo = 0 } = historySpec;
         const off = parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
