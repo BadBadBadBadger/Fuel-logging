@@ -8,7 +8,7 @@
 //   3. The one-time revive puts back what the reset wiped, and never runs twice.
 
 const { test, expect } = require("@playwright/test");
-const { open, PROFILE } = require("./harness");
+const { open, installSbRecorder, sbCallsFor, PROFILE } = require("./harness");
 
 const CUSTOM = [
   { name: "Nan's lasagne", kcal: 640, protein: 38, carbs: 52, fat: 30 },
@@ -71,24 +71,70 @@ test.describe("Quick Add", () => {
     await expect(page.getByText("Nan's lasagne")).toHaveCount(0);
   });
 
-  test("deleting a meal reaches the cloud, not just localStorage", async ({ page }) => {
-    // The actual v68 bug: syncMeals only upserts, so a delete never propagated and the meal
-    // reappeared on the next pull. syncMealDelete must fire.
+  test("deleting a meal asks the cloud to delete that exact row", async ({ page }) => {
+    // The v68 bug: syncMeals only upserts, so a delete never propagated and the meal came back on
+    // the next pull. This asserts the app issues a DELETE filtered by user and by the meal's name —
+    // not merely that it touched the table. What it cannot prove is that Supabase honours it; that
+    // is a one-time device check (DEVICE-TEST.md, "Renaming and deleting stick").
     await openQuickAdd(page, { meals: CUSTOM, premium: PREMIUM_WITH_ID });
-
-    await page.evaluate(() => {
-      window.__sbCalls = [];
-      const chain = () => new Proxy(() => chain(), { get: () => chain(), apply: () => chain() });
-      window.supabaseClient = {
-        from: table => { window.__sbCalls.push(table); return chain(); },
-        auth: { signOut: async () => ({}) },
-      };
-    });
+    await installSbRecorder(page);
 
     await page.getByRole("button", { name: "🗑️" }).first().click();
     await page.waitForTimeout(800);
 
-    expect(await page.evaluate(() => window.__sbCalls)).toContain("meal_library");
+    const calls = await sbCallsFor(page, "meal_library");
+    expect(calls.length).toBeGreaterThan(0);
+
+    const del = calls.find(c => c.ops.some(o => o.op === "delete"));
+    expect(del, "expected a delete against meal_library").toBeTruthy();
+
+    const filters = del.ops.filter(o => o.op === "eq").map(o => o.args);
+    expect(filters).toContainEqual(["user_id", PREMIUM_WITH_ID.id]);
+    expect(filters).toContainEqual(["name", "Nan's lasagne"]);
+  });
+
+  test("renaming a meal deletes the row under the old name", async ({ page }) => {
+    // Without this the rename writes a NEW row and leaves the old one behind, so the next cloud
+    // pull hands back both and one rename becomes two meals.
+    await openQuickAdd(page, { meals: CUSTOM, premium: PREMIUM_WITH_ID });
+    await installSbRecorder(page);
+
+    await page.getByRole("button", { name: "✏️" }).first().click();
+    const nameField = page.getByPlaceholder("e.g. Chicken breast (150g)");
+    await expect(nameField).toHaveValue("Nan's lasagne");
+    await nameField.fill("Mum's lasagne");
+    await page.getByRole("button", { name: "SAVE CHANGES" }).click();
+
+    await expect(page.getByText("Mum's lasagne")).toBeVisible();
+    await expect(page.getByText("Nan's lasagne")).toHaveCount(0);
+    await page.waitForTimeout(800);
+
+    const calls = await sbCallsFor(page, "meal_library");
+    const del = calls.find(c => c.ops.some(o => o.op === "delete"));
+    expect(del, "expected the old name to be deleted on rename").toBeTruthy();
+
+    const filters = del.ops.filter(o => o.op === "eq").map(o => o.args);
+    expect(filters).toContainEqual(["name", "Nan's lasagne"]);
+    // And emphatically NOT the new one.
+    expect(filters).not.toContainEqual(["name", "Mum's lasagne"]);
+  });
+
+  test("editing a meal WITHOUT renaming deletes nothing", async ({ page }) => {
+    // The control. If a plain edit also fired a delete, the meal would vanish from the cloud and
+    // the rename test above would pass for the wrong reason.
+    await openQuickAdd(page, { meals: CUSTOM, premium: PREMIUM_WITH_ID });
+    await installSbRecorder(page);
+
+    await page.getByRole("button", { name: "✏️" }).first().click();
+    // exact:true is load-bearing. getByPlaceholder substring-matches, and the name field's
+    // placeholder is "e.g. Chicken breast (150g)" — which contains a "0", so .first() grabs the
+    // NAME input and this "plain edit" silently becomes a rename to "700".
+    await page.getByPlaceholder("0", { exact: true }).first().fill("700");
+    await page.getByRole("button", { name: "SAVE CHANGES" }).click();
+    await page.waitForTimeout(800);
+
+    const calls = await sbCallsFor(page, "meal_library");
+    expect(calls.some(c => c.ops.some(o => o.op === "delete"))).toBe(false);
   });
 });
 

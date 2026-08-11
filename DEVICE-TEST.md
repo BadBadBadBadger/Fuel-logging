@@ -171,6 +171,26 @@ location.reload();
 > body-sized floor and a cut collapses to almost no deficit — a 50 kg man gets 16 kcal. Real, understood,
 > and **deliberately shelved** because the only user is 98.5 kg. `ARCHITECTURE_REVIEW.md` §4.I.
 
+## Part B2 — the one thing no test can check: does the cloud actually obey?
+
+The UI suite proves the app *asks* Supabase to delete the right row — the right table, filtered by
+your user and by the meal's name. It cannot prove Supabase **honours** it. Schema, column names and
+row-level security are not observable from a test harness, by any means. This is that check, and it
+takes about a minute. **Signed in, on your phone.**
+
+- [ ] Quick Add → add a meal called **Rename me**
+- [ ] Edit it (✏️) and rename it to **Renamed** → save
+- [ ] Force a fresh pull: fully close the app and reopen it
+- [ ] **Exactly one** entry — *Renamed*. Two means the delete didn't reach the table.
+- [ ] Delete it (🗑️), fully close and reopen
+- [ ] It is **gone**, not back
+
+> If a deleted or renamed meal reappears, the local write worked and the cloud one didn't — look at
+> `syncMealDelete` (`app.jsx`) and the `meal_library` RLS policy, in that order. Before v68 this was
+> broken by design: sync only ever upserted, so deletes never propagated at all.
+
+---
+
 ## Part C — the small body case
 
 The steady-loss floor only visibly bites on smaller bodies. Temporarily set a **~60 kg** profile

@@ -127,4 +127,48 @@ async function storedMode(page) {
   return page.evaluate(keyExpr => localStorage.getItem("mode__" + eval(keyExpr)), TODAY_KEY_EXPR);
 }
 
-module.exports = { seed, open, storedMode, PROFILE, TODAY, daysAgo, TODAY_KEY_EXPR };
+/**
+ * Install a recording stand-in for the Supabase client, capturing the FULL call chain —
+ * table, method, and arguments — not merely which tables were touched.
+ *
+ * This matters, and the limit matters more. Recording table names alone would pass if the app
+ * called select() where delete() was meant, or filtered on the wrong column. Recording the chain
+ * proves the app *asked for the right thing*. It cannot prove Supabase would honour it: schema,
+ * column names and RLS are not testable from here, by anything, ever. That last mile is a one-time
+ * check on a real device — see DEVICE-TEST.md.
+ *
+ * Install AFTER the page has loaded, so the startup pull doesn't pollute the record.
+ */
+async function installSbRecorder(page) {
+  await page.evaluate(() => {
+    window.__sbCalls = [];
+    window.supabaseClient = {
+      from(table) {
+        const call = { table, ops: [] };
+        window.__sbCalls.push(call);
+        const rec = name => (...args) => {
+          call.ops.push({ op: name, args: args.map(a => (typeof a === "object" ? "[obj]" : a)) });
+          return builder;
+        };
+        const builder = {
+          delete: rec("delete"), upsert: rec("upsert"), insert: rec("insert"),
+          update: rec("update"), select: rec("select"), eq: rec("eq"),
+          order: rec("order"), maybeSingle: rec("maybeSingle"),
+          // Thenable, so `await sb().from(t).delete().eq(...)` resolves like the real client.
+          then: resolve => resolve({ data: [], error: null }),
+        };
+        return builder;
+      },
+      auth: { signOut: async () => ({}) },
+    };
+  });
+}
+
+const sbCalls = page => page.evaluate(() => window.__sbCalls);
+
+/** Calls against one table, e.g. sbCallsFor(page, "meal_library"). */
+const sbCallsFor = async (page, table) =>
+  (await sbCalls(page)).filter(c => c.table === table);
+
+module.exports = { seed, open, storedMode, installSbRecorder, sbCalls, sbCallsFor,
+  PROFILE, TODAY, daysAgo, TODAY_KEY_EXPR };

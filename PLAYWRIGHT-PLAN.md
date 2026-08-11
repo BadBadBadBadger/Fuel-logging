@@ -6,7 +6,7 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 38 tests · 38 passing · runtime ~20s · last updated 2026-08-11
+**Current:** 40 tests · 40 passing · runtime ~22s · last updated 2026-08-11
 **Plan items 15–29 are all complete.** Jest 220/220 alongside, unchanged.
 
 | | |
@@ -43,7 +43,7 @@ empty install. 213 green unit tests said nothing about either.
 | Layer | Owns | Where |
 |---|---|---|
 | Jest mirrors | thresholds, `calcTargets`, drain arithmetic | `__tests__/logic.test.js` (220) |
-| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (14) |
+| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (40) |
 | Real device | iOS Safari, PWA install, SW cycling, haptics, real auth | `DEVICE-TEST.md` |
 
 **Rule: never assert the same thing in two layers.** If a number is already pinned in Jest, the UI
@@ -158,9 +158,21 @@ wrong day under BST between 00:00 and 00:59 and pass against a screen that was n
 |---|---|---|
 | 20 | The "Reset to defaults" button is gone | ✅ |
 | 21a | A custom meal list renders, and delete removes it for good | ✅ |
-| 21b | Deleting a meal reaches the cloud, not just localStorage | ✅ |
+| 21b | Deleting a meal asks the cloud to delete that exact row | ✅ |
+| 22a | Renaming a meal deletes the row under the old name | ✅ |
+| 22b | Editing *without* renaming deletes nothing | ✅ |
 | 23a | The revive rebuilds from logged history when there's no cloud copy | ✅ |
 | 23b | It marks itself done and never runs a second time | ✅ |
+
+> ### What 21b and 22a do NOT prove
+> They assert the app **asks** for the right thing: a `delete` against `meal_library`, filtered by
+> `user_id` and by the meal's name. They cannot prove Supabase **honours** it — schema, column names
+> and RLS are not observable from a test harness, by any means. An earlier version of 21b recorded
+> only which *tables* were touched, which would have passed had the code called `select()` where
+> `delete()` was meant; `installSbRecorder` now captures the full call chain with arguments.
+>
+> The remaining mile is a one-time manual check: **`DEVICE-TEST.md` Part B2**. Any test that claims
+> more than this is lying, and a hand-written fake would only ever confirm my own model of the schema.
 
 ### Suite: `smoke.spec.js` — Part A
 
@@ -197,14 +209,20 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 | 20–23 | Quick Add v68: no reset button, delete sticks, revive runs once | v68 | ✅ 2026-08-11 |
 | 24–27, 29 | Part A smoke: render, theme, log meal, log workout, mode switch | A | ✅ 2026-08-11 |
 
+| 22 | Renaming a meal deletes the row under the old name | v68 | ✅ 2026-08-11 |
+
 ### Still open
 
 | # | Scenario | Status |
 |---|---|---|
-| 22 | Renaming a meal retires the old name rather than duplicating it | ⬜ **not written** |
-| 28 | Weigh in — accepted, trend updates, no scary messaging | ⬜ **not written** |
-| 28 | Weigh in — accepted, trend updates, no scary messaging | ⬜ |
-| 29 | Mode switch moves the target sensibly, no confirm | ⬜ |
+| 28 | Weigh in — accepted, trend updates, no scary messaging | ⬜ **not written** — lives behind the profile screen, needs more navigation than the rest |
+
+### Needs a human, not a test
+
+| Check | Why no test can do it | Where |
+|---|---|---|
+| Does Supabase actually delete the row on delete/rename? | Schema, column names and RLS are not observable from a harness | `DEVICE-TEST.md` Part B2 |
+| iOS Safari rendering · PWA install · SW cycling · haptics | Chromium, no service worker, no vibration API | `DEVICE-TEST.md` Parts A/C |
 
 ### Deliberately out of scope
 
@@ -258,6 +276,10 @@ Recorded because they cost time and will recur:
   touch.
 - **Unscoped locators catch the harness.** `/Reset/i` matched the dev panel's "Reset to Today", and
   `/\d+ kcal/` matched the workout's burn figure before the target chip. Scope to `#root`.
+- **`getByPlaceholder` substring-matches.** `getByPlaceholder("0")` matched the meal-name field,
+  whose placeholder is `"e.g. Chicken breast (150g)"` — so a test that meant to edit the calories
+  renamed the meal to "700" instead, and then "failed" on a delete that was entirely correct. Pass
+  `{ exact: true }`. Caught only because a control test asserted the delete should *not* fire.
 - **A negative test on insufficient data passes vacuously.** See F3: "a moving scale is not a stall"
   was green while the stall check was returning `null` for want of history. Every negative assertion
   needs a positive control proving the mechanism fires at all.
