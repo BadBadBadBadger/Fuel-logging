@@ -6,7 +6,7 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 14 tests · 13 passing · 1 needs rework · runtime ~9s
+**Current:** 15 tests · 15 passing · runtime ~11s · last updated 2026-08-11
 
 | | |
 |---|---|
@@ -87,14 +87,20 @@ wrong day under BST between 00:00 and 00:59 and pass against a screen that was n
 |---|---|---|
 | 1 | No Supabase client and no Google Identity script on the page | ✅ |
 | 2 | A faked future date issues no network calls to Supabase at all | ✅ |
-| 3 | `sb()` refuses while the clock is faked | ⚠️ **tautological — reworking** |
+| 3a | With a real clock, a sync genuinely fires — the probe is wired up | ✅ |
+| 3b | With a faked clock, the identical action reaches nothing | ✅ |
 | 4 | The harness still runs fully without a cloud client | ✅ |
 
-> **#3 is currently fake.** It re-implements the offset check in the page instead of exercising
-> `app.jsx`'s `sb()`, so it cannot fail. A test that can't fail is worse than no test. Rework: seed
-> premium with a real-looking `id`, install a recording stub as `window.supabaseClient` after load,
-> trigger a sync (water `+` → `saveWater`, `app.jsx:5209`), and assert the stub is touched with
-> `dayOffset: 0` and untouched with `dayOffset: 30`. That is a genuine differential.
+> **3a/3b are a matched pair, and 3a is the important half.** A live recording client is installed
+> and a real sync is triggered (water `+` → `saveWater`, `app.jsx:5209`) in *both* cases; the only
+> variable is whether the clock is faked. Premium carries a real-looking `id` on purpose — with
+> `id: null` the sync would stop on its own and 3b would pass for the wrong reason. 3a exists so
+> that can never happen silently: if the probe stops firing, 3b is worthless and 3a says so.
+>
+> This replaced a tautological version that re-implemented the offset check in the page and could
+> not fail. Writing 3a immediately caught a real bug in the setup — `open()`'s init script calls
+> `localStorage.clear()`, so auth seeded by an earlier `addInitScript` was wiped before the app
+> read it.
 
 ### Suite: `energy-safety.spec.js` — DEVICE-TEST B2
 
@@ -131,8 +137,8 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 
 | # | Scenario | Maps to | Status |
 |---|---|---|---|
-| 15 | Rework #3 into a genuine differential sync test | guardrail | ⬜ |
-| 16 | Mid-cut the bar fills, labelled in real weeks | B1 | ⬜ |
+| 15 | Rework #3 into a genuine differential sync test | guardrail | ✅ **done 2026-08-11** |
+| 16 | Mid-cut the bar fills, labelled in real weeks | B1 | 🔄 **next** |
 | 17 | Weight up while cutting: the card appears, and the target is **not** lowered | B5 | ⬜ |
 | 18 | The same evidence at Maintain **is** acted on | §5.4 | ⬜ |
 | 19 | The stall nudge, with blameless copy and no "eat less" | B6 | ⬜ |

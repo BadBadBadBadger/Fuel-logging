@@ -46,12 +46,16 @@ async function seed(page, { profile, cutBlock, mode, weighIns, dayOffset, premiu
 
       // Mirrors the harness's 🔓 Premium button. id:null keeps every sync path in app.jsx
       // dormant, so a test can never write to or overwrite real Supabase rows.
+      //
+      // Pass an object instead of `true` to override the user — only the sync-guard tests need
+      // that, to carry a real-looking id so a sync actually fires and the guard is what stops it.
       if (premium) {
         localStorage.setItem("auth_state", "premium");
-        localStorage.setItem("auth_user", JSON.stringify({
-          id: null, name: "Dev Preview", email: "dev@localhost", picture: "",
-          grantedBy: "dev-harness", subExpiry: null, since: Date.now(),
-        }));
+        localStorage.setItem("auth_user", JSON.stringify(
+          typeof premium === "object" ? premium : {
+            id: null, name: "Dev Preview", email: "dev@localhost", picture: "",
+            grantedBy: "dev-harness", subExpiry: null, since: Date.now(),
+          }));
         localStorage.setItem("health_consent", JSON.stringify({
           version: "1.2", policyVersion: "1.2",
           agreedAt: new Date().toISOString(), source: "dev-harness",

@@ -36,17 +36,49 @@ test.describe("No cloud from the harness", () => {
     expect(calls).toEqual([]);
   });
 
-  test("sb() refuses while the clock is faked, and returns to normal when it isn't", async ({ page }) => {
-    // Proves the app.jsx backstop is doing the work, independently of the harness being sealed.
-    await open(page, { premium: true, dayOffset: 30 });
+  // A genuine differential for the app.jsx backstop. A live client IS installed in both cases and
+  // a real sync IS triggered; the only variable is whether the clock is faked. Without the guard in
+  // sb(), the faked-clock case would write — which is precisely the incident.
+  //
+  // Premium here carries a real-looking id on purpose: id:null would stop the sync on its own and
+  // the test would pass for the wrong reason.
+  const PREMIUM_WITH_ID = {
+    id: "00000000-0000-4000-8000-00000000dead", name: "Sync Probe", email: "probe@localhost",
+    picture: "", grantedBy: "e2e", subExpiry: null, since: 0,
+  };
 
-    const whileFaked = await page.evaluate(() => {
-      window.supabaseClient = { marker: "real-client" }; // simulate a live client being present
-      const off = parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
-      return { off, blocked: off !== 0 };
+  async function armSyncProbe(page, dayOffset) {
+    // Must go through open()'s seeder: its init script calls localStorage.clear(), so anything
+    // written by an earlier addInitScript is wiped before the app ever reads it.
+    await open(page, { premium: PREMIUM_WITH_ID, dayOffset, mode: "cut" });
+
+    // Install a recording stand-in AFTER load, so the initial pull doesn't pollute the record.
+    await page.evaluate(() => {
+      window.__sbCalls = [];
+      const chain = () => new Proxy(() => chain(), {
+        get: () => chain(),
+        apply: () => chain(),
+      });
+      window.supabaseClient = {
+        from: table => { window.__sbCalls.push(table); return chain(); },
+        auth: { signOut: async () => ({}) },
+      };
     });
-    expect(whileFaked.off).toBe(30);
-    expect(whileFaked.blocked).toBe(true);
+
+    // Water + → saveWater → syncWater (app.jsx:5209). A one-tap, always-present sync trigger.
+    await page.getByRole("button", { name: "+", exact: true }).first().click();
+    await page.waitForTimeout(1000);
+    return page.evaluate(() => window.__sbCalls);
+  }
+
+  test("with a real clock, a sync genuinely fires — the probe is wired up", async ({ page }) => {
+    const calls = await armSyncProbe(page, 0);
+    expect(calls).toContain("water_logs");
+  });
+
+  test("with a faked clock, the identical action reaches nothing", async ({ page }) => {
+    const calls = await armSyncProbe(page, 30);
+    expect(calls).toEqual([]);
   });
 
   test("the harness still runs fully without a cloud client", async ({ page }) => {
