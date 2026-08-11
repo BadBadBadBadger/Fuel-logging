@@ -1,9 +1,10 @@
-# Device test — the energy-safety release (sw v67)
+# Device test — the energy-safety release (sw v68)
 
 **One-time checklist for the 2026-08-10 go-live.** Delete this file once it's done; it is not a
 living doc. Everything durable lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
-**Live as of:** `main`, service worker **v67**. Rollback tag: **`pre-energy-safety`**.
+**Live as of:** `main`, service worker **v68** (the Quick Add fix of 2026-08-11 shipped on top of the
+energy-safety release). Rollback tag: **`pre-energy-safety`**.
 
 > ### Before anything else
 > An installed PWA serves the **old bundle** until the service worker fully cycles. Backgrounding the
@@ -11,7 +12,13 @@ living doc. Everything durable lives in `ENERGY_MODEL.md` / `DOCS.md`.
 > below doesn't match, you're testing the old code and everything after this is meaningless.
 >
 > To check: Settings → scroll to the bottom, or in Chrome devtools console:
-> `caches.keys().then(console.log)` → expect `fuel-log-v67`.
+> `caches.keys().then(console.log)` → expect `fuel-log-v68`.
+
+> ### Part B is now automated — run it before you run it by hand
+> `npm run test:ui` covers B1–B6 in about twenty seconds, in a real browser, and re-runs any time.
+> **Do that first**: if something is broken it's far cheaper to find it there. What it cannot tell
+> you is anything about *this phone* — iOS Safari, PWA install, service-worker cycling, or haptics.
+> That is what the checklist below is still for. Status and coverage: `PLAYWRIGHT-PLAN.md`.
 
 ---
 
@@ -65,9 +72,23 @@ today, so seed them in Chrome and look.
 
 Open the live site, F12 → Console, paste, and the page reloads itself.
 
+> ### ⚠️ Paste this ONCE first, before any snippet below
+> The app keys each day from **local** date parts (`app.jsx:214`), not `toISOString()`, which is UTC.
+> Under BST the two disagree between **00:00 and 00:59** — a snippet using the UTC key writes
+> yesterday's `mode__`, the app reads today's, and you get a screen that was never configured, with
+> no error to tell you. Define the correct key helper once per console session:
+>
+> ```js
+> window.k = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") +
+>                 "-" + String(d.getDate()).padStart(2,"0");
+> ```
+>
+> Every snippet below uses `k()`. If you skip this you get a loud `k is not defined` rather than a
+> quiet wrong answer — which is the point.
+
 **B1 — the bar filling, mid-cut**
 ```js
-const t = new Date().toISOString().slice(0,10);
+const t = k(new Date());
 localStorage.setItem('cut_block', JSON.stringify({ start:'2026-06-01', load:20, startWeight:98.5,
   offRun:0, breakLoad:0, lastAccrued:t, lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null }));
 localStorage.setItem('mode__'+t, 'cut'); location.reload();
@@ -76,7 +97,7 @@ localStorage.setItem('mode__'+t, 'cut'); location.reload();
 
 **B2 — the soft nudge (a break would help)**
 ```js
-const t = new Date().toISOString().slice(0,10);
+const t = k(new Date());
 localStorage.setItem('cut_block', JSON.stringify({ start:'2026-05-01', load:56, startWeight:98.5,
   offRun:0, breakLoad:0, lastAccrued:t, lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null }));
 localStorage.setItem('mode__'+t, 'cut'); location.reload();
@@ -87,7 +108,7 @@ localStorage.setItem('mode__'+t, 'cut'); location.reload();
 
 **B3 — mid-break: the bar draining, and the one guarded action**
 ```js
-const t = new Date().toISOString().slice(0,10);
+const t = k(new Date());
 localStorage.setItem('cut_block', JSON.stringify({ start:'2026-05-01', load:42, startWeight:98.5,
   offRun:7, breakLoad:84, lastAccrued:t, lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null }));
 localStorage.setItem('mode__'+t, 'maintain'); location.reload();
@@ -99,7 +120,7 @@ localStorage.setItem('mode__'+t, 'maintain'); location.reload();
 
 **B4 — recharged, then silence**
 ```js
-const t = new Date().toISOString().slice(0,10);
+const t = k(new Date());
 localStorage.setItem('cut_block', JSON.stringify({ start:null, load:0, startWeight:null, offRun:0,
   breakLoad:0, lastAccrued:t, lastBreakEnd:t, rechargedOn:t, nudgeAt:null, snoozeAt:null }));
 localStorage.setItem('mode__'+t, 'maintain'); location.reload();
@@ -109,7 +130,7 @@ localStorage.setItem('mode__'+t, 'maintain'); location.reload();
 
 **B5 — weight up while cutting (the auto-lowering fix, made visible)**
 ```js
-const t = new Date(); const k = d => d.toISOString().slice(0,10);
+const t = new Date();
 const w = []; for (let i = 20; i >= 0; i--) {
   const d = new Date(t); d.setDate(d.getDate() - i); w.push({ date: k(d), weight: 98 + (20 - i) * 0.05 });
 }
@@ -121,9 +142,15 @@ localStorage.setItem('mode__' + k(t), 'cut'); location.reload();
 - [ ] It has **no mode buttons**, and offers an optional body-fat update link
 
 **B6 — the stall nudge** (same weigh-ins as B5 but flat, plus an older block)
+
+> **30 days of weigh-ins, not 25.** The stall check reads a 21-day span, and the rolling average
+> returns `null` unless at least **three** entries predate `today − 21`. The old 25-day series
+> supplied exactly three — trim one, or leave a gap, and the check silently evaluates to "no data"
+> and the card never appears. That looks like a broken feature; it's an under-seeded fixture.
+
 ```js
-const t = new Date(); const k = d => d.toISOString().slice(0,10);
-const w = []; for (let i = 24; i >= 0; i--) { const d = new Date(t); d.setDate(d.getDate() - i); w.push({ date:k(d), weight:98 }); }
+const t = new Date();
+const w = []; for (let i = 29; i >= 0; i--) { const d = new Date(t); d.setDate(d.getDate() - i); w.push({ date:k(d), weight:98 }); }
 localStorage.setItem('weighins', JSON.stringify(w));
 localStorage.setItem('cut_block', JSON.stringify({ start:'2026-07-01', load:20, startWeight:98,
   offRun:0, breakLoad:0, lastAccrued:k(t), lastBreakEnd:null, rechargedOn:null, nudgeAt:null, snoozeAt:null }));

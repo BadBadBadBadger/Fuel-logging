@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-10 (session 15). **Jest 213/213 · sw v67 · `main` — LIVE.**
+**Updated:** 2026-08-11 (session 16). **Jest 220/220 · Playwright 38/38 · sw v68 · `main` — LIVE.**
 
 > ## ▶ START HERE
 >
@@ -8,10 +8,21 @@
 > Pages, including the auto-lowering fix that closes the original harm. Rollback tag:
 > **`pre-energy-safety`**. `cut_break_load` is run on Supabase. File 05 is **SHELVED** (see below).
 >
-> **The one job left is to test it on the phone: `DEVICE-TEST.md`.** Fully close and reopen the PWA
-> first or you're still on v56. One open question is parked in that file — whether *"Below your resting
-> metabolism"* should become a one-time acknowledgement, since it currently shows for every sedentary
-> cutter forever.
+> **Session 16 added a Playwright UI suite: `npm run test:ui`.** It covers all of `DEVICE-TEST.md`
+> Part B in about twenty seconds — the cut bar, the break, the guard, the stall, the auto-lowering
+> card — plus the Quick Add fix and a render/theme smoke pass. **`PLAYWRIGHT-PLAN.md` is its live
+> status doc.** Run it before testing by hand; it is far cheaper to find a break there.
+>
+> **The one job left is still to test it on the phone: `DEVICE-TEST.md`.** The suite cannot tell you
+> anything about *this device* — iOS Safari, PWA install, service-worker cycling, haptics. Fully close
+> and reopen the PWA first or you're still on an old bundle. One open question is parked in that file
+> — whether *"Below your resting metabolism"* should become a one-time acknowledgement, since it
+> currently shows for every sedentary cutter forever.
+>
+> ⚠️ **Never sign in for real on `preview.html`.** A faked clock plus a real account wrote
+> future-dated `food_logs` to Supabase once, and they were waiting when the real date arrived. This is
+> now enforced in code — no Supabase client and no Google Identity on the harness, and `sb()` refuses
+> whenever `dev_date_offset` is set. Use the 🔓 **Premium** toggle in the toolbar instead.
 >
 > ⚠️ **Reminder learned the hard way, again, on 2026-08-09:** running the *whole* schema file against
 > the live database fails on `CREATE POLICY` (42710) and the single-transaction rollback silently
@@ -31,6 +42,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 | Product behaviour / changelog | `DOCS.md` §37 |
 | Legal, privacy, deploy checklist | `LEGAL_ROADMAP.md` |
 | Known bugs & severities | `ARCHITECTURE_REVIEW.md` |
+| Writing or running UI tests | `PLAYWRIGHT-PLAN.md` — coverage, status, and the traps |
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
@@ -58,11 +70,18 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 ## Where the code is
 
-`main` @ `270d76c` is what is **live on Pages** (sw **v66**) — the whole energy-safety workstream,
-Steps 1–5, merged and deployed 2026-08-10. Rollback tag **`pre-energy-safety`** is the state before it
-(`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch `energy-safety-bmr-floor` is now
-merged and can be deleted once the device test passes. **Deployed ≠ verified** — nothing here has been
-used on a real phone yet; that's `DEVICE-TEST.md`.
+`main` @ `f08966c` is what is **live on Pages** (sw **v68**) — the whole energy-safety workstream
+(Steps 1–5, deployed 2026-08-10) plus the Quick Add fix deployed 2026-08-11. Rollback tag
+**`pre-energy-safety`** is the state before the workstream (`88a283a`, sw v56, the BMR×1.2 maintenance
+floor alone). The branch `energy-safety-bmr-floor` is merged and can be deleted once the device test
+passes.
+
+Commits after `f08966c` are **test-only and not deployed** — the Playwright suite, the harness
+changes, and these docs. They change nothing a user sees.
+
+**Deployed ≠ verified on a device.** The UI suite now covers Part B of `DEVICE-TEST.md`, so the
+behaviour is verified in a real browser — but nothing here has been used on a real *phone*, and the
+suite cannot speak to iOS Safari, PWA install, service-worker cycling or haptics.
 
 | Step | What changed | State |
 |---|---|---|
@@ -103,6 +122,18 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 ---
 
 ## Right now
+
+**Session 16 fixed Quick Add and built a UI test layer.** The "Reset to defaults" button that wiped a
+whole meal library on one tap is gone, deletes now propagate to the cloud instead of silently
+resurrecting, and a one-time revive restores what the button wiped (`DOCS.md` §37). Deployed as
+sw **v68**. Then: **38 Playwright tests** through the preview harness, covering all of Part B plus a
+render/theme smoke pass — see **`PLAYWRIGHT-PLAN.md`**.
+
+That run found **no production bugs**, but three defects worth knowing: the harness never applied a
+saved theme (it had borrowed `index.html`'s CSS but not its theme init — *fixed*); `DEVICE-TEST.md`
+seeded a **UTC** day key while the app reads a **local** one, which silently mis-seeds between 00:00
+and 00:59 BST (*fixed*); and its B6 fixture cleared the stall check's history requirement by exactly
+one weigh-in (*fixed, now 30 days*).
 
 **Session 15 shipped the whole workstream.** Built file 03, rewrote and built file 04, shelved 05,
 merged to `main` and deployed. Jest **213/213**, sw **v65**. The remaining job is `DEVICE-TEST.md`.

@@ -1398,6 +1398,34 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### Quick Add: the reset button is gone, and a UI test suite exists (Aug 2026)
+A faint dashed **"Reset to defaults"** button sat at the foot of Quick Add and replaced your entire
+meal library on a single tap — no confirmation, no undo. A destructive action dressed as a footnote.
+It is removed. Removing a meal is the in-line 🗑️ on each row, as intended. Jest **220/220**,
+Playwright **38/38**, sw `v67→v68`. No DB change.
+- **A one-time revive puts back what the button wiped.** Cloud sync only ever upserted, so the meals
+  the reset appeared to destroy were still rows in `meal_library` — it hid them, it never deleted
+  them. The revive unions the local list with those rows and pushes the union back up, so the
+  background pull returns the same list instead of undoing the merge. With no cloud copy it rebuilds
+  from every meal ever logged, deduped by name. It runs once, and declines to spend that one attempt
+  on a launch that cannot reach Supabase.
+- **Deleting a meal now actually deletes it.** `syncMeals` only upserted, so a deleted meal stayed in
+  the table and returned on the next pull — the delete button silently undid itself. `syncMealDelete`
+  removes the row by `(user_id, name)`, and renaming a meal in the editor retires the old name rather
+  than orphaning it.
+- **A Playwright UI layer now exists** (`npm run test:ui`), driven through the preview harness. The
+  Jest suite never imported `app.jsx` — it mirrors the logic — so it is structurally blind to
+  rendering, and both bugs that reached a device in the previous release were render bugs. Coverage
+  and status: **`PLAYWRIGHT-PLAN.md`**.
+- **The harness can no longer reach the cloud.** A faked clock plus a real account had already
+  corrupted live data once, by writing future-dated `food_logs` that were waiting when the real date
+  arrived. `preview.html` now creates no Supabase client and loads no Google Identity, and `sb()`
+  returns `null` whenever `dev_date_offset` is set — which also covers `index.html` on localhost,
+  since it shares an origin with the harness. A 🔓 Premium toggle replaces signing in.
+- **The harness applies a saved theme on load.** It had borrowed `index.html`'s CSS but not its
+  flash-free theme init, so the switcher appeared to work and then forgot on reload — showing theme
+  behaviour the real app does not have.
+
 ### Energy Step 5c — the auto-lowering fix: the app can't talk you into under-eating (Aug 2026)
 The app guesses what you burn, then corrects that guess against the scale each week. Good idea, one
 blind spot — and it's the one that caused the harm this workstream exists to answer. **The scale going
