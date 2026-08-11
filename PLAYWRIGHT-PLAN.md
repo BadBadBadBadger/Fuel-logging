@@ -6,7 +6,7 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 40 tests · 40 passing · runtime ~22s · last updated 2026-08-11
+**Current:** 46 tests · 46 passing · runtime ~26s · last updated 2026-08-11
 **Plan items 15–29 are all complete.** Jest 220/220 alongside, unchanged.
 
 | | |
@@ -31,6 +31,11 @@ npx playwright test --grep "Cut mid-break"     # one scenario
 Screenshots land in `e2e/screenshots/` (gitignored), one per scenario. Playwright starts
 `dev-server.js` itself — nothing to run first.
 
+**Screenshots capture the phone, not the page.** `shot(page, name)` targets the `.phone` element,
+stretches `#app-shell` so nothing is clipped at 844px, then measures where the content actually ends
+and crops to it. Measuring *every* element instead of only the ones that paint something doesn't
+work: the empty log container expands to fill whatever height it's given, so the crop never tightens.
+
 ---
 
 ## Why this layer exists
@@ -43,7 +48,7 @@ empty install. 213 green unit tests said nothing about either.
 | Layer | Owns | Where |
 |---|---|---|
 | Jest mirrors | thresholds, `calcTargets`, drain arithmetic | `__tests__/logic.test.js` (220) |
-| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (40) |
+| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (46) |
 | Real device | iOS Safari, PWA install, SW cycling, haptics, real auth | `DEVICE-TEST.md` |
 
 **Rule: never assert the same thing in two layers.** If a number is already pinned in Jest, the UI
@@ -174,6 +179,29 @@ wrong day under BST between 00:00 and 00:59 and pass against a screen that was n
 > The remaining mile is a one-time manual check: **`DEVICE-TEST.md` Part B2**. Any test that claims
 > more than this is lying, and a hand-written fake would only ever confirm my own model of the schema.
 
+### Suite: `weigh-ins.spec.js` — two months of weigh-ins (item 28)
+
+Two 60-day runs differing only in what the scale did. **B is the important one** — it is the shape of
+the original harm: a long deficit walking the target down.
+
+| # | Scenario | Status |
+|---|---|---|
+| 28a | Losing steadily reads as ordinary progress, nothing alarming said | ✅ |
+| 28b | A fresh weigh-in is accepted and the trend takes it | ✅ |
+| 28c | Two flat months: a break is recommended, blamelessly | ✅ |
+| 28d | The target is **not** ground down by two months of disappointment | ✅ |
+| 28e | The target stays above the safe floor, not merely unchanged | ✅ |
+| 28f | At Maintain the same evidence **is** acted on — the control | ✅ |
+
+> **28f is what makes 28d mean anything.** An adjustment that never fires looks identical to one
+> deliberately refused. Both seed the same 60 days of eating ~500 kcal under maintenance against a
+> scale that never moves; only the declared mode differs. At Maintain the adjustment must move
+> **down** — proving the cutting case is an active refusal, not an inert loop.
+>
+> Getting there needed a real `historySpec`: `runCalibration` returns `null` unless at least four of
+> the last seven days carry logged intake (`app.jsx:489`), so an earlier version of 28d ran with no
+> food history, never invoked the loop at all, and passed while proving nothing.
+
 ### Suite: `smoke.spec.js` — Part A
 
 | # | Scenario | Status |
@@ -215,7 +243,7 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 
 | # | Scenario | Status |
 |---|---|---|
-| 28 | Weigh in — accepted, trend updates, no scary messaging | ⬜ **not written** — lives behind the profile screen, needs more navigation than the rest |
+| 28 | Two months of weigh-ins: losing vs stalled, and the target holds | ✅ 2026-08-11 (6 tests) |
 
 ### Needs a human, not a test
 

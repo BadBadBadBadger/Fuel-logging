@@ -42,9 +42,9 @@ const daysAgo = n => `@-${n}d`;
  * that crosses midnight can't seed a series that ends yesterday.
  */
 async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium,
-    meals, history, extra } = {}) {
+    meals, history, historySpec, extra } = {}) {
   await page.addInitScript(
-    ({ profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, extra,
+    ({ profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, historySpec, extra,
        keyExpr }) => {
       // Seed ONCE per page context, not once per navigation. addInitScript re-runs on every
       // load, so without this guard a page.reload() would clear storage and re-apply the seed —
@@ -61,6 +61,25 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
       if (profile) localStorage.setItem("profile", JSON.stringify(profile));
       if (meals)   localStorage.setItem("meals", JSON.stringify(meals));
       if (history) localStorage.setItem("history", JSON.stringify(history));
+      // Daily snapshots of logged intake. runCalibration needs at least FOUR days with kcal > 0
+      // in the last seven or it returns null before measuring anything (app.jsx:489) — so without
+      // this the adaptive loop never runs and any test of it passes vacuously. `mode` per day is
+      // also what the asymmetry guard reads to decide "was I cutting" (app.jsx:529).
+      if (historySpec) {
+        const { days, kcal, mode: dayMode = "cut", endDaysAgo = 0 } = historySpec;
+        const off = parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
+        const fmt = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+          "-" + String(d.getDate()).padStart(2, "0");
+        const snaps = [];
+        for (let i = days - 1; i >= 0; i--) {
+          const d = new Date(Date.now() + off * 86400000 - (i + endDaysAgo) * 86400000);
+          const date = fmt(d);
+          snaps.push({ date, mode: dayMode, kcal, protein: 180, carbs: 200, fat: 70,
+            training: false, water: 6, logs: [] });
+          localStorage.setItem("mode__" + date, dayMode);
+        }
+        localStorage.setItem("history", JSON.stringify(snaps));
+      }
       if (extra)   for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, v);
       if (cutBlock) {
         // Pin accrual to today, or the daily accrual effect advances the very state under test.
@@ -80,13 +99,16 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
       if (mode)     localStorage.setItem("mode__" + todayKey, mode);
       if (weighIns) localStorage.setItem("weighins", JSON.stringify(weighIns));
       if (weighInsSpec) {
-        const { days, startWeight, perDay } = weighInsSpec;
+        // endDaysAgo shifts the whole series back. Use 1 when the test needs to LOG a weigh-in:
+        // the widget hides its input once today already has an entry (`todayEntry`, app.jsx:2512),
+        // which is correct behaviour and makes the field unfillable if the series ends today.
+        const { days, startWeight, perDay, endDaysAgo = 0 } = weighInsSpec;
         const off = parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
         const fmt = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
           "-" + String(d.getDate()).padStart(2, "0");
         const series = [];
         for (let i = days - 1; i >= 0; i--) {
-          const d = new Date(Date.now() + off * 86400000 - i * 86400000);
+          const d = new Date(Date.now() + off * 86400000 - (i + endDaysAgo) * 86400000);
           series.push({ date: fmt(d), weight: Math.round((startWeight + (days - 1 - i) * perDay) * 100) / 100 });
         }
         localStorage.setItem("weighins", JSON.stringify(series));
@@ -110,7 +132,7 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
         }));
       }
     },
-    { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, extra,
+    { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, historySpec, extra,
       keyExpr: TODAY_KEY_EXPR }
   );
 }
@@ -120,6 +142,54 @@ async function open(page, state = {}) {
   await seed(page, { profile: PROFILE, ...state });
   await page.goto("/preview.html");
   await expect(page.locator("#root")).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Screenshot the phone, not the page.
+ *
+ * A plain page.screenshot() captures the whole harness viewport: the phone sits in the top-left
+ * and the rest is flat background. Targeting the .phone element crops to the device.
+ *
+ * `full: true` first stretches #app-shell to its own scrollHeight, so content below the fold is
+ * captured in one image instead of being clipped at 844px — then puts the height back. That is
+ * what makes a whole dashboard (trend chart, target, cards) legible in a single shot.
+ */
+async function shot(page, name, { full = true } = {}) {
+  let restore = null;
+  if (full) {
+    restore = await page.evaluate(() => {
+      const shell = document.getElementById("app-shell");
+      if (!shell) return null;
+      const prev = { height: shell.style.height, overflow: shell.style.overflowY };
+
+      // Two passes. Stretch to scrollHeight first so everything lays out, THEN measure where the
+      // content actually ends and shrink to that. scrollHeight alone trails a long band of empty
+      // background, because the app's containers keep filling the space they're given.
+      shell.style.overflowY = "visible";
+      shell.style.height = shell.scrollHeight + "px";
+
+      // Measure only elements that actually RENDER something — leaves carrying text, and images.
+      // Measuring every element instead catches the empty log container, which stretches to fill
+      // whatever height it is given, so the crop never tightens no matter how tall the shell is.
+      const top = shell.getBoundingClientRect().top;
+      const bottom = [...shell.querySelectorAll("*")].reduce((max, el) => {
+        const paints = (el.childElementCount === 0 && el.textContent.trim() !== "") ||
+                       el.tagName === "IMG" || el.tagName === "SVG" || el.tagName === "CANVAS";
+        if (!paints) return max;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? Math.max(max, r.bottom) : max;
+      }, 0);
+      if (bottom > top) shell.style.height = Math.ceil(bottom - top + 40) + "px";
+      return prev;
+    });
+  }
+  await page.locator(".phone").screenshot({ path: `e2e/screenshots/${name}.png` });
+  if (restore) {
+    await page.evaluate(prev => {
+      const shell = document.getElementById("app-shell");
+      if (shell) { shell.style.height = prev.height; shell.style.overflowY = prev.overflow; }
+    }, restore);
+  }
 }
 
 /** The app's own stored mode for today — the promise a mode-changing button makes. */
@@ -170,5 +240,5 @@ const sbCalls = page => page.evaluate(() => window.__sbCalls);
 const sbCallsFor = async (page, table) =>
   (await sbCalls(page)).filter(c => c.table === table);
 
-module.exports = { seed, open, storedMode, installSbRecorder, sbCalls, sbCallsFor,
+module.exports = { seed, open, storedMode, shot, installSbRecorder, sbCalls, sbCallsFor,
   PROFILE, TODAY, daysAgo, TODAY_KEY_EXPR };
