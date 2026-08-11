@@ -1,9 +1,9 @@
-# Device test — the energy-safety release (sw v68)
+# Device test — the energy-safety release (sw v70)
 
 **One-time checklist for the 2026-08-10 go-live.** Delete this file once it's done; it is not a
 living doc. Everything durable lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
-**Live as of:** `main`, service worker **v68** (the Quick Add fix of 2026-08-11 shipped on top of the
+**Live as of:** `main`, service worker **v70** (the Quick Add, weigh-in reporting and AI follow-up fixes of 2026-08-11 shipped on top of the
 energy-safety release). Rollback tag: **`pre-energy-safety`**.
 
 > ### Before anything else
@@ -12,7 +12,7 @@ energy-safety release). Rollback tag: **`pre-energy-safety`**.
 > below doesn't match, you're testing the old code and everything after this is meaningless.
 >
 > To check: Settings → scroll to the bottom, or in Chrome devtools console:
-> `caches.keys().then(console.log)` → expect `fuel-log-v68`.
+> `caches.keys().then(console.log)` → expect `fuel-log-v70`.
 
 > ### Part B is now automated — run it before you run it by hand
 > `npm run test:ui` covers B1–B6 in about twenty seconds, in a real browser, and re-runs any time.
@@ -58,6 +58,24 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [ ] Voice/photo capture → the optional follow-up questions flow
 - [ ] **⚐ Report wrong** opens a prefilled email
 - [ ] **+ Log all** puts everything into today's food
+
+### New in v69–v70 — never yet seen on a phone
+
+The follow-up questions were reported as unanswerable in real use (*"how big was your ketchup — a
+fist?"*). These check the fix on real AI output rather than a test fixture, which is the part no
+test can reach.
+
+- [ ] Log something with a **drink** in it (e.g. *"chicken salad and a pint of milk"*). If it asks
+      about the milk, the sizes are **glasses / pint** — never fists
+- [ ] Log something with a **sauce or spread** big enough to matter (e.g. *"two slices of toast with
+      a lot of peanut butter"*). Sizes are **teaspoon / tablespoon / several spoonfuls**
+- [ ] Log something with a **trivial condiment** (e.g. *"burger with ketchup"*). You are **not**
+      asked about the ketchup at all
+- [ ] Nothing asks *"any oil or butter on the…"* about a drink
+- [ ] **Weigh in while cutting on a flat-scale stretch.** The weight card should say the scale
+      *disagrees* with the estimate and that your target is **not** being lowered — not "your logged
+      results match the estimate". (Needs a real stall; B6 below shows the same card seeded.)
+- [ ] The stall card, when it appears, quotes a **believable number of weeks** — not always "three"
 
 ---
 

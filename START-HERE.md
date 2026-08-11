@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-11 (session 16). **Jest 220/220 · Playwright 38/38 · sw v68 · `main` — LIVE.**
+**Updated:** 2026-08-11 (session 16). **Jest 236/236 · Playwright 57/57 · sw v70 · `main` — LIVE.**
 
 > ## ▶ START HERE
 >
@@ -70,14 +70,18 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 ## Where the code is
 
-`main` @ `f08966c` is what is **live on Pages** (sw **v68**) — the whole energy-safety workstream
-(Steps 1–5, deployed 2026-08-10) plus the Quick Add fix deployed 2026-08-11. Rollback tag
-**`pre-energy-safety`** is the state before the workstream (`88a283a`, sw v56, the BMR×1.2 maintenance
-floor alone). The branch `energy-safety-bmr-floor` is merged and can be deleted once the device test
-passes.
+`main` @ `efad462` is what is **live on Pages** (sw **v70**), deployed 2026-08-11: the whole
+energy-safety workstream (Steps 1–5), the Quick Add fix, the weigh-in reporting fix, and the AI
+capture follow-up fix. Rollback tag **`pre-energy-safety`** is the state before the workstream
+(`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch `energy-safety-bmr-floor` is
+merged and can be deleted once the device test passes.
 
-Commits after `f08966c` are **test-only and not deployed** — the Playwright suite, the harness
-changes, and these docs. They change nothing a user sees.
+**Three user-visible changes went out in v69–v70 and none has been seen on a phone yet:**
+1. The weight card no longer says *"your logged results match the estimate"* when it has in fact
+   refused to lower the target — it now says the scale disagrees, and why.
+2. The stall card reports how long the scale has really been flat, not a fixed "three weeks".
+3. AI capture asks portion questions in units the food has (glasses / spoons / hand sizes) and
+   never asks about an item under 75 kcal.
 
 **Deployed ≠ verified on a device.** The UI suite now covers Part B of `DEVICE-TEST.md`, so the
 behaviour is verified in a real browser — but nothing here has been used on a real *phone*, and the
