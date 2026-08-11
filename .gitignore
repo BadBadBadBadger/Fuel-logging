@@ -1,3 +1,9 @@
 node_modules/
 /recharts.js
 fuel-log-pwa.zip
+
+# Playwright UI tests
+e2e/screenshots/
+e2e/.artifacts/
+playwright-report/
+test-results/

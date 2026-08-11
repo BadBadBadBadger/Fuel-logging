@@ -178,8 +178,9 @@
   </script>
 
   <!-- App dependencies (same as index.html) -->
-  <script src="vendor/supabase.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Neither the Supabase SDK nor Google Identity is loaded here — see "No cloud from the
+       harness" below. Real sign-in belongs on a real device (DEVICE-TEST.md), never on a page
+       that can fake the date. Use the 🔓 Premium toggle to view gated UI. -->
   <script src="vendor/react.js"></script>
   <script src="vendor/react-dom.js"></script>
   <script src="vendor/prop-types.js"></script>
@@ -196,6 +197,8 @@
     <button onclick="document.getElementById('app-shell').scrollTop=0; location.reload()">⟳ Reload</button>
     <span class="label" style="margin-left:6px">|</span>
     <button onclick="if(window.seedFuelLog){seedFuelLog();setTimeout(()=>location.reload(),300)}else{alert('seed-data.js not loaded')}" title="Populate 6 months of realistic data">⚡ Seed Data</button>
+    <span class="label" style="margin-left:6px">|</span>
+    <button id="premium-toggle" onclick="togglePremium()" title="Unlock premium UI locally — no Google sign-in, no cloud writes">🔓 Premium</button>
   </div>
 
   <div class="main-row">
@@ -249,13 +252,19 @@
       delete: async k => { localStorage.removeItem(k); return { deleted: true }; },
     };
 
-    // Supabase client (same as index.html)
-    try {
-      window.supabaseClient = supabase.createClient(
-        'https://hvohicddolqpcgzgrbwc.supabase.co',
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2b2hpY2Rkb2xxcGNnemdyYndjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDI4NTIsImV4cCI6MjA5MjcxODg1Mn0.NS5cRD-CHLV6_I9BiNmH-tN4kicbgXBh4gb_xl-65fY'
-      );
-    } catch(e) { window.supabaseClient = null; }
+    // ── No cloud from the harness. Ever. ─────────────────────────────────────
+    // Deliberately NOT a Supabase client. The harness can fake the calendar, and a real
+    // account plus a fake date is a data-corruption machine: signing in here on a future
+    // date once wrote future-dated food_logs to Supabase, and when the real date arrived
+    // the rows were already sitting there and wrecked that day's logging.
+    //
+    // So the harness is sealed at the source — no client, and the Google Identity script
+    // is not loaded either, so the sign-in button has nothing to call. Use 🔓 Premium to
+    // look at gated UI. To exercise real sync or a real sign-in, use the deployed app on
+    // your phone via DEVICE-TEST.md, never this page.
+    //
+    // app.jsx has its own backstop: sb() refuses whenever dev_date_offset is non-zero.
+    window.supabaseClient = null;
 
     // Expose globals the app expects
     window.useState  = React.useState;
@@ -341,8 +350,52 @@
       if (window.__devRefreshCoach) window.__devRefreshCoach();
     }
 
+    // ── Dev premium unlock ───────────────────────────────────────────────────
+    // Flips the client into its premium state without a Google sign-in, so gated UI can be
+    // looked at (and driven by the e2e suite) locally.
+    //
+    // `id` is deliberately null. Every sync path in app.jsx is guarded on `authUser?.id`, so a
+    // null id unlocks the interface while touching nothing in Supabase — no writes under a bogus
+    // user, no pull that could overwrite real rows. Consent is pre-recorded at the current policy
+    // version, or the retroactive consent gate would block the screen you came to look at.
+    //
+    // This lives in preview.html ONLY. It is not in index.html and must never be: entitlement is
+    // server-authoritative, so this unlocks the interface, not the account. Worker-backed features
+    // (AI capture) will still be refused by the worker — correctly. Anything requiring a real JWT
+    // has to be tested signed in.
+    const DEV_POLICY_VERSION = "1.2"; // keep in step with POLICY_VERSION in app.jsx:169
+
+    function isPremiumFaked() {
+      return localStorage.getItem("auth_state") === "premium";
+    }
+
+    function togglePremium() {
+      if (isPremiumFaked()) {
+        ["auth_state", "auth_user", "health_consent"].forEach(k => localStorage.removeItem(k));
+      } else {
+        localStorage.setItem("auth_state", "premium");
+        localStorage.setItem("auth_user", JSON.stringify({
+          id: null, name: "Dev Preview", email: "dev@localhost", picture: "",
+          grantedBy: "dev-harness", subExpiry: null, since: Date.now(),
+        }));
+        localStorage.setItem("health_consent", JSON.stringify({
+          version: DEV_POLICY_VERSION, policyVersion: DEV_POLICY_VERSION,
+          agreedAt: new Date().toISOString(), source: "dev-harness",
+        }));
+      }
+      location.reload();
+    }
+
+    function updatePremiumButton() {
+      const btn = document.getElementById("premium-toggle");
+      if (!btn) return;
+      const on = isPremiumFaked();
+      btn.textContent = on ? "🔒 Premium ON" : "🔓 Premium";
+      btn.classList.toggle("active", on);
+    }
+
     // Show current state on load
-    window.addEventListener("load", updateDisplays);
+    window.addEventListener("load", () => { updateDisplays(); updatePremiumButton(); });
   </script>
 
   <!-- Seed helper (dev only) -->

@@ -816,7 +816,17 @@ const parseJwt = token => {
 const haptic = (ms = 35) => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e) {} };
 
 // ── Supabase cloud sync ───────────────────────────────────────
-const sb = () => window.supabaseClient;
+// A faked clock must never reach the cloud. Learned the hard way: signing in for real while the
+// preview harness sat on a future date wrote future-dated food_logs to Supabase, and when the
+// real date caught up those rows were already there and corrupted that day's logging.
+//
+// Every cloud path in this file goes through sb(), so refusing here closes all of them at once —
+// writes, pulls and sign-in alike. Each call site either checks !sb() or sits inside a try/catch,
+// so returning null degrades to a no-op rather than throwing.
+//
+// dev_date_offset is only ever set by preview.html, so this is inert in production. It also covers
+// index.html on localhost, which shares an origin — and therefore the offset — with the harness.
+const sb = () => (getDevDateOffset() !== 0 ? null : window.supabaseClient);
 
 const syncUpsert = async (table, rows, conflict) => {
   if (!sb() || !rows?.length) return;
