@@ -6,7 +6,7 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 15 tests · 15 passing · runtime ~11s · last updated 2026-08-11
+**Current:** 18 tests · 18 passing · runtime ~12s · last updated 2026-08-11
 
 | | |
 |---|---|
@@ -102,12 +102,19 @@ wrong day under BST between 00:00 and 00:59 and pass against a screen that was n
 > `localStorage.clear()`, so auth seeded by an earlier `addInitScript` was wiped before the app
 > read it.
 
-### Suite: `energy-safety.spec.js` — DEVICE-TEST B2
+### Suite: `energy-safety.spec.js` — DEVICE-TEST B1 + B2
 
 | # | Scenario | Status |
 |---|---|---|
 | 5 | The soft nudge appears; starting a break needs no confirmation | ✅ |
 | 6 | A fresh install says nothing about breaks at all | ✅ |
+| 16a | Mid-cut the bar fills, labelled in real weeks | ✅ |
+| 16b | The fill is partial — neither empty nor complete | ✅ |
+| 16c | Below the soft threshold the bar carries no advice of its own | ✅ |
+
+> **Week counts are pinned to relative dates** (`daysAgo(70)` → always WEEK 10). A hard-coded start
+> would drift by one week every seven days and fail on an arbitrary Tuesday. 16a also asserts the bar
+> never shows the two numbers it could plausibly confuse for weeks: the load (20) and the fill (36%).
 
 ### Suite: `cut-break.spec.js` — DEVICE-TEST B3 + B4
 
@@ -138,8 +145,8 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 | # | Scenario | Maps to | Status |
 |---|---|---|---|
 | 15 | Rework #3 into a genuine differential sync test | guardrail | ✅ **done 2026-08-11** |
-| 16 | Mid-cut the bar fills, labelled in real weeks | B1 | 🔄 **next** |
-| 17 | Weight up while cutting: the card appears, and the target is **not** lowered | B5 | ⬜ |
+| 16 | Mid-cut the bar fills, labelled in real weeks | B1 | ✅ **done 2026-08-11** (3 tests) |
+| 17 | Weight up while cutting: the card appears, and the target is **not** lowered | B5 | 🔄 **next** |
 | 18 | The same evidence at Maintain **is** acted on | §5.4 | ⬜ |
 | 19 | The stall nudge, with blameless copy and no "eat less" | B6 | ⬜ |
 
@@ -176,6 +183,34 @@ The `sw v68` fix went live with Jest coverage of the merge logic only. Nothing v
 | 🚫 PWA install, SW cycling | no service worker on the harness by design | device only |
 | 🚫 Haptics | no API in headless Chromium | device only |
 | 🚫 Threshold arithmetic | already owned by Jest | `__tests__/logic.test.js` |
+
+---
+
+## 🗄️ Shelved — the UI-audit rig (idea, 2026-08-11)
+
+**Parked deliberately, not forgotten.** Idea: reuse `e2e/harness.js` to render a **state matrix** to
+disk (`npm run audit:shots`), then review it wearing the design hat — and, separately, the launch hat
+for store assets. The value is that the harness can manufacture states no reviewer ever reaches by
+hand: week 15 of a cut, on-a-break day 7, recharged, stalled, weight-up-while-cutting, low-fuel,
+over-budget, premium vs free, first-run. Reading `app.jsx` is guessing at pixels; a contact sheet is
+evidence. It would also settle the `DEVICE-TEST.md` open question about whether *"Below your resting
+metabolism"* is permanent wallpaper.
+
+Alongside it, a **machine-checkable lint pass** — contrast against the cream-theme rules, tap targets
+under 44px, overflow and clipping, `axe-core` — which is pass/fail and needs no persona at all.
+
+**Three things to re-read before anyone builds this:**
+
+1. **The harness clips the app to a fixed 390px `#app-shell`.** The device buttons resize that div,
+   not the browser viewport, so Playwright's device descriptor does **not** drive the app's layout. A
+   real responsive audit must point at `index.html` and drive the actual viewport — otherwise it
+   audits one width three times while appearing to test three.
+2. **Chromium only.** Fine for an Android-first review; actively misleading for App Store assets.
+3. **No baselines.** Screenshots are for eyes, not diffed. Visual regression means committing to and
+   maintaining a baseline set — likely overkill at n=1.
+
+The rig is the instrument; the personas still do the reading. Not scheduled — revisit when the
+functional suite below is done.
 
 ---
 

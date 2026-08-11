@@ -20,8 +20,15 @@ const TODAY_KEY_EXPR = `(() => {
 
 const PROFILE = { weight: 98.5, height: 178, bodyFat: 22, activity: "light", sex: "male" };
 
-/** A cut_block with `lastAccrued: "@today"` gets today's real key substituted in the page. */
+/**
+ * Date sentinels substituted in the page when seeding a cut_block:
+ *   "@today"  → today's key
+ *   "@-70d"   → 70 days before today
+ * Relative dates keep week counts deterministic — a hard-coded start date would make
+ * "CUTTING · WEEK 10" drift by one every seven days and fail on an arbitrary Tuesday.
+ */
 const TODAY = "@today";
+const daysAgo = n => `@-${n}d`;
 
 /**
  * Seed localStorage before any app script runs. addInitScript is essential — the app reads
@@ -38,7 +45,16 @@ async function seed(page, { profile, cutBlock, mode, weighIns, dayOffset, premiu
       if (cutBlock) {
         // Pin accrual to today, or the daily accrual effect advances the very state under test.
         const b = { ...cutBlock };
-        for (const k of Object.keys(b)) if (b[k] === "@today") b[k] = todayKey;
+        const key = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+          "-" + String(d.getDate()).padStart(2, "0");
+        for (const k of Object.keys(b)) {
+          if (b[k] === "@today") { b[k] = todayKey; continue; }
+          const rel = typeof b[k] === "string" && b[k].match(/^@-(\d+)d$/);
+          if (rel) {
+            const off = parseInt(localStorage.getItem("dev_date_offset") || "0") || 0;
+            b[k] = key(new Date(Date.now() + off * 86400000 - rel[1] * 86400000));
+          }
+        }
         localStorage.setItem("cut_block", JSON.stringify(b));
       }
       if (mode)     localStorage.setItem("mode__" + todayKey, mode);
@@ -78,4 +94,4 @@ async function storedMode(page) {
   return page.evaluate(keyExpr => localStorage.getItem("mode__" + eval(keyExpr)), TODAY_KEY_EXPR);
 }
 
-module.exports = { seed, open, storedMode, PROFILE, TODAY, TODAY_KEY_EXPR };
+module.exports = { seed, open, storedMode, PROFILE, TODAY, daysAgo, TODAY_KEY_EXPR };

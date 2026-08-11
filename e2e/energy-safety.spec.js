@@ -6,13 +6,59 @@
 // see: whether the card renders, and what it says.
 
 const { test, expect } = require("@playwright/test");
-const { open, storedMode, TODAY } = require("./harness");
+const { open, storedMode, TODAY, daysAgo } = require("./harness");
 
 // load 56 sits past the soft threshold but short of the hard one — the nudge, not the warning.
 const MID_CUT_BLOCK = {
   start: "2026-05-01", load: 56, startWeight: 98.5, offRun: 0, breakLoad: 0,
   lastAccrued: TODAY, lastBreakEnd: null, rechargedOn: null, nudgeAt: null, snoozeAt: null,
 };
+
+// Ten weeks in, load 20: past the bar's minimum of 7 so the gauge speaks, well short of the
+// soft threshold of 56 so it has nothing to advise. Start is relative, so WEEK 10 never drifts.
+const EARLY_CUT_BLOCK = {
+  start: daysAgo(70), load: 20, startWeight: 98.5, offRun: 0, breakLoad: 0,
+  lastAccrued: TODAY, lastBreakEnd: null, rechargedOn: null, nudgeAt: null, snoozeAt: null,
+};
+
+test.describe("The cut bar while cutting", () => {
+  test("fills as the cut runs, labelled in real weeks", async ({ page }) => {
+    await open(page, { cutBlock: EARLY_CUT_BLOCK, mode: "cut" });
+
+    await expect(page.getByText("CUTTING · WEEK 10")).toBeVisible({ timeout: 15_000 });
+    // The two numbers it must never mistake for a week count: the load (20) and the fill (36%).
+    await expect(page.getByText(/CUTTING · WEEK (20|36)\b/)).toHaveCount(0);
+    // "days to fully recharged" belongs to the draining direction only.
+    await expect(page.getByText(/fully recharged/)).toHaveCount(0);
+
+    await page.screenshot({ path: "e2e/screenshots/b1-mid-cut.png" });
+  });
+
+  test("the fill is partial — neither empty nor complete", async ({ page }) => {
+    await open(page, { cutBlock: EARLY_CUT_BLOCK, mode: "cut" });
+    await expect(page.getByText("CUTTING · WEEK 10")).toBeVisible({ timeout: 15_000 });
+
+    // The inner fill div carries width:<pct>%. Read it rather than the computed style, so the
+    // assertion is about what the app asked for, not how Chromium rounded it.
+    const width = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("div")]
+        .find(d => /^\d+(\.\d+)?%$/.test(d.style.width) && d.style.borderRadius === "999px");
+      return el ? parseFloat(el.style.width) : null;
+    });
+    expect(width).toBeGreaterThan(0);
+    expect(width).toBeLessThan(100);
+  });
+
+  test("below the soft threshold the bar carries no advice of its own", async ({ page }) => {
+    // The bar never duplicates the nudge — at load 20 there is nothing to nudge about yet.
+    await open(page, { cutBlock: EARLY_CUT_BLOCK, mode: "cut" });
+    await expect(page.getByText("CUTTING · WEEK 10")).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.getByText(/YOU'VE BEEN CUTTING FOR/)).toHaveCount(0);
+    await expect(page.getByText(/YOUR LOSS HAS STALLED/)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start a 2-week break" })).toHaveCount(0);
+  });
+});
 
 test.describe("A long cut offers a diet break", () => {
   test("the soft nudge appears, and starting a break needs no confirmation", async ({ page }) => {
