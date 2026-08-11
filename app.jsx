@@ -940,6 +940,15 @@ const syncMeals = async (uid, meals) => {
     "user_id,name");
 };
 
+// Deletes are not covered by syncMeals — it only ever upserts, so a meal removed on
+// this device stayed in the table and came straight back on the next pull. Remove the
+// row by (user_id, name), the same pair the upsert conflicts on. Renaming a meal in the
+// editor orphans the old row the same way, so that path deletes the old name too.
+const syncMealDelete = async (uid, name) => {
+  if (!uid || !navigator.onLine || !sb() || !name) return;
+  try { await sb().from("meal_library").delete().eq("user_id", uid).eq("name", name); } catch(e) {}
+};
+
 const syncBadges = async (uid, keys) => {
   if (!uid || !navigator.onLine || !keys?.length) return;
   const now = new Date().toISOString();
@@ -1121,6 +1130,62 @@ const runMigrations = async () => {
   // Add future migrations here: if (v < 2) { ... }
 
   await ss("fuel_schema_v", String(SCHEMA_VERSION));
+};
+
+// ── Quick Add revive (one-time) ───────────────────────────────
+// A "Reset to defaults" button used to sit at the foot of Quick Add and overwrite the
+// whole meal list on one tap, with no confirm. It's gone as of v68, but it left lists
+// looking wiped. The meals are usually recoverable: cloud sync was upsert-only, so the
+// ones it hid are still rows in meal_library. Where there's no cloud copy to draw on,
+// every meal ever logged is still sitting in the local history.
+//
+// Union whatever is on the phone now with those sources, once, then push the union back
+// up — so the background pull that follows returns the same list instead of undoing it.
+// Runs a single time per device; after that, deletes are meant to stick.
+const REVIVE_KEY = "qa_revive_v68";
+
+const reviveMeals = async (uid, current) => {
+  if (await sg(REVIVE_KEY)) return null;
+  const byName = new Map();
+  const add = m => {
+    const name = (m?.name || "").trim();
+    const key  = name.toLowerCase();
+    if (!name || byName.has(key)) return;
+    byName.set(key, { name, kcal:Math.round(Number(m.kcal) || 0),
+      protein:Number(m.protein) || 0, carbs:Number(m.carbs) || 0, fat:Number(m.fat) || 0 });
+  };
+  (current || []).forEach(add);   // what's on the phone right now always wins on a clash
+  const before = byName.size;
+
+  // 1. The cloud library — the reset hid these rows, it never deleted them. For a signed-in
+  //    account this is the good restore, so don't spend the one attempt on a launch that
+  //    can't reach it: bail without marking done and try again next time. Otherwise a first
+  //    launch in a tunnel would quietly fall through to the rougher log rebuild for good.
+  if (uid) {
+    if (!navigator.onLine || !sb()) return null;
+    try {
+      const { data, error } = await sb().from("meal_library").select("*").eq("user_id", uid);
+      if (error) return null;
+      (data || []).forEach(add);
+    } catch(e) { return null; }
+  }
+  // 2. Only if the cloud had nothing to give: rebuild from everything ever logged.
+  //    Deliberately not run alongside a good cloud restore — a full log sweep drags in
+  //    every one-off entry, which is worth it to recover a lost list and not otherwise.
+  if (byName.size === before) {
+    try {
+      const hv = await sg("history");
+      for (const snap of (hv ? JSON.parse(hv) : []) || [])
+        for (const l of snap.logs || []) add(l);
+    } catch(e) {}
+  }
+
+  await ss(REVIVE_KEY, "1");
+  if (byName.size === before) return null;
+  const revived = [...byName.values()];
+  await ss("meals", JSON.stringify(revived));
+  if (uid) syncMeals(uid, revived).catch(() => {});
+  return revived;
 };
 
 // Current Supabase access token (JWT) — the worker requires it to authorise AI calls.
@@ -4188,13 +4253,17 @@ function AILog({ onAdd, onBack }) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremiumGate = () => {} }) {
+function QuickAdd({ onAdd, onBack, meals, setMeals, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const [search, setSearch] = useState("");
   const [modal, setModal]   = useState(null);
 
   const save = async m => { setMeals(m); await ss("meals", JSON.stringify(m)); };
   const handleSave = saved => {
-    if (modal.index != null) { const u = [...meals]; u[modal.index] = saved; save(u); }
+    if (modal.index != null) {
+      const u = [...meals]; u[modal.index] = saved; save(u);
+      // A rename writes a new row rather than moving the old one, so retire the old name.
+      if (modal.meal && modal.meal.name !== saved.name) onForget(modal.meal.name);
+    }
     else save([...meals, saved]);
     setModal(null);
   };
@@ -4227,7 +4296,7 @@ function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremium
             <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{m.kcal}</span>
             <button onClick={() => setModal({ meal:m, index:m._i })}
               style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>✏️</button>
-            <button onClick={() => { haptic(); save(meals.filter((_, i) => i !== m._i)); }}
+            <button onClick={() => { haptic(); save(meals.filter((_, i) => i !== m._i)); onForget(m.name); }}
               style={{ background:"none", border:"none", fontSize:15, padding:"4px 6px", flexShrink:0 }}>🗑️</button>
           </div>
         ))}
@@ -4235,11 +4304,6 @@ function QuickAdd({ onAdd, onBack, meals, setMeals, isPremium = false, onPremium
           <div style={{ textAlign:"center", color:"var(--text-faint-2)", padding:"30px 0", fontSize:14 }}>No meals found</div>
         )}
       </div>
-      <button onClick={() => { haptic(); save([...DEF_MEALS]); }}
-        style={{ marginTop:16, width:"100%", padding:"11px", background:"none",
-          border:`1px dashed var(--border)`, borderRadius:12, color:"var(--text-faint-2)", fontSize:12, fontFamily:"inherit" }}>
-        ↩ Reset to defaults
-      </button>
     </div>
   );
 }
@@ -4339,7 +4403,7 @@ function FoodSearch({ onAdd, onBack }) {
 
 const chartsAvailable = typeof ResponsiveContainer !== "undefined";
 
-function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEALS, setMeals = () => {}, isPremium = false, onPremiumGate = () => {} }) {
+function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -4430,7 +4494,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
     setAddCtx(null);
   };
 
-  if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onAdd={addEntry} onBack={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
+  if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onForget={onForget} onAdd={addEntry} onBack={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
   if (addCtx === "manual") return <MealForm onSave={addEntry} onCancel={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
   if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)}/>;
 
@@ -5010,7 +5074,8 @@ function App() {
       const wv = await sg("water__" + k); if (wv)  setWater(parseInt(wv) || 0);
       const mv = await sg("mode__"  + k); if (mv)  setMode(mv);
       const pv = await sg("profile");     if (pv)  { const pp = JSON.parse(pv); setProf(pp); setDietaryCache(pp.dietary); }
-      const mv2 = await sg("meals");      if (mv2) setMeals(JSON.parse(mv2));
+      let loadedMeals = [...DEF_MEALS];
+      const mv2 = await sg("meals");      if (mv2) { loadedMeals = JSON.parse(mv2); setMeals(loadedMeals); }
       const wkv = await sg("workouts__" + k); if (wkv) setWorkouts(JSON.parse(wkv));
       // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
       const prior = [];
@@ -5032,12 +5097,17 @@ function App() {
       // Auth — load premium state and check expiry
       const asv = await sg("auth_state");
       const auv = await sg("auth_user");
+      let premiumUid = null;
+      // The background pull below and the revive further down both write the meal list.
+      // The revive's is the union of the two, so it wins whichever order they land in.
+      const revive = { done: false };
       if (asv === "premium" && auv) {
         const u = JSON.parse(auv);
         if (u.subExpiry && Date.now() > u.subExpiry) {
           await ss("auth_state", "anonymous");
           setShowLapsed(true);
         } else {
+          premiumUid = u.id || null;
           setAuthState("premium");
           setAuthUser(u);
           // Retroactive consent guard (R2): premium users from before consent existed,
@@ -5052,7 +5122,7 @@ function App() {
               if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
               if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
               if (pulled.weighIns) setWeighIns(pulled.weighIns);
-              if (pulled.meals)    setMeals(pulled.meals);
+              if (pulled.meals && !revive.done) setMeals(pulled.meals);
               if (pulled.badges)   setEarnedBdgs(pulled.badges);
               if (pulled.settings) {
                 if (pulled.settings.mode)                 setMode(pulled.settings.mode);
@@ -5074,6 +5144,12 @@ function App() {
           }
         }
       }
+
+      // One-time recovery for lists the old "Reset to defaults" button wiped.
+      try {
+        const revived = await reviveMeals(premiumUid, loadedMeals);
+        if (revived) { revive.done = true; setMeals(revived); }
+      } catch(e) {}
 
       setReady(true);
     };
@@ -5206,6 +5282,13 @@ function App() {
     await ss("meals", JSON.stringify(updated));
     if (authState === "premium" && authUser?.id)
       syncMeals(authUser.id, updated).catch(() => {});
+  };
+
+  // Removing a meal has to reach the cloud too — saveMeals only upserts what's left,
+  // which would leave the deleted row behind to reappear on the next pull.
+  const forgetMeal = name => {
+    if (authState === "premium" && authUser?.id && name)
+      syncMealDelete(authUser.id, name).catch(() => {});
   };
 
   const addToQA = async entry => {
@@ -5657,9 +5740,9 @@ function App() {
           isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
+      {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}

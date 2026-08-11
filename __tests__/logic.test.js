@@ -2215,3 +2215,73 @@ describe("weight up while eating below maintenance — the explanation card", ()
     expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05).slice(0, 2), todayK, cutting: true })).toBe(false);
   });
 });
+
+// ── Quick Add revive — mirror of app.jsx reviveMeals' merge ───────────────────
+// The old "Reset to defaults" button overwrote the whole meal list on one tap. The
+// recovery unions what's on the phone with the cloud rows the reset only hid, falling
+// back to the log history when there is no cloud copy to draw on.
+const mergeRevive = (current, cloud, logged) => {
+  const byName = new Map();
+  const add = m => {
+    const name = ((m && m.name) || "").trim();
+    const key  = name.toLowerCase();
+    if (!name || byName.has(key)) return;
+    byName.set(key, { name, kcal: Math.round(Number(m.kcal) || 0),
+      protein: Number(m.protein) || 0, carbs: Number(m.carbs) || 0, fat: Number(m.fat) || 0 });
+  };
+  (current || []).forEach(add);
+  const before = byName.size;
+  (cloud || []).forEach(add);
+  if (byName.size === before) (logged || []).forEach(add);
+  if (byName.size === before) return null;
+  return [...byName.values()];
+};
+
+describe("Quick Add revive — putting back what the reset button wiped", () => {
+  const defaults = [{ name: "Banana (medium)", kcal: 89, protein: 1, carbs: 23, fat: 0 }];
+  const custom   = [{ name: "Nan's lasagne",   kcal: 640, protein: 38, carbs: 52, fat: 30 }];
+
+  test("a custom meal the reset hid comes back from the cloud", () => {
+    const out = mergeRevive(defaults, [...defaults, ...custom], []);
+    expect(out.map(m => m.name)).toContain("Nan's lasagne");
+    expect(out).toHaveLength(2);
+  });
+
+  test("what's on the phone now wins a name clash — a later edit is never undone", () => {
+    const edited = [{ name: "Nan's lasagne", kcal: 500, protein: 40, carbs: 40, fat: 20 }];
+    const stale  = [{ name: "Nan's lasagne", kcal: 640, protein: 38, carbs: 52, fat: 30 }];
+    // A cloud row that only repeats what's already here adds nothing, so nothing changes.
+    expect(mergeRevive(edited, stale, [])).toBeNull();
+    // But when the cloud does carry something new, the stale copy still loses the clash.
+    const out = mergeRevive(edited, [...stale, ...defaults], []);
+    expect(out.find(m => m.name === "Nan's lasagne").kcal).toBe(500);
+    expect(out).toHaveLength(2);
+  });
+
+  test("the same meal in different case is one meal, not two", () => {
+    const out = mergeRevive(custom, [{ name: "NAN'S LASAGNE", kcal: 640 }, ...defaults], []);
+    expect(out.filter(m => m.name.toLowerCase() === "nan's lasagne")).toHaveLength(1);
+  });
+
+  test("with no cloud copy it rebuilds from everything ever logged, deduped", () => {
+    const logged = [...custom, ...custom, { name: "Flat white", kcal: 120, protein: 6, carbs: 10, fat: 6 }];
+    const out = mergeRevive(defaults, [], logged);
+    expect(out.map(m => m.name).sort()).toEqual(["Banana (medium)", "Flat white", "Nan's lasagne"]);
+  });
+
+  test("a good cloud restore does NOT also drag in every one-off log entry", () => {
+    const logged = [{ name: "Airport sandwich", kcal: 450, protein: 20, carbs: 40, fat: 20 }];
+    const out = mergeRevive(defaults, [...defaults, ...custom], logged);
+    expect(out.map(m => m.name)).not.toContain("Airport sandwich");
+  });
+
+  test("nothing to add means nothing is touched", () => {
+    expect(mergeRevive(defaults, defaults, [])).toBeNull();
+    expect(mergeRevive(defaults, [], [])).toBeNull();
+  });
+
+  test("blank and whitespace names are skipped rather than saved", () => {
+    const out = mergeRevive(defaults, [{ name: "   " }, { name: "", kcal: 10 }, ...custom], []);
+    expect(out).toHaveLength(2);
+  });
+});
