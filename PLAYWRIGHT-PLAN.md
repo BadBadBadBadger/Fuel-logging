@@ -6,7 +6,7 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 46 tests · 46 passing · runtime ~26s · last updated 2026-08-11
+**Current:** 57 tests · 57 passing · runtime ~29s · last updated 2026-08-11
 **Plan items 15–29 are all complete.** Jest 220/220 alongside, unchanged.
 
 | | |
@@ -48,7 +48,7 @@ empty install. 213 green unit tests said nothing about either.
 | Layer | Owns | Where |
 |---|---|---|
 | Jest mirrors | thresholds, `calcTargets`, drain arithmetic | `__tests__/logic.test.js` (220) |
-| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (46) |
+| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (57) |
 | Real device | iOS Safari, PWA install, SW cycling, haptics, real auth | `DEVICE-TEST.md` |
 
 **Rule: never assert the same thing in two layers.** If a number is already pinned in Jest, the UI
@@ -202,6 +202,33 @@ the original harm: a long deficit walking the target down.
 > Getting there needed a real `historySpec`: `runCalibration` returns `null` unless at least four of
 > the last seven days carry logged intake (`app.jsx:489`), so an earlier version of 28d ran with no
 > food history, never invoked the loop at all, and passed while proving nothing.
+
+### Suite: `ai-followups.spec.js` — which questions get asked, and in what units
+
+| # | Scenario | Status |
+|---|---|---|
+| 30a | A condiment too small to matter is never asked about | ✅ |
+| 30b | An item big enough to matter still gets asked | ✅ |
+| 30c | The cooking-fat question is not asked about a drink | ✅ |
+| 31a | Solid food is asked in hand sizes | ✅ |
+| 31b | A drink is asked in glasses, never in fists | ✅ |
+| 31c | A sauce is asked in spoons, never in fists | ✅ |
+| 31d | An unrecognised food falls back to hand sizes | ✅ |
+| 31e | Answering a drink's portion rescales it by the glass factor | ✅ |
+
+> ### What these do NOT prove
+> The model's response is a **hardcoded fixture**, returned by `page.route`. These tests exercise
+> everything that runs *after* a response arrives — which items are worth a question, and the units
+> the question uses. They say nothing about whether the real model returns sensible `ask` codes or
+> good kcal, and they would stay green if it started returning nonsense.
+>
+> Two stubs are needed to reach that code, and neither contacts anything: a fake session token
+> (`callAI` refuses without one, `app.jsx:1269`) and the worker response itself. **This is not a
+> sign-in** — no real account, no request leaves the machine, and the no-cloud rule holds.
+>
+> Open Food Facts must be aborted in these tests. It runs in parallel and replaces an item when it
+> returns more confident, clearing `ask` as it does (`app.jsx:4062`) — left live it silently deletes
+> the follow-up under test.
 
 ### Suite: `smoke.spec.js` — Part A
 
