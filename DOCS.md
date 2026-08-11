@@ -1398,6 +1398,22 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### AI capture: follow-up questions you can actually answer (Aug 2026)
+Reported from real use: *"how big was your ketchup — a fist?"* Two defects, both in **which**
+questions get asked rather than in the estimate itself. Jest **236/236** (11 new), sw `v69→v70`.
+No DB change. AI capture remains `@wip` pending device verification and the `RATE_LIMIT` binding.
+- **Portion units now match the food.** There was one set of chips — *under a fist · a fist · two
+  fists+* — applied to everything. Hand sizes are a real coaching tool for solid food and meaningless
+  for anything poured or spooned, so the app was asking questions that could not be answered
+  honestly. The item name now selects the units offline and deterministically: **glasses** for
+  drinks (150ml / 250ml / pint), **spoons** for sauces, spreads and oils (tsp / tbsp / several),
+  **hand sizes** for solid food. Anything unrecognised falls back to hand sizes.
+- **Nothing under 75 kcal is asked about.** Follow-ups were ranked by `kcal × (100 − confidence)`
+  with no minimum, so in a weak field the least-bad candidate still reached the screen. At 75 kcal a
+  30% error is ~25 kcal — around 1% of a day's target, and inside the error of the estimate itself.
+- **The cooking-fat question is asked only about solid food.** *"Any oil or butter on the milk?"*
+  does not apply; the portion question carries the same information for those items.
+
 ### The weight card stops claiming agreement it doesn't have (Aug 2026)
 Two reporting defects found by the two-month weigh-in tests. Neither changed a calorie target — both
 made the app describe its own state wrongly, in the screen a stalled dieter reads most carefully.

@@ -1277,10 +1277,20 @@ const refineElement = (el, mode, factor, conf) => {
   return out;
 };
 
+const FOLLOWUP_MIN_KCAL = 75;
+
+const PORTION_KINDS = [
+  { kind: "drink", re: /\b(milk|juice|smoothie|shake|coffee|tea|latte|cappuccino|cola|coke|lemonade|squash|beer|lager|cider|wine|water|drink)\b/i },
+  { kind: "spoon", re: /\b(ketchup|mayo|mayonnaise|sauce|dressing|butter|oil|jam|marmalade|honey|syrup|spread|mustard|gravy|hummus|pesto|cream|yoghurt|yogurt)\b/i },
+];
+const portionKindOf = name => (PORTION_KINDS.find(p => p.re.test(name || "")) || {}).kind || "solid";
+
 const pickFollowups = items => (items || [])
-  .map((it, idx) => ({ idx, ask: it.ask, name: it.name,
+  .map((it, idx) => ({ idx, ask: it.ask, name: it.name, kcal: it.kcal || 0,
     impact: (it.kcal || 0) * (100 - (it.confidence || 0)) }))
   .filter(x => x.ask && FOLLOWUP_BANK[x.ask])
+  .filter(x => x.kcal >= FOLLOWUP_MIN_KCAL)
+  .filter(x => x.ask !== "fat" || portionKindOf(x.name) === "solid")
   .sort((a, b) => b.impact - a.impact)
   .slice(0, 2);
 
@@ -2341,5 +2351,76 @@ describe("stalledWeeks — saying how long it has really been", () => {
     // Ten flat days on the end of a losing run: the 3-week span still shows real loss.
     const s = series(60, i => (i < 50 ? 98 - i * 0.07 : 98 - 50 * 0.07));
     expect(stalledWeeks(s, todayK)).toBe(0);
+  });
+});
+
+// ── Follow-up questions must be answerable — mirror of app.jsx portionKindOf/pickFollowups ────
+// Two defects this locks down. (1) "How big was your ketchup — a fist?" cannot be answered
+// honestly, because hand sizes only describe solid food. (2) Refining a 20 kcal condiment cannot
+// change the day, so asking about it spends a tap for nothing.
+
+describe("portionKindOf — asking in units the food actually has", () => {
+  test("things you pour are drinks", () => {
+    ["Semi-skimmed milk", "Orange juice", "Protein shake", "Latte", "A pint of lager"]
+      .forEach(n => expect(portionKindOf(n)).toBe("drink"));
+  });
+
+  test("things you spoon are spoonable", () => {
+    ["Ketchup", "Mayonnaise", "Olive oil", "Peanut butter", "Honey", "Greek yoghurt"]
+      .forEach(n => expect(portionKindOf(n)).toBe("spoon"));
+  });
+
+  test("solid food keeps hand sizes, which is where they mean something", () => {
+    ["Chicken breast", "Brown rice", "Jacket potato", "Lasagne", "Porridge"]
+      .forEach(n => expect(portionKindOf(n)).toBe("solid"));
+  });
+
+  test("an unrecognised food falls back to solid rather than guessing", () => {
+    expect(portionKindOf("Nan's mystery casserole")).toBe("solid");
+    expect(portionKindOf("")).toBe("solid");
+    expect(portionKindOf(undefined)).toBe("solid");
+  });
+});
+
+describe("pickFollowups — only asks what could change the day", () => {
+  test("a condiment is never asked about, however unsure the estimate", () => {
+    // The reported case: ketchup at 20 kcal and 30% confidence tops a weak field on impact
+    // alone, and the question reaches the screen.
+    const items = [{ name: "Ketchup", kcal: 20, confidence: 30, ask: "portion" }];
+    expect(pickFollowups(items)).toEqual([]);
+  });
+
+  test("it still asks about an item big enough to matter", () => {
+    const items = [{ name: "Chicken curry", kcal: 600, confidence: 40, ask: "portion" }];
+    expect(pickFollowups(items)).toHaveLength(1);
+  });
+
+  test("exactly at the floor counts as worth asking", () => {
+    const items = [{ name: "Toast", kcal: 75, confidence: 40, ask: "portion" }];
+    expect(pickFollowups(items)).toHaveLength(1);
+  });
+
+  test("cooking fat is not asked about a drink", () => {
+    // "Any oil or butter on the milk?" — the question does not apply.
+    const items = [{ name: "Whole milk", kcal: 200, confidence: 40, ask: "fat" }];
+    expect(pickFollowups(items)).toEqual([]);
+  });
+
+  test("but portion still is, for the same drink", () => {
+    const items = [{ name: "Whole milk", kcal: 200, confidence: 40, ask: "portion" }];
+    expect(pickFollowups(items)).toHaveLength(1);
+  });
+
+  test("a big fried solid is still asked about its cooking fat", () => {
+    const items = [{ name: "Fried eggs", kcal: 300, confidence: 40, ask: "fat" }];
+    expect(pickFollowups(items)).toHaveLength(1);
+  });
+
+  test("the impact ranking still decides the order among things worth asking", () => {
+    const items = [
+      { name: "Side salad",   kcal: 90,  confidence: 40, ask: "portion" },
+      { name: "Beef lasagne", kcal: 700, confidence: 40, ask: "portion" },
+    ];
+    expect(pickFollowups(items).map(f => f.name)).toEqual(["Beef lasagne", "Side salad"]);
   });
 });

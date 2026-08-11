@@ -3727,10 +3727,17 @@ const normConf = c => {
   return Math.round(Math.max(0, Math.min(100, n)));
 };
 
-// ── AI capture: confidence-gated follow-ups (coach hat, 2026-06-25) ──────────
+// ── AI capture: follow-up questions, asked only when the estimate is unsure ──
 // Threshold reuses INTAKE_FLAG_BELOW (80) — the same kcal-weighted bar that
 // intakeConfidence already calls "guess-heavy". No new magic number.
 const FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
+
+// Below this, refining an item cannot change the day, so asking wastes a tap.
+// A 75 kcal item answered 30% wrong is a ~25 kcal error — around 1% of a day's
+// target, and well inside the error of any estimate. Without this the ranking
+// below still surfaces the least-bad candidate in a weak field, which is how
+// "how big was your ketchup?" reaches the screen.
+const FOLLOWUP_MIN_KCAL = 75;
 
 // Butter only makes sense if dairy is on the user's menu. Vegan / dairy-free
 // diets — or a milk/dairy allergen — switch the cooking-fat prompt to oil only.
@@ -3746,22 +3753,56 @@ const dairyAvoided = () => {
 // (no extra AI call); version re-estimates the element by name (macros genuinely
 // change between animal/plant versions — a faked offline swap would be a guess
 // dressed as a fact, which the coach hat forbids).
-const FOLLOWUP_BANK = {
-  // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
-  // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
-  fat: { mode:"fat", q: f => `Any oil${dairyAvoided() ? "" : " or butter"} on the ${f}?`, chips: [
-    { label:"None / dry (boiled, poached, grilled)", factor:0.9, conf:85 },
-    { label:"A little",            factor:1.0, conf:85 },
-    { label:"Fried / generous",    factor:1.3, conf:82 },
-    { label:"Not sure",            factor:1.0, conf:null },
+// A portion question has to be asked in units the food actually has. Hand sizes are a real
+// coaching tool for solid food, and meaningless for anything you pour or spoon: "how big was
+// your ketchup — a fist?" cannot be answered honestly, and an unanswerable question is worse
+// than no question. Matched on the item name, offline and deterministic, so the chips stay
+// mirrorable in Jest and need no second AI call.
+//
+// Anything unmatched falls through to hand sizes, which is the right default — most logged
+// items are solid food.
+const PORTION_KINDS = [
+  { kind: "drink", re: /\b(milk|juice|smoothie|shake|coffee|tea|latte|cappuccino|cola|coke|lemonade|squash|beer|lager|cider|wine|water|drink)\b/i },
+  { kind: "spoon", re: /\b(ketchup|mayo|mayonnaise|sauce|dressing|butter|oil|jam|marmalade|honey|syrup|spread|mustard|gravy|hummus|pesto|cream|yoghurt|yogurt)\b/i },
+];
+const portionKindOf = name => (PORTION_KINDS.find(p => p.re.test(name || "")) || {}).kind || "solid";
+
+// Factors are relative to the estimate the model already produced, which assumes a standard
+// serving: a 250 ml glass, a tablespoon, a fist.
+const PORTION_SIZES = {
+  drink: { q: f => `How much ${f}?`, chips: [
+    { label:"Small glass (~150ml)",   factor:0.6, conf:85 },
+    { label:"Glass or mug (~250ml)",  factor:1.0, conf:85 },
+    { label:"Large or pint (~500ml)", factor:2.0, conf:85 },
+    { label:"Not sure",               factor:1.0, conf:null },
   ]},
-  portion: { mode:"scale", q: f => `Roughly how much ${f}?`, chips: [
+  spoon: { q: f => `How much ${f}?`, chips: [
+    { label:"A teaspoon",         factor:0.4, conf:85 },
+    { label:"A tablespoon",       factor:1.0, conf:85 },
+    { label:"Several spoonfuls",  factor:2.5, conf:85 },
+    { label:"Not sure",           factor:1.0, conf:null },
+  ]},
+  solid: { q: f => `Roughly how much ${f}?`, chips: [
     { label:"Small (under a fist)", factor:0.7, conf:85 },
     { label:"Medium (a fist)",      factor:1.0, conf:85 },
     { label:"Large (two fists+)",   factor:1.5, conf:85 },
     { label:"Not sure",             factor:1.0, conf:null },
   ]},
-  version: { mode:"version", q: f => `Which version of the ${f}?`, chips: [
+};
+
+const FOLLOWUP_BANK = {
+  // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
+  // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
+  fat: { mode:"fat", q: f => `Any oil${dairyAvoided() ? "" : " or butter"} on the ${f}?`, chips: () => [
+    { label:"None / dry (boiled, poached, grilled)", factor:0.9, conf:85 },
+    { label:"A little",            factor:1.0, conf:85 },
+    { label:"Fried / generous",    factor:1.3, conf:82 },
+    { label:"Not sure",            factor:1.0, conf:null },
+  ]},
+  portion: { mode:"scale",
+    q:     f => PORTION_SIZES[portionKindOf(f)].q(f),
+    chips: f => PORTION_SIZES[portionKindOf(f)].chips },
+  version: { mode:"version", q: f => `Which version of the ${f}?`, chips: () => [
     { label:"Standard",   ver:"",           conf:85 },
     { label:"Vegetarian", ver:"vegetarian", conf:85 },
     { label:"Vegan",      ver:"vegan",       conf:85 },
@@ -3788,9 +3829,15 @@ const refineElement = (el, mode, factor, conf) => {
 // kcal*(100-conf) — a fuzzy big main matters, a fuzzy garnish doesn't. Only
 // elements the model tagged with a known `ask` reason qualify. (coach)
 const pickFollowups = items => (items || [])
-  .map((it, idx) => ({ idx, ask: it.ask, name: it.name,
+  .map((it, idx) => ({ idx, ask: it.ask, name: it.name, kcal: it.kcal || 0,
     impact: (it.kcal || 0) * (100 - (it.confidence || 0)) }))
   .filter(x => x.ask && FOLLOWUP_BANK[x.ask])
+  // Too small to change the day, however wrong it is.
+  .filter(x => x.kcal >= FOLLOWUP_MIN_KCAL)
+  // Cooking fat is a question about something fried or dressed. Asked about a drink or a
+  // sauce it reads as nonsense ("any oil or butter on the milk?"), so drop it rather than
+  // ask it — the portion question still applies to those and carries the same information.
+  .filter(x => x.ask !== "fat" || portionKindOf(x.name) === "solid")
   .sort((a, b) => b.impact - a.impact)
   .slice(0, 2);
 
@@ -4219,7 +4266,7 @@ function AILog({ onAdd, onBack }) {
                       {bank.q(food)}
                     </div>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      {bank.chips.map(chip => (
+                      {bank.chips(food).map(chip => (
                         <button key={chip.label} onClick={() => answerFollowup(fu, chip)}
                           style={{ padding:"8px 12px", borderRadius:20, background:"var(--surface-2)",
                             border:`1px solid ${aA("44")}`, color:"var(--text-mid-6)", fontSize:12,

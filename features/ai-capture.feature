@@ -40,13 +40,32 @@
 #       Tiers stay confLabel: <=33 Low / <=66 Medium / >66 High.       [coach]
 #   - WHICH elements get asked: top 2 by uncertainty IMPACT = kcal*(100-conf),
 #       not merely lowest conf. AI returns a per-item `ask` reason code
-#       (fat | portion | version | null). Question bank:               [coach]
-#         fat     -> "How was the {food} cooked?"   Dry/grilled · Some oil or
-#                     butter · Fried/lots of fat · Not sure  (x0.9/x1.0/x1.3)
-#         portion -> "Roughly how much {food}?"      Small(<fist) · Medium(fist)
-#                     · Large(2 fists+) · Not sure            (x0.7/x1.0/x1.5)
+#       (fat | portion | version | null).
+#   - Two filters run BEFORE that ranking, both added 2026-08-11 after the
+#       questions were reported as unanswerable in real use:      [coach]
+#       (a) MINIMUM 75 kcal. Below that, refining the item cannot change the
+#           day: 30% wrong on 75 kcal is ~25 kcal, about 1% of a target and
+#           inside the error of any estimate. Without it the ranking still
+#           surfaces the least-bad candidate in a weak field, which is how
+#           "how big was your ketchup?" reached the screen.
+#       (b) The `fat` question is asked ONLY about solid food. "Any oil or
+#           butter on the milk?" does not apply; portion carries the same
+#           information for those items.
+#   - Question bank. Portion units are chosen from the item NAME, offline and
+#       deterministic — hand sizes describe solid food and nothing else, so a
+#       drink is asked in glasses and a sauce in spoons:            [coach]
+#         fat     -> "Any oil or butter on the {food}?"  None/dry · A little ·
+#                     Fried/generous · Not sure              (x0.9/x1.0/x1.3)
+#                     ("or butter" drops out on vegan/dairy-free/milk allergy)
+#         portion, solid  -> "Roughly how much {food}?"  Small(<fist) ·
+#                     Medium(fist) · Large(2 fists+) · Not sure (x0.7/x1.0/x1.5)
+#         portion, drink  -> "How much {food}?"  Small glass ~150ml · Glass or
+#                     mug ~250ml · Large or pint ~500ml · Not sure (x0.6/x1/x2)
+#         portion, spoon  -> "How much {food}?"  A teaspoon · A tablespoon ·
+#                     Several spoonfuls · Not sure           (x0.4/x1.0/x2.5)
 #         version -> "Which version of {food}?"      Standard · Vegetarian ·
 #                     Vegan · Not sure               (swap protein/fat profile)
+#       Unrecognised names fall back to solid — most logged items are solid food.
 #       "Not sure" = no refinement, meal stays low-confidence. Answering raises
 #       that element's conf so refined estimate conf >= previous.
 #   - Free/premium split: NONE new. AI Meal Log is already premium-gated at the
@@ -165,10 +184,41 @@ Feature: AI meal capture via text, voice, or photo with confidence-gated follow-
 
     # LOCKED (coach): ask code -> question+chips per the bank in the header.
     Examples:
-      | reason                  | unknown                         |
+      | reason                  | unknown                          |
       | hidden cooking fat      | preparation fat (oil/butter/dry) |
-      | ambiguous portion       | portion reference (e.g. fist sizing) |
-      | animal-vs-plant version | dietary version of the dish     |
+      | ambiguous portion       | portion, in units that food has  |
+      | animal-vs-plant version | dietary version of the dish      |
+
+  @followup
+  Scenario Outline: A portion is asked in units the food actually has
+    Given a meal estimate is below the confidence threshold
+    And the uncertain item is "<food>"
+    When the portion question is presented
+    Then the sizes offered are "<units>"
+
+    # Hand sizes describe solid food and nothing else. Asking "a fist?" about a sauce
+    # cannot be answered honestly, and an unanswerable question is worse than none.
+    Examples:
+      | food             | units                        |
+      | Beef lasagne     | hand sizes (fist)            |
+      | Semi-skimmed milk| glasses (150ml / 250ml / pint) |
+      | Ketchup          | spoons (tsp / tbsp / several) |
+      | Mystery casserole| hand sizes (fist)            |
+
+  @followup
+  Scenario: An item too small to change the day is never asked about
+    Given a meal estimate is below the confidence threshold
+    And the only uncertain item is under 75 kcal
+    Then no follow-up question is asked about it
+    # 30% wrong on 75 kcal is ~25 kcal — about 1% of a target, and inside the error
+    # of the estimate itself. The tap cannot pay for itself.
+
+  @followup
+  Scenario: The cooking-fat question is not asked about something poured
+    Given a meal estimate is below the confidence threshold
+    And the uncertain item is a drink
+    Then I am not asked whether it had oil or butter on it
+    And the portion question is asked instead
 
   # --------------------------------------------------------------------------
   # 3. Confirm / adjust — fixing the estimate before it becomes a record

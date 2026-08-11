@@ -8484,10 +8484,17 @@ var normConf = function normConf(c) {
   return Math.round(Math.max(0, Math.min(100, n)));
 };
 
-// ── AI capture: confidence-gated follow-ups (coach hat, 2026-06-25) ──────────
+// ── AI capture: follow-up questions, asked only when the estimate is unsure ──
 // Threshold reuses INTAKE_FLAG_BELOW (80) — the same kcal-weighted bar that
 // intakeConfidence already calls "guess-heavy". No new magic number.
 var FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
+
+// Below this, refining an item cannot change the day, so asking wastes a tap.
+// A 75 kcal item answered 30% wrong is a ~25 kcal error — around 1% of a day's
+// target, and well inside the error of any estimate. Without this the ranking
+// below still surfaces the least-bad candidate in a weak field, which is how
+// "how big was your ketchup?" reaches the screen.
+var FOLLOWUP_MIN_KCAL = 75;
 
 // Butter only makes sense if dairy is on the user's menu. Vegan / dairy-free
 // diets — or a milk/dairy allergen — switch the cooking-fat prompt to oil only.
@@ -8510,34 +8517,75 @@ var dairyAvoided = function dairyAvoided() {
 // (no extra AI call); version re-estimates the element by name (macros genuinely
 // change between animal/plant versions — a faked offline swap would be a guess
 // dressed as a fact, which the coach hat forbids).
-var FOLLOWUP_BANK = {
-  // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
-  // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
-  fat: {
-    mode: "fat",
+// A portion question has to be asked in units the food actually has. Hand sizes are a real
+// coaching tool for solid food, and meaningless for anything you pour or spoon: "how big was
+// your ketchup — a fist?" cannot be answered honestly, and an unanswerable question is worse
+// than no question. Matched on the item name, offline and deterministic, so the chips stay
+// mirrorable in Jest and need no second AI call.
+//
+// Anything unmatched falls through to hand sizes, which is the right default — most logged
+// items are solid food.
+var PORTION_KINDS = [{
+  kind: "drink",
+  re: /\b(milk|juice|smoothie|shake|coffee|tea|latte|cappuccino|cola|coke|lemonade|squash|beer|lager|cider|wine|water|drink)\b/i
+}, {
+  kind: "spoon",
+  re: /\b(ketchup|mayo|mayonnaise|sauce|dressing|butter|oil|jam|marmalade|honey|syrup|spread|mustard|gravy|hummus|pesto|cream|yoghurt|yogurt)\b/i
+}];
+var portionKindOf = function portionKindOf(name) {
+  return (PORTION_KINDS.find(function (p) {
+    return p.re.test(name || "");
+  }) || {}).kind || "solid";
+};
+
+// Factors are relative to the estimate the model already produced, which assumes a standard
+// serving: a 250 ml glass, a tablespoon, a fist.
+var PORTION_SIZES = {
+  drink: {
     q: function q(f) {
-      return "Any oil".concat(dairyAvoided() ? "" : " or butter", " on the ").concat(f, "?");
+      return "How much ".concat(f, "?");
     },
     chips: [{
-      label: "None / dry (boiled, poached, grilled)",
-      factor: 0.9,
+      label: "Small glass (~150ml)",
+      factor: 0.6,
       conf: 85
     }, {
-      label: "A little",
+      label: "Glass or mug (~250ml)",
       factor: 1.0,
       conf: 85
     }, {
-      label: "Fried / generous",
-      factor: 1.3,
-      conf: 82
+      label: "Large or pint (~500ml)",
+      factor: 2.0,
+      conf: 85
     }, {
       label: "Not sure",
       factor: 1.0,
       conf: null
     }]
   },
-  portion: {
-    mode: "scale",
+  spoon: {
+    q: function q(f) {
+      return "How much ".concat(f, "?");
+    },
+    chips: [{
+      label: "A teaspoon",
+      factor: 0.4,
+      conf: 85
+    }, {
+      label: "A tablespoon",
+      factor: 1.0,
+      conf: 85
+    }, {
+      label: "Several spoonfuls",
+      factor: 2.5,
+      conf: 85
+    }, {
+      label: "Not sure",
+      factor: 1.0,
+      conf: null
+    }]
+  },
+  solid: {
     q: function q(f) {
       return "Roughly how much ".concat(f, "?");
     },
@@ -8558,29 +8606,69 @@ var FOLLOWUP_BANK = {
       factor: 1.0,
       conf: null
     }]
+  }
+};
+var FOLLOWUP_BANK = {
+  // Framed around ADDED FAT, not cooking style, so it reads sensibly for every
+  // food — "grilled" is nonsense for an egg, but "any oil or butter?" is not.
+  fat: {
+    mode: "fat",
+    q: function q(f) {
+      return "Any oil".concat(dairyAvoided() ? "" : " or butter", " on the ").concat(f, "?");
+    },
+    chips: function chips() {
+      return [{
+        label: "None / dry (boiled, poached, grilled)",
+        factor: 0.9,
+        conf: 85
+      }, {
+        label: "A little",
+        factor: 1.0,
+        conf: 85
+      }, {
+        label: "Fried / generous",
+        factor: 1.3,
+        conf: 82
+      }, {
+        label: "Not sure",
+        factor: 1.0,
+        conf: null
+      }];
+    }
+  },
+  portion: {
+    mode: "scale",
+    q: function q(f) {
+      return PORTION_SIZES[portionKindOf(f)].q(f);
+    },
+    chips: function chips(f) {
+      return PORTION_SIZES[portionKindOf(f)].chips;
+    }
   },
   version: {
     mode: "version",
     q: function q(f) {
       return "Which version of the ".concat(f, "?");
     },
-    chips: [{
-      label: "Standard",
-      ver: "",
-      conf: 85
-    }, {
-      label: "Vegetarian",
-      ver: "vegetarian",
-      conf: 85
-    }, {
-      label: "Vegan",
-      ver: "vegan",
-      conf: 85
-    }, {
-      label: "Not sure",
-      ver: null,
-      conf: null
-    }]
+    chips: function chips() {
+      return [{
+        label: "Standard",
+        ver: "",
+        conf: 85
+      }, {
+        label: "Vegetarian",
+        ver: "vegetarian",
+        conf: 85
+      }, {
+        label: "Vegan",
+        ver: "vegan",
+        conf: 85
+      }, {
+        label: "Not sure",
+        ver: null,
+        conf: null
+      }];
+    }
   }
 };
 
@@ -8615,10 +8703,21 @@ var pickFollowups = function pickFollowups(items) {
       idx: idx,
       ask: it.ask,
       name: it.name,
+      kcal: it.kcal || 0,
       impact: (it.kcal || 0) * (100 - (it.confidence || 0))
     };
   }).filter(function (x) {
     return x.ask && FOLLOWUP_BANK[x.ask];
+  })
+  // Too small to change the day, however wrong it is.
+  .filter(function (x) {
+    return x.kcal >= FOLLOWUP_MIN_KCAL;
+  })
+  // Cooking fat is a question about something fried or dressed. Asked about a drink or a
+  // sauce it reads as nonsense ("any oil or butter on the milk?"), so drop it rather than
+  // ask it — the portion question still applies to those and carries the same information.
+  .filter(function (x) {
+    return x.ask !== "fat" || portionKindOf(x.name) === "solid";
   }).sort(function (a, b) {
     return b.impact - a.impact;
   }).slice(0, 2);
@@ -9517,7 +9616,7 @@ function AILog(_ref81) {
         flexWrap: "wrap",
         gap: 6
       }
-    }, bank.chips.map(function (chip) {
+    }, bank.chips(food).map(function (chip) {
       return /*#__PURE__*/React.createElement("button", {
         key: chip.label,
         onClick: function onClick() {
