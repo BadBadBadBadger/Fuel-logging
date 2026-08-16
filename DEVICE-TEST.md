@@ -74,8 +74,8 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [x] The calorie bar paints again — the v71 fix for hex alpha on a CSS variable.
       *(covered by `e2e/progress-bars.spec.js`, 4 tests)*
 
-### AI capture (still outstanding from v6.7)
-- [ ] Voice/photo capture → the optional follow-up questions flow
+### AI capture (from v6.7 — capture verified, the rest still outstanding)
+- [x] Voice/photo capture → the optional follow-up questions flow *(verified on device 2026-08-16)*
 - [ ] **⚐ Report wrong** opens a prefilled email
 - [ ] **+ Log all** puts everything into today's food
 
