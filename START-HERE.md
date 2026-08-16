@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-16 (session 18). **Jest 239/239 · Playwright 67/67 · sw v72 · `main` — uncommitted.**
+**Updated:** 2026-08-16 (session 18). **Jest 239/239 · Playwright 67/67 · sw v72 · `main` — committed, NOT pushed.**
 
 > ## ▶ START HERE
 >
