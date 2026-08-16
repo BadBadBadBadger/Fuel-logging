@@ -1,6 +1,11 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-16 (session 18). **Jest 239/239 · Playwright 67/67 · sw v72 · `main` — committed, NOT pushed.**
+**Updated:** 2026-08-16 (session 18). **Jest 239/239 · Playwright 67/67 · sw v72 · `main` — pushed.**
+
+> **sw v72 is pushed, not yet device-verified.** The suite cannot tell you anything about *this
+> device* — fully close and reopen the PWA or you are still on the v71 bundle. The one visible
+> change to check: change your sex on the profile screen and the confirmation should read
+> **✓ TARGETS UPDATED**, not ✓ SAVED.
 
 > ## ▶ START HERE
 >
