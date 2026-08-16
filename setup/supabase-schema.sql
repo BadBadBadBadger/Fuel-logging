@@ -81,9 +81,20 @@ CREATE TABLE IF NOT EXISTS food_logs (
   carbs       NUMERIC,
   fat         NUMERIC,
   time        TEXT,
+  -- Confidence model + structured meal elements (v6.6). syncFoodLogs() in app.jsx
+  -- SENDS both on every upsert, so these are not optional: without them PostgREST
+  -- rejects the whole batch for unknown columns — and syncFoodLogs deletes the day's
+  -- rows BEFORE upserting, so a rejected batch loses that day's cloud copy.
+  conf        NUMERIC,
+  elements    JSONB,
   updated_at  TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, entry_id)
 );
+
+-- For existing installs predating v6.6 (safe to re-run; see the ⚠️ note at the top of
+-- this file — run these two lines ALONE against a live database, not the whole file).
+ALTER TABLE food_logs ADD COLUMN IF NOT EXISTS conf     NUMERIC;
+ALTER TABLE food_logs ADD COLUMN IF NOT EXISTS elements JSONB;
 
 -- ── Daily water logs ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS water_logs (

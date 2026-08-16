@@ -2105,6 +2105,11 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   onResetAdjustment = () => {} }) {
   const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
+  // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein floor, so the
+  // confirmation names what actually changed instead of a generic "saved". First-time
+  // setting is not a change — there were no targets to update yet.
+  const [savedNote, setSavedNote] = useState("SAVED");
+  const prevSex = React.useRef(profile ? profile.sex || null : null);
   // "Start clean" is the one control here that throws away something the app spent weeks
   // learning, so it asks first — deliberately against the house no-friction rule, which is
   // about deletes you can redo in a tap. This one you can't.
@@ -2137,6 +2142,9 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
     const t = setTimeout(() => {
       onSave(f);
       haptic();
+      const sexChanged = prevSex.current != null && prevSex.current !== f.sex;
+      prevSex.current = f.sex;
+      setSavedNote(sexChanged ? "TARGETS UPDATED" : "SAVED");
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
     }, 600);
@@ -2155,7 +2163,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="MY PROFILE" onBack={onBack}
-        right={saved && <span style={{ fontSize:11, color:A, fontWeight:700 }}>✓ SAVED</span>}/>
+        right={saved && <span style={{ fontSize:11, color:A, fontWeight:700 }}>✓ {savedNote}</span>}/>
       <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:20 }}>
         Targets use <strong style={{ color:"var(--text-mid-2)" }}>Katch-McArdle</strong>. Changes save automatically.
       </p>

@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-11 (session 16). **Jest 236/236 · Playwright 57/57 · sw v70 · `main` — LIVE.**
+**Updated:** 2026-08-16 (session 18). **Jest 239/239 · Playwright 67/67 · sw v72 · `main` — uncommitted.**
 
 > ## ▶ START HERE
 >
@@ -12,6 +12,12 @@
 > Part B in about twenty seconds — the cut bar, the break, the guard, the stall, the auto-lowering
 > card — plus the Quick Add fix and a render/theme smoke pass. **`PLAYWRIGHT-PLAN.md` is its live
 > status doc.** Run it before testing by hand; it is far cheaper to find a break there.
+>
+> 🔖 **One app bug is shelved, not fixed: F4 in `PLAYWRIGHT-PLAN.md`.** The AI re-estimate on a
+> logged entry can fill the macros with `NaN`, say "✓ Updated", and then save the meal as **0 kcal**.
+> Diagnosed and reproduced; the fix is to port the guard `MealForm` already has. **It is the only
+> open finding** — everything the test suite has turned up lives in that one section of
+> `PLAYWRIGHT-PLAN.md`, nowhere else.
 >
 > **The one job left is still to test it on the phone: `DEVICE-TEST.md`.** The suite cannot tell you
 > anything about *this device* — iOS Safari, PWA install, service-worker cycling, haptics. Fully close
@@ -99,7 +105,7 @@ suite cannot speak to iOS Safari, PWA install, service-worker cycling or haptics
 
 ---
 
-## The seven energy-safety feature files — what's actually left
+## The energy-safety feature files — what's actually left
 
 The `features/energy-safety/` numbering confuses everyone (it confused us). Plain state:
 
@@ -110,7 +116,7 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 | 03 the break bar | a break is just *not cutting*; the load bar drains pro-rata over 14 rest days, + the stall check | ✅ live |
 | 06 weigh-in engagement | invites check-ins, cadence picker | ✅ live |
 | 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ live |
-| 04 **first half** | *Maintain* floored at BMR × 1.2 | ✅ live |
+| **08** maintenance floor (was "04 first half") | *Maintain* floored at BMR × 1.2 | ✅ live |
 | 04 **second half** — *"the auto-lowering fix"* | the app only lowers its estimate of what you burn when you're *not* cutting | ✅ live |
 | 05 symptom check | asks how you're feeling after a long under-eat | 🗄️ **SHELVED** (founder, 2026-08-09) |
 
@@ -127,10 +133,39 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 
 ## Right now
 
+**Session 18 split the feature specs into one file per feature.** `features/fuel-log.feature` was
+1,065 lines and 25 features in one file; it is now 32 files across eight topic folders, indexed by
+**`features/README.md` — start there when you want to read a spec.** `features/ai-capture.feature`
+was promoted to `features/logging/05-ai-meal-capture.feature` (it held the richer spec while calling
+itself non-authoritative), and the BMR × 1.2 maintenance floor moved to `energy-safety/08` beside the
+workstream it belongs to. Every line was verified against the originals; the only content that
+changed is four assertions carried across, each marked in place. These specs are documentation, not
+tests — the split could not affect the app.
+
+**Then every scenario was audited against the source.** All 260 trace to real code except the 11 in
+`energy-safety/05`, which is shelved on purpose — spec and code agree. Three gaps turned up and all
+three are closed: the sex-change confirmation now says **✓ TARGETS UPDATED** instead of a generic
+"saved" (it moves your safe minimum by 200 kcal, which "saved" never told you); a haptics example
+pointing at the deleted "reset to defaults" button was removed; and `setup/supabase-schema.sql` was
+missing the `food_logs.conf` + `elements` columns that `syncFoodLogs` writes on every upsert — **the
+live database has them** (confirmed 2026-08-16), but a fresh setup from that file would have rejected
+every food-log sync. Remaining known drift: the diet-break specs in `energy-safety/02` and `/03` quote
+copy the app no longer renders — the code is the newer decision there, so the specs need rewriting.
+
+**Session 17 covered "edit a logged entry" and found a real bug.** Six new Playwright tests take the
+five scenarios of *Feature: Edit a logged entry in place* (`features/logging/01-edit-entry.feature`) —
+including the premium AI re-estimate and its Open Food Facts cross-check. Suite is **63/63**.
+
+Writing them surfaced **F4**: `EntryEditor` fills the macro fields straight from the AI with no
+validity check, so a parsed-but-empty response shows `NaN`, still claims *"✓ Updated"*, and saves the
+meal as **0 kcal**. `MealForm` has guarded exactly this since v6.7; the editor was never given the
+same guard. **Reproduced, shelved, not fixed** — full write-up and the fix in `PLAYWRIGHT-PLAN.md`
+§Findings, which is now the single list of everything open.
+
 **Session 16 fixed Quick Add and built a UI test layer.** The "Reset to defaults" button that wiped a
 whole meal library on one tap is gone, deletes now propagate to the cloud instead of silently
 resurrecting, and a one-time revive restores what the button wiped (`DOCS.md` §37). Deployed as
-sw **v68**. Then: **38 Playwright tests** through the preview harness, covering all of Part B plus a
+sw **v68**. Then **57 Playwright tests** through the preview harness, covering all of Part B plus a
 render/theme smoke pass — see **`PLAYWRIGHT-PLAN.md`**.
 
 That run found **no production bugs**, but three defects worth knowing: the harness never applied a

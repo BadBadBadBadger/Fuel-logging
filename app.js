@@ -4839,25 +4839,33 @@ function ProfileScreen(_ref64) {
     _useState40 = _slicedToArray(_useState39, 2),
     saved = _useState40[0],
     setSaved = _useState40[1];
+  // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein floor, so the
+  // confirmation names what actually changed instead of a generic "saved". First-time
+  // setting is not a change — there were no targets to update yet.
+  var _useState41 = useState("SAVED"),
+    _useState42 = _slicedToArray(_useState41, 2),
+    savedNote = _useState42[0],
+    setSavedNote = _useState42[1];
+  var prevSex = React.useRef(profile ? profile.sex || null : null);
   // "Start clean" is the one control here that throws away something the app spent weeks
   // learning, so it asks first — deliberately against the house no-friction rule, which is
   // about deletes you can redo in a tap. This one you can't.
-  var _useState41 = useState(false),
-    _useState42 = _slicedToArray(_useState41, 2),
-    askReset = _useState42[0],
-    setAskReset = _useState42[1];
   var _useState43 = useState(false),
     _useState44 = _slicedToArray(_useState43, 2),
-    bfFocused = _useState44[0],
-    setBfFocused = _useState44[1];
-  var _useState45 = useState(getWUnit()),
+    askReset = _useState44[0],
+    setAskReset = _useState44[1];
+  var _useState45 = useState(false),
     _useState46 = _slicedToArray(_useState45, 2),
-    wUnit = _useState46[0],
-    setWU = _useState46[1]; // display only — storage stays kg
-  var _useState47 = useState(getHUnit()),
+    bfFocused = _useState46[0],
+    setBfFocused = _useState46[1];
+  var _useState47 = useState(getWUnit()),
     _useState48 = _slicedToArray(_useState47, 2),
-    hUnit = _useState48[0],
-    setHU = _useState48[1]; // display only — storage stays cm
+    wUnit = _useState48[0],
+    setWU = _useState48[1]; // display only — storage stays kg
+  var _useState49 = useState(getHUnit()),
+    _useState50 = _slicedToArray(_useState49, 2),
+    hUnit = _useState50[0],
+    setHU = _useState50[1]; // display only — storage stays cm
   var set = function set(k, v) {
     return setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -4887,6 +4895,9 @@ function ProfileScreen(_ref64) {
     var t = setTimeout(function () {
       onSave(f);
       haptic();
+      var sexChanged = prevSex.current != null && prevSex.current !== f.sex;
+      prevSex.current = f.sex;
+      setSavedNote(sexChanged ? "TARGETS UPDATED" : "SAVED");
       setSaved(true);
       setTimeout(function () {
         return setSaved(false);
@@ -4940,7 +4951,7 @@ function ProfileScreen(_ref64) {
         color: A,
         fontWeight: 700
       }
-    }, "\u2713 SAVED")
+    }, "\u2713 ", savedNote)
   }), /*#__PURE__*/React.createElement("p", {
     style: {
       color: "var(--text-mid)",
@@ -5592,24 +5603,24 @@ function MealForm(_ref68) {
     carbs: "",
     fat: ""
   };
-  var _useState49 = useState(meal ? {
+  var _useState51 = useState(meal ? {
       name: meal.name,
       kcal: String(meal.kcal),
       protein: String(meal.protein),
       carbs: String(meal.carbs),
       fat: String(meal.fat)
     } : blank),
-    _useState50 = _slicedToArray(_useState49, 2),
-    f = _useState50[0],
-    setF = _useState50[1];
-  var _useState51 = useState(false),
     _useState52 = _slicedToArray(_useState51, 2),
-    reest = _useState52[0],
-    setReest = _useState52[1];
-  var _useState53 = useState(""),
+    f = _useState52[0],
+    setF = _useState52[1];
+  var _useState53 = useState(false),
     _useState54 = _slicedToArray(_useState53, 2),
-    reestMsg = _useState54[0],
-    setReestMsg = _useState54[1]; // "" | "done" | error text
+    reest = _useState54[0],
+    setReest = _useState54[1];
+  var _useState55 = useState(""),
+    _useState56 = _slicedToArray(_useState55, 2),
+    reestMsg = _useState56[0],
+    setReestMsg = _useState56[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -5864,14 +5875,14 @@ function WeighInWidget(_ref70) {
     tdeeFloor = _ref70$tdeeFloor === void 0 ? baseTDEE : _ref70$tdeeFloor,
     _ref70$correctionHeld = _ref70.correctionHeld,
     correctionHeld = _ref70$correctionHeld === void 0 ? false : _ref70$correctionHeld;
-  var _useState55 = useState(""),
-    _useState56 = _slicedToArray(_useState55, 2),
-    val = _useState56[0],
-    setVal = _useState56[1]; // kg · lb · or stone (when st mode)
   var _useState57 = useState(""),
     _useState58 = _slicedToArray(_useState57, 2),
-    val2 = _useState58[0],
-    setVal2 = _useState58[1]; // pounds (st mode only)
+    val = _useState58[0],
+    setVal = _useState58[1]; // kg · lb · or stone (when st mode)
+  var _useState59 = useState(""),
+    _useState60 = _slicedToArray(_useState59, 2),
+    val2 = _useState60[0],
+    setVal2 = _useState60[1]; // pounds (st mode only)
   var wUnit = getWUnit();
   var entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0) : wUnit === "lb" ? lbToKg(val || 0) : Number(val);
   var today = todayKey();
@@ -6094,34 +6105,34 @@ function WorkoutLogger(_ref71) {
     earnedToday = _ref71$earnedToday === void 0 ? 0 : _ref71$earnedToday,
     isPremium = _ref71.isPremium,
     onPremiumGate = _ref71.onPremiumGate;
-  var _useState59 = useState("legs"),
-    _useState60 = _slicedToArray(_useState59, 2),
-    type = _useState60[0],
-    setType = _useState60[1];
-  var _useState61 = useState(45),
+  var _useState61 = useState("legs"),
     _useState62 = _slicedToArray(_useState61, 2),
-    dur = _useState62[0],
-    setDur = _useState62[1];
-  var _useState63 = useState("moderate"),
+    type = _useState62[0],
+    setType = _useState62[1];
+  var _useState63 = useState(45),
     _useState64 = _slicedToArray(_useState63, 2),
-    intensity = _useState64[0],
-    setIntensity = _useState64[1];
-  var _useState65 = useState(false),
+    dur = _useState64[0],
+    setDur = _useState64[1];
+  var _useState65 = useState("moderate"),
     _useState66 = _slicedToArray(_useState65, 2),
-    hevyMode = _useState66[0],
-    setHevyMode = _useState66[1];
-  var _useState67 = useState(""),
+    intensity = _useState66[0],
+    setIntensity = _useState66[1];
+  var _useState67 = useState(false),
     _useState68 = _slicedToArray(_useState67, 2),
-    hevyText = _useState68[0],
-    setHevyText = _useState68[1];
-  var _useState69 = useState(false),
+    hevyMode = _useState68[0],
+    setHevyMode = _useState68[1];
+  var _useState69 = useState(""),
     _useState70 = _slicedToArray(_useState69, 2),
-    hevyLoading = _useState70[0],
-    setHevyLoading = _useState70[1];
-  var _useState71 = useState(null),
+    hevyText = _useState70[0],
+    setHevyText = _useState70[1];
+  var _useState71 = useState(false),
     _useState72 = _slicedToArray(_useState71, 2),
-    hevyResult = _useState72[0],
-    setHevyResult = _useState72[1];
+    hevyLoading = _useState72[0],
+    setHevyLoading = _useState72[1];
+  var _useState73 = useState(null),
+    _useState74 = _slicedToArray(_useState73, 2),
+    hevyResult = _useState74[0],
+    setHevyResult = _useState74[1];
   var p = prof || DEF_PROFILE;
   var estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
   var totalKcal = workouts.reduce(function (s, w) {
@@ -6503,10 +6514,10 @@ function Avatar(_ref73) {
   var user = _ref73.user,
     _ref73$size = _ref73.size,
     size = _ref73$size === void 0 ? 34 : _ref73$size;
-  var _useState73 = useState(false),
-    _useState74 = _slicedToArray(_useState73, 2),
-    failed = _useState74[0],
-    setFailed = _useState74[1];
+  var _useState75 = useState(false),
+    _useState76 = _slicedToArray(_useState75, 2),
+    failed = _useState76[0],
+    setFailed = _useState76[1];
   var letter = ((user === null || user === void 0 ? void 0 : user.name) || "P")[0].toUpperCase();
   if (user !== null && user !== void 0 && user.picture && !failed) {
     return /*#__PURE__*/React.createElement("img", {
@@ -6545,24 +6556,24 @@ function EntryEditor(_ref74) {
     onCancel = _ref74.onCancel,
     isPremium = _ref74.isPremium,
     onPremiumGate = _ref74.onPremiumGate;
-  var _useState75 = useState({
+  var _useState77 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
       protein: String(entry.protein),
       carbs: String(entry.carbs),
       fat: String(entry.fat)
     }),
-    _useState76 = _slicedToArray(_useState75, 2),
-    f = _useState76[0],
-    setF = _useState76[1];
-  var _useState77 = useState(false),
     _useState78 = _slicedToArray(_useState77, 2),
-    reest = _useState78[0],
-    setReest = _useState78[1];
-  var _useState79 = useState(""),
+    f = _useState78[0],
+    setF = _useState78[1];
+  var _useState79 = useState(false),
     _useState80 = _slicedToArray(_useState79, 2),
-    reestMsg = _useState80[0],
-    setReestMsg = _useState80[1]; // "" | "done" | error text
+    reest = _useState80[0],
+    setReest = _useState80[1];
+  var _useState81 = useState(""),
+    _useState82 = _slicedToArray(_useState81, 2),
+    reestMsg = _useState82[0],
+    setReestMsg = _useState82[1]; // "" | "done" | error text
   var set = function set(k, v) {
     setF(function (p) {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, k, v));
@@ -6871,14 +6882,14 @@ function Dashboard(_ref76) {
     isOnline = _ref76.isOnline,
     syncMsg = _ref76.syncMsg;
   var isPremium = authState === "premium";
-  var _useState81 = useState(null),
-    _useState82 = _slicedToArray(_useState81, 2),
-    editingId = _useState82[0],
-    setEditingId = _useState82[1];
-  var _useState83 = useState(false),
+  var _useState83 = useState(null),
     _useState84 = _slicedToArray(_useState83, 2),
-    askCutGuard = _useState84[0],
-    setAskCutGuard = _useState84[1]; // early-return confirm (file 03)
+    editingId = _useState84[0],
+    setEditingId = _useState84[1];
+  var _useState85 = useState(false),
+    _useState86 = _slicedToArray(_useState85, 2),
+    askCutGuard = _useState86[0],
+    setAskCutGuard = _useState86[1]; // early-return confirm (file 03)
 
   var overAmt = Math.round(totals.kcal - targets.kcal);
   var pct = Math.min(100, totals.kcal / targets.kcal * 100);
@@ -6901,22 +6912,22 @@ function Dashboard(_ref76) {
   // it the whole background declaration, is dropped and the bar paints nothing.
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mix(mc, "88"), ",").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
-  var _useState85 = useState({}),
-    _useState86 = _slicedToArray(_useState85, 2),
-    savedIds = _useState86[0],
-    setSavedIds = _useState86[1];
   var _useState87 = useState({}),
     _useState88 = _slicedToArray(_useState87, 2),
-    qaBlink = _useState88[0],
-    setQaBlink = _useState88[1]; // log.id -> tap nonce, drives re-blink on every tap
-  var _useState89 = useState(false),
+    savedIds = _useState88[0],
+    setSavedIds = _useState88[1];
+  var _useState89 = useState({}),
     _useState90 = _slicedToArray(_useState89, 2),
-    editingTarget = _useState90[0],
-    setEditingTarget = _useState90[1];
-  var _useState91 = useState(""),
+    qaBlink = _useState90[0],
+    setQaBlink = _useState90[1]; // log.id -> tap nonce, drives re-blink on every tap
+  var _useState91 = useState(false),
     _useState92 = _slicedToArray(_useState91, 2),
-    targetInputVal = _useState92[0],
-    setTargetInputVal = _useState92[1];
+    editingTarget = _useState92[0],
+    setEditingTarget = _useState92[1];
+  var _useState93 = useState(""),
+    _useState94 = _slicedToArray(_useState93, 2),
+    targetInputVal = _useState94[0],
+    setTargetInputVal = _useState94[1];
   var commitTarget = function commitTarget() {
     var v = parseInt(targetInputVal);
     if (v > 0) {
@@ -8840,14 +8851,14 @@ function ItemRow(_ref80) {
   var item = _ref80.item,
     onReestimate = _ref80.onReestimate,
     reestimating = _ref80.reestimating;
-  var _useState93 = useState(false),
-    _useState94 = _slicedToArray(_useState93, 2),
-    editing = _useState94[0],
-    setEditing = _useState94[1];
-  var _useState95 = useState(item.name),
+  var _useState95 = useState(false),
     _useState96 = _slicedToArray(_useState95, 2),
-    draft = _useState96[0],
-    setDraft = _useState96[1];
+    editing = _useState96[0],
+    setEditing = _useState96[1];
+  var _useState97 = useState(item.name),
+    _useState98 = _slicedToArray(_useState97, 2),
+    draft = _useState98[0],
+    setDraft = _useState98[1];
   var cc = confColor(item.confidence);
   var itemAllergens = scanAllergens(item.name, DIETARY.allergens); // zero-token backstop
 
@@ -8972,66 +8983,66 @@ function ItemRow(_ref80) {
 function AILog(_ref81) {
   var onAdd = _ref81.onAdd,
     onBack = _ref81.onBack;
-  var _useState97 = useState(""),
-    _useState98 = _slicedToArray(_useState97, 2),
-    desc = _useState98[0],
-    setDesc = _useState98[1];
-  var _useState99 = useState(false),
+  var _useState99 = useState(""),
     _useState100 = _slicedToArray(_useState99, 2),
-    loading = _useState100[0],
-    setLoading = _useState100[1];
-  var _useState101 = useState(null),
+    desc = _useState100[0],
+    setDesc = _useState100[1];
+  var _useState101 = useState(false),
     _useState102 = _slicedToArray(_useState101, 2),
-    items = _useState102[0],
-    setItems = _useState102[1];
+    loading = _useState102[0],
+    setLoading = _useState102[1];
   var _useState103 = useState(null),
     _useState104 = _slicedToArray(_useState103, 2),
-    reestIdx = _useState104[0],
-    setReestIdx = _useState104[1];
-  var _useState105 = useState(""),
+    items = _useState104[0],
+    setItems = _useState104[1];
+  var _useState105 = useState(null),
     _useState106 = _slicedToArray(_useState105, 2),
-    error = _useState106[0],
-    setError = _useState106[1];
-  var _useState107 = useState(false),
+    reestIdx = _useState106[0],
+    setReestIdx = _useState106[1];
+  var _useState107 = useState(""),
     _useState108 = _slicedToArray(_useState107, 2),
-    loggedAll = _useState108[0],
-    setLoggedAll = _useState108[1];
-  var _useState109 = useState({}),
+    error = _useState108[0],
+    setError = _useState108[1];
+  var _useState109 = useState(false),
     _useState110 = _slicedToArray(_useState109, 2),
-    loggedCount = _useState110[0],
-    setLoggedCount = _useState110[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedAll = _useState110[0],
+    setLoggedAll = _useState110[1];
+  var _useState111 = useState({}),
+    _useState112 = _slicedToArray(_useState111, 2),
+    loggedCount = _useState112[0],
+    setLoggedCount = _useState112[1]; // idx -> times logged (ephemeral; resets on unmount)
   // Capture adapters — voice transcript + transient photo. The photo lives ONLY
   // here in memory ({base64, preview}); it is never written to storage and never
   // included in the saved record (see logAll). It is discarded when we unmount.
-  var _useState111 = useState(null),
-    _useState112 = _slicedToArray(_useState111, 2),
-    photo = _useState112[0],
-    setPhoto = _useState112[1];
-  var _useState113 = useState(false),
+  var _useState113 = useState(null),
     _useState114 = _slicedToArray(_useState113, 2),
-    listening = _useState114[0],
-    setListening = _useState114[1];
+    photo = _useState114[0],
+    setPhoto = _useState114[1];
   var _useState115 = useState(false),
     _useState116 = _slicedToArray(_useState115, 2),
-    micDenied = _useState116[0],
-    setMicDenied = _useState116[1];
+    listening = _useState116[0],
+    setListening = _useState116[1];
   var _useState117 = useState(false),
     _useState118 = _slicedToArray(_useState117, 2),
-    usedVoice = _useState118[0],
-    setUsedVoice = _useState118[1];
-  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
-  var _useState119 = useState([]),
+    micDenied = _useState118[0],
+    setMicDenied = _useState118[1];
+  var _useState119 = useState(false),
     _useState120 = _slicedToArray(_useState119, 2),
-    followups = _useState120[0],
-    setFollowups = _useState120[1]; // [{idx, ask, name}]
-  var _useState121 = useState({}),
+    usedVoice = _useState120[0],
+    setUsedVoice = _useState120[1];
+  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
+  var _useState121 = useState([]),
     _useState122 = _slicedToArray(_useState121, 2),
-    fuDone = _useState122[0],
-    setFuDone = _useState122[1]; // idx -> true once answered/skipped
-  var _useState123 = useState([]),
+    followups = _useState122[0],
+    setFollowups = _useState122[1]; // [{idx, ask, name}]
+  var _useState123 = useState({}),
     _useState124 = _slicedToArray(_useState123, 2),
-    fuLog = _useState124[0],
-    setFuLog = _useState124[1]; // [{q, a}] persisted with the meal
+    fuDone = _useState124[0],
+    setFuDone = _useState124[1]; // idx -> true once answered/skipped
+  var _useState125 = useState([]),
+    _useState126 = _slicedToArray(_useState125, 2),
+    fuLog = _useState126[0],
+    setFuLog = _useState126[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
   var fileRef = React.useRef(null);
 
@@ -9763,14 +9774,14 @@ function QuickAdd(_ref85) {
     isPremium = _ref85$isPremium === void 0 ? false : _ref85$isPremium,
     _ref85$onPremiumGate = _ref85.onPremiumGate,
     onPremiumGate = _ref85$onPremiumGate === void 0 ? function () {} : _ref85$onPremiumGate;
-  var _useState125 = useState(""),
-    _useState126 = _slicedToArray(_useState125, 2),
-    search = _useState126[0],
-    setSearch = _useState126[1];
-  var _useState127 = useState(null),
+  var _useState127 = useState(""),
     _useState128 = _slicedToArray(_useState127, 2),
-    modal = _useState128[0],
-    setModal = _useState128[1];
+    search = _useState128[0],
+    setSearch = _useState128[1];
+  var _useState129 = useState(null),
+    _useState130 = _slicedToArray(_useState129, 2),
+    modal = _useState130[0],
+    setModal = _useState130[1];
   var save = /*#__PURE__*/function () {
     var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(m) {
       return _regenerator().w(function (_context35) {
@@ -9954,26 +9965,26 @@ function QuickAdd(_ref85) {
 function FoodSearch(_ref87) {
   var onAdd = _ref87.onAdd,
     onBack = _ref87.onBack;
-  var _useState129 = useState(""),
-    _useState130 = _slicedToArray(_useState129, 2),
-    q = _useState130[0],
-    setQ = _useState130[1];
-  var _useState131 = useState([]),
+  var _useState131 = useState(""),
     _useState132 = _slicedToArray(_useState131, 2),
-    results = _useState132[0],
-    setResults = _useState132[1];
-  var _useState133 = useState(false),
+    q = _useState132[0],
+    setQ = _useState132[1];
+  var _useState133 = useState([]),
     _useState134 = _slicedToArray(_useState133, 2),
-    loading = _useState134[0],
-    setLoading = _useState134[1];
-  var _useState135 = useState(""),
+    results = _useState134[0],
+    setResults = _useState134[1];
+  var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
-    error = _useState136[0],
-    setError = _useState136[1];
-  var _useState137 = useState(false),
+    loading = _useState136[0],
+    setLoading = _useState136[1];
+  var _useState137 = useState(""),
     _useState138 = _slicedToArray(_useState137, 2),
-    done = _useState138[0],
-    setDone = _useState138[1];
+    error = _useState138[0],
+    setError = _useState138[1];
+  var _useState139 = useState(false),
+    _useState140 = _slicedToArray(_useState139, 2),
+    done = _useState140[0],
+    setDone = _useState140[1];
   var search = /*#__PURE__*/function () {
     var _ref88 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36() {
       var res, data, parseServing, parseKcal, valid, _t41;
@@ -10240,34 +10251,34 @@ function History(_ref89) {
       unit: "g"
     }
   };
-  var _useState139 = useState("30D"),
-    _useState140 = _slicedToArray(_useState139, 2),
-    range = _useState140[0],
-    setRange = _useState140[1];
-  var _useState141 = useState(["KCAL"]),
+  var _useState141 = useState("30D"),
     _useState142 = _slicedToArray(_useState141, 2),
-    metrics = _useState142[0],
-    setMetrics = _useState142[1];
-  var _useState143 = useState(false),
+    range = _useState142[0],
+    setRange = _useState142[1];
+  var _useState143 = useState(["KCAL"]),
     _useState144 = _slicedToArray(_useState143, 2),
-    showWeight = _useState144[0],
-    setShowWeight = _useState144[1];
-  var _useState145 = useState("line"),
+    metrics = _useState144[0],
+    setMetrics = _useState144[1];
+  var _useState145 = useState(false),
     _useState146 = _slicedToArray(_useState145, 2),
-    chartType = _useState146[0],
-    setChartType = _useState146[1];
-  var _useState147 = useState(Math.max(0, history.length - 1)),
+    showWeight = _useState146[0],
+    setShowWeight = _useState146[1];
+  var _useState147 = useState("line"),
     _useState148 = _slicedToArray(_useState147, 2),
-    dayIdx = _useState148[0],
-    setDayIdx = _useState148[1];
-  var _useState149 = useState(null),
+    chartType = _useState148[0],
+    setChartType = _useState148[1];
+  var _useState149 = useState(Math.max(0, history.length - 1)),
     _useState150 = _slicedToArray(_useState149, 2),
-    addCtx = _useState150[0],
-    setAddCtx = _useState150[1];
+    dayIdx = _useState150[0],
+    setDayIdx = _useState150[1];
   var _useState151 = useState(null),
     _useState152 = _slicedToArray(_useState151, 2),
-    editId = _useState152[0],
-    setEditId = _useState152[1];
+    addCtx = _useState152[0],
+    setAddCtx = _useState152[1];
+  var _useState153 = useState(null),
+    _useState154 = _slicedToArray(_useState153, 2),
+    editId = _useState154[0],
+    setEditId = _useState154[1];
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -11344,11 +11355,11 @@ function BadgeFanfare(_ref97) {
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState153 = useState(0),
-    _useState154 = _slicedToArray(_useState153, 2),
-    count = _useState154[0],
-    setCount = _useState154[1];
-  var _useState155 = useState(function () {
+  var _useState155 = useState(0),
+    _useState156 = _slicedToArray(_useState155, 2),
+    count = _useState156[0],
+    setCount = _useState156[1];
+  var _useState157 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -11362,8 +11373,8 @@ function BadgeFanfare(_ref97) {
         };
       });
     }),
-    _useState156 = _slicedToArray(_useState155, 1),
-    floaters = _useState156[0];
+    _useState158 = _slicedToArray(_useState157, 1),
+    floaters = _useState158[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -11621,107 +11632,107 @@ function NoteToast(_ref100) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState157 = useState("dashboard"),
-    _useState158 = _slicedToArray(_useState157, 2),
-    view = _useState158[0],
-    setView = _useState158[1];
-  var _useState159 = useState([]),
+  var _useState159 = useState("dashboard"),
     _useState160 = _slicedToArray(_useState159, 2),
-    logs = _useState160[0],
-    setLogs = _useState160[1];
-  var _useState161 = useState(0),
+    view = _useState160[0],
+    setView = _useState160[1];
+  var _useState161 = useState([]),
     _useState162 = _slicedToArray(_useState161, 2),
-    water = _useState162[0],
-    setWater = _useState162[1];
-  var _useState163 = useState("cut"),
+    logs = _useState162[0],
+    setLogs = _useState162[1];
+  var _useState163 = useState(0),
     _useState164 = _slicedToArray(_useState163, 2),
-    mode = _useState164[0],
-    setMode = _useState164[1];
-  var _useState165 = useState(null),
+    water = _useState164[0],
+    setWater = _useState164[1];
+  var _useState165 = useState("cut"),
     _useState166 = _slicedToArray(_useState165, 2),
-    prof = _useState166[0],
-    setProf = _useState166[1];
-  var _useState167 = useState([]),
+    mode = _useState166[0],
+    setMode = _useState166[1];
+  var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    hist = _useState168[0],
-    setHist = _useState168[1];
-  var _useState169 = useState([].concat(DEF_MEALS)),
+    prof = _useState168[0],
+    setProf = _useState168[1];
+  var _useState169 = useState([]),
     _useState170 = _slicedToArray(_useState169, 2),
-    meals = _useState170[0],
-    setMeals = _useState170[1];
-  var _useState171 = useState([]),
+    hist = _useState170[0],
+    setHist = _useState170[1];
+  var _useState171 = useState([].concat(DEF_MEALS)),
     _useState172 = _slicedToArray(_useState171, 2),
-    workouts = _useState172[0],
-    setWorkouts = _useState172[1];
+    meals = _useState172[0],
+    setMeals = _useState172[1];
+  var _useState173 = useState([]),
+    _useState174 = _slicedToArray(_useState173, 2),
+    workouts = _useState174[0],
+    setWorkouts = _useState174[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState173 = useState([0, 0]),
-    _useState174 = _slicedToArray(_useState173, 2),
-    priorWorkoutKcal = _useState174[0],
-    setPriorWorkoutKcal = _useState174[1];
-  var _useState175 = useState([]),
+  var _useState175 = useState([0, 0]),
     _useState176 = _slicedToArray(_useState175, 2),
-    earnedBdgs = _useState176[0],
-    setEarnedBdgs = _useState176[1];
-  var _useState177 = useState(null),
+    priorWorkoutKcal = _useState176[0],
+    setPriorWorkoutKcal = _useState176[1];
+  var _useState177 = useState([]),
     _useState178 = _slicedToArray(_useState177, 2),
-    newBadge = _useState178[0],
-    setNewBadge = _useState178[1];
-  var _useState179 = useState(false),
+    earnedBdgs = _useState178[0],
+    setEarnedBdgs = _useState178[1];
+  var _useState179 = useState(null),
     _useState180 = _slicedToArray(_useState179, 2),
-    ready = _useState180[0],
-    setReady = _useState180[1];
-  var _useState181 = useState([]),
+    newBadge = _useState180[0],
+    setNewBadge = _useState180[1];
+  var _useState181 = useState(false),
     _useState182 = _slicedToArray(_useState181, 2),
-    weighIns = _useState182[0],
-    setWeighIns = _useState182[1];
-  var _useState183 = useState(0),
+    ready = _useState182[0],
+    setReady = _useState182[1];
+  var _useState183 = useState([]),
     _useState184 = _slicedToArray(_useState183, 2),
-    tdeeAdj = _useState184[0],
-    setTdeeAdj = _useState184[1];
-  var _useState185 = useState([]),
+    weighIns = _useState184[0],
+    setWeighIns = _useState184[1];
+  var _useState185 = useState(0),
     _useState186 = _slicedToArray(_useState185, 2),
-    adjLog = _useState186[0],
-    setAdjLog = _useState186[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState187 = useState(null),
+    tdeeAdj = _useState186[0],
+    setTdeeAdj = _useState186[1];
+  var _useState187 = useState([]),
     _useState188 = _slicedToArray(_useState187, 2),
-    weighNudgeAt = _useState188[0],
-    setWeighNudgeAt = _useState188[1]; // last weigh-in-nudge dismissal (ms; local-only)
-  var _useState189 = useState(EMPTY_CUT_BLOCK),
+    adjLog = _useState188[0],
+    setAdjLog = _useState188[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState189 = useState(null),
     _useState190 = _slicedToArray(_useState189, 2),
-    cutBlock = _useState190[0],
-    setCutBlock = _useState190[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState191 = useState(0),
+    weighNudgeAt = _useState190[0],
+    setWeighNudgeAt = _useState190[1]; // last weigh-in-nudge dismissal (ms; local-only)
+  var _useState191 = useState(EMPTY_CUT_BLOCK),
     _useState192 = _slicedToArray(_useState191, 2),
-    coachKey = _useState192[0],
-    setCoachKey = _useState192[1];
-  var _useState193 = useState(null),
+    cutBlock = _useState192[0],
+    setCutBlock = _useState192[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState193 = useState(0),
     _useState194 = _slicedToArray(_useState193, 2),
-    streakPop = _useState194[0],
-    setStreakPop = _useState194[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState194[0],
+    setCoachKey = _useState194[1];
   var _useState195 = useState(null),
     _useState196 = _slicedToArray(_useState195, 2),
-    badgeToast = _useState196[0],
-    setBadgeToast = _useState196[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState196[0],
+    setStreakPop = _useState196[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState197 = useState(null),
     _useState198 = _slicedToArray(_useState197, 2),
-    noteToast = _useState198[0],
-    setNoteToast = _useState198[1]; // plain one-line confirmations
-  var _useState199 = useState(false),
+    badgeToast = _useState198[0],
+    setBadgeToast = _useState198[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState199 = useState(null),
     _useState200 = _slicedToArray(_useState199, 2),
-    badgeGlow = _useState200[0],
-    setBadgeGlow = _useState200[1]; // the 🏆 glow paired with the toast
-  var _useState201 = useState(null),
+    noteToast = _useState200[0],
+    setNoteToast = _useState200[1]; // plain one-line confirmations
+  var _useState201 = useState(false),
     _useState202 = _slicedToArray(_useState201, 2),
-    customKcal = _useState202[0],
-    setCustomKcal = _useState202[1];
-  var _useState203 = useState(false),
+    badgeGlow = _useState202[0],
+    setBadgeGlow = _useState202[1]; // the 🏆 glow paired with the toast
+  var _useState203 = useState(null),
     _useState204 = _slicedToArray(_useState203, 2),
-    aggressiveCutAcked = _useState204[0],
-    setAggressiveCutAcked = _useState204[1];
-  var _useState205 = useState(0),
+    customKcal = _useState204[0],
+    setCustomKcal = _useState204[1];
+  var _useState205 = useState(false),
     _useState206 = _slicedToArray(_useState205, 2),
-    setThemeTick = _useState206[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState206[0],
+    setAggressiveCutAcked = _useState206[1];
+  var _useState207 = useState(0),
+    _useState208 = _slicedToArray(_useState207, 2),
+    setThemeTick = _useState208[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -11747,46 +11758,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState207 = useState("anonymous"),
-    _useState208 = _slicedToArray(_useState207, 2),
-    authState = _useState208[0],
-    setAuthState = _useState208[1];
-  var _useState209 = useState(null),
+  var _useState209 = useState("anonymous"),
     _useState210 = _slicedToArray(_useState209, 2),
-    authUser = _useState210[0],
-    setAuthUser = _useState210[1];
+    authState = _useState210[0],
+    setAuthState = _useState210[1];
   var _useState211 = useState(null),
     _useState212 = _slicedToArray(_useState211, 2),
-    premiumGate = _useState212[0],
-    setPremiumGate = _useState212[1]; // {emoji, name} | null
-  var _useState213 = useState(false),
+    authUser = _useState212[0],
+    setAuthUser = _useState212[1];
+  var _useState213 = useState(null),
     _useState214 = _slicedToArray(_useState213, 2),
-    showSignIn = _useState214[0],
-    setShowSignIn = _useState214[1];
+    premiumGate = _useState214[0],
+    setPremiumGate = _useState214[1]; // {emoji, name} | null
   var _useState215 = useState(false),
     _useState216 = _slicedToArray(_useState215, 2),
-    showSignOut = _useState216[0],
-    setShowSignOut = _useState216[1];
+    showSignIn = _useState216[0],
+    setShowSignIn = _useState216[1];
   var _useState217 = useState(false),
     _useState218 = _slicedToArray(_useState217, 2),
-    showLapsed = _useState218[0],
-    setShowLapsed = _useState218[1];
+    showSignOut = _useState218[0],
+    setShowSignOut = _useState218[1];
   var _useState219 = useState(false),
     _useState220 = _slicedToArray(_useState219, 2),
-    needsConsent = _useState220[0],
-    setNeedsConsent = _useState220[1]; // retroactive Art. 9 consent (R2)
-  var _useState221 = useState(null),
+    showLapsed = _useState220[0],
+    setShowLapsed = _useState220[1];
+  var _useState221 = useState(false),
     _useState222 = _slicedToArray(_useState221, 2),
-    consentInfo = _useState222[0],
-    setConsentInfo = _useState222[1]; // parsed local health_consent for display
-  var _useState223 = useState(navigator.onLine),
+    needsConsent = _useState222[0],
+    setNeedsConsent = _useState222[1]; // retroactive Art. 9 consent (R2)
+  var _useState223 = useState(null),
     _useState224 = _slicedToArray(_useState223, 2),
-    isOnline = _useState224[0],
-    setIsOnline = _useState224[1];
-  var _useState225 = useState(""),
+    consentInfo = _useState224[0],
+    setConsentInfo = _useState224[1]; // parsed local health_consent for display
+  var _useState225 = useState(navigator.onLine),
     _useState226 = _slicedToArray(_useState225, 2),
-    syncMsg = _useState226[0],
-    setSyncMsg = _useState226[1];
+    isOnline = _useState226[0],
+    setIsOnline = _useState226[1];
+  var _useState227 = useState(""),
+    _useState228 = _slicedToArray(_useState227, 2),
+    syncMsg = _useState228[0],
+    setSyncMsg = _useState228[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
