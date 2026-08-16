@@ -1,10 +1,14 @@
-# Device test — the energy-safety release (sw v70)
+# Device test — the standing on-phone checklist (sw v72)
 
-**One-time checklist for the 2026-08-10 go-live.** Delete this file once it's done; it is not a
-living doc. Everything durable lives in `ENERGY_MODEL.md` / `DOCS.md`.
+**This was written as a one-time checklist for the 2026-08-10 go-live and told you to delete it when
+done. Three releases later it is still here, still accruing items — so it is a living doc now, and
+re-stamped as one (2026-08-16).** It survives because most of it cannot be automated: this phone,
+iOS Safari, PWA install, service-worker cycling, haptics, and whether the cloud actually obeys.
+Everything durable about *why* still lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
-**Live as of:** `main`, service worker **v70** (the Quick Add, weigh-in reporting and AI follow-up fixes of 2026-08-11 shipped on top of the
-energy-safety release). Rollback tag: **`pre-energy-safety`**.
+**Live as of:** `main` @ `d21d7d6`, service worker **v72**, served by **GitHub Pages** at
+https://badbadbadbadger.github.io/Fuel-logging/ (built from the root of `main` on every push;
+Cloudflare hosts only the AI worker). Rollback tag: **`pre-energy-safety`**.
 
 > ### Before anything else
 > An installed PWA serves the **old bundle** until the service worker fully cycles. Backgrounding the
@@ -12,13 +16,20 @@ energy-safety release). Rollback tag: **`pre-energy-safety`**.
 > below doesn't match, you're testing the old code and everything after this is meaningless.
 >
 > To check: Settings → scroll to the bottom, or in Chrome devtools console:
-> `caches.keys().then(console.log)` → expect `fuel-log-v70`.
+> `caches.keys().then(console.log)` → expect `fuel-log-v72`.
+>
+> To check what is *deployed* rather than what your phone is holding, read it straight off the host:
+> `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`
 
 > ### Part B is now automated — run it before you run it by hand
-> `npm run test:ui` covers B1–B6 in about twenty seconds, in a real browser, and re-runs any time.
-> **Do that first**: if something is broken it's far cheaper to find it there. What it cannot tell
-> you is anything about *this phone* — iOS Safari, PWA install, service-worker cycling, or haptics.
-> That is what the checklist below is still for. Status and coverage: `PLAYWRIGHT-PLAN.md`.
+> `npm run test:ui` covers B1–B6 in about twenty seconds, in a real browser, and re-runs any time
+> (**67 tests** as of v72). **Do that first**: if something is broken it's far cheaper to find it
+> there. What it cannot tell you is anything about *this phone* — iOS Safari, PWA install,
+> service-worker cycling, or haptics. That is what the checklist below is still for. Status and
+> coverage: `PLAYWRIGHT-PLAN.md`.
+>
+> The B1–B6 snippets are kept anyway, because reproducing a fault by hand is how you debug one —
+> see "When something looks wrong" at the foot of this file.
 
 ---
 
@@ -53,6 +64,15 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [ ] Nothing mentions breaks, recharging or stalls **at all** (you've no cut history yet — silence is correct)
 - [ ] **"Below your resting metabolism"** — see the open question at the bottom of this file
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
+
+### New in v71–v72
+
+- [x] **Profile → change your sex.** The confirmation reads **✓ TARGETS UPDATED**, not ✓ SAVED —
+      it moves your safe minimum by 200 kcal, which a generic "saved" never told you. Setting sex
+      for the *first* time still reads ✓ SAVED, because there were no targets to update yet.
+      *(verified on device 2026-08-16)*
+- [x] The calorie bar paints again — the v71 fix for hex alpha on a CSS variable.
+      *(covered by `e2e/progress-bars.spec.js`, 4 tests)*
 
 ### AI capture (still outstanding from v6.7)
 - [ ] Voice/photo capture → the optional follow-up questions flow
@@ -242,4 +262,14 @@ aggressive-cut acknowledgement already in the app.
 
 - **`RATE_LIMIT` KV namespace is unbound** — the daily AI spend cap is a no-op until it is
   (worker → Settings → Bindings → KV, variable `RATE_LIMIT`). Keep the Anthropic Console cap on.
-- Stale `@draft` / `@wip` tags on the feature files — clear them once this passes.
+- **Stale tags on the feature specs.** The 2026-08-16 audit checked all 260 scenarios against
+  `app.jsx`: everything specified is implemented except the 11 in `energy-safety/05`, which is
+  shelved on purpose. So these tags are stale, not to-do lists — clear them as each is seen working
+  on a phone. Note the specs moved that day; `features/README.md` is the index.
+  - `energy-safety/06`, `energy-safety/07` — `@draft`, but both built and live
+  - `logging/04` (meal data integrity) — `@wip`, built
+  - `logging/05` (AI meal capture) — `@wip @draft`, built; this is what the AI-capture block
+    of Part A above is for
+  - `app-shell/04` (haptics) — `@wip`, built, and **cannot be cleared on the web build**:
+    `navigator.vibrate` is a silent no-op on mobile Chrome / Pixel 7. Leave it until the app is
+    packaged for Play with a native haptics bridge.
