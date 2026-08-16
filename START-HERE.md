@@ -81,7 +81,17 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 ## Where the code is
 
-`main` @ `efad462` is what is **live on Pages** (sw **v70**), deployed 2026-08-11: the whole
+> **Hosting, so nobody guesses again.** The app is served by **GitHub Pages** at
+> **https://badbadbadbadger.github.io/Fuel-logging/**, built automatically from the root of `main`
+> on every push — there is no build step to run and no dashboard to click. **Cloudflare hosts only
+> the AI Worker** (`cloudflare-worker.js`), which deploys separately and by hand; its version IDs
+> are UUIDs and have nothing to do with the site. To check what is live, read the deployed worker
+> version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
+> ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
+
+`main` @ `d21d7d6` is what is **live on GitHub Pages** (sw **v72**), verified 2026-08-16 by reading
+the deployed `sw.js`. It adds the spec split, the scenario audit and the profile confirmation fix on
+top of `efad462` (sw **v70**), deployed 2026-08-11: the whole
 energy-safety workstream (Steps 1–5), the Quick Add fix, the weigh-in reporting fix, and the AI
 capture follow-up fix. Rollback tag **`pre-energy-safety`** is the state before the workstream
 (`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch `energy-safety-bmr-floor` is
