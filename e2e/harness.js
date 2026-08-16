@@ -42,9 +42,9 @@ const daysAgo = n => `@-${n}d`;
  * that crosses midnight can't seed a series that ends yesterday.
  */
 async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium,
-    meals, history, historySpec, extra } = {}) {
+    meals, history, historySpec, logs, extra } = {}) {
   await page.addInitScript(
-    ({ profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, historySpec, extra,
+    ({ profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, historySpec, logs, extra,
        keyExpr }) => {
       // Seed ONCE per page context, not once per navigation. addInitScript re-runs on every
       // load, so without this guard a page.reload() would clear storage and re-apply the seed —
@@ -81,6 +81,10 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
         }
         localStorage.setItem("history", JSON.stringify(snaps));
       }
+      // Today's food entries. Keyed `logs__<todayKey>` (app.jsx:5284), so it must be written
+      // here rather than through `extra` — the key depends on the simulated clock, which only
+      // exists once dev_date_offset has been applied in the page.
+      if (logs)    localStorage.setItem("logs__" + todayKey, JSON.stringify(logs));
       if (extra)   for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, v);
       if (cutBlock) {
         // Pin accrual to today, or the daily accrual effect advances the very state under test.
@@ -133,7 +137,7 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
         }));
       }
     },
-    { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, historySpec, extra,
+    { profile, cutBlock, mode, weighIns, weighInsSpec, dayOffset, premium, meals, history, historySpec, logs, extra,
       keyExpr: TODAY_KEY_EXPR }
   );
 }
