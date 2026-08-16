@@ -77,7 +77,7 @@ a fatal problem is malpractice in your job.
 **House constraints that bound any change you recommend:** `app.js` is generated — engineering edits
 go to `app.jsx`; **`sw.js` version must bump on every build**; SW is skipped on localhost; deletes
 have **no confirm/undo friction** by product rule (account deletion is the exception). The Gherkin
-spec `features/fuel-log.feature` is the UX source of truth (`DOCS.md §20`).
+specs under `features/` (indexed by `features/README.md`) are the UX source of truth (`DOCS.md §20`).
 
 ---
 

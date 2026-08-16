@@ -147,7 +147,7 @@ What you're designing inside:
 **House constraints that bound any change you propose:** `app.js` is generated — never edit it; only
 `useState`/`useEffect` are global React hooks; storage keys use `__`, not colons; **bump `sw.js` on
 every build**; deletes have **no confirm/undo friction** (one tap = done) by product rule. The Gherkin
-spec **`features/fuel-log.feature`** is the UX source of truth (`DOCS.md §20`) — trace behaviour to it.
+specs under **`features/`** (indexed by `features/README.md`) are the UX source of truth (`DOCS.md §20`) — trace behaviour to them.
 
 **Behavioural-design note specific to this product:** a calorie tracker is a **known vector for
 disordered eating**. "Engagement," "delight," and "habit-forming" are *not* unqualified goods here —

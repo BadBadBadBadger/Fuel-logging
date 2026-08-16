@@ -3,7 +3,7 @@
 **Purpose:** Fix the root cause behind the energy-safety workstream: the app estimates TDEE too low (no lifestyle/NEAT term), so any physiological safety floor bolted on top misreads the under-count as "you're starving." This doc is the **single source of truth** for the target-energy model and the ordered plan to close the gap between what a real person expects and what the app can currently deliver.
 **Date:** 2026-08-07
 **Start here:** `START-HERE.md` (one-screen "where are we"), then this for the energy-model detail.
-**Companion docs:** `features/energy-safety/*.feature` (the five `@draft` specs this plan re-sequences), `DOCS.md` (product behaviour + changelog), `SECURITY_ROADMAP.md` / `LEGAL_ROADMAP.md` (unrelated phases).
+**Companion docs:** `features/energy-safety/*.feature` (the specs this plan re-sequences — `01`–`07`, plus `08` the maintenance BMR×1.2 floor, moved in from `fuel-log.feature` on 2026-08-16), `DOCS.md` (product behaviour + changelog), `SECURITY_ROADMAP.md` / `LEGAL_ROADMAP.md` (unrelated phases).
 **Decided:** 2026-08-07, in a coach + launch-consultant + design-lead review. Model locked to **seed → calibrate** (see §3).
 
 > **Division of labour:** this doc owns the **energy/target model and the ordering of the energy-safety

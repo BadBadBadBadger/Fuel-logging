@@ -186,7 +186,7 @@ app ever has a second user, or before any public launch. Answers the coach perso
 deliberately deferred.**
 
 ### H. Test breadth
-Only pure logic is covered. The Gherkin spec (`features/fuel-log.feature`) appears unwired. Fine for now — the right things are tested first. Add a couple of integration tests around the new persistence layer (B) and the entitlement check (SEC-2) when you build them, since those are the money-and-data paths.
+Only pure logic is covered. The Gherkin specs (`features/`, indexed by `features/README.md`) are unwired — confirmed: no Cucumber runner in `package.json`. They are documentation, not tests. Fine for now — the right things are tested first. Add a couple of integration tests around the new persistence layer (B) and the entitlement check (SEC-2) when you build them, since those are the money-and-data paths.
 
 ---
 

@@ -28,8 +28,9 @@
 #     cadence.
 #   • QA: this file owns the user-visible flow ONLY. The convergence maths and
 #     confidence tiers are owned by __tests__/logic.test.js and the existing
-#     "Calorie-budget confidence" + "Maintenance floor" features in
-#     fuel-log.feature — this spec references them, it does not redefine them.
+#     "Calorie-budget confidence" (features/dashboard/03) + "Maintenance floor"
+#     (features/energy-safety/08) specs — this spec references them, it does
+#     not redefine them. (Both lived in fuel-log.feature until 2026-08-16.)
 #
 # ── NUMBERS CONTRACT (read before writing code) ──────────────
 #   POLICY CONSTANTS (the only literals; owned by logic.test.js):

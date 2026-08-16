@@ -6,8 +6,15 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 57 tests · 57 passing · runtime ~29s · last updated 2026-08-11
-**Plan items 15–29 are all complete.** Jest 220/220 alongside, unchanged.
+**Current:** 63 tests · 63 passing · runtime ~36s · last updated 2026-08-16
+**Plan items 15–32 are all complete.** Jest 236/236 alongside, unchanged.
+
+> ### 🔖 Shelved — one open item, needing a decision rather than more investigation
+>
+> **`F4` is the only thing this suite has found and not fixed: [Open findings](#open-findings).**
+> The AI re-estimate on a logged entry can write a silent `NaN` and then save the meal as **0 kcal**.
+> Diagnosed and reproduced; the fix is four lines `MealForm` already has. Nothing else is
+> outstanding — F1–F3 are all fixed, and the suite is green.
 
 | | |
 |---|---|
@@ -47,8 +54,8 @@ empty install. 213 green unit tests said nothing about either.
 
 | Layer | Owns | Where |
 |---|---|---|
-| Jest mirrors | thresholds, `calcTargets`, drain arithmetic | `__tests__/logic.test.js` (220) |
-| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (57) |
+| Jest mirrors | thresholds, `calcTargets`, drain arithmetic | `__tests__/logic.test.js` (236) |
+| **Playwright** | **does the right card appear, saying the right words** | `e2e/` (63) |
 | Real device | iOS Safari, PWA install, SW cycling, haptics, real auth | `DEVICE-TEST.md` |
 
 **Rule: never assert the same thing in two layers.** If a number is already pinned in Jest, the UI
@@ -230,6 +237,35 @@ the original harm: a long deficit walking the target down.
 > returns more confident, clearing `ask` as it does (`app.jsx:4062`) — left live it silently deletes
 > the follow-up under test.
 
+### Suite: `entry-editor.spec.js` — correcting an entry after the fact
+
+Covers all five scenarios of **Feature: Edit a logged entry in place** (`features/logging/01-edit-entry.feature`).
+This is the one surface where a wrong number can be fixed later, so what matters is that the
+correction lands in all three places — the row, the day's totals, and `logs__<key>` on disk.
+
+| # | Scenario | Status |
+|---|---|---|
+| 32a | Tapping an entry opens an editor in place, pre-filled on every field | ✅ |
+| 32b | Saving updates the row, the totals, and the stored record — and survives a reload | ✅ |
+| 32c | Cancel discards, in the row and in the totals alike | ✅ |
+| 32d | Premium: re-estimate refills the macros and keeps the corrected name | ✅ |
+| 32e | Open Food Facts overrides the AI when it is more confident | ✅ |
+| 32f | Anonymous: the gate is raised, and manual editing still works after dismissal | ✅ |
+
+> **32d and 32e are a matched pair, and the fixture is what makes them one.** Open Food Facts
+> answers in BOTH, with the same product; only the AI's confidence differs (99 → the AI's 815
+> stands, 60 → OFF's 415 wins). Aborting OFF in one of them would have proved only that a silent
+> third party changes nothing, which is not the claim being made. 32d also waits before asserting
+> the AI figure held — OFF refines in the background (`app.jsx:2845`), so an immediate assertion
+> would pass merely because the response had not arrived yet.
+>
+> **The row is REPLACED by the editor while editing** (`app.jsx:3605`), so "not saved yet" cannot
+> be asserted against the row — it isn't on screen. 32d checks the day's total and reads
+> `logs__<key>` directly instead.
+>
+> Same stubs and same limits as `ai-followups.spec.js`: the model response is a fixture, so these
+> say nothing about whether the real model returns sensible numbers.
+
 ### Suite: `smoke.spec.js` — Part A
 
 | # | Scenario | Status |
@@ -264,14 +300,14 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 | 19 | The stall nudge, blameless, outranking the week count | B6 | ✅ 2026-08-11 |
 | 20–23 | Quick Add v68: no reset button, delete sticks, revive runs once | v68 | ✅ 2026-08-11 |
 | 24–27, 29 | Part A smoke: render, theme, log meal, log workout, mode switch | A | ✅ 2026-08-11 |
-
-| 22 | Renaming a meal deletes the row under the old name | v68 | ✅ 2026-08-11 |
+| 28 | Two months of weigh-ins: losing vs stalled, and the target holds | B5/B6 | ✅ 2026-08-11 (6 tests) |
+| 30–31 | AI follow-ups: which items get asked, and in what units | v6.7 | ✅ 2026-08-11 (8 tests) |
+| 32 | Edit a logged entry in place, incl. re-estimate and the gate | `logging/01-edit-entry` | ✅ 2026-08-16 (6 tests) |
 
 ### Still open
 
-| # | Scenario | Status |
-|---|---|---|
-| 28 | Two months of weigh-ins: losing vs stalled, and the target holds | ✅ 2026-08-11 (6 tests) |
+**Nothing planned is outstanding.** Every item 15–32 is written and green. The only work this suite
+is carrying is **F4** — see [Open findings](#open-findings) — plus the human-only checks below.
 
 ### Needs a human, not a test
 
@@ -294,10 +330,56 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 
 ---
 
-## Findings from the first full run (2026-08-11)
+## Findings
 
-**No production bugs found.** Every failure was either the harness misrepresenting the app, a
-documentation defect, or a fault in the tests themselves. Details for review:
+Everything the suite has turned up. **This is the only list** — findings are not tracked anywhere
+else. Nothing here is waiting on further investigation; F4 is diagnosed and needs a decision.
+
+<a id="open-findings"></a>
+
+### Open findings
+
+| # | What | Where the fault is | Severity | Status |
+|---|---|---|---|---|
+| **F4** | AI re-estimate writes a silent `NaN`, then saves the entry as **0 kcal** | **`app.jsx` — the app itself** | **Data loss** | 🔖 shelved 2026-08-16 |
+
+| # | Fixed | |
+|---|---|---|
+| F1 | Harness never applied a saved theme | ✅ `preview.html` |
+| F2 | `DEVICE-TEST.md` seeded a UTC day key against a local one | ✅ `DEVICE-TEST.md:94` |
+| F3 | `DEVICE-TEST.md` B6 cleared the stall threshold by one entry | ✅ `DEVICE-TEST.md:164`, now 30 days |
+
+---
+
+### F4 · AI re-estimate can silently zero an entry — **open, shelved 2026-08-16**
+
+**The only finding so far that is a bug in the app rather than in a test or a doc.**
+
+`EntryEditor.reestimate` fills the macro fields straight from the AI response with no validity
+check (`app.jsx:2839`). `MealForm` guards exactly this case four lines of code away
+(`app.jsx:2462` — *"never claim 'Filled' with blank fields"*); the guard was never copied to the
+editor. Confirmed by probe, not by reading:
+
+| AI returns | Fields show | Button says | On Save |
+|---|---|---|---|
+| JSON with no numeric `kcal` | `NaN` in all four | **"✓ Updated — re-estimate again"** | **stores 0 kcal, 0 macros** |
+| unparseable text | unchanged (620) | unchanged | — (handled, via the `catch`) |
+
+The second row is why this is narrow but real: a thrown parse error is already handled. The failure
+is the *parsed-but-empty* response — the app reports success, shows `NaN`, and
+`Math.round(Number("NaN") || 0)` (`app.jsx:2852`) resolves to **0**. A user who taps re-estimate,
+reads "✓ Updated", and taps Save loses that meal's calories and macros with no error shown.
+
+**The fix is to port the `MealForm` guard**, plus a seventh test in `entry-editor.spec.js` asserting
+the honest message instead. Not started — deliberately shelved, not forgotten.
+
+---
+
+### From the first full run (2026-08-11) — all three since fixed
+
+**No production bugs were found on the first run.** Every failure then was either the harness
+misrepresenting the app, a documentation defect, or a fault in the tests themselves. F4 above came
+later, from reading the source while writing `entry-editor.spec.js`.
 
 ### F1 · Harness never applied a saved theme — **fixed**
 
@@ -310,17 +392,19 @@ Same failure family as session 15's missing theme CSS — the harness borrowed h
 Fixed by adding the bootstrap to `preview.html`, plus `__fuelSyncChrome` stubbed since `applyTheme()`
 calls it and there is no browser chrome here to tint. Caught by tests 25a–c.
 
-### F2 · `DEVICE-TEST.md` seeds the wrong day — **open**
+### F2 · `DEVICE-TEST.md` seeded the wrong day — **fixed**
 
-Its snippets use `new Date().toISOString().slice(0,10)` (**UTC**); `todayKey()` (`app.jsx:214`) uses
-**local** date parts. Under BST they disagree between **00:00 and 00:59**, so `mode__<key>` lands on
-yesterday and B1/B2/B3/B6 render a screen that was never configured — silently, with no error.
+Its snippets used `new Date().toISOString().slice(0,10)` (**UTC**); `todayKey()` (`app.jsx:214`) uses
+**local** date parts. Under BST they disagree between **00:00 and 00:59**, so `mode__<key>` landed on
+yesterday and B1/B2/B3/B6 rendered a screen that was never configured — silently, with no error.
+Fixed: the snippets now build the key from local parts via `window.k` (`DEVICE-TEST.md:94`).
 
-### F3 · `DEVICE-TEST.md` B6 clears its threshold by one entry — **open**
+### F3 · `DEVICE-TEST.md` B6 cleared its threshold by one entry — **fixed**
 
-B6 seeds 25 weigh-ins. The stall check needs at least three predating `today − 21`, and 25 supplies
-exactly three. Any trimming, or a gap in the series, drops it to "no data" and the card never
-appears — which reads as a broken feature rather than an under-seeded fixture. Recommend 30.
+B6 seeded 25 weigh-ins. The stall check needs at least three predating `today − 21`, and 25 supplied
+exactly three. Any trimming, or a gap in the series, dropped it to "no data" and the card never
+appeared — which reads as a broken feature rather than an under-seeded fixture. Fixed: the fixture is
+now 30 days, with the reasoning kept beside it (`DEVICE-TEST.md:164`).
 
 ### Test-authoring traps hit while writing this suite
 

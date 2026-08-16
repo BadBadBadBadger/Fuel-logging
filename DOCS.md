@@ -1,6 +1,6 @@
 # FUEL LOG — Product Documentation
 **Version:** 6.7 (AI meal capture) + energy-plan Steps 1–4 (built, not yet deployed)
-**Last Updated:** 7 August 2026
+**Last Updated:** 16 August 2026
 
 > **What's new** — the **energy plan** rebuilt how targets are worked out, in four steps:
 > a lifestyle activity chip seeds a believable TDEE (Step 1); the adaptive engine converges
@@ -531,31 +531,34 @@ Step 4 it is the backstop beneath the steady-loss floor, so it is asserted where
 
 ## 20. Gherkin Spec
 
-Feature behaviour is documented as executable Gherkin scenarios in `features/fuel-log.feature`. This file is the source of truth for UX decisions (colour thresholds, warning copy, animation timing, etc.) and should be updated before any implementation change.
+Feature behaviour is documented as Gherkin scenarios under `features/`. These specs are the source of
+truth for UX decisions (colour thresholds, warning copy, animation timing, safety rules) and should be
+updated before any implementation change. Nothing executes them — there is no Cucumber runner; the
+executable coverage is `__tests__/logic.test.js` (Jest) and `e2e/` (Playwright).
 
-Two more spec sets sit alongside it:
+**Restructured 2026-08-16.** The single 1,065-line `features/fuel-log.feature` was split one file per
+`Feature:`, and `features/ai-capture.feature` was promoted into the tree. Both are gone.
+**`features/README.md` is the index** — it lists every file, its scenario count and its tag, and is the
+one place that list is maintained.
 
-| Path | Covers | State |
+| Folder | Covers | Files |
 |---|---|---|
-| `features/ai-capture.feature` | v6.7 voice/photo meal capture | `@wip` until the batch device-test |
-| `features/energy-safety/01`–`07` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat | `@draft`; 01, 02, 03, 04, 06 and 07 are **built** (their files were rewritten to match what shipped); **05 is shelved** (`ENERGY_MODEL.md` §5.5) |
+| `features/profile/` | sex, body fat, display units, weigh-in → profile sync | 4 |
+| `features/targets/` | daily target modes, tap-to-override, macro floors, the flat `SAFE_MIN` backstop | 4 |
+| `features/energy-safety/` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat, maintenance BMR×1.2 floor | 8 |
+| `features/dashboard/` | calorie + macro tolerance colours, budget confidence | 3 |
+| `features/logging/` | entry editing, Quick Add AI estimate, repeat-add feedback, meal data integrity, AI meal capture | 5 |
+| `features/coach/` | coach state-awareness, pacing, dietary requirements and allergies | 3 |
+| `features/app-shell/` | navigation, avatar, theme, haptics | 4 |
+| `features/engagement/` | logging celebration | 1 |
+
+State is tracked by tag in each file: `@wip` = built, device-verification pending; `@draft` =
+specified, not built; untagged = built and verified. `energy-safety/05` is **shelved**
+(`ENERGY_MODEL.md` §5.5).
 
 Specs in `features/energy-safety/` carry a **NUMBERS CONTRACT** header: kcal figures in scenarios are worked
 examples derived from the formulas, never values to hardcode — the exact arithmetic is owned by
 `__tests__/logic.test.js`. Policy constants are named in the header and are the only literals.
-
-Current features covered in `fuel-log.feature`:
-1. Sex setting on profile screen
-2. Calorie tolerance — forgiving colour logic
-3. Macro tolerance — forgiving colour logic
-4. Safe minimum calorie guard
-5. Body fat % guidance on profile screen
-6. Streak celebration animation
-7. Weight input sync
-8. Flexible daily calorie target with auto mode detection
-9. Tap to override daily calorie target
-10. Top-aligned navigation — pages open at the top
-11. Premium account avatar — Google profile picture with fallback
 
 ---
 
@@ -621,7 +624,7 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 ### Other backlog
 
 > **Triaged 2026-06-11** (feature-planning session). Worklist below is post-challenge; two items cut.
-> Scenarios for these live in `features/fuel-log.feature` (tagged `@wip` until built).
+> Scenarios for these live under `features/` (tagged `@wip` until built) — see `features/README.md`.
 
 | Feature | Type | Notes |
 |---|---|---|
@@ -636,7 +639,7 @@ Setup: Cloudflare Dashboard → Workers → Create → paste code → Deploy →
 
 **~~Unrefined — 2026-06-11 feature bucket~~ → ✅ all shipped in v6.2 (2026-06-11) and verified on
 device (Pixel 7) 2026-06-12.** The six items below were specced, built, and their OPEN questions
-resolved; full detail is in the **§37 changelog (v6.2)** and `features/fuel-log.feature`:
+resolved; full detail is in the **§37 changelog (v6.2)** and the `features/coach/` + `features/targets/` specs:
 
 - **Coach state-aware + varied** (#5) → state-aware coach, fed logged food names + prior tips.
 - **Coach time-of-day pacing** (#6) → computed `paceVerdict`; floor-goals only, never the calorie ceiling.
@@ -1398,6 +1401,25 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### The calorie bar paints again — no hex alpha on a CSS variable (Aug 2026)
+Reported from real use: the dashboard's calorie progress bar had stopped filling. Its background
+was built as `` `${mc}88` `` — from when mode colours were hex literals and `#1f63c288` was a valid
+8-digit colour. Since the theme migration `mc` is `var(--cut)`, so the gradient got a colour stop of
+`var(--cut)88` — malformed, and the browser drops the **whole background declaration** and paints
+nothing. The width was always right, so every DOM assertion in the UI suite kept passing. Over
+100 kcal the code takes the plain-colour amber branch, so the bar sprang back to life when
+overeating — which made the fault look intermittent. Jest **239/239** (3 new), Playwright **67/67**
+(4 new), sw `v70→v71`. No DB change.
+- **Fixed with the existing `mix()` helper** (app.jsx:12, → `color-mix()`), plus its seven latent
+  siblings: the target-edit chip (×4 — its custom-target highlight never showed), the History
+  day-mode pill, and TagField's pills and dashed "Add custom" border (all three tag fields,
+  allergies included). Every one was asking for a tint and getting nothing.
+- **Two regression guards, both proven to fail against the broken code.**
+  `__tests__/styles.test.js` scans the source and fails on any hex-alpha concatenation, naming the
+  line — it covers states no UI test renders. `e2e/progress-bars.spec.js` reads **computed** styles,
+  which is the only place a dropped declaration is visible: the fill must carry a parsed gradient,
+  and no dashboard element may ask for a background and end up without one.
+
 ### AI capture: follow-up questions you can actually answer (Aug 2026)
 Reported from real use: *"how big was your ketchup — a fist?"* Two defects, both in **which**
 questions get asked rather than in the estimate itself. Jest **236/236** (11 new), sw `v69→v70`.
@@ -1747,11 +1769,12 @@ Gherkin scenarios are tagged `@wip`.
   (Two earlier attempts treated the symptom: direct binding re-derived a "0" from the
   cleared value; a `DerivedInput` focus-buffer lost its buffer on the remount a unit
   switch causes, leaving a stuck 0. The seed-once `MeasureField` + context rule fixes
-  the class — see the zero-handling scenarios in `features/fuel-log.feature`.)
+  the class — see the zero-handling scenarios in `features/profile/03-display-units.feature`.)
 - Tests: **85/85 green** (+15: kg/cm/lb/in round-trips, `MeasureField` seed/build incl.
   contextual-zero vs blank-when-unset, `resolveTag` resolution).
 - Files touched: `app.jsx`, `app.js`, `sw.js` (cache → `fuel-log-v41`),
-  `features/fuel-log.feature`, `__tests__/logic.test.js`.
+  `features/` (then `fuel-log.feature`; now `features/profile/03-display-units.feature` +
+  `features/coach/03-dietary-requirements.feature`), `__tests__/logic.test.js`.
 
 ### v6.2.1 — New app icon (June 2026)
 - **New Fuel Log icon** (fuel pump + flexing arm) replacing the placeholder.
@@ -1797,7 +1820,8 @@ a real device (Pixel 7) except haptics, which is deferred (see below).
   Revisit when the app is packaged for Play (native haptics bridge).
 - Tests: 70/70 green (+26 for the macro-floor engine, coach pacing, dietary scan).
 - Files touched: `app.jsx`, `app.js`, `sw.js` (cache → `fuel-log-v36`),
-  `legal/`, `features/fuel-log.feature`.
+  `legal/`, `features/fuel-log.feature` (split 2026-08-16 → `features/targets/03-macro-floors.feature`,
+  `features/coach/02-pacing.feature`, `features/coach/03-dietary-requirements.feature`).
 
 ### v6.1.3 — AI feedback + bad-connection resilience (June 2026)
 - **AI Log per-item feedback:** tapping an item in the AI breakdown now turns it
@@ -1825,8 +1849,8 @@ a real device (Pixel 7) except haptics, which is deferred (see below).
   + the Open Food Facts cross-check. Premium-gated — anonymous taps open the
   `PremiumModal` (manual editing stays free).
 - New reusable `EntryEditor` component shared by the dashboard and History.
-- Files touched: `app.jsx`, `app.js`, `features/fuel-log.feature`, `sw.js`
-  (cache → `fuel-log-v32`).
+- Files touched: `app.jsx`, `app.js`, `features/fuel-log.feature` (split 2026-08-16 →
+  `features/logging/01-edit-entry.feature`), `sw.js` (cache → `fuel-log-v32`).
 
 ### v6.1.1 — Coach goal-awareness fix (June 2026)
 - **Bug fix:** the Daily Coach no longer tells you to consume *more* of a goal

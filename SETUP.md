@@ -21,7 +21,9 @@ fuel-log/
 ├── setup/
 │   └── supabase-schema.sql ← Supabase tables + RLS policies for cloud sync.
 ├── features/
-│   └── fuel-log.feature ← Gherkin specs. Update before implementing any feature change.
+│   ├── README.md        ← index of every spec. Start here.
+│   └── <topic>/NN-*.feature ← Gherkin specs, one Feature per file.
+│                          Update before implementing any feature change.
 ├── __tests__/
 │   └── logic.test.js    ← Jest unit tests for all pure logic.
 ├── package.json         ← Dev deps + scripts.
@@ -144,7 +146,8 @@ The service worker must bypass all AI and external API calls, otherwise POST res
 
 ## Making Changes
 
-1. Update `features/fuel-log.feature` if the change affects user-visible behaviour
+1. Update the relevant spec under `features/` if the change affects user-visible behaviour
+   (`features/README.md` maps every topic to its file)
 2. Edit `app.jsx`
 3. Run `npm run build`
 4. Push `app.js` (and any other changed files) to GitHub

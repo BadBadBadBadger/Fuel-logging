@@ -1,10 +1,12 @@
 # ============================================================================
-# ✅ BUILT & FOLDED IN (v6.7, 2026-06-25). The executable scenarios now live in
-#   features/fuel-log.feature (Feature: "AI meal capture via text, voice, or
-#   photo"), which is the source of truth. This file is RETAINED only as the
-#   design-rationale record — the 4-hat debate, the architecture sketch, the
-#   locked decisions, and the logic-layer notes. Do not treat it as authoritative
-#   spec; edit fuel-log.feature instead.
+# BUILT (v6.7, 2026-06-25). THIS FILE IS THE SPEC.
+#   Promoted from features/ai-capture.feature on 2026-08-16, when
+#   features/fuel-log.feature was split into one file per Feature. The condensed
+#   12-scenario copy that lived in fuel-log.feature is gone; its four assertions
+#   that had no counterpart here were carried in below, each marked
+#   "carried from fuel-log.feature".
+#   The design rationale beneath this banner - the 4-hat debate, the locked
+#   decisions, the question bank - is retained unchanged.
 # ============================================================================
 # DRAFT SPEC — AI meal capture (text · voice · photo) + confidence follow-ups
 # ----------------------------------------------------------------------------
@@ -131,16 +133,28 @@ Feature: AI meal capture via text, voice, or photo with confidence-gated follow-
   @happy @photo @privacy
   Scenario: A photographed meal is held only in memory
     When I tap the photo button and capture my meal
-    Then the image is held in memory only and is not written to storage
+    Then the image is downscaled before it is analysed
+    And the image is held in memory only and is not written to storage
     And the image remains available while I review and adjust the estimate
     When I save the meal
     Then the image is discarded and is not stored on the device or any server
+    # both "downscaled" and the leave-the-screen case below are carried from
+    # fuel-log.feature, which asserted them and this file did not
+
+  @photo @privacy
+  Scenario: Leaving the screen discards the image just as saving does
+    Given I have photographed a meal and not yet saved it
+    When I leave the AI logging screen
+    Then the image is discarded
+    # carried from fuel-log.feature ("discarded when I save or leave the screen")
 
   @photo @edge
   Scenario: Camera gracefully degrades when denied
     Given camera permission is denied
     Then the photo button is unavailable
+    And I can still pick an existing image from my library
     And I can still type or dictate the meal
+    # the existing-image fallback is carried from fuel-log.feature
 
   # --------------------------------------------------------------------------
   # 2. Confidence-gated follow-up questions — shared across ALL inputs
@@ -290,6 +304,15 @@ Feature: AI meal capture via text, voice, or photo with confidence-gated follow-
     When I save an AI-estimated meal
     Then the meal is flagged as AI-estimated with its confidence level
     # Behaviour of runCalibration weighting is asserted in Jest — see foot of file.
+
+  @calibration
+  Scenario: AI-estimated days cannot silently retrain TDEE
+    Given recent days include low-confidence AI-estimated intake
+    When calibration runs
+    Then each day's intake is weighted by its confidence
+    And near-guess days below 50% confidence are dropped from the calculation
+    # carried from fuel-log.feature — it named the day-level weighting and the
+    # 50% drop threshold, which this file left entirely to the Jest notes
 
   @policy @genai
   Scenario: I can report an estimate as wrong

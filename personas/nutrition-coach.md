@@ -123,8 +123,9 @@ Calorie/macro + body-metric logging with an AI coach. The nutrition surface you 
   lives here — review whether the logic is sound and the guardrails sane.
 - **The AI coach** — sends meal descriptions / context to Claude for parsing & coaching. Review its
   prompts and output for advice that's wrong, glib, unsafe, or culturally blind.
-- **`features/fuel-log.feature`** — Gherkin spec and **UX source of truth** (`DOCS.md §20`); thresholds,
-  warning copy, and behaviour live here. Trace decisions to it.
+- **`features/`** — Gherkin specs and **UX source of truth** (`DOCS.md §20`), indexed by
+  `features/README.md`; thresholds, warning copy, and behaviour live here. Trace decisions to them.
+  Most relevant to this hat: `features/coach/`, `features/targets/`, `features/energy-safety/`.
 
 **Known gap you own:** the app's food list and flow show **no dietary-framework support** — no
 halal/kosher/vegan/vegetarian filtering, no allergy/intolerance handling, no fasting awareness. The seed

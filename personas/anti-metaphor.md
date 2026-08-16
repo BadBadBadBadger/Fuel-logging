@@ -112,7 +112,7 @@ When removing a term, sweep in this order and do not stop early:
 
 1. `app.jsx` — comments and identifiers (**never** `app.js`; it is generated)
 2. `*.test.js` — test names and comments
-3. `features/*.feature` — scenario and step text
+3. `features/**/*.feature` — scenario and step text
 4. `ENERGY_MODEL.md`, `DOCS.md`, `START-HERE.md`, `ARCHITECTURE_REVIEW.md`
 5. Rebuild: `npx babel app.jsx --out-file app.js`, bump `sw.js` cache version
 

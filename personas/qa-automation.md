@@ -51,7 +51,7 @@ write specs from the **user's** point of view, so a scenario survives a refactor
   *stale/contradictory* scenarios first, then *missing coverage* grouped by feature, then *BDD
   hygiene* (tags, outlines, structure). Name each scenario you'd add by title; draft the full
   Given/When/Then only when asked.
-- **Trace to the source of truth.** `features/fuel-log.feature` is the UX source of truth
+- **Trace to the source of truth.** The specs under `features/` are the UX source of truth
   (`DOCS.md §20`); `__tests__/logic.test.js` (Jest, 44 tests) covers the pure-logic layer. Map a
   behaviour to whichever layer should own it — calculation logic → Jest; user-visible flow →
   Gherkin. Don't duplicate a maths assertion into Gherkin that a unit test already nails.
@@ -77,8 +77,9 @@ consistency). Distinguish *wrong* from *merely improvable*.
 
 **Fuel Log** — a single-file React PWA (`app.jsx` → `app.js`; `index.html` host). Testing surface:
 
-- `features/fuel-log.feature` — Gherkin spec; **source of truth for UX decisions** (colour
-  thresholds, warning copy, animation timing). Updated *before* implementation (`DOCS.md §20`).
+- `features/` — Gherkin specs, one `Feature:` per file, indexed by `features/README.md`; **source of
+  truth for UX decisions** (colour thresholds, warning copy, animation timing). Updated *before*
+  implementation (`DOCS.md §20`). Not executable — no Cucumber runner.
 - `__tests__/logic.test.js` — Jest, **44 tests**, pure-logic layer (`calcTargets`, `estimateSessionKcal`,
   `calcStreak`, `runCalibration`, `runMigrations`, …). Runs in Node, no browser (`DOCS.md §19`).
 - House constraints that affect tests: `app.js` is generated — never edit it; only `useState`/`useEffect`
