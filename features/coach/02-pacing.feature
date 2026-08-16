@@ -24,7 +24,9 @@ Feature: Coach paces advice to the time of day
   Scenario: Ahead of pace is recognised as ahead
     Given it is 10:00 and I have logged 79g of a 146g protein goal
     When the coach generates a tip
-    Then the pace verdict handed to it is "ahead of pace"
+    Then the pace verdict handed to it is "ahead"
+    # paceVerdict returns one of ahead / on / behind / met; the prompt line reads
+    # "verdict: ahead" (app.jsx ~L1889), not a prose phrase
     And the coach does not nag me to catch up
 
   Scenario: Genuinely behind late in the day gets a gentle nudge

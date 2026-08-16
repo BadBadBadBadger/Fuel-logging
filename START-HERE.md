@@ -149,8 +149,14 @@ three are closed: the sex-change confirmation now says **✓ TARGETS UPDATED** i
 pointing at the deleted "reset to defaults" button was removed; and `setup/supabase-schema.sql` was
 missing the `food_logs.conf` + `elements` columns that `syncFoodLogs` writes on every upsert — **the
 live database has them** (confirmed 2026-08-16), but a fresh setup from that file would have rejected
-every food-log sync. Remaining known drift: the diet-break specs in `energy-safety/02` and `/03` quote
-copy the app no longer renders — the code is the newer decision there, so the specs need rewriting.
+every food-log sync.
+
+Copy drift is closed too, and it was smaller than first reported: three lines, not a sweep. The soft
+nudge and the hard prompt now quote what the app actually renders ("a couple of weeks at maintenance",
+not "2 weeks" — the button commits to a fortnight, the sentence deliberately doesn't), and `coach/02`
+now says the pace verdict is `ahead`, which is the value `paceVerdict` really hands the prompt. The
+other flagged lines were never drift: `"11 weeks"`, `"day 5"` and the like are rendered from templates,
+so the specs were right to state what a reader sees.
 
 **Session 17 covered "edit a logged entry" and found a real bug.** Six new Playwright tests take the
 five scenarios of *Feature: Edit a logged entry in place* (`features/logging/01-edit-entry.feature`) —

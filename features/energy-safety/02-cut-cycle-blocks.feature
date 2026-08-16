@@ -226,7 +226,7 @@ Feature: Cut runs as load-weighted blocks, not an open-ended deficit
     And 11 real weeks have passed since this block started
     When I open the dashboard
     Then I see a dismissable amber card "You've been cutting for 11 weeks"
-    And the card says "A break at maintenance now can ease diet fatigue and make the next stretch easier"
+    And the card says "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier"
     And the card does not claim a break will reset my metabolism
     And the card shows a "Start a 2-week break" button
     And the card shows a "Not yet" button that dismisses it for 7 days
@@ -236,7 +236,9 @@ Feature: Cut runs as load-weighted blocks, not an open-ended deficit
     And 16 real weeks have passed since this block started
     When I open the dashboard
     Then I see a non-dismissable red-bordered card "Time for a diet break"
-    And the card says "16 weeks is a long stretch in a deficit — let's spend 2 weeks at maintenance"
+    And the card says "16 weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance."
+    # "a couple of weeks", not "2 weeks": the button commits to a fortnight, the sentence
+    # does not — a break ends when the load drains, which rest days govern, not the calendar.
     And the card shows a primary "Start a 2-week break" button
     # Honest as of file 03: the button switches to Maintain, and the drain gauge tracks it.
     And the card shows a secondary "Remind me in 3 days" button
