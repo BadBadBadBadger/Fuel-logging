@@ -1985,7 +1985,7 @@ function TagField({ label, tags, suggestions, onChange, accent = A, placeholder 
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
           {tags.map(t => (
             <span key={t} style={{ display:"inline-flex", alignItems:"center", gap:5,
-              background: accent + "1e", border:`1px solid ${accent}55`, borderRadius:999,
+              background: mix(accent, "1e"), border:`1px solid ${mix(accent, "55")}`, borderRadius:999,
               padding:"4px 10px", fontSize:12, color:accent, fontWeight:700 }}>
               {t}
               <button onClick={() => remove(t)} style={{ background:"none", border:"none",
@@ -2006,7 +2006,7 @@ function TagField({ label, tags, suggestions, onChange, accent = A, placeholder 
           ))}
           {isCustom && (
             <button onClick={() => add(input)} style={{ background:"none",
-              border:`1px dashed ${accent}66`, borderRadius:999, padding:"4px 10px",
+              border:`1px dashed ${mix(accent, "66")}`, borderRadius:999, padding:"4px 10px",
               fontSize:12, color:accent, cursor:"pointer", fontFamily:"inherit" }}>+ Add "{input.trim()}"</button>
           )}
         </div>
@@ -2926,7 +2926,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   const tdeeConf    = tdeeConfidence((weighIns || []).length);
   const intakeConf  = intakeConfidence(logs);
   const intakeShaky = logs.length > 0 && intakeConf < INTAKE_FLAG_BELOW;
-  const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mc}88,${mc})`;
+  // mix(), not `${mc}88` — mc is a CSS variable ("var(--cut)"), so concatenating hex alpha onto it
+  // yields `var(--cut)88` → a colour stop with a unitless 88 position → the whole gradient, and with
+  // it the whole background declaration, is dropped and the bar paints nothing.
+  const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mix(mc, "88")},${mc})`;
   const kcalBorder  = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
 
   const [savedIds,      setSavedIds]      = useState({});
@@ -3436,7 +3439,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
           </div>
           {editingTarget ? (
             <div style={{ display:"flex", alignItems:"center", gap:4,
-              background: mc + "12", border:`1px solid ${mc + "55"}`,
+              background: mix(mc, "12"), border:`1px solid ${mix(mc, "55")}`,
               borderRadius:8, padding:"5px 10px" }}>
               <input type="number" inputMode="numeric" value={targetInputVal}
                 onChange={e => setTargetInputVal(e.target.value)}
@@ -3446,18 +3449,18 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
                 style={{ background:"none", border:"none",
                   color:mc, fontSize:13, fontWeight:900, width:60, textAlign:"center",
                   fontFamily:"inherit", outline:"none", padding:0 }}/>
-              <span style={{ fontSize:10, color: mc + "99" }}>kcal</span>
+              <span style={{ fontSize:10, color: mix(mc, "99") }}>kcal</span>
             </div>
           ) : (
             <div onClick={() => { setTargetInputVal(String(targets.kcal)); setEditingTarget(true); }}
               style={{ cursor:"pointer", display:"flex", alignItems:"center", gap:4,
-                background: isCustomMode ? mc + "12" : "var(--surface-2)",
-                border: `1px solid ${isCustomMode ? mc + "44" : "var(--raised)"}`,
+                background: isCustomMode ? mix(mc, "12") : "var(--surface-2)",
+                border: `1px solid ${isCustomMode ? mix(mc, "44") : "var(--raised)"}`,
                 borderRadius:8, padding:"5px 10px" }}>
               <span style={{ fontSize:12, color: isCustomMode ? mc : "var(--text-mid-4)", fontWeight:700 }}>
                 {targets.kcal.toLocaleString()} kcal
               </span>
-              <span style={{ fontSize:10, color: isCustomMode ? mc + "99" : "var(--text-faint)" }}>✎</span>
+              <span style={{ fontSize:10, color: isCustomMode ? mix(mc, "99") : "var(--text-faint)" }}>✎</span>
             </div>
           )}
         </div>
@@ -4634,7 +4637,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                     <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:5 }}>
                       {day.mode && (
                         <span style={{ fontSize:10, fontWeight:900, color: MODES[day.mode]?.color || A,
-                          background: (MODES[day.mode]?.color || A) + "22", padding:"2px 8px", borderRadius:99 }}>
+                          background: mix(MODES[day.mode]?.color || A, "22"), padding:"2px 8px", borderRadius:99 }}>
                           {MODES[day.mode]?.label}
                         </span>
                       )}

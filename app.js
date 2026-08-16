@@ -4510,8 +4510,8 @@ function TagField(_ref45) {
         display: "inline-flex",
         alignItems: "center",
         gap: 5,
-        background: accent + "1e",
-        border: "1px solid ".concat(accent, "55"),
+        background: mix(accent, "1e"),
+        border: "1px solid ".concat(mix(accent, "55")),
         borderRadius: 999,
         padding: "4px 10px",
         fontSize: 12,
@@ -4575,7 +4575,7 @@ function TagField(_ref45) {
     },
     style: {
       background: "none",
-      border: "1px dashed ".concat(accent, "66"),
+      border: "1px dashed ".concat(mix(accent, "66")),
       borderRadius: 999,
       padding: "4px 10px",
       fontSize: 12,
@@ -6896,7 +6896,10 @@ function Dashboard(_ref76) {
   var tdeeConf = tdeeConfidence((weighIns || []).length);
   var intakeConf = intakeConfidence(logs);
   var intakeShaky = logs.length > 0 && intakeConf < INTAKE_FLAG_BELOW;
-  var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mc, "88,").concat(mc, ")");
+  // mix(), not `${mc}88` — mc is a CSS variable ("var(--cut)"), so concatenating hex alpha onto it
+  // yields `var(--cut)88` → a colour stop with a unitless 88 position → the whole gradient, and with
+  // it the whole background declaration, is dropped and the bar paints nothing.
+  var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mix(mc, "88"), ",").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
   var _useState85 = useState({}),
     _useState86 = _slicedToArray(_useState85, 2),
@@ -7903,8 +7906,8 @@ function Dashboard(_ref76) {
       display: "flex",
       alignItems: "center",
       gap: 4,
-      background: mc + "12",
-      border: "1px solid ".concat(mc + "55"),
+      background: mix(mc, "12"),
+      border: "1px solid ".concat(mix(mc, "55")),
       borderRadius: 8,
       padding: "5px 10px"
     }
@@ -7936,7 +7939,7 @@ function Dashboard(_ref76) {
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: mc + "99"
+      color: mix(mc, "99")
     }
   }, "kcal")) : /*#__PURE__*/React.createElement("div", {
     onClick: function onClick() {
@@ -7948,8 +7951,8 @@ function Dashboard(_ref76) {
       display: "flex",
       alignItems: "center",
       gap: 4,
-      background: isCustomMode ? mc + "12" : "var(--surface-2)",
-      border: "1px solid ".concat(isCustomMode ? mc + "44" : "var(--raised)"),
+      background: isCustomMode ? mix(mc, "12") : "var(--surface-2)",
+      border: "1px solid ".concat(isCustomMode ? mix(mc, "44") : "var(--raised)"),
       borderRadius: 8,
       padding: "5px 10px"
     }
@@ -7962,7 +7965,7 @@ function Dashboard(_ref76) {
   }, targets.kcal.toLocaleString(), " kcal"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: isCustomMode ? mc + "99" : "var(--text-faint)"
+      color: isCustomMode ? mix(mc, "99") : "var(--text-faint)"
     }
   }, "\u270E"))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -10521,7 +10524,7 @@ function History(_ref89) {
       fontSize: 10,
       fontWeight: 900,
       color: ((_MODES$day$mode = MODES[day.mode]) === null || _MODES$day$mode === void 0 ? void 0 : _MODES$day$mode.color) || A,
-      background: (((_MODES$day$mode2 = MODES[day.mode]) === null || _MODES$day$mode2 === void 0 ? void 0 : _MODES$day$mode2.color) || A) + "22",
+      background: mix(((_MODES$day$mode2 = MODES[day.mode]) === null || _MODES$day$mode2 === void 0 ? void 0 : _MODES$day$mode2.color) || A, "22"),
       padding: "2px 8px",
       borderRadius: 99
     }
