@@ -76,7 +76,7 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 
 ### AI capture (from v6.7 — capture verified, the rest still outstanding)
 - [x] Voice/photo capture → the optional follow-up questions flow *(verified on device 2026-08-16)*
-- [ ] **⚐ Report wrong** opens a prefilled email
+- [x] **⚐ Report wrong** opens a prefilled email *(verified on device 2026-08-16)*
 - [ ] **+ Log all** puts everything into today's food
 
 ### New in v69–v70 — never yet seen on a phone
