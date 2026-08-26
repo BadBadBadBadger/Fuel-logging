@@ -1,15 +1,17 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.7 (AI meal capture) + energy-plan Steps 1–4 (built, not yet deployed)
-**Last Updated:** 16 August 2026
+**Version:** 6.7.1 (AI meal capture + the energy plan, Steps 1–5) — **live**, sw v73
+**Last Updated:** 26 August 2026
 
-> **What's new** — the **energy plan** rebuilt how targets are worked out, in four steps:
+> **What's new** — the **energy plan** rebuilt how targets are worked out, in five steps:
 > a lifestyle activity chip seeds a believable TDEE (Step 1); the adaptive engine converges
 > on your real one instead of over-correcting (Step 2); a workout's calories spread across
-> three days rather than all unlocking at once (Step 3); and a **body-sized steady-loss
+> three days rather than all unlocking at once (Step 3); a **body-sized steady-loss
 > floor** replaced the flat safe minimum as the real protection, with energy availability
-> demoted to a rare warning (Step 4). Steps 1–4 are **built and Jest-green on branch
-> `energy-safety-bmr-floor` but not deployed** — what's live is v6.7 plus the BMR × 1.2
-> maintenance floor. See §3 Calorie Calculation (its **Calorie floors** table), §10 Safe Minimum, §37 Changelog, and
+> demoted to a rare warning (Step 4); and a cut now runs as **load-weighted blocks** that
+> prompt a diet break, with the auto-lowering fix that closes the original harm (Step 5).
+> **All of it is merged and deployed** — rollback tag `pre-energy-safety`. File 05 of the
+> workstream (the low-energy-availability symptom check) is **shelved**, see `ENERGY_MODEL.md` §5.5.
+> See §3 Calorie Calculation (its **Calorie floors** table), §10 Safe Minimum, §37 Changelog, and
 > `ENERGY_MODEL.md` for the model behind it.
 
 ---
@@ -1637,6 +1639,30 @@ anyone who isn't desk-bound. Tests **108/108**, sw `v56→v57`. No worker/DB cha
   adaptive adjustment on a higher-activity seed still calibrates maintenance down to sedentary (never below).
 - **Local-only for now:** the `profiles` table has no `activity` column yet; the chip lives in the local
   profile blob and survives cloud pulls. Cloud sync is a documented fast-follow (`setup/supabase-schema.sql`).
+
+### v6.7.1 — Bugfix: the AI re-estimate could silently zero a logged meal (August 2026)
+A **data-loss** fix, and the only bug in the app that the Playwright suite has turned up (F4 in
+`PLAYWRIGHT-PLAN.md`, found 2026-08-16 while writing `entry-editor.spec.js`, fixed 2026-08-26).
+Jest **239/239**, Playwright **68/68**, sw `v72→v73`.
+- **The guard.** `EntryEditor.reestimate` filled the four macro fields straight from the AI response
+  with no validity check. `MealForm` has guarded exactly this since v6.7 — *"never claim 'Filled'
+  with blank fields"* — but the guard was **never copied to the editor**. It is now: a response whose
+  `kcal` is not finite is refused with the same honest message `MealForm` uses, *"Couldn't estimate
+  that — try rephrasing the name."*, and the fields keep the values they already had.
+- **What went wrong without it.** A *parsed-but-empty* response — valid JSON, no usable numbers — put
+  `NaN` in all four fields, still reported **"✓ Updated — re-estimate again"**, and on Save resolved
+  through `Math.round(Number("NaN") || 0)` to **0**. Tap re-estimate, read the success message, tap
+  Save, and that meal's calories and macros were gone with no error shown. A thrown parse error was
+  already handled by the surrounding `catch`; it was only the well-formed-but-empty case that got in.
+- **Why it mattered beyond the one meal.** A silent zero does not stop at the entry. It flows into the
+  day's totals and on into `runCalibration`, so a day that reads artificially low teaches the app you
+  burn less than you do — the same class of harm the energy-safety workstream exists to prevent.
+- **Not guarded, deliberately:** the Open Food Facts path needs no equivalent. `searchOFT` coerces
+  every field with `|| 0`, so it cannot produce a `NaN`.
+- Regression test: *"premium: an empty AI response is refused, not saved as a silent zero"*. Its
+  load-bearing assertion is the **stored record**, not the message — the message could regress to
+  something wrong and still be honest, but a zeroed record is the actual harm.
+- Spec: `features/logging/01-edit-entry.feature`.
 
 ### v6.7 — AI meal capture: voice + photo + confidence follow-ups (June 2026)
 The AI Meal Log gains two new input adapters and a confidence-gated follow-up layer. One pipeline,

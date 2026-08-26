@@ -1,11 +1,12 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-16 (session 18). **Jest 239/239 · Playwright 67/67 · sw v72 · `main` — pushed.**
+**Updated:** 2026-08-26 (session 19). **Jest 239/239 · Playwright 68/68 · sw v73 · `main` — pushed.**
 
-> **sw v72 is pushed, not yet device-verified.** The suite cannot tell you anything about *this
-> device* — fully close and reopen the PWA or you are still on the v71 bundle. The one visible
-> change to check: change your sex on the profile screen and the confirmation should read
-> **✓ TARGETS UPDATED**, not ✓ SAVED.
+> **v73 fixes F4 — the last open bug, and a data-loss one.** The AI re-estimate on a logged entry
+> could write `NaN`, claim "✓ Updated", and save the meal as **0 kcal**. `MealForm`'s guard is now
+> ported to `EntryEditor`, with a regression test whose real assertion is the stored record.
+> **The suite is carrying nothing open.** v72's device checks all passed, including the whole
+> v6.7 AI-capture block — voice, photo, follow-ups, report-wrong and Log all.
 
 > ## ▶ START HERE
 >
@@ -18,10 +19,10 @@
 > card — plus the Quick Add fix and a render/theme smoke pass. **`PLAYWRIGHT-PLAN.md` is its live
 > status doc.** Run it before testing by hand; it is far cheaper to find a break there.
 >
-> 🔖 **One app bug is shelved, not fixed: F4 in `PLAYWRIGHT-PLAN.md`.** The AI re-estimate on a
-> logged entry can fill the macros with `NaN`, say "✓ Updated", and then save the meal as **0 kcal**.
-> Diagnosed and reproduced; the fix is to port the guard `MealForm` already has. **It is the only
-> open finding** — everything the test suite has turned up lives in that one section of
+> ✅ **No open findings.** F4 — the AI re-estimate that could fill the macros with `NaN`, say
+> "✓ Updated" and save the meal as **0 kcal** — was fixed in v73 by porting the guard `MealForm`
+> already had. It was the only bug the suite ever found in the app itself; everything else it turned
+> up was a fault in a test or a doc. The full list still lives in one section of
 > `PLAYWRIGHT-PLAN.md`, nowhere else.
 >
 > **The one job left is still to test it on the phone: `DEVICE-TEST.md`.** The suite cannot tell you
@@ -180,8 +181,8 @@ including the premium AI re-estimate and its Open Food Facts cross-check. Suite 
 Writing them surfaced **F4**: `EntryEditor` fills the macro fields straight from the AI with no
 validity check, so a parsed-but-empty response shows `NaN`, still claims *"✓ Updated"*, and saves the
 meal as **0 kcal**. `MealForm` has guarded exactly this since v6.7; the editor was never given the
-same guard. **Reproduced, shelved, not fixed** — full write-up and the fix in `PLAYWRIGHT-PLAN.md`
-§Findings, which is now the single list of everything open.
+same guard. Reproduced and shelved at the time; **fixed in v73 on 2026-08-26** — full write-up in
+`PLAYWRIGHT-PLAN.md` §Findings, which is still the single list of everything the suite has found.
 
 **Session 16 fixed Quick Add and built a UI test layer.** The "Reset to defaults" button that wiped a
 whole meal library on one tap is gone, deletes now propagate to the cloud instead of silently

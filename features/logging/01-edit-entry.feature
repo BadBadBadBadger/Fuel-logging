@@ -31,6 +31,19 @@ Feature: Edit a logged entry in place
     And an Open Food Facts match overrides the AI figure when its confidence is higher
     And I can still review the values before saving
 
+  # F4, fixed in v73. The editor filled the fields straight from the AI with no validity
+  # check, so a parsed-but-empty response wrote NaN, still said "✓ Updated", and saved the
+  # entry as 0 kcal. A silent zero does not only lose the meal — it flows into the day's
+  # totals and on into calibration, teaching the app you burn less than you do.
+  Scenario: An unreadable AI estimate is refused, never saved as a silent zero
+    Given I am a premium user editing an entry
+    When I tap "AI re-estimate from name"
+    And the AI returns a response with no usable numbers in it
+    Then I see "Couldn't estimate that — try rephrasing the name."
+    And the button never claims the estimate succeeded
+    And the fields keep the values they already had
+    And saving afterwards leaves the entry at its original calories, not zero
+
   Scenario: AI re-estimate is gated for anonymous users
     Given I am an anonymous user editing an entry
     When I tap "AI re-estimate from name"

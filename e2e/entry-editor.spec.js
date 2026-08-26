@@ -209,6 +209,32 @@ test.describe("Edit a logged entry in place", () => {
     await expect(field(page, "F (g)")).toHaveValue("19");
   });
 
+  // F4 regression. The editor used to fill straight from the AI with no validity check, so a
+  // parsed-but-empty response wrote NaN, still claimed "✓ Updated", and saved the entry as
+  // 0 kcal — losing the meal and feeding a false low into runCalibration. The assertion that
+  // matters is the LAST one: the stored record still holds the original 620.
+  test("premium: an empty AI response is refused, not saved as a silent zero", async ({ page }) => {
+    await open(page, { premium: true, logs: [ENTRY] });
+    // A well-formed envelope with no numbers in it — the shape that got through before.
+    await stubAI(page, { name: "Chicken thigh and rice", reasoning: "e2e fixture" }, null);
+
+    await openEditor(page);
+    await field(page, "NAME").fill("Chicken thigh and rice");
+    await page.getByRole("button", { name: /AI re-estimate from name/ }).click();
+
+    await expect(page.getByText(/Couldn't estimate that/)).toBeVisible({ timeout: 15_000 });
+    // It must never claim success on a response it could not read.
+    await expect(page.getByRole("button", { name: /Updated — re-estimate again/ })).toHaveCount(0);
+    // The fields keep the values they had; no NaN, no blanks.
+    await expect(field(page, "KCAL")).toHaveValue("620");
+    await expect(field(page, "P (g)")).toHaveValue(String(ENTRY.protein));
+
+    // Saving after a refused estimate keeps the entry intact — this is the data-loss assertion.
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(consumed(page)).toContainText("620");
+    expect(await storedKcal(page)).toBe(620);
+  });
+
   test("anonymous: re-estimate raises the premium gate, and manual editing still works", async ({ page }) => {
     await open(page, { logs: [ENTRY] });
     await openEditor(page);

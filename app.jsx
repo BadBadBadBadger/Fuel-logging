@@ -2843,6 +2843,19 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
       setReest(false);
       return;
     }
+    // Guard against a malformed/empty AI response: never claim "Updated" with blank
+    // fields — show an honest retry message instead. MealForm has guarded this since
+    // v6.7; the editor was never given the same guard, so a parsed-but-empty response
+    // wrote NaN into the fields, still said "✓ Updated", and saved the entry as 0 kcal
+    // (Number(NaN) || 0). A silent zero does not only lose the meal: it flows into the
+    // day's totals and on into runCalibration, teaching the app you burn less than you
+    // do — the exact class of harm the energy-safety work exists to prevent.
+    // searchOFT below needs no equivalent guard: it coerces every field with `|| 0`.
+    if (!upd || !isFinite(Number(upd.kcal))) {
+      setReestMsg("Couldn't estimate that — try rephrasing the name.");
+      setReest(false);
+      return;
+    }
     // Show the AI answer immediately — the user never waits on Open Food Facts.
     fill(upd);
     setReestMsg("done");

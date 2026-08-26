@@ -6628,27 +6628,35 @@ function EntryEditor(_ref74) {
             setReest(false);
             return _context30.a(2);
           case 6:
+            if (!(!upd || !isFinite(Number(upd.kcal)))) {
+              _context30.n = 7;
+              break;
+            }
+            setReestMsg("Couldn't estimate that — try rephrasing the name.");
+            setReest(false);
+            return _context30.a(2);
+          case 7:
             // Show the AI answer immediately — the user never waits on Open Food Facts.
             fill(upd);
             setReestMsg("done");
             setReest(false);
             // OFF is a best-effort background refinement: bounded (6s) and may not return
             // at all on a poor connection. Only upgrades the figures if it beats the AI.
-            _context30.p = 7;
-            _context30.n = 8;
+            _context30.p = 8;
+            _context30.n = 9;
             return searchOFT(f.name.trim());
-          case 8:
+          case 9:
             oft = _context30.v;
             if (oft && oft.confidence > upd.confidence) fill(oft);
-            _context30.n = 10;
+            _context30.n = 11;
             break;
-          case 9:
-            _context30.p = 9;
-            _t35 = _context30.v;
           case 10:
+            _context30.p = 10;
+            _t35 = _context30.v;
+          case 11:
             return _context30.a(2);
         }
-      }, _callee30, null, [[7, 9], [3, 5]]);
+      }, _callee30, null, [[8, 10], [3, 5]]);
     }));
     return function reestimate() {
       return _ref75.apply(this, arguments);

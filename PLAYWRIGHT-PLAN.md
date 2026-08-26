@@ -11,7 +11,7 @@ we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themsel
 
 > ### 🔖 Shelved — one open item, needing a decision rather than more investigation
 >
-> **`F4` is the only thing this suite has found and not fixed: [Open findings](#open-findings).**
+> **Everything this suite has found is now fixed — `F4` closed 2026-08-26: [Findings](#open-findings).**
 > The AI re-estimate on a logged entry can write a silent `NaN` and then save the meal as **0 kcal**.
 > Diagnosed and reproduced; the fix is four lines `MealForm` already has. Nothing else is
 > outstanding — F1–F3 are all fixed, and the suite is green.
@@ -303,11 +303,13 @@ Worked **one at a time**, in this order. Each lands green before the next starts
 | 28 | Two months of weigh-ins: losing vs stalled, and the target holds | B5/B6 | ✅ 2026-08-11 (6 tests) |
 | 30–31 | AI follow-ups: which items get asked, and in what units | v6.7 | ✅ 2026-08-11 (8 tests) |
 | 32 | Edit a logged entry in place, incl. re-estimate and the gate | `logging/01-edit-entry` | ✅ 2026-08-16 (6 tests) |
+| 33 | An unreadable AI estimate is refused, not saved as a zero (F4 regression) | `logging/01-edit-entry` | ✅ 2026-08-26 (1 test) |
 
 ### Still open
 
-**Nothing planned is outstanding.** Every item 15–32 is written and green. The only work this suite
-is carrying is **F4** — see [Open findings](#open-findings) — plus the human-only checks below.
+**Nothing planned is outstanding, and nothing is carried.** Every item 15–33 is written and green,
+and F4 — the one bug the suite found in the app — was fixed on 2026-08-26. What remains is the
+human-only checks below, which no test can reach.
 
 ### Needs a human, not a test
 
@@ -333,25 +335,24 @@ is carrying is **F4** — see [Open findings](#open-findings) — plus the human
 ## Findings
 
 Everything the suite has turned up. **This is the only list** — findings are not tracked anywhere
-else. Nothing here is waiting on further investigation; F4 is diagnosed and needs a decision.
+else. Nothing is open: F4, the last one, was fixed on 2026-08-26.
 
 <a id="open-findings"></a>
 
 ### Open findings
 
-| # | What | Where the fault is | Severity | Status |
-|---|---|---|---|---|
-| **F4** | AI re-estimate writes a silent `NaN`, then saves the entry as **0 kcal** | **`app.jsx` — the app itself** | **Data loss** | 🔖 shelved 2026-08-16 |
+**None.** Everything this suite has found has been fixed.
 
 | # | Fixed | |
 |---|---|---|
+| **F4** | **AI re-estimate wrote a silent `NaN`, saving the entry as 0 kcal** — the only finding that was a bug in the app rather than in a test or a doc | ✅ `app.jsx`, sw v73 |
 | F1 | Harness never applied a saved theme | ✅ `preview.html` |
 | F2 | `DEVICE-TEST.md` seeded a UTC day key against a local one | ✅ `DEVICE-TEST.md:94` |
 | F3 | `DEVICE-TEST.md` B6 cleared the stall threshold by one entry | ✅ `DEVICE-TEST.md:164`, now 30 days |
 
 ---
 
-### F4 · AI re-estimate can silently zero an entry — **open, shelved 2026-08-16**
+### F4 · AI re-estimate can silently zero an entry — **✅ FIXED 2026-08-26 (sw v73)**
 
 **The only finding so far that is a bug in the app rather than in a test or a doc.**
 
@@ -370,8 +371,15 @@ is the *parsed-but-empty* response — the app reports success, shows `NaN`, and
 `Math.round(Number("NaN") || 0)` (`app.jsx:2852`) resolves to **0**. A user who taps re-estimate,
 reads "✓ Updated", and taps Save loses that meal's calories and macros with no error shown.
 
-**The fix is to port the `MealForm` guard**, plus a seventh test in `entry-editor.spec.js` asserting
-the honest message instead. Not started — deliberately shelved, not forgotten.
+**Fixed 2026-08-26 by porting the `MealForm` guard.** `EntryEditor.reestimate` now refuses a
+response whose `kcal` is not finite, showing *"Couldn't estimate that — try rephrasing the name."* —
+the same honest message `MealForm` has shown since v6.7 — and leaves the fields at the values they
+already had. The seventh test exists: *"premium: an empty AI response is refused, not saved as a
+silent zero"* in `entry-editor.spec.js`, whose load-bearing assertion is the stored record, not the
+message. Suite is **68**.
+
+`searchOFT` was checked and deliberately left unguarded: it coerces every field with `|| 0`
+(`app.jsx:3915`), so the Open Food Facts path cannot produce a `NaN` and needs no equivalent.
 
 ---
 
