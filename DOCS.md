@@ -1,5 +1,5 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.7.1 (AI meal capture + the energy plan, Steps 1–5) — **live**, sw v73
+**Version:** 6.7.2 (AI meal capture + the energy plan, Steps 1–5) — **live**, sw v74
 **Last Updated:** 26 August 2026
 
 > **What's new** — the **energy plan** rebuilt how targets are worked out, in five steps:
@@ -1639,6 +1639,29 @@ anyone who isn't desk-bound. Tests **108/108**, sw `v56→v57`. No worker/DB cha
   adaptive adjustment on a higher-activity seed still calibrates maintenance down to sedentary (never below).
 - **Local-only for now:** the `profiles` table has no `activity` column yet; the chip lives in the local
   profile blob and survives cloud pulls. Cloud sync is a documented fast-follow (`setup/supabase-schema.sql`).
+
+### v6.7.2 — "Below your resting metabolism" removed (August 2026)
+Retired on **three weeks of real cut data from the only user**, not on taste. sw `v73→v74`,
+Jest **239/239**, Playwright **68/68**.
+- **What it did.** On Cut, when the target landed under BMR, an amber card said *"Below your resting
+  metabolism — fine short-term, not a level to live at."* A standard 500 kcal cut lands under BMR for
+  almost anyone, so for a sedentary cutter it never went away.
+- **Why it went.** It fired **only when no floor had applied** — not `SAFE_MIN`, not the BMR × 1.2
+  maintain floor, not the steady-loss floor. That is the band the app has already judged acceptable,
+  so it was **an amber warning for a non-event**. Every genuinely unsafe target is caught by a floor,
+  and floors *move the number* rather than talk about it.
+- **The cost was alarm blindness, not clutter.** Reported as "wallpaper, I don't even notice it", and
+  it had never once changed a decision. By then *no* amber card was being read — including *"Eased to
+  a steady pace"*, the stall nudge and the weight-up card, which are the three carrying real safety
+  weight. A permanent warning is not a warning.
+- **It was redundant on its own terms:** choosing Cut *is* choosing to eat under maintenance, so the
+  card told the user what they had just asked for.
+- **The duration concern it stood in for is unchanged and still covered** by the cut-block break
+  prompts (`CUT_BLOCK_SOFT_NUDGE` / `_HARD_PROMPT`), which fire on accumulated deficit load — the
+  same safety argument on a trigger that carries information. Depth is owned by the floors; duration
+  by the break prompts.
+- Spec: `features/energy-safety/04-adaptive-tdee-guardrails.feature`, whose scenario now specifies
+  the **silence**. `DEVICE-TEST.md`'s parked open question is resolved.
 
 ### v6.7.1 — Bugfix: the AI re-estimate could silently zero a logged meal (August 2026)
 A **data-loss** fix, and the only bug in the app that the Playwright suite has turned up (F4 in

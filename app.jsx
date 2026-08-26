@@ -3197,36 +3197,27 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         </div>
       )}
 
-      {/* Below resting metabolism (file 04). A cut IS a deliberate choice to eat below
-          what you burn, and for a lean body the arithmetic lands under BMR with nothing
-          wrong — so this is allowed, and named rather than hidden or forbidden. Silent
-          when a floor already spoke, and silent outside Cut, where it would be alarming
-          rather than informative. */}
-      {mode === "cut" && targets.kcal < targets.bmr && !targets.safeMinApplied &&
-       !targets.bmrFloorApplied && !targets.deficitFloorApplied && (
-        <div style={{ background:"var(--warn-tint-2)", border:"1px solid color-mix(in srgb, var(--warn) 20%, transparent)", borderRadius:12,
-          padding:"10px 14px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>
-          <div style={{ fontSize:15, marginTop:1 }}>🌙</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
-              BELOW YOUR RESTING METABOLISM
-            </div>
-            <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
-              Fine short-term, not a level to live at.
-              <details style={{ marginTop:4 }}>
-                <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
-                <div style={{ marginTop:4, color:"var(--text-mid)" }}>
-                  Your resting metabolism ({targets.bmr.toLocaleString()} kcal) is what your body
-                  would use doing nothing at all — but you don't do nothing, so eating under it for a
-                  stretch is normal on a cut and is not the same as starving. It's a reasonable place
-                  to be for a few weeks, not a place to settle. The break prompts will tell you when
-                  you've been at it a while.
-                </div>
-              </details>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* REMOVED 2026-08-26 — the "Below your resting metabolism" card.
+          Retired on three weeks of real cut data from the only user, not on taste.
+
+          It fired ONLY when no floor had applied: not SAFE_MIN, not the BMR×1.2 maintain
+          floor, not the steady-loss floor. That is the band the app has already decided is
+          acceptable — so it was an AMBER WARNING FOR A NON-EVENT. Every genuinely unsafe
+          target is caught by a floor above, and those MOVE the number rather than talk.
+
+          The cost was not clutter, it was alarm blindness. Reported unread ("wallpaper"),
+          never once changed a decision, and by then no amber card was being read at all —
+          including "Eased to a steady pace", the stall nudge and the weight-up card, which
+          are the three that carry real safety weight. A permanent warning is not a warning.
+
+          It was also redundant on its own terms: choosing Cut IS choosing to eat under
+          maintenance, so the card told the user what they had just asked for.
+
+          The duration concern it was standing in for — "fine for weeks, not a place to
+          settle" — is genuine, and is already handled properly by the cut-block break
+          prompts (CUT_BLOCK_SOFT_NUDGE / _HARD_PROMPT), which trigger on accumulated
+          deficit load. That is the same safety argument on a trigger that means something.
+          Spec: features/energy-safety/04. Do not reinstate without new evidence. */}
 
       {/* Low fuel (Step 4, warning only — never changes the target). Rare by design: lean body +
           a day you actually trained + what's left after training is genuinely low. */}

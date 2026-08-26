@@ -48,7 +48,11 @@
       "Bash(node -e ' *)",
       "Bash(node \"C:/Users/adria/AppData/Local/Temp/claude/c--Users-adria-Fuel-logging/602e03b6-f955-40e3-97ab-32c093bc90b3/scratchpad/sim3.js\")",
       "Bash(node \"C:/Users/adria/AppData/Local/Temp/claude/c--Users-adria-Fuel-logging/602e03b6-f955-40e3-97ab-32c093bc90b3/scratchpad/sim4.js\")",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(sed -i 's/\"fuel-log-v73\"/\"fuel-log-v74\"/' sw.js)",
+      "Bash(npx playwright *)",
+      "Bash(sed -i 's/\\\\*\\\\*Version:\\\\*\\\\* 6.7.1 \\(AI meal capture + the energy plan, Steps 1–5\\) — \\\\*\\\\*live\\\\*\\\\*, sw v73/**Version:** 6.7.2 \\(AI meal capture + the energy plan, Steps 1–5\\) — **live**, sw v74/' DOCS.md)",
+      "Bash(sed -i 's/\\\\*\\\\*Updated:\\\\*\\\\* 2026-08-26 \\(session 19\\). \\\\*\\\\*Jest 239\\\\/239 · Playwright 68\\\\/68 · sw v73/**Updated:** 2026-08-26 \\(session 19\\). **Jest 239\\\\/239 · Playwright 68\\\\/68 · sw v74/' START-HERE.md)"
     ]
   }
 }

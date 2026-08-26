@@ -1,12 +1,16 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-26 (session 19). **Jest 239/239 · Playwright 68/68 · sw v73 · `main` — pushed.**
+**Updated:** 2026-08-26 (session 19). **Jest 239/239 · Playwright 68/68 · sw v74 · `main` — pushed.**
 
 > **v73 fixes F4 — the last open bug, and a data-loss one.** The AI re-estimate on a logged entry
 > could write `NaN`, claim "✓ Updated", and save the meal as **0 kcal**. `MealForm`'s guard is now
 > ported to `EntryEditor`, with a regression test whose real assertion is the stored record.
-> **The suite is carrying nothing open.** v72's device checks all passed, including the whole
-> v6.7 AI-capture block — voice, photo, follow-ups, report-wrong and Log all.
+> **The suite is carrying nothing open.**
+>
+> **v74 removes the "Below your resting metabolism" card**, on three weeks of real cut data. It only
+> fired when *no* floor had applied — the band the app already considers fine — so it warned about a
+> non-event, went unread, and had trained its only user past amber entirely. Depth stays with the
+> floors, duration with the break prompts. First change made on lived evidence rather than reasoning.
 
 > ## ▶ START HERE
 >
@@ -27,9 +31,11 @@
 >
 > **The one job left is still to test it on the phone: `DEVICE-TEST.md`.** The suite cannot tell you
 > anything about *this device* — iOS Safari, PWA install, service-worker cycling, haptics. Fully close
-> and reopen the PWA first or you're still on an old bundle. One open question is parked in that file
-> — whether *"Below your resting metabolism"* should become a one-time acknowledgement, since it
-> currently shows for every sedentary cutter forever.
+> and reopen the PWA first or you're still on an old bundle. The open question parked in that file —
+> whether *"Below your resting metabolism"* should become a one-time acknowledgement — was **answered
+> on 2026-08-26 by three weeks of real cut data: the card was removed** in v74. It only fired when no
+> floor had applied, so it warned about the band the app already considers fine, and it was training
+> the user past the amber cards that matter.
 >
 > ⚠️ **Never sign in for real on `preview.html`.** A faked clock plus a real account wrote
 > future-dated `food_logs` to Supabase once, and they were waiting when the real date arrived. This is
@@ -58,8 +64,8 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v67**.
-- Run `npx jest` before claiming anything works. Currently **213/213**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v74**.
+- Run `npx jest` before claiming anything works. Currently **239/239**. `npm run test:ui` is **68/68**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.

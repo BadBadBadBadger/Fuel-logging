@@ -210,14 +210,21 @@ Feature: The app's own guess can never talk you into under-eating
     # invitation therefore rides the card that already exists rather than needing
     # a surface of its own.
 
-  Scenario: A cut target below resting metabolism is allowed, and said plainly
+  # REVISED 2026-08-26. This scenario used to require an amber note reading "Below your
+  # resting metabolism — fine short-term, not a level to live at". The note is GONE, and
+  # the silence is now the specified behaviour. Three weeks of real cut data: it went
+  # unread ("wallpaper"), never changed a decision, and had trained the user past amber
+  # entirely — including the three cards that do carry safety weight. It only ever fired
+  # when NO floor had applied, i.e. in the band the app itself considers acceptable, so it
+  # was a warning for a non-event. The duration concern it stood in for is handled by the
+  # cut-block break prompts, which trigger on accumulated load rather than on a threshold
+  # that is normal for any cutter.
+  Scenario: A cut target below resting metabolism is allowed, and passes without comment
     Given today's cut target lands below my BMR but at or above my steady-loss floor
     When the app shows the target
     Then the cut target is allowed
-    And I see an amber note "Below your resting metabolism — fine short-term, not a
-      level to live at"
-    And the note is silent when a floor has already spoken, so only one card explains
-    And it is silent outside Cut, where it would alarm rather than inform
-    # Deliberate: a cut IS a choice to eat below what you burn, and for a lean
-    # body the arithmetic lands below BMR without anything being wrong. Naming it
-    # honestly beats either hiding it or forbidding it.
+    And no card comments on being below resting metabolism
+    And the floors above stay responsible for every target that is genuinely unsafe
+    And the break prompts stay responsible for how long I have been cutting
+    # A cut IS a choice to eat below what you burn, so for any cutter the arithmetic
+    # lands below BMR routinely, with nothing wrong. Allowing it silently is the point.

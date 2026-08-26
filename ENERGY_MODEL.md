@@ -304,9 +304,13 @@ Two cards carry it on screen. *"Weight up while eating less than maintenance"* e
 refusal — water, glycogen or muscle, not a slower metabolism — and is **derived every
 render** from a two-week trend rather than stored as a weigh-in event, so the explanation
 is present whenever the situation is real. It carries an optional link to update body-fat %
-(the recomposition case) and, per file 03's rule, **no mode buttons**. *"Below your resting
-metabolism"* names the honest case where a cut target lands under BMR: allowed, because a
-cut is a choice, but not a level to live at.
+(the recomposition case) and, per file 03's rule, **no mode buttons**.
+
+> A second card, *"Below your resting metabolism"*, used to name the case where a cut target
+> lands under BMR. **Removed 2026-08-26 (v74).** It fired only when no floor had applied — the
+> band the app already considers acceptable — so it warned about a non-event, and three weeks of
+> real use showed it had trained the user past amber entirely. Depth is owned by the floors,
+> duration by the break prompts. See `features/energy-safety/04`.
 
 ### 5.5 Why Step 6 (the symptom check, file 05) was shelved (2026-08-09)
 

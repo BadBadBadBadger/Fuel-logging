@@ -7444,57 +7444,7 @@ function Dashboard(_ref76) {
       marginTop: 4,
       color: "var(--text-mid)"
     }
-  }, "Your floor is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), mode === "cut" && targets.kcal < targets.bmr && !targets.safeMinApplied && !targets.bmrFloorApplied && !targets.deficitFloorApplied && /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: "var(--warn-tint-2)",
-      border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
-      borderRadius: 12,
-      padding: "10px 14px",
-      marginBottom: 12,
-      display: "flex",
-      gap: 10,
-      alignItems: "flex-start"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 15,
-      marginTop: 1
-    }
-  }, "\uD83C\uDF19"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      flex: 1
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: AMBER,
-      fontWeight: 800,
-      letterSpacing: "0.06em",
-      marginBottom: 2
-    }
-  }, "BELOW YOUR RESTING METABOLISM"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "var(--gold-dim)",
-      lineHeight: 1.5
-    }
-  }, "Fine short-term, not a level to live at.", /*#__PURE__*/React.createElement("details", {
-    style: {
-      marginTop: 4
-    }
-  }, /*#__PURE__*/React.createElement("summary", {
-    style: {
-      cursor: "pointer",
-      color: AMBER,
-      fontWeight: 700,
-      fontSize: 11
-    }
-  }, "Why?"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 4,
-      color: "var(--text-mid)"
-    }
-  }, "Your resting metabolism (", targets.bmr.toLocaleString(), " kcal) is what your body would use doing nothing at all \u2014 but you don't do nothing, so eating under it for a stretch is normal on a cut and is not the same as starving. It's a reasonable place to be for a few weeks, not a place to settle. The break prompts will tell you when you've been at it a while."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
+  }, "Your floor is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--warn-tint-2)",
       border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",

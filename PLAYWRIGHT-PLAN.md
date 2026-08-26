@@ -441,8 +441,9 @@ disk (`npm run audit:shots`), then review it wearing the design hat — and, sep
 for store assets. The value is that the harness can manufacture states no reviewer ever reaches by
 hand: week 15 of a cut, on-a-break day 7, recharged, stalled, weight-up-while-cutting, low-fuel,
 over-budget, premium vs free, first-run. Reading `app.jsx` is guessing at pixels; a contact sheet is
-evidence. It would also settle the `DEVICE-TEST.md` open question about whether *"Below your resting
-metabolism"* is permanent wallpaper.
+evidence. (The `DEVICE-TEST.md` open question about whether *"Below your resting metabolism"* was
+permanent wallpaper got settled the other way, on 2026-08-26 — three weeks of real use answered it
+and the card was removed. A contact sheet would have shown the same thing sooner.)
 
 Alongside it, a **machine-checkable lint pass** — contrast against the cream-theme rules, tap targets
 under 44px, overflow and clipping, `axe-core` — which is pass/fail and needs no persona at all.

@@ -62,7 +62,8 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [ ] Weigh in — accepted, trend updates, no scary messaging
 - [ ] Switch **Cut → Maintain → Bulk** — target moves sensibly each time, no confirm interrupts you
 - [ ] Nothing mentions breaks, recharging or stalls **at all** (you've no cut history yet — silence is correct)
-- [ ] **"Below your resting metabolism"** — see the open question at the bottom of this file
+- [x] **"Below your resting metabolism"** — resolved: the card was removed in v74, see the foot of
+      this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
 ### New in v71–v72
@@ -249,14 +250,25 @@ found in about a minute that way.
 
 ---
 
-## Open question left deliberately unresolved
+## Open question — ✅ RESOLVED 2026-08-26: the card is gone
 
-**"Below your resting metabolism"** currently shows for **every sedentary cutter, permanently** — a
-standard 500-calorie cut lands under BMR for almost anyone, so the card never goes away. It is true,
-but a warning that's always on is wallpaper, and it teaches you to stop reading amber cards.
+**"Below your resting metabolism"** showed for **every sedentary cutter, permanently**, because a
+standard 500-calorie cut lands under BMR for almost anyone. The question was whether to leave it or
+make it a one-time "Got it".
 
-Live with it for a few days and decide: leave it, or make it a one-time **"Got it"** like the
-aggressive-cut acknowledgement already in the app.
+**Answered by three weeks of real cut data, and it was neither: the card was removed in v74.** It
+went unread — "wallpaper, I don't even notice it" — and had never once changed a decision. By then
+no amber card was being read at all, which is the actual cost: it was training the user past *"Eased
+to a steady pace"*, the stall nudge and the weight-up card, the three that carry real safety weight.
+
+The deciding argument was structural rather than aesthetic. The card only ever fired when **no floor
+had applied** — not SAFE_MIN, not the BMR×1.2 maintain floor, not the steady-loss floor — which is
+the band the app has already decided is acceptable. It was an amber warning for a non-event. Every
+genuinely unsafe target is caught by a floor, and floors move the number instead of talking. The
+"fine for weeks, not a place to settle" concern is real and is already carried by the cut-block break
+prompts, which trigger on accumulated load rather than on a threshold every cutter crosses by design.
+
+Spec: `features/energy-safety/04`. Do not reinstate without new evidence.
 
 ## Still outstanding, not part of this release
 
