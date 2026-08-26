@@ -90,8 +90,9 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `d21d7d6` is what is **live on GitHub Pages** (sw **v72**), verified 2026-08-16 by reading
-the deployed `sw.js`. It adds the spec split, the scenario audit and the profile confirmation fix on
+`main` @ `d01fe5f` is what is **live on GitHub Pages** (sw **v73**), the F4 data-loss fix. Verify any
+time by reading the deployed worker: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
+Before it, `d21d7d6` (sw **v72**). It adds the spec split, the scenario audit and the profile confirmation fix on
 top of `efad462` (sw **v70**), deployed 2026-08-11: the whole
 energy-safety workstream (Steps 1–5), the Quick Add fix, the weigh-in reporting fix, and the AI
 capture follow-up fix. Rollback tag **`pre-energy-safety`** is the state before the workstream
