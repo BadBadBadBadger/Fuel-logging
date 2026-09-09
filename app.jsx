@@ -443,6 +443,213 @@ const paceVerdict = (firstMealHour, nowHour, frac) => {
   return { elapsed, verdict: "behind" };
 };
 
+// ── Intake scoring (feature dashboard/04) ──────────────────────────
+// features/dashboard/04-intake-scoring.feature. Grades what's logged against the role each
+// macro plays — protein/fat are floors, calories is the master constraint (direction depends
+// on goal), carbs is flex — instead of raw distance from a number. Band widths marked OPEN in
+// the spec ship here as its own proposed numbers, not re-derived; they're meant to be
+// feel-tested against real logged days and tuned, the same way every other threshold in this
+// app started out (cut-load weeks, the adaptive-TDEE step cap, etc.).
+
+// Protein — day-close bands are a PERCENTAGE of target, not grams, because the target itself
+// scales with bodyweight. OPEN (§5.A): exact widths proposed here from the spec's example
+// points (92%→green, 75%→amber, 50%→red).
+const PROTEIN_CLOSE_GREEN_PCT    = 0.90;
+const PROTEIN_CLOSE_RED_BELOW_PCT = 0.60;
+
+const proteinDayScore = ({ dayClosed, pctOfTarget, verdict }) => {
+  if (pctOfTarget >= 1) return { colour:"green", label:"On target" }; // over is always fine
+  if (!dayClosed) // paced against the eating window, never flat-graded, never red mid-day
+    return verdict === "behind" ? { colour:"amber", label:"Increase" } : { colour:"green", label:"On pace" };
+  if (pctOfTarget >= PROTEIN_CLOSE_GREEN_PCT)     return { colour:"green", label:"On target" };
+  if (pctOfTarget >= PROTEIN_CLOSE_RED_BELOW_PCT) return { colour:"amber", label:"Increase" };
+  return { colour:"red", label:"Increase" }; // the one macro that reaches red regardless of goal
+};
+
+// Calories — reuses dashboard/01's shipped 100/200/500 kcal shape (the CONSUMED/REMAINING card)
+// verbatim for Cut, mirrored below for Bulk as the "under" shape. MAINTAIN_WIDE_MARGIN_KCAL is
+// OPEN — the spec asked for "a wide margin" on Maintain without a number.
+const CAL_BAND_SOFT = 100, CAL_BAND_MID = 200, CAL_BAND_HARD = 500;
+const MAINTAIN_WIDE_MARGIN_KCAL = 200;
+
+// `label` is the bar caption, which is always rendered NEXT TO a number ("OVER BY" + 350).
+// `heroAction` is the same fact written as a whole sentence, because the hero renders its
+// action line on its own — "OVER BY" alone was appearing on screen as a fragment ending in
+// "BY" with nothing after it (found by driving the app, 2026-09-09).
+const cutCalorieScore = overAmt => {
+  const say = `Over by ${Math.round(overAmt)} kcal today.`;
+  if (overAmt < CAL_BAND_SOFT) return { colour:"green", label:"in range" };
+  if (overAmt < CAL_BAND_MID)  return { colour:"amber", label:"JUST OVER", heroAction: say };
+  if (overAmt < CAL_BAND_HARD) return { colour:"amber", label:"OVER BY",   heroAction: say };
+  return { colour:"red", label:"OVER BY", heroAction: say };
+};
+const bulkCalorieScore = underAmt => {
+  const say = `${Math.round(underAmt)} kcal short of your bulk today.`;
+  if (underAmt < CAL_BAND_SOFT) return { colour:"green", label:"in range" };
+  if (underAmt < CAL_BAND_MID)  return { colour:"amber", label:"JUST UNDER",       heroAction: say };
+  if (underAmt < CAL_BAND_HARD) return { colour:"amber", label:"MISSING THE BULK", heroAction: say };
+  return { colour:"red", label:"MISSING THE BULK", heroAction: say };
+};
+
+// kcalDelta = logged − target (positive = over, negative = under).
+const calorieDayScore = ({ mode, dayClosed, kcalDelta }) => {
+  if (mode === "cut") {
+    if (kcalDelta <= 0) return { colour:"green", label: dayClosed ? "in range" : "On pace" }; // under is never a penalty
+    return cutCalorieScore(kcalDelta);
+  }
+  if (mode === "bulk") {
+    // Day-open/close split ADOPTED here, not decided by the spec — it left Bulk's Outline
+    // without one, which could otherwise disagree with the generic day-open "under is on
+    // pace" rule for the same real situation. Mirrors Maintain's split, the only other mode
+    // that has one, so the three modes behave consistently mid-day.
+    if (kcalDelta >= 0) return { colour:"green", label:"in range" }; // over tolerated far more loosely than under
+    if (!dayClosed)     return { colour:"green", label:"On pace" };
+    return bulkCalorieScore(-kcalDelta);
+  }
+  // maintain
+  if (!dayClosed) return kcalDelta < 0 ? { colour:"green", label:"On pace" } : { colour:"green", label:"in range" };
+  if (Math.abs(kcalDelta) < MAINTAIN_WIDE_MARGIN_KCAL) return { colour:"green", label:"in range" };
+  const n = Math.round(Math.abs(kcalDelta));
+  return { colour:"amber", label: kcalDelta < 0 ? "Under-eaten" : "Over for today",
+    heroAction: kcalDelta < 0 ? `Under by ${n} kcal today.` : `Over by ${n} kcal today.` };
+};
+
+// Fat — a floor AND a ceiling at once. Both bands are a percentage (of the floor, and of the
+// target) for the identical bodyweight-scaling reason as protein's bands above.
+const FAT_CEILING_AMBER_PCT   = 0.10;
+const FAT_CEILING_RED_PCT     = 0.25;
+const FAT_FLOOR_RED_BELOW_PCT = 0.15;
+
+// FIXED 2026-09-09 (found by driving the app, not by a test): the health floor is a CUMULATIVE
+// daily amount, and it was being judged flat from the first meal onward. At 11am, after a
+// perfectly on-plan breakfast, a 98.5 kg user was 22 g into a 59 g floor — so the card read a red
+// "FAT · Add some healthy fats", which outranks everything else in the hero order, and stayed
+// that way until three quarters of the day's fat was eaten. That was the dashboard's dominant
+// daytime state, and on a Cut it is the one message this app must never send by accident.
+// Fix: the FLOOR now gets exactly the treatment protein's floor already has — paced against the
+// eating window while the day is open (paceVerdict, built for precisely this, app.jsx:427-431),
+// never red and never a hard-safety hero before the day has closed. "Add some healthy fats"
+// stays exclusive to a real breach at close, per the spec's own scenario; the mid-day nudge
+// borrows protein's "Increase" instead. The CEILING is unchanged and stays unconditional —
+// eating a whole day's fat by noon is a real "over" at any hour.
+const fatDayScore = ({ fatG, floorG, targetG, dayClosed = true, verdict = "met" }) => {
+  if (fatG < floorG) {
+    if (!dayClosed)
+      return verdict === "behind" ? { colour:"amber", label:"Increase" } : { colour:"green", label:"On pace" };
+    const pctBelow = floorG > 0 ? (floorG - fatG) / floorG : 1;
+    return { colour: pctBelow >= FAT_FLOOR_RED_BELOW_PCT ? "red" : "amber",
+      label:"Add some healthy fats", floorBreach:true };
+  }
+  if (fatG <= targetG) return { colour:"green", label:"On target" };
+  const pctOver = targetG > 0 ? (fatG - targetG) / targetG : 1;
+  if (pctOver < FAT_CEILING_AMBER_PCT) return { colour:"green", label:"On target" };
+  const colour = pctOver < FAT_CEILING_RED_PCT ? "amber" : "red";
+  return { colour, label:"OVER", ceilingBreach: colour !== "green" };
+};
+
+// Carbs — pure flex, no bound of its own. Under is always fine; over only ever reads amber as
+// a symptom of calories also being over (carbs never independently drives the hero's action).
+const carbsDayScore = ({ carbsG, targetG, caloriesOver }) => {
+  if (carbsG > targetG && caloriesOver) return { colour:"amber", label:"Over — with calories" };
+  return { colour:"green", label:"On target" };
+};
+
+// Day close (§4) — reuses the coach's own eating-window pacing (EATING_WINDOW_H, paceVerdict)
+// for any day with logging at all; that math alone never closes a day with NOTHING logged
+// (elapsed stays 0 forever), so a hard local-time fallback covers that one case, proposed at
+// 22:00 so an unlogged day still eventually reads as a miss rather than "on pace" all night.
+// OPEN (§4): the two conditions aren't proven mutually exclusive for a very late first meal —
+// flagged in the spec, not resolved here.
+const DAY_CLOSE_FALLBACK_HOUR = 22;
+const isDayClosed = ({ firstMealHour, nowHour }) =>
+  firstMealHour == null ? nowHour >= DAY_CLOSE_FALLBACK_HOUR : (nowHour - firstMealHour) >= EATING_WINDOW_H;
+
+// Hero priority — the card's single headline word + one action line when several macros need
+// attention at once. DECIDED order for Cut/Bulk (pairwise scenarios in the spec): fat-floor
+// breach (hard safety) > calories out of range > fat-ceiling breach > protein under target.
+// Maintain's own ordering is left explicitly unresolved by the spec ("mixes units with no
+// stated conversion... isn't actually computable as written") — ADOPTED the same order here as
+// the consistent default, since fat-below-floor is confirmed to win first on Maintain too and
+// nothing argues for a different order among the rest. Flagged as adopted, not re-decided.
+const heroFor = ({ protein, calories, fat }) => {
+  // "floor"/"ceiling" stay internal (floorBreach/ceilingBreach) — never on screen. The word
+  // shown for either fat case is just "FAT"; the action line is what says what's actually wrong.
+  if (fat.floorBreach)              return { colour: fat.colour,      word:"FAT", action:"Add some healthy fats." };
+  if (calories.colour !== "green")  return { colour: calories.colour, word:"CALORIES",   action: calories.heroAction || calories.label };
+  // Was `fat.ceilingBreach`. Widened to any non-green fat that isn't a floor breach: today that
+  // is still exactly the ceiling breach, plus the new mid-day "behind on fat" state above, which
+  // belongs at this same rank — "fat, but not the floor" — rather than needing a rank of its own.
+  if (fat.colour !== "green")       return { colour: fat.colour,      word:"FAT",        action: fat.label };
+  if (protein.colour !== "green")   return { colour: protein.colour,  word:"PROTEIN",    action: protein.label };
+  return { colour:"green", word:"ON TRACK", action:"Nice work today." };
+};
+
+// ── The weekly rolling read ─────────────────────────────────────────
+// "This week" = the last 7 days ending today, not the calendar week (Background).
+const WEEK_BAND_KCAL           = 250; // OPEN — proposed width, mirrors the ±500 mode deltas
+const WEEK_MIN_HISTORY_DAYS    = 7;
+const WEEK_FLOOR_MAJORITY_DAYS = 4;   // DECIDED, founder, 2026-09-04
+
+const weekBandFor = diffFromBaseline => {
+  if (diffFromBaseline <= -WEEK_BAND_KCAL) return "cut";
+  if (diffFromBaseline >=  WEEK_BAND_KCAL) return "bulk";
+  return "maintain";
+};
+
+const WEEK_READ_COPY = {
+  cut:      { cut:      { colour:"green", comment:"This week's been a real cut — averaging a genuine deficit. Keep going." },
+              maintain: { colour:"amber", comment:"This week hasn't been a cut. Hit your targets and watch this change." },
+              bulk:     { colour:"red",   comment:"This week's average has actually run as a surplus — a cut needs it below maintenance to work." } },
+  maintain: { cut:      { colour:"amber", comment:"This week's average has actually run a bit under — more of a cut than maintain. More food would bring it back." },
+              maintain: { colour:"green", comment:"Right where maintain should be this week." },
+              bulk:     { colour:"amber", comment:"This week's average has actually run a bit over — more of a bulk than maintain." } },
+  bulk:     { cut:      { colour:"red",   comment:"This week's average has actually been a deficit — a bulk needs it above maintenance to build." },
+              maintain: { colour:"amber", comment:"This week hasn't been a bulk. Hit your targets and watch this change." },
+              bulk:     { colour:"green", comment:"This week's been a real bulk — averaging a genuine surplus. Keep fuelling it." } },
+};
+
+// days: up to the last 7 daily entries — { kcal, loggedAnything, floored }. tdeeBaseline: raw
+// TDEE (maintenance, NOT adjusted for the selected mode — see the spec's own worked example,
+// which measures distance from raw TDEE; that's what lets "reads as" disagree with "selected").
+const weeklyIntakeScore = ({ days, selectedMode, tdeeBaseline }) => {
+  const totalDays = days.length;
+  if (totalDays < WEEK_MIN_HISTORY_DAYS) return { state:"filling-in", daysUsed:0, totalDays };
+
+  const assessable = days.filter(d => d.loggedAnything);
+  const daysUsed = assessable.length;
+  // Nothing logged all week → there is no week to read. This check MOVED ABOVE the
+  // majority-floor override on 2026-09-09: below it, a week with nothing logged at all returned
+  // a green "This week's been a real cut — averaging a genuine deficit. Keep going." built from
+  // zero days of evidence. Not logging must never outscore logging honestly — guardrail §6, the
+  // exact inversion the founder's unlogged-day decision was made to close.
+  if (daysUsed === 0) return { state:"filling-in", daysUsed, totalDays };
+
+  const avgKcal = assessable.reduce((s, d) => s + d.kcal, 0) / daysUsed;
+  const band    = weekBandFor(avgKcal - tdeeBaseline);
+
+  // The founder's majority-floor override (DECIDED 2026-09-04): a week where a safety floor held
+  // the daily target up on 4+ of the 7 days reads as "cut" outright, because there was never a
+  // lower number on offer to compare against.
+  //
+  // NARROWED 2026-09-09: it no longer overrides a week whose logged average is a genuine surplus.
+  // The founder's reasoning is entirely about the TARGET having been floored — it says nothing
+  // about what was actually eaten. As first built, a 50 kg woman pinned at SAFE_MIN 1200 who
+  // logged four days averaging 3,150 kcal was told "This week's been a real cut — averaging a
+  // genuine deficit. Keep going." while the ring beside it showed four red days.
+  //
+  // STILL OPEN, founder call, deliberately not decided here: a day with NO snapshot at all still
+  // gets a vote in this majority, because Dashboard reconstructs its floored-ness from the
+  // CURRENT profile. Whether a day the user never logged should count toward "a week spent mostly
+  // at the safety minimum" is a product judgement, not a bug — see
+  // features/dashboard/04-intake-scoring-implementation-review.md.
+  const flooredCount = days.filter(d => d.floored).length;
+  if (flooredCount >= WEEK_FLOOR_MAJORITY_DAYS && band !== "bulk")
+    return { readsAs:"cut", ...WEEK_READ_COPY[selectedMode].cut,
+      daysUsed, totalDays, avgKcal: Math.round(avgKcal), override:"floor-majority" };
+
+  return { readsAs:band, ...WEEK_READ_COPY[selectedMode][band], daysUsed, totalDays, avgKcal: Math.round(avgKcal) };
+};
+
 // ── Adaptive TDEE ─────────────────────────────────────────────
 
 const dateKey = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
@@ -996,7 +1203,15 @@ const syncHistory = async (uid, hist) => {
   await syncUpsert("history_snapshots",
     hist.map(h => ({ user_id:uid, date:h.date, mode:h.mode, kcal:h.kcal,
       protein:h.protein, carbs:h.carbs, fat:h.fat,
-      water:h.water||0, training:h.training||false, updated_at:now })),
+      water:h.water||0, training:h.training||false,
+      // dashboard/04 — the real per-day target, so a week read on another device grades
+      // history against what actually applied that day. Explicit null (not omitted) for
+      // snapshots older than this fix, so an upsert never leaves a stale value sitting
+      // there ambiguously — there IS no real value for those days, so null is correct.
+      target_kcal: h.targetKcal ?? null, target_protein: h.targetProtein ?? null,
+      target_fat: h.targetFat ?? null, target_fat_floor: h.targetFatFloor ?? null,
+      floored: h.floored ?? null,
+      updated_at:now })),
     "user_id,date");
 };
 
@@ -1124,7 +1339,13 @@ const pullFromSupabase = async uid => {
         date:h.date, mode:h.mode, kcal:h.kcal, protein:h.protein,
         carbs:h.carbs, fat:h.fat, training:h.training,
         water: waterByDate[h.date] ?? h.water ?? 0,
-        logs:  foodByDate[h.date] || []
+        logs:  foodByDate[h.date] || [],
+        // dashboard/04 — carried through so a pulled day still grades against its own real
+        // target rather than falling back to Dashboard's reconstruction. null on older rows
+        // (synced before this fix existed) is the honest answer: there is no real value.
+        targetKcal: h.target_kcal ?? null, targetProtein: h.target_protein ?? null,
+        targetFat: h.target_fat ?? null, targetFatFloor: h.target_fat_floor ?? null,
+        floored: h.floored ?? null,
       }));
       await ss("history", JSON.stringify(fullHist));
       for (const snap of fullHist) {
@@ -1805,20 +2026,160 @@ function Chip({ label, value, color }) {
   );
 }
 
-function MBar({ label, value, target, color }) {
-  const pct   = Math.min(100, (value / target) * 100);
-  const overG = value - target;
-  const accent = overG > 15 ? "var(--over)" : overG > 5 ? "var(--warn)" : null;
+// Colour keys used throughout the score card and its bars — resolves the intake-scoring
+// engine's "green"/"amber"/"red"/"grey" to the theme's tokens (rc() for SVG, raw for CSS).
+const SCORE_COLOUR = { green:"var(--good)", amber:"var(--warn)", red:"var(--over)", grey:"var(--text-faint)" };
+
+// Replaces the old flat-tolerance MBar (dashboard/02, superseded) — same bar shell, but colour
+// comes from the role-based score (dashboard/04) instead of a flat 5g/15g-over delta.
+function ScoredBar({ label, value, target, score }) {
+  const pct = target > 0 ? Math.min(100, (value / target) * 100) : 0;
+  const accent = SCORE_COLOUR[score.colour] || "var(--text-mid-6)";
   return (
     <div style={{ marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4 }}>
-        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: accent || "var(--text-mid-6)" }}>{label}</span>
-        <span style={{ color: accent || "var(--text-mid-5)" }}>{Math.round(value)}g / {target}g</span>
+        <span style={{ fontWeight:800, letterSpacing:"0.06em", color: score.colour === "green" ? "var(--text-mid-6)" : accent }}>{label}</span>
+        <span style={{ color: score.colour === "green" ? "var(--text-mid-5)" : accent }}>{Math.round(value)}g / {Math.round(target)}g</span>
       </div>
       <div style={{ height:7, background:"var(--surface-2b)", borderRadius:99, overflow:"hidden" }}>
-        <div style={{ height:"100%", width:`${pct}%`, background: accent || color,
-          borderRadius:99, transition:"width 0.4s" }}/>
+        <div style={{ height:"100%", width:`${pct}%`, background: accent, borderRadius:99, transition:"width 0.4s" }}/>
       </div>
+    </div>
+  );
+}
+
+// Two-ring dial (dashboard/05) — presentation only, computes nothing. Inner ring: today's hero
+// colour + how far through the day it is. Outer ring: the week's colour + how far through the
+// rolling 7-day window it is. Centre: the hero's single word + action line, never blank (05 §1).
+// First-pass sizing/stroke/animation — the spec flags this as needing a design-lead pass before
+// it's a final visual, not a placeholder to be replaced with something functionally different.
+// Founder feedback, 2026-09-04: the outer ring as a single averaged arc was legible as "some
+// colour" but not as anything specific — and with no label on either zone, it read as one
+// ambiguous ring plus a caption, not an obviously daily thing next to an obviously weekly thing.
+// Fixed on two axes: the outer ring is now a literal 7-day strip curved into a circle, one arc
+// segment per day, lit only when that day was logged — the ring shows COVERAGE (did the last 7
+// days actually have data), while the verdict (cut/maintain/bulk, on track or not) stays in the
+// coloured text beside it. Two different questions, two different places to look. Plus explicit
+// "TODAY" / "THIS WEEK" labels on each zone, instead of asking the reader to infer meaning from
+// ring position (inner vs outer) alone.
+const polarXY = (cx, cy, r, deg) => {
+  const rad = deg * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+};
+const arcPath = (cx, cy, r, startDeg, endDeg) => {
+  const s = polarXY(cx, cy, r, startDeg), e = polarXY(cx, cy, r, endDeg);
+  const largeArc = endDeg - startDeg <= 180 ? 0 : 1;
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${largeArc} 1 ${e.x} ${e.y}`;
+};
+
+// Founder feedback, 2026-09-04 (round 2): one wide card with two rings side by side still read
+// as one ambiguous thing plus a caption. Split into two independent square-ish cards, each with
+// its own title and its own ring — a reader now has to notice two separate boxes before they can
+// even get to "which timeframe," rather than parse a shared ring's position.
+function ScoreCard({ title, ring, children }) {
+  return (
+    <div style={{ flex:1, minWidth:150, background:CARD, border:`1px solid ${BD}`, borderRadius:20,
+      padding:"16px 14px", display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}>
+      <div style={{ alignSelf:"flex-start", fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em",
+        fontWeight:800, marginBottom:12 }}>{title}</div>
+      {ring}
+      {children}
+    </div>
+  );
+}
+
+function IntakeScoreCard({ hero, todayMiss, todayColours = [], weekScore, dayColours = [] }) {
+  const innerColour = SCORE_COLOUR[todayMiss ? "grey" : hero.colour];
+  const isFillingIn = weekScore.state === "filling-in";
+  const verdictColour = SCORE_COLOUR[isFillingIn ? "grey" : weekScore.colour];
+
+  const SIZE = 104, C = SIZE / 2, R = 44, STROKE = 9;
+
+  // Three arcs — protein / carbs / fat, in the same order as the MACROS bars below — each lit by
+  // that macro's OWN score, not by a wall-clock fill (was `dayFill = nowHour / 24`, which told the
+  // reader what time it was and nothing about fat, calories or protein — a red ring that wasn't
+  // full read as "not done falling short" instead of "10pm"). Founder feedback, 2026-09-09: with
+  // one hero word only, protein sitting quietly at 89% was invisible whenever fat's hard-safety
+  // floor outranked it for the headline. Segmenting the ring the same way the week ring already
+  // does means both show at once — you can see protein's amber next to fat's red, not just infer
+  // that fat won a hidden priority order.
+  const TODAY_GAP_DEG = 10;
+  const todaySegDeg = (360 - 3 * TODAY_GAP_DEG) / 3;
+  const todaySegments = Array.from({ length: 3 }, (_, i) => {
+    const start = i * (todaySegDeg + TODAY_GAP_DEG);
+    return { d: arcPath(C, C, R, start, start + todaySegDeg), colour: todayMiss ? null : todayColours[i] };
+  });
+
+  // 7 segments, oldest-first, today's segment closing the loop back at the top. Each logged day
+  // is coloured by that day's OWN adherence (the same red/amber/green the per-macro engine
+  // grades "today" with), softened — full-strength colour is reserved for today's segment so the
+  // live day still reads as the one currently in progress. An unlogged day stays the empty grey
+  // track: colouring it would misrepresent absence of data as a known good or bad day.
+  const GAP_DEG = 6;
+  const segDeg = (360 - 7 * GAP_DEG) / 7;
+  const segments = Array.from({ length:7 }, (_, i) => {
+    const start = i * (segDeg + GAP_DEG);
+    return { d: arcPath(C, C, R, start, start + segDeg), colour: dayColours[i] || null, isToday: i === 6 };
+  });
+
+  return (
+    <div style={{ display:"flex", gap:12, marginBottom:14 }}>
+      <ScoreCard title="TODAY" ring={
+        <div style={{ position:"relative", width:SIZE, height:SIZE }}>
+          <svg width={SIZE} height={SIZE} style={{ transform:"rotate(-90deg)" }}>
+            <circle cx={C} cy={C} r={R} fill="none" stroke={rc("var(--surface-2)")} strokeWidth={STROKE}/>
+            {todaySegments.map((seg, i) => (
+              <path key={i} d={seg.d} fill="none"
+                stroke={rc(seg.colour ? SCORE_COLOUR[seg.colour] : "var(--surface-2)")}
+                strokeWidth={STROKE} strokeLinecap="round"/>
+            ))}
+          </svg>
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ fontSize:12, fontWeight:900, letterSpacing:"0.04em", color: innerColour }}>
+              {todayMiss ? "NO LOG" : hero.word}
+            </div>
+          </div>
+        </div>
+      }>
+        <div style={{ fontSize:10, color:"var(--text-mid-4)", marginTop:10, lineHeight:1.4 }}>
+          {todayMiss ? "Nothing logged today" : hero.action}
+        </div>
+      </ScoreCard>
+
+      <ScoreCard title="THIS WEEK" ring={
+        <div style={{ position:"relative", width:SIZE, height:SIZE }}>
+          <svg width={SIZE} height={SIZE} style={{ transform:"rotate(-90deg)" }}>
+            <circle cx={C} cy={C} r={R} fill="none" stroke={rc("var(--surface-2)")} strokeWidth={STROKE}/>
+            {segments.map((seg, i) => (
+              <path key={i} d={seg.d} fill="none"
+                stroke={rc(seg.colour ? SCORE_COLOUR[seg.colour] : "var(--surface-2)")}
+                strokeWidth={STROKE} strokeLinecap="round"
+                opacity={seg.colour ? (seg.isToday ? 1 : 0.55) : 1}/>
+            ))}
+          </svg>
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ fontSize:11, fontWeight:900, letterSpacing:"0.04em",
+              color: isFillingIn ? "var(--text-faint)" : verdictColour }}>
+              {isFillingIn ? "…" : weekScore.readsAs.toUpperCase()}
+            </div>
+          </div>
+        </div>
+      }>
+        {isFillingIn ? (
+          <div style={{ fontSize:10, color:"var(--text-mid-4)", marginTop:10, lineHeight:1.4 }}>
+            Still filling in — {weekScore.daysUsed} of 7 days logged so far.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize:10, color: verdictColour, fontWeight:700, marginTop:10, lineHeight:1.4 }}>
+              {weekScore.comment}
+            </div>
+            <div style={{ fontSize:9, color:"var(--text-faint)", marginTop:4 }}>
+              Based on {weekScore.daysUsed} of {weekScore.totalDays} days logged
+            </div>
+          </>
+        )}
+      </ScoreCard>
     </div>
   );
 }
@@ -2915,7 +3276,7 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
   );
 }
 
-function Dashboard({ logs, totals, targets, remaining, water, setWater,
+function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [],
   mode, setMode, setView, removeLog, updateLog, addToQA,
   hasProfile, streak, streakPop, badgeGlow, prof,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
@@ -2952,6 +3313,104 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
   // it the whole background declaration, is dropped and the bar paints nothing.
   const kcalBarBg   = overAmt > 500 ? RED : overAmt > 100 ? AMBER : `linear-gradient(90deg,${mix(mc, "88")},${mc})`;
   const kcalBorder  = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
+
+  // ── Intake scoring (dashboard/04 + 05) ──────────────────────────
+  // Today: reuses the same firstMealHour derivation the coach prompt already uses
+  // (Math.min of log ids, which are Date.now() timestamps) rather than parsing the
+  // locale-formatted `time` string on each log.
+  // getCurrentHour(), not `new Date().getHours()` — it is the app's single hour source and the
+  // only one the preview harness's time control can move (app.jsx:205). Using the raw clock here
+  // meant the coach card and this card disagreed about what hour it was whenever that control was
+  // used, and made every day-open/day-close state of this feature unreachable from Playwright,
+  // which is why dashboard/04 and /05 shipped with no UI coverage at all. Fixed 2026-09-09.
+  const nowHour        = getCurrentHour();
+  const firstMealHour  = logs.length ? new Date(Math.min(...logs.map(l => Number(l.id) || Date.now()))).getHours() : null;
+  const dayClosed      = isDayClosed({ firstMealHour, nowHour });
+  const todayMiss      = dayClosed && logs.length === 0; // spec: "A fully unlogged day, once closed…"
+  const proteinFrac    = targets.protein > 0 ? totals.protein / targets.protein : 1;
+  const proteinPace    = paceVerdict(firstMealHour, nowHour, proteinFrac);
+  const proteinScore   = proteinDayScore({ dayClosed, pctOfTarget: proteinFrac, verdict: proteinPace.verdict });
+  const caloriesScore  = calorieDayScore({ mode, dayClosed, kcalDelta: totals.kcal - targets.kcal });
+  const fatFloorG      = Math.round((Number(prof?.weight) || 80) * FAT_FLOOR_PER_KG);
+  // Fat's floor is paced exactly like protein's while the day is open — same function, same
+  // reason. The fraction is measured against the FLOOR, because that is the bound being paced.
+  const fatPace        = paceVerdict(firstMealHour, nowHour, fatFloorG > 0 ? totals.fat / fatFloorG : 1);
+  const fatScore       = fatDayScore({ fatG: totals.fat, floorG: fatFloorG, targetG: targets.fat,
+    dayClosed, verdict: fatPace.verdict });
+  const carbsScore     = carbsDayScore({ carbsG: totals.carbs, targetG: targets.carbs, caloriesOver: (totals.kcal - targets.kcal) > 0 });
+  const hero           = heroFor({ protein: proteinScore, calories: caloriesScore, fat: fatScore });
+  const todayColours   = [proteinScore.colour, carbsScore.colour, fatScore.colour];
+
+  // This week: the last 7 calendar days. A day with no history snapshot (never opened, or the
+  // account didn't exist yet) is treated as unlogged, not zeroed — see weeklyIntakeScore. Whole
+  // account newer than 7 days is the one case that shows "still filling in" (spec: "fewer than
+  // 7 days of history"), using total lifetime snapshots as the evidence count.
+  const todayK   = todayKey();
+  const last7Keys = Array.from({ length:7 }, (_, i) => {
+    const d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - i);
+    return dateKey(d);
+  }).reverse();
+  // Founder feedback, 2026-09-04 (round 3): a logged/not-logged binary on each day segment
+  // still left "how did that day actually go" unanswered — asked for red/amber/green per day,
+  // graded by adherence, not just presence. Today's segment reuses the SAME live `hero` already
+  // computed above; a past day is graded by running the identical per-macro engine against that
+  // day's OWN history snapshot instead of live totals. An unlogged day gets no colour at all
+  // (stays the empty grey track) — colouring it would misrepresent absence of data as a known
+  // good or bad day, the exact confusion the weekly-average fix above exists to prevent.
+  const weekDays = last7Keys.map(k => {
+    // `colour: null` when nothing is logged today. Every OTHER day already followed that rule;
+    // today did not, so an unlogged closed day showed a grey "NO LOG" on the TODAY card and a
+    // full-strength red segment for the same day in the ring beside it. Fixed 2026-09-09.
+    if (k === todayK) return { kcal: totals.kcal, loggedAnything: logs.length > 0,
+      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied),
+      colour: logs.length > 0 ? hero.colour : null };
+    const h = hist.find(d => d.date === k);
+    const dayMode = (h && h.mode) || mode;
+    // Prefer the REAL target snapshotted that day (targetKcal etc., added 2026-09-09 — see the
+    // App-level history effect). Only a snapshot recorded BEFORE that fix lacks these fields;
+    // for those, and only those, fall back to reconstructing a target from TODAY'S profile and
+    // tdeeAdj — a known-approximate stand-in for data that was never captured and can't be
+    // recovered, not the normal path.
+    const hasRealTarget = h && h.targetKcal != null;
+    const fallback = hasRealTarget ? null : calcTargets(prof || {}, dayMode, 0, tdeeAdj, 0);
+    const dayTargetKcal    = hasRealTarget ? h.targetKcal     : fallback.kcal;
+    const dayTargetProtein = hasRealTarget ? h.targetProtein  : fallback.protein;
+    const dayTargetFat     = hasRealTarget ? h.targetFat      : fallback.fat;
+    const dayFatFloor      = hasRealTarget ? h.targetFatFloor : fatFloorG;
+    const dayFloored       = hasRealTarget ? !!h.floored
+      : !!(fallback.safeMinApplied || fallback.deficitFloorApplied || fallback.bmrFloorApplied);
+    // kcal OR entries, not entries alone. `runCalibration` already uses `d.kcal > 0` as the
+    // app's test for "this day has intake" (app.jsx:651), and a snapshot pulled from Supabase
+    // carries `logs: foodByDate[date] || []` — so a day whose food_logs rows haven't arrived has
+    // real kcal and an empty array. Keying only off the array made six such days read as
+    // "unlogged", greying the ring and dropping them from the weekly average. Fixed 2026-09-09.
+    const loggedAnything = !!(h && ((Number(h.kcal) || 0) > 0 || (h.logs && h.logs.length > 0)));
+    let colour = null;
+    if (loggedAnything) {
+      const dProteinFrac = dayTargetProtein > 0 ? (h.protein || 0) / dayTargetProtein : 1;
+      const dProtein  = proteinDayScore({ dayClosed:true, pctOfTarget:dProteinFrac, verdict:"met" });
+      const dCalories = calorieDayScore({ mode:dayMode, dayClosed:true, kcalDelta:(h.kcal || 0) - dayTargetKcal });
+      const dFat      = fatDayScore({ fatG:(h.fat || 0), floorG:dayFatFloor, targetG:dayTargetFat, dayClosed:true });
+      colour = heroFor({ protein:dProtein, calories:dCalories, fat:dFat }).colour;
+    }
+    return { kcal: (h && h.kcal) || 0, loggedAnything, floored: dayFloored, colour };
+  });
+  const accountIsNew = hist.length < WEEK_MIN_HISTORY_DAYS;
+  // The trigger is account AGE (snapshots that exist at all — a brand-new user's missing days
+  // never existed). The NUMBER in the copy is days actually logged, which is a different count:
+  // the daily history effect writes a snapshot every day the app is opened, logged or not, so
+  // `hist.length` claimed "1 of 7 days logged so far" on a morning with nothing logged.
+  const loggedSnapshots = hist.filter(h => (Number(h.kcal) || 0) > 0 || (h.logs && h.logs.length > 0)).length;
+  const tdeeBaseline  = Math.max(sedentaryFloorOf(prof || {}), bmrOf(prof || {}) * activityMult(prof || {}) + tdeeAdj);
+  const weekScore = accountIsNew
+    ? { state:"filling-in", daysUsed: loggedSnapshots, totalDays: hist.length }
+    : weeklyIntakeScore({ days: weekDays, selectedMode: mode, tdeeBaseline });
+  // While the card is saying "still filling in" it is explicitly declining to give a verdict, so
+  // the ring must not paint one either — it was showing full red/amber/green day colours under a
+  // grey "…" centre and a caption that said no verdict was being made yet. Fixed 2026-09-09.
+  const dayColours = weekScore.state === "filling-in"
+    ? [] : weekDays.map(d => d.colour); // oldest → newest, last = today; null = not logged
 
   const [savedIds,      setSavedIds]      = useState({});
   const [qaBlink,       setQaBlink]       = useState({}); // log.id -> tap nonce, drives re-blink on every tap
@@ -3514,12 +3973,14 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater,
         )}
       </div>
 
-      {/* Macros */}
+      {/* Intake score (dashboard/04 + 05) — supersedes the old flat-tolerance MACROS card */}
+      <IntakeScoreCard hero={hero} todayMiss={todayMiss} todayColours={todayColours} weekScore={weekScore} dayColours={dayColours}/>
+
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"18px 20px", marginBottom:14 }}>
         <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>MACROS</div>
-        <MBar label="PROTEIN" value={totals.protein} target={targets.protein} color="var(--cut)"/>
-        <MBar label="CARBS"   value={totals.carbs}   target={targets.carbs}   color="var(--warn)"/>
-        <MBar label="FAT"     value={totals.fat}      target={targets.fat}     color="var(--bulk)"/>
+        <ScoredBar label="PROTEIN" value={totals.protein} target={targets.protein} score={proteinScore}/>
+        <ScoredBar label="CARBS"   value={totals.carbs}   target={targets.carbs}   score={carbsScore}/>
+        <ScoredBar label="FAT"     value={totals.fat}      target={targets.fat}     score={fatScore}/>
       </div>
 
       {/* Coach tip */}
@@ -5557,23 +6018,6 @@ function App() {
     await handleSignOut();          // clears local data, session, and returns to dashboard
   };
 
-  useEffect(() => {
-    if (!ready) return;
-    const k    = todayKey();
-    const tots = sumLogs(logs);
-    const snap = { date:k, mode, kcal: Math.round(tots.kcal),
-      protein: Math.round(tots.protein * 10) / 10,
-      carbs:   Math.round(tots.carbs   * 10) / 10,
-      fat:     Math.round(tots.fat     * 10) / 10,
-      water, training: workouts.length > 0, logs:[...logs] };
-    const upd = [...hist.filter(d => d.date !== k), snap]
-      .sort((a, b) => a.date.localeCompare(b.date));
-    setHist(upd);
-    ss("history", JSON.stringify(upd));
-    if (authState === "premium" && authUser?.id)
-      syncHistory(authUser.id, upd).catch(() => {});
-  }, [logs, water, workouts, mode, ready]); // eslint-disable-line
-
   const updateDay = async upd => {
     const nh = [...hist.filter(d => d.date !== upd.date), upd]
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -5691,6 +6135,35 @@ function App() {
                energyAvailability(safeKcal, todayWorkoutKcal, p) < EA_HARD,
     };
   })();
+
+  // Moved here (was above, before `targets` existed) on founder feedback, 2026-09-09: dashboard/04's
+  // weekly card was re-deriving every PAST day's target from TODAY'S profile/adjustment, which
+  // silently drifted from the truth the moment either changed — a real accuracy bug in anything
+  // calling itself "history." Snapshots now carry the REAL target that applied that day, read
+  // directly off `targets` (the same canonical value the dashboard shows right now), including the
+  // custom-kcal override and every floor. Old snapshots recorded before this field existed have no
+  // recoverable historical target — Dashboard's weekDays falls back to the old reconstruction only
+  // for those, never for anything snapshotted from here on.
+  useEffect(() => {
+    if (!ready) return;
+    const k    = todayKey();
+    const tots = sumLogs(logs);
+    const snap = { date:k, mode, kcal: Math.round(tots.kcal),
+      protein: Math.round(tots.protein * 10) / 10,
+      carbs:   Math.round(tots.carbs   * 10) / 10,
+      fat:     Math.round(tots.fat     * 10) / 10,
+      water, training: workouts.length > 0, logs:[...logs],
+      targetKcal: Math.round(targets.kcal), targetProtein: Math.round(targets.protein),
+      targetFat: Math.round(targets.fat),
+      targetFatFloor: Math.round((Number(p.weight) || 80) * FAT_FLOOR_PER_KG),
+      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied) };
+    const upd = [...hist.filter(d => d.date !== k), snap]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    setHist(upd);
+    ss("history", JSON.stringify(upd));
+    if (authState === "premium" && authUser?.id)
+      syncHistory(authUser.id, upd).catch(() => {});
+  }, [logs, water, workouts, mode, ready, prof, tdeeAdj, customKcal]); // eslint-disable-line
 
   // ── Cut cycling (energy Step 5; features/energy-safety/02) ──────
   // How much today weighs comes from the PRESCRIBED deficit depth. Whether it counts at
@@ -5836,7 +6309,7 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining}
+      {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}

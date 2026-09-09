@@ -172,6 +172,123 @@ const paceVerdict = (firstMealHour, nowHour, frac) => {
   return { elapsed, verdict: "behind" };
 };
 
+// ── Intake scoring (feature dashboard/04) — mirror of app.jsx ──────────────────
+const bmrOf = p => Math.round(370 + 21.6 * ((Number(p.weight) || 80) * (1 - (Number(p.bodyFat) || 18) / 100)));
+const sedentaryFloorOf = p => Math.round(bmrOf(p) * 1.2);
+
+const PROTEIN_CLOSE_GREEN_PCT     = 0.90;
+const PROTEIN_CLOSE_RED_BELOW_PCT = 0.60;
+const proteinDayScore = ({ dayClosed, pctOfTarget, verdict }) => {
+  if (pctOfTarget >= 1) return { colour:"green", label:"On target" };
+  if (!dayClosed)
+    return verdict === "behind" ? { colour:"amber", label:"Increase" } : { colour:"green", label:"On pace" };
+  if (pctOfTarget >= PROTEIN_CLOSE_GREEN_PCT)     return { colour:"green", label:"On target" };
+  if (pctOfTarget >= PROTEIN_CLOSE_RED_BELOW_PCT) return { colour:"amber", label:"Increase" };
+  return { colour:"red", label:"Increase" };
+};
+
+const CAL_BAND_SOFT = 100, CAL_BAND_MID = 200, CAL_BAND_HARD = 500;
+const MAINTAIN_WIDE_MARGIN_KCAL = 200;
+const cutCalorieScore = overAmt => {
+  const say = `Over by ${Math.round(overAmt)} kcal today.`;
+  if (overAmt < CAL_BAND_SOFT) return { colour:"green", label:"in range" };
+  if (overAmt < CAL_BAND_MID)  return { colour:"amber", label:"JUST OVER", heroAction: say };
+  if (overAmt < CAL_BAND_HARD) return { colour:"amber", label:"OVER BY",   heroAction: say };
+  return { colour:"red", label:"OVER BY", heroAction: say };
+};
+const bulkCalorieScore = underAmt => {
+  const say = `${Math.round(underAmt)} kcal short of your bulk today.`;
+  if (underAmt < CAL_BAND_SOFT) return { colour:"green", label:"in range" };
+  if (underAmt < CAL_BAND_MID)  return { colour:"amber", label:"JUST UNDER",       heroAction: say };
+  if (underAmt < CAL_BAND_HARD) return { colour:"amber", label:"MISSING THE BULK", heroAction: say };
+  return { colour:"red", label:"MISSING THE BULK", heroAction: say };
+};
+const calorieDayScore = ({ mode, dayClosed, kcalDelta }) => {
+  if (mode === "cut") {
+    if (kcalDelta <= 0) return { colour:"green", label: dayClosed ? "in range" : "On pace" };
+    return cutCalorieScore(kcalDelta);
+  }
+  if (mode === "bulk") {
+    if (kcalDelta >= 0) return { colour:"green", label:"in range" };
+    if (!dayClosed)     return { colour:"green", label:"On pace" };
+    return bulkCalorieScore(-kcalDelta);
+  }
+  if (!dayClosed) return kcalDelta < 0 ? { colour:"green", label:"On pace" } : { colour:"green", label:"in range" };
+  if (Math.abs(kcalDelta) < MAINTAIN_WIDE_MARGIN_KCAL) return { colour:"green", label:"in range" };
+  const n = Math.round(Math.abs(kcalDelta));
+  return { colour:"amber", label: kcalDelta < 0 ? "Under-eaten" : "Over for today",
+    heroAction: kcalDelta < 0 ? `Under by ${n} kcal today.` : `Over by ${n} kcal today.` };
+};
+
+const FAT_CEILING_AMBER_PCT   = 0.10;
+const FAT_CEILING_RED_PCT     = 0.25;
+const FAT_FLOOR_RED_BELOW_PCT = 0.15;
+const fatDayScore = ({ fatG, floorG, targetG, dayClosed = true, verdict = "met" }) => {
+  if (fatG < floorG) {
+    if (!dayClosed)
+      return verdict === "behind" ? { colour:"amber", label:"Increase" } : { colour:"green", label:"On pace" };
+    const pctBelow = floorG > 0 ? (floorG - fatG) / floorG : 1;
+    return { colour: pctBelow >= FAT_FLOOR_RED_BELOW_PCT ? "red" : "amber",
+      label:"Add some healthy fats", floorBreach:true };
+  }
+  if (fatG <= targetG) return { colour:"green", label:"On target" };
+  const pctOver = targetG > 0 ? (fatG - targetG) / targetG : 1;
+  if (pctOver < FAT_CEILING_AMBER_PCT) return { colour:"green", label:"On target" };
+  const colour = pctOver < FAT_CEILING_RED_PCT ? "amber" : "red";
+  return { colour, label:"OVER", ceilingBreach: colour !== "green" };
+};
+
+const carbsDayScore = ({ carbsG, targetG, caloriesOver }) => {
+  if (carbsG > targetG && caloriesOver) return { colour:"amber", label:"Over — with calories" };
+  return { colour:"green", label:"On target" };
+};
+
+const DAY_CLOSE_FALLBACK_HOUR = 22;
+const isDayClosed = ({ firstMealHour, nowHour }) =>
+  firstMealHour == null ? nowHour >= DAY_CLOSE_FALLBACK_HOUR : (nowHour - firstMealHour) >= EATING_WINDOW_H;
+
+const heroFor = ({ protein, calories, fat }) => {
+  if (fat.floorBreach)              return { colour: fat.colour,      word:"FAT", action:"Add some healthy fats." };
+  if (calories.colour !== "green")  return { colour: calories.colour, word:"CALORIES",   action: calories.heroAction || calories.label };
+  if (fat.colour !== "green")       return { colour: fat.colour,      word:"FAT",        action: fat.label };
+  if (protein.colour !== "green")   return { colour: protein.colour,  word:"PROTEIN",    action: protein.label };
+  return { colour:"green", word:"ON TRACK", action:"Nice work today." };
+};
+
+const WEEK_BAND_KCAL           = 250;
+const WEEK_MIN_HISTORY_DAYS    = 7;
+const WEEK_FLOOR_MAJORITY_DAYS = 4;
+const weekBandFor = diffFromBaseline => {
+  if (diffFromBaseline <= -WEEK_BAND_KCAL) return "cut";
+  if (diffFromBaseline >=  WEEK_BAND_KCAL) return "bulk";
+  return "maintain";
+};
+const WEEK_READ_COPY = {
+  cut:      { cut:      { colour:"green", comment:"This week's been a real cut — averaging a genuine deficit. Keep going." },
+              maintain: { colour:"amber", comment:"This week hasn't been a cut. Hit your targets and watch this change." },
+              bulk:     { colour:"red",   comment:"This week's average has actually run as a surplus — a cut needs it below maintenance to work." } },
+  maintain: { cut:      { colour:"amber", comment:"This week's average has actually run a bit under — more of a cut than maintain. More food would bring it back." },
+              maintain: { colour:"green", comment:"Right where maintain should be this week." },
+              bulk:     { colour:"amber", comment:"This week's average has actually run a bit over — more of a bulk than maintain." } },
+  bulk:     { cut:      { colour:"red",   comment:"This week's average has actually been a deficit — a bulk needs it above maintenance to build." },
+              maintain: { colour:"amber", comment:"This week hasn't been a bulk. Hit your targets and watch this change." },
+              bulk:     { colour:"green", comment:"This week's been a real bulk — averaging a genuine surplus. Keep fuelling it." } },
+};
+const weeklyIntakeScore = ({ days, selectedMode, tdeeBaseline }) => {
+  const totalDays = days.length;
+  if (totalDays < WEEK_MIN_HISTORY_DAYS) return { state:"filling-in", daysUsed:0, totalDays };
+  const assessable = days.filter(d => d.loggedAnything);
+  const daysUsed = assessable.length;
+  if (daysUsed === 0) return { state:"filling-in", daysUsed, totalDays };
+  const avgKcal = assessable.reduce((s, d) => s + d.kcal, 0) / daysUsed;
+  const band    = weekBandFor(avgKcal - tdeeBaseline);
+  const flooredCount = days.filter(d => d.floored).length;
+  if (flooredCount >= WEEK_FLOOR_MAJORITY_DAYS && band !== "bulk")
+    return { readsAs:"cut", ...WEEK_READ_COPY[selectedMode].cut,
+      daysUsed, totalDays, avgKcal: Math.round(avgKcal), override:"floor-majority" };
+  return { readsAs:band, ...WEEK_READ_COPY[selectedMode][band], daysUsed, totalDays, avgKcal: Math.round(avgKcal) };
+};
+
 const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   const subset = weighIns.filter(w => w.date < beforeDate).slice(-n);
   if (subset.length < 3) return null;
@@ -2422,5 +2539,297 @@ describe("pickFollowups — only asks what could change the day", () => {
       { name: "Beef lasagne", kcal: 700, confidence: 40, ask: "portion" },
     ];
     expect(pickFollowups(items).map(f => f.name)).toEqual(["Beef lasagne", "Side salad"]);
+  });
+});
+
+// ── Intake scoring (feature dashboard/04) ───────────────────────────────────────
+describe("proteinDayScore — a floor, paced open, banded at close", () => {
+  test("over target is always green, at any distance", () => {
+    expect(proteinDayScore({ dayClosed:true, pctOfTarget:1.5, verdict:"met" }).colour).toBe("green");
+  });
+  test.each([
+    ["ahead", "green"], ["on", "green"], ["behind", "amber"],
+  ])("while open, verdict %s reads %s, never red", (verdict, colour) => {
+    const r = proteinDayScore({ dayClosed:false, pctOfTarget:0.2, verdict });
+    expect(r.colour).toBe(colour);
+    expect(r.colour).not.toBe("red");
+  });
+  test.each([
+    [0.92, "green"], [0.75, "amber"], [0.50, "red"],
+  ])("at close, %s%% of target reads %s", (pct, colour) => {
+    expect(proteinDayScore({ dayClosed:true, pctOfTarget:pct, verdict:"met" }).colour).toBe(colour);
+  });
+  test("well under at close is red regardless of goal — no goal parameter needed to prove it", () => {
+    expect(proteinDayScore({ dayClosed:true, pctOfTarget:0.3, verdict:"met" }).colour).toBe("red");
+  });
+});
+
+describe("calorieDayScore — Cut over-penalty, Bulk under-penalty (the mirror), Maintain both ways", () => {
+  test.each([
+    [50, "green"], [150, "amber"], [300, "amber"], [600, "red"],
+  ])("Cut: %s kcal over reads %s", (over, colour) => {
+    expect(calorieDayScore({ mode:"cut", dayClosed:true, kcalDelta:over }).colour).toBe(colour);
+  });
+  test("Cut: any amount under is green, never a penalty", () => {
+    expect(calorieDayScore({ mode:"cut", dayClosed:true, kcalDelta:-900 }).colour).toBe("green");
+  });
+  test.each([
+    [50, "green"], [150, "amber"], [300, "amber"], [600, "red"],
+  ])("Bulk: %s kcal under reads %s (the mirror of Cut)", (under, colour) => {
+    expect(calorieDayScore({ mode:"bulk", dayClosed:true, kcalDelta:-under }).colour).toBe(colour);
+  });
+  test("Bulk: going over is tolerated far more loosely — stays green", () => {
+    expect(calorieDayScore({ mode:"bulk", dayClosed:true, kcalDelta:900 }).colour).toBe("green");
+  });
+  test("Bulk mid-day under reads On pace, not the band table (adopted default)", () => {
+    const r = calorieDayScore({ mode:"bulk", dayClosed:false, kcalDelta:-300 });
+    expect(r.colour).toBe("green"); expect(r.label).toBe("On pace");
+  });
+  test("Maintain: open and under is on pace, not a miss", () => {
+    const r = calorieDayScore({ mode:"maintain", dayClosed:false, kcalDelta:-100 });
+    expect(r.colour).toBe("green"); expect(r.label).toBe("On pace");
+  });
+  test.each([
+    [-300, "Under-eaten"], [300, "Over for today"],
+  ])("Maintain: closed and %s kcal from target reads amber, %s", (delta, tag) => {
+    const r = calorieDayScore({ mode:"maintain", dayClosed:true, kcalDelta:delta });
+    expect(r.colour).toBe("amber"); expect(r.label).toBe(tag);
+  });
+});
+
+describe("fatDayScore — a ceiling and a health floor at once", () => {
+  test("between floor and target is green, direction doesn't matter", () => {
+    expect(fatDayScore({ fatG:60, floorG:48, targetG:70 }).colour).toBe("green");
+  });
+
+  // ── FIXED 2026-09-09 — the floor is paced while the day is open ─────────────────
+  // Found by driving the app, not by any of these tests: the floor was judged flat from the
+  // first meal onward, so mid-morning "haven't eaten a day's fat yet" read as a red hard-safety
+  // breach and became the dashboard's dominant daytime state.
+  test.each([
+    ["ahead", "green"], ["on", "green"], ["met", "green"], ["behind", "amber"],
+  ])("while the day is open, being under the floor with verdict %s reads %s, never red", (verdict, colour) => {
+    const r = fatDayScore({ fatG:10, floorG:59, targetG:79, dayClosed:false, verdict });
+    expect(r.colour).toBe(colour);
+    expect(r.colour).not.toBe("red");
+  });
+  test("while the day is open, being under the floor is never a hard-safety hero", () => {
+    const r = fatDayScore({ fatG:0, floorG:59, targetG:79, dayClosed:false, verdict:"behind" });
+    expect(r.floorBreach).toBeUndefined();
+    expect(r.label).not.toBe("Add some healthy fats"); // stays exclusive to a real breach at close
+  });
+  test("the same intake at day close IS a breach — the grace is about the hour, not the amount", () => {
+    const r = fatDayScore({ fatG:10, floorG:59, targetG:79, dayClosed:true });
+    expect(r.colour).toBe("red");
+    expect(r.floorBreach).toBe(true);
+  });
+  test("the ceiling stays unconditional — a day's fat eaten by noon is still over", () => {
+    const r = fatDayScore({ fatG:100, floorG:59, targetG:79, dayClosed:false, verdict:"met" });
+    expect(r.colour).toBe("red");
+    expect(r.ceilingBreach).toBe(true);
+  });
+  test.each([
+    [1.05, "green"], [1.15, "amber"], [1.30, "red"],
+  ])("over ceiling: %sx target reads %s", (mult, colour) => {
+    const r = fatDayScore({ fatG: 70 * mult, floorG:48, targetG:70 });
+    expect(r.colour).toBe(colour);
+  });
+  test.each([
+    [0.90, "amber"], [0.70, "red"],
+  ])("below floor: %sx floor reads %s, never a normal 'under'", (mult, colour) => {
+    const r = fatDayScore({ fatG: 48 * mult, floorG:48, targetG:70 });
+    expect(r.colour).toBe(colour);
+    expect(r.floorBreach).toBe(true);
+  });
+  test("a Cut is never told to increase fat between floor and target", () => {
+    const r = fatDayScore({ fatG:55, floorG:48, targetG:70 });
+    expect(r.colour).toBe("green");
+    expect(r.label).not.toMatch(/increase/i);
+  });
+});
+
+describe("carbsDayScore — the flex remainder", () => {
+  test("over target is fine while calories are on track", () => {
+    expect(carbsDayScore({ carbsG:300, targetG:250, caloriesOver:false }).colour).toBe("green");
+  });
+  test("over target when calories are also over shows amber, the shared cause", () => {
+    expect(carbsDayScore({ carbsG:300, targetG:250, caloriesOver:true }).colour).toBe("amber");
+  });
+  test("under target is always green, whatever the goal", () => {
+    expect(carbsDayScore({ carbsG:100, targetG:250, caloriesOver:true }).colour).toBe("green");
+  });
+});
+
+describe("isDayClosed — the eating window, plus a hard fallback for a day with nothing logged", () => {
+  test("closes 14h after the first meal", () => {
+    expect(isDayClosed({ firstMealHour:8, nowHour:22 })).toBe(true);
+    expect(isDayClosed({ firstMealHour:8, nowHour:21 })).toBe(false);
+  });
+  test("a day with nothing logged closes at the 22:00 fallback, not never", () => {
+    expect(isDayClosed({ firstMealHour:null, nowHour:22 })).toBe(true);
+    expect(isDayClosed({ firstMealHour:null, nowHour:21 })).toBe(false);
+  });
+});
+
+describe("heroFor — the priority order when several things need attention at once", () => {
+  const green = { colour:"green", label:"On target" };
+  test("fat-floor breach outranks everything, the one hard-safety claim", () => {
+    const fatFloor = { colour:"red", label:"Add some healthy fats", floorBreach:true };
+    const calOver  = { colour:"red", label:"OVER BY" };
+    const h = heroFor({ protein:green, calories:calOver, fat:fatFloor });
+    expect(h.word).toBe("FAT"); // "floor" stays internal — never on screen
+  });
+  test("calories outrank fat's ceiling", () => {
+    const calOver = { colour:"amber", label:"OVER BY" };
+    const fatOver  = { colour:"amber", label:"OVER", ceilingBreach:true };
+    const h = heroFor({ protein:green, calories:calOver, fat:fatOver });
+    expect(h.word).toBe("CALORIES");
+  });
+  test("fat's ceiling outranks protein-under", () => {
+    const fatOver = { colour:"amber", label:"OVER", ceilingBreach:true };
+    const protUnder = { colour:"red", label:"Increase" };
+    const h = heroFor({ protein:protUnder, calories:green, fat:fatOver });
+    expect(h.word).toBe("FAT");
+  });
+  test("all green resolves to a positive default, never blank", () => {
+    const h = heroFor({ protein:green, calories:green, fat:green });
+    expect(h.word).toBe("ON TRACK");
+  });
+  // ── FIXED 2026-09-09 — the action line is a whole sentence, not a bar caption ──────
+  // "OVER BY" is a bar label that is always rendered next to a number. The hero renders its
+  // action on its own, so the card was literally showing "CALORIES / OVER BY" — a fragment
+  // ending in "BY" with nothing after it.
+  test.each([
+    ["cut",      620,  /^Over by 620 kcal today\.$/],
+    ["bulk",    -620,  /^620 kcal short of your bulk today\.$/],
+    ["maintain", 400,  /^Over by 400 kcal today\.$/],
+    ["maintain",-400,  /^Under by 400 kcal today\.$/],
+  ])("%s at %s kcal from target gives the hero a finished sentence with the number in it", (mode, delta, re) => {
+    const calories = calorieDayScore({ mode, dayClosed:true, kcalDelta:delta });
+    const h = heroFor({ protein:green, calories, fat:green });
+    expect(h.word).toBe("CALORIES");
+    expect(h.action).toMatch(re);
+  });
+  test("a paced-behind fat mid-day reaches the hero at the same rank the ceiling breach has", () => {
+    // Below calories, above protein — it is "fat, but not the floor", which is that rank already.
+    const fat      = fatDayScore({ fatG:10, floorG:59, targetG:79, dayClosed:false, verdict:"behind" });
+    const calOver  = { colour:"amber", label:"JUST OVER", heroAction:"Over by 150 kcal today." };
+    const protUnder = { colour:"amber", label:"Increase" };
+    expect(heroFor({ protein:protUnder, calories:calOver, fat }).word).toBe("CALORIES");
+    expect(heroFor({ protein:protUnder, calories:green,   fat }).word).toBe("FAT");
+  });
+  test("a fully unlogged closed day still resolves — fat-floor wins, not a blank centre", () => {
+    // Every macro is simultaneously in its own miss state at 0 logged — fat is 0g, below any
+    // real floor, so the general priority order alone (no special case) already resolves it.
+    const fatFloor = fatDayScore({ fatG:0, floorG:48, targetG:70 });
+    const protein  = proteinDayScore({ dayClosed:true, pctOfTarget:0, verdict:"met" });
+    const calories = calorieDayScore({ mode:"cut", dayClosed:true, kcalDelta:-2000 }); // green on Cut — under is never a penalty
+    const h = heroFor({ protein, calories, fat:fatFloor });
+    expect(h.word).toBe("FAT");
+  });
+});
+
+describe("weeklyIntakeScore — the rolling read, and the two founder-decided fixes (2026-09-04)", () => {
+  const day = (kcal, loggedAnything = true, floored = false) => ({ kcal, loggedAnything, floored });
+
+  test("fewer than 7 days of account history shows still-filling-in, not a verdict", () => {
+    const days = Array.from({ length:5 }, () => day(1800));
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:2000 });
+    expect(r.state).toBe("filling-in");
+  });
+
+  test.each([
+    [1700, "cut"], [1950, "maintain"], [2300, "bulk"],
+  ])("a full week averaging %s kcal against a 2000 baseline reads as %s", (kcal, expected) => {
+    const days = Array.from({ length:7 }, () => day(kcal));
+    const r = weeklyIntakeScore({ days, selectedMode: expected, tdeeBaseline:2000 });
+    expect(r.readsAs).toBe(expected);
+  });
+
+  test("selected vs reads-as mismatch: cut selected, week actually reads maintain, shows amber", () => {
+    const days = Array.from({ length:7 }, () => day(1900)); // 100 under a 2000 baseline — inside ±250
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:2000 });
+    expect(r.readsAs).toBe("maintain");
+    expect(r.colour).toBe("amber");
+  });
+
+  // ── DECIDED, founder, 2026-09-04 — the weekly baseline fix ──────────────────
+  test("a week spent mostly at a safety floor reads as cut outright, not maintain", () => {
+    // The spec's own worked example: SAFE_MIN-pinned target is only 151 kcal under TDEE,
+    // which would fall inside the ±250 "maintain" band under the plain baseline comparison.
+    const days = [
+      day(1200, true, true), day(1200, true, true), day(1200, true, true), day(1200, true, true),
+      day(1200, true, false), day(1200, true, false), day(1200, true, false),
+    ];
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 });
+    expect(r.readsAs).toBe("cut");
+    expect(r.override).toBe("floor-majority");
+  });
+  test("a floor active on only a minority of days does NOT trigger the override", () => {
+    const days = [
+      day(1200, true, true), day(1200, true, true), day(1200, true, true),
+      day(1900, true, false), day(1900, true, false), day(1900, true, false), day(1900, true, false),
+    ];
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:2000 });
+    expect(r.override).toBeUndefined();
+  });
+
+  // ── DECIDED, founder, 2026-09-04 — unlogged days ─────────────────────────────
+  test("an unlogged day is excluded from the average, not counted as a favourable zero", () => {
+    // Without exclusion, a 0-kcal day would drag the Cut average further under baseline and
+    // read as MORE of a cut than six honestly-logged days alone would — the exact inversion
+    // guardrail §6 exists to prevent.
+    const honest = Array.from({ length:7 }, () => day(1900)); // reads maintain against 2000
+    const withGap = [...Array.from({ length:6 }, () => day(1900)), day(0, false)];
+    const rHonest = weeklyIntakeScore({ days:honest, selectedMode:"maintain", tdeeBaseline:2000 });
+    const rGap    = weeklyIntakeScore({ days:withGap, selectedMode:"maintain", tdeeBaseline:2000 });
+    expect(rGap.avgKcal).toBe(rHonest.avgKcal); // the unlogged day changed nothing about the average
+    expect(rGap.daysUsed).toBe(6);
+  });
+  test("the day-count is always stated, even for a very thin week", () => {
+    const days = [day(1900), ...Array.from({ length:6 }, () => day(0, false))];
+    const r = weeklyIntakeScore({ days, selectedMode:"maintain", tdeeBaseline:2000 });
+    expect(r.daysUsed).toBe(1);
+    expect(r.totalDays).toBe(7);
+    expect(r.state).not.toBe("filling-in"); // transparency over suppression — still a real verdict
+  });
+  // ── FIXED 2026-09-09 — two ways the majority-floor override inverted guardrail §6 ──────
+  // Both found by driving the app with a 50 kg, 30%-body-fat sedentary woman on a Cut, whose
+  // target is pinned at SAFE_MIN 1200 — so EVERY day of her week is a floored day.
+  test("a week with nothing logged at all gives no verdict, however many days were floored", () => {
+    const days = Array.from({ length:7 }, () => day(0, false, true));
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 });
+    expect(r.state).toBe("filling-in");   // was: green "a real cut... Keep going", from zero days
+    expect(r.readsAs).toBeUndefined();
+    expect(r.override).toBeUndefined();
+  });
+  test("a floored week whose logged average is a genuine surplus is NOT overridden to 'cut'", () => {
+    const days = [
+      day(3200, true, true), day(3200, true, true), day(3200, true, true), day(3000, true, true),
+      day(0, false, true), day(0, false, true), day(0, false, true),
+    ];
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 });
+    expect(r.readsAs).toBe("bulk");
+    expect(r.override).toBeUndefined();
+    expect(r.colour).toBe("red");
+  });
+  test("the founder's own decided case still overrides — floored week landing in the maintain band", () => {
+    // Unchanged by the narrowing above: the override exists exactly for this week and still fires.
+    const days = Array.from({ length:7 }, (_, i) => day(1200, true, i < 4));
+    const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 });
+    expect(r.readsAs).toBe("cut");
+    expect(r.override).toBe("floor-majority");
+    expect(r.daysUsed).toBe(7);
+  });
+  test("the override reports the average it was built from, like every other verdict", () => {
+    const days = Array.from({ length:7 }, (_, i) => day(1200, true, i < 4));
+    expect(weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 }).avgKcal).toBe(1200);
+  });
+
+  test("one bad day does not sink the week — it's diluted, not dropped", () => {
+    const days = [...Array.from({ length:6 }, () => day(2000)), day(3500)]; // one big binge, logged honestly
+    const r = weeklyIntakeScore({ days, selectedMode:"maintain", tdeeBaseline:2000 });
+    expect(r.daysUsed).toBe(7); // the bad day counts fully — never dropped
+    expect(r.colour).not.toBe("red"); // six on-plan days keep the week close to its usual colour
   });
 });

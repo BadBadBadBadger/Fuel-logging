@@ -828,6 +828,407 @@ var paceVerdict = function paceVerdict(firstMealHour, nowHour, frac) {
   };
 };
 
+// ── Intake scoring (feature dashboard/04) ──────────────────────────
+// features/dashboard/04-intake-scoring.feature. Grades what's logged against the role each
+// macro plays — protein/fat are floors, calories is the master constraint (direction depends
+// on goal), carbs is flex — instead of raw distance from a number. Band widths marked OPEN in
+// the spec ship here as its own proposed numbers, not re-derived; they're meant to be
+// feel-tested against real logged days and tuned, the same way every other threshold in this
+// app started out (cut-load weeks, the adaptive-TDEE step cap, etc.).
+
+// Protein — day-close bands are a PERCENTAGE of target, not grams, because the target itself
+// scales with bodyweight. OPEN (§5.A): exact widths proposed here from the spec's example
+// points (92%→green, 75%→amber, 50%→red).
+var PROTEIN_CLOSE_GREEN_PCT = 0.90;
+var PROTEIN_CLOSE_RED_BELOW_PCT = 0.60;
+var proteinDayScore = function proteinDayScore(_ref) {
+  var dayClosed = _ref.dayClosed,
+    pctOfTarget = _ref.pctOfTarget,
+    verdict = _ref.verdict;
+  if (pctOfTarget >= 1) return {
+    colour: "green",
+    label: "On target"
+  }; // over is always fine
+  if (!dayClosed)
+    // paced against the eating window, never flat-graded, never red mid-day
+    return verdict === "behind" ? {
+      colour: "amber",
+      label: "Increase"
+    } : {
+      colour: "green",
+      label: "On pace"
+    };
+  if (pctOfTarget >= PROTEIN_CLOSE_GREEN_PCT) return {
+    colour: "green",
+    label: "On target"
+  };
+  if (pctOfTarget >= PROTEIN_CLOSE_RED_BELOW_PCT) return {
+    colour: "amber",
+    label: "Increase"
+  };
+  return {
+    colour: "red",
+    label: "Increase"
+  }; // the one macro that reaches red regardless of goal
+};
+
+// Calories — reuses dashboard/01's shipped 100/200/500 kcal shape (the CONSUMED/REMAINING card)
+// verbatim for Cut, mirrored below for Bulk as the "under" shape. MAINTAIN_WIDE_MARGIN_KCAL is
+// OPEN — the spec asked for "a wide margin" on Maintain without a number.
+var CAL_BAND_SOFT = 100,
+  CAL_BAND_MID = 200,
+  CAL_BAND_HARD = 500;
+var MAINTAIN_WIDE_MARGIN_KCAL = 200;
+
+// `label` is the bar caption, which is always rendered NEXT TO a number ("OVER BY" + 350).
+// `heroAction` is the same fact written as a whole sentence, because the hero renders its
+// action line on its own — "OVER BY" alone was appearing on screen as a fragment ending in
+// "BY" with nothing after it (found by driving the app, 2026-09-09).
+var cutCalorieScore = function cutCalorieScore(overAmt) {
+  var say = "Over by ".concat(Math.round(overAmt), " kcal today.");
+  if (overAmt < CAL_BAND_SOFT) return {
+    colour: "green",
+    label: "in range"
+  };
+  if (overAmt < CAL_BAND_MID) return {
+    colour: "amber",
+    label: "JUST OVER",
+    heroAction: say
+  };
+  if (overAmt < CAL_BAND_HARD) return {
+    colour: "amber",
+    label: "OVER BY",
+    heroAction: say
+  };
+  return {
+    colour: "red",
+    label: "OVER BY",
+    heroAction: say
+  };
+};
+var bulkCalorieScore = function bulkCalorieScore(underAmt) {
+  var say = "".concat(Math.round(underAmt), " kcal short of your bulk today.");
+  if (underAmt < CAL_BAND_SOFT) return {
+    colour: "green",
+    label: "in range"
+  };
+  if (underAmt < CAL_BAND_MID) return {
+    colour: "amber",
+    label: "JUST UNDER",
+    heroAction: say
+  };
+  if (underAmt < CAL_BAND_HARD) return {
+    colour: "amber",
+    label: "MISSING THE BULK",
+    heroAction: say
+  };
+  return {
+    colour: "red",
+    label: "MISSING THE BULK",
+    heroAction: say
+  };
+};
+
+// kcalDelta = logged − target (positive = over, negative = under).
+var calorieDayScore = function calorieDayScore(_ref2) {
+  var mode = _ref2.mode,
+    dayClosed = _ref2.dayClosed,
+    kcalDelta = _ref2.kcalDelta;
+  if (mode === "cut") {
+    if (kcalDelta <= 0) return {
+      colour: "green",
+      label: dayClosed ? "in range" : "On pace"
+    }; // under is never a penalty
+    return cutCalorieScore(kcalDelta);
+  }
+  if (mode === "bulk") {
+    // Day-open/close split ADOPTED here, not decided by the spec — it left Bulk's Outline
+    // without one, which could otherwise disagree with the generic day-open "under is on
+    // pace" rule for the same real situation. Mirrors Maintain's split, the only other mode
+    // that has one, so the three modes behave consistently mid-day.
+    if (kcalDelta >= 0) return {
+      colour: "green",
+      label: "in range"
+    }; // over tolerated far more loosely than under
+    if (!dayClosed) return {
+      colour: "green",
+      label: "On pace"
+    };
+    return bulkCalorieScore(-kcalDelta);
+  }
+  // maintain
+  if (!dayClosed) return kcalDelta < 0 ? {
+    colour: "green",
+    label: "On pace"
+  } : {
+    colour: "green",
+    label: "in range"
+  };
+  if (Math.abs(kcalDelta) < MAINTAIN_WIDE_MARGIN_KCAL) return {
+    colour: "green",
+    label: "in range"
+  };
+  var n = Math.round(Math.abs(kcalDelta));
+  return {
+    colour: "amber",
+    label: kcalDelta < 0 ? "Under-eaten" : "Over for today",
+    heroAction: kcalDelta < 0 ? "Under by ".concat(n, " kcal today.") : "Over by ".concat(n, " kcal today.")
+  };
+};
+
+// Fat — a floor AND a ceiling at once. Both bands are a percentage (of the floor, and of the
+// target) for the identical bodyweight-scaling reason as protein's bands above.
+var FAT_CEILING_AMBER_PCT = 0.10;
+var FAT_CEILING_RED_PCT = 0.25;
+var FAT_FLOOR_RED_BELOW_PCT = 0.15;
+
+// FIXED 2026-09-09 (found by driving the app, not by a test): the health floor is a CUMULATIVE
+// daily amount, and it was being judged flat from the first meal onward. At 11am, after a
+// perfectly on-plan breakfast, a 98.5 kg user was 22 g into a 59 g floor — so the card read a red
+// "FAT · Add some healthy fats", which outranks everything else in the hero order, and stayed
+// that way until three quarters of the day's fat was eaten. That was the dashboard's dominant
+// daytime state, and on a Cut it is the one message this app must never send by accident.
+// Fix: the FLOOR now gets exactly the treatment protein's floor already has — paced against the
+// eating window while the day is open (paceVerdict, built for precisely this, app.jsx:427-431),
+// never red and never a hard-safety hero before the day has closed. "Add some healthy fats"
+// stays exclusive to a real breach at close, per the spec's own scenario; the mid-day nudge
+// borrows protein's "Increase" instead. The CEILING is unchanged and stays unconditional —
+// eating a whole day's fat by noon is a real "over" at any hour.
+var fatDayScore = function fatDayScore(_ref3) {
+  var fatG = _ref3.fatG,
+    floorG = _ref3.floorG,
+    targetG = _ref3.targetG,
+    _ref3$dayClosed = _ref3.dayClosed,
+    dayClosed = _ref3$dayClosed === void 0 ? true : _ref3$dayClosed,
+    _ref3$verdict = _ref3.verdict,
+    verdict = _ref3$verdict === void 0 ? "met" : _ref3$verdict;
+  if (fatG < floorG) {
+    if (!dayClosed) return verdict === "behind" ? {
+      colour: "amber",
+      label: "Increase"
+    } : {
+      colour: "green",
+      label: "On pace"
+    };
+    var pctBelow = floorG > 0 ? (floorG - fatG) / floorG : 1;
+    return {
+      colour: pctBelow >= FAT_FLOOR_RED_BELOW_PCT ? "red" : "amber",
+      label: "Add some healthy fats",
+      floorBreach: true
+    };
+  }
+  if (fatG <= targetG) return {
+    colour: "green",
+    label: "On target"
+  };
+  var pctOver = targetG > 0 ? (fatG - targetG) / targetG : 1;
+  if (pctOver < FAT_CEILING_AMBER_PCT) return {
+    colour: "green",
+    label: "On target"
+  };
+  var colour = pctOver < FAT_CEILING_RED_PCT ? "amber" : "red";
+  return {
+    colour: colour,
+    label: "OVER",
+    ceilingBreach: colour !== "green"
+  };
+};
+
+// Carbs — pure flex, no bound of its own. Under is always fine; over only ever reads amber as
+// a symptom of calories also being over (carbs never independently drives the hero's action).
+var carbsDayScore = function carbsDayScore(_ref4) {
+  var carbsG = _ref4.carbsG,
+    targetG = _ref4.targetG,
+    caloriesOver = _ref4.caloriesOver;
+  if (carbsG > targetG && caloriesOver) return {
+    colour: "amber",
+    label: "Over — with calories"
+  };
+  return {
+    colour: "green",
+    label: "On target"
+  };
+};
+
+// Day close (§4) — reuses the coach's own eating-window pacing (EATING_WINDOW_H, paceVerdict)
+// for any day with logging at all; that math alone never closes a day with NOTHING logged
+// (elapsed stays 0 forever), so a hard local-time fallback covers that one case, proposed at
+// 22:00 so an unlogged day still eventually reads as a miss rather than "on pace" all night.
+// OPEN (§4): the two conditions aren't proven mutually exclusive for a very late first meal —
+// flagged in the spec, not resolved here.
+var DAY_CLOSE_FALLBACK_HOUR = 22;
+var isDayClosed = function isDayClosed(_ref5) {
+  var firstMealHour = _ref5.firstMealHour,
+    nowHour = _ref5.nowHour;
+  return firstMealHour == null ? nowHour >= DAY_CLOSE_FALLBACK_HOUR : nowHour - firstMealHour >= EATING_WINDOW_H;
+};
+
+// Hero priority — the card's single headline word + one action line when several macros need
+// attention at once. DECIDED order for Cut/Bulk (pairwise scenarios in the spec): fat-floor
+// breach (hard safety) > calories out of range > fat-ceiling breach > protein under target.
+// Maintain's own ordering is left explicitly unresolved by the spec ("mixes units with no
+// stated conversion... isn't actually computable as written") — ADOPTED the same order here as
+// the consistent default, since fat-below-floor is confirmed to win first on Maintain too and
+// nothing argues for a different order among the rest. Flagged as adopted, not re-decided.
+var heroFor = function heroFor(_ref6) {
+  var protein = _ref6.protein,
+    calories = _ref6.calories,
+    fat = _ref6.fat;
+  // "floor"/"ceiling" stay internal (floorBreach/ceilingBreach) — never on screen. The word
+  // shown for either fat case is just "FAT"; the action line is what says what's actually wrong.
+  if (fat.floorBreach) return {
+    colour: fat.colour,
+    word: "FAT",
+    action: "Add some healthy fats."
+  };
+  if (calories.colour !== "green") return {
+    colour: calories.colour,
+    word: "CALORIES",
+    action: calories.heroAction || calories.label
+  };
+  // Was `fat.ceilingBreach`. Widened to any non-green fat that isn't a floor breach: today that
+  // is still exactly the ceiling breach, plus the new mid-day "behind on fat" state above, which
+  // belongs at this same rank — "fat, but not the floor" — rather than needing a rank of its own.
+  if (fat.colour !== "green") return {
+    colour: fat.colour,
+    word: "FAT",
+    action: fat.label
+  };
+  if (protein.colour !== "green") return {
+    colour: protein.colour,
+    word: "PROTEIN",
+    action: protein.label
+  };
+  return {
+    colour: "green",
+    word: "ON TRACK",
+    action: "Nice work today."
+  };
+};
+
+// ── The weekly rolling read ─────────────────────────────────────────
+// "This week" = the last 7 days ending today, not the calendar week (Background).
+var WEEK_BAND_KCAL = 250; // OPEN — proposed width, mirrors the ±500 mode deltas
+var WEEK_MIN_HISTORY_DAYS = 7;
+var WEEK_FLOOR_MAJORITY_DAYS = 4; // DECIDED, founder, 2026-09-04
+
+var weekBandFor = function weekBandFor(diffFromBaseline) {
+  if (diffFromBaseline <= -WEEK_BAND_KCAL) return "cut";
+  if (diffFromBaseline >= WEEK_BAND_KCAL) return "bulk";
+  return "maintain";
+};
+var WEEK_READ_COPY = {
+  cut: {
+    cut: {
+      colour: "green",
+      comment: "This week's been a real cut — averaging a genuine deficit. Keep going."
+    },
+    maintain: {
+      colour: "amber",
+      comment: "This week hasn't been a cut. Hit your targets and watch this change."
+    },
+    bulk: {
+      colour: "red",
+      comment: "This week's average has actually run as a surplus — a cut needs it below maintenance to work."
+    }
+  },
+  maintain: {
+    cut: {
+      colour: "amber",
+      comment: "This week's average has actually run a bit under — more of a cut than maintain. More food would bring it back."
+    },
+    maintain: {
+      colour: "green",
+      comment: "Right where maintain should be this week."
+    },
+    bulk: {
+      colour: "amber",
+      comment: "This week's average has actually run a bit over — more of a bulk than maintain."
+    }
+  },
+  bulk: {
+    cut: {
+      colour: "red",
+      comment: "This week's average has actually been a deficit — a bulk needs it above maintenance to build."
+    },
+    maintain: {
+      colour: "amber",
+      comment: "This week hasn't been a bulk. Hit your targets and watch this change."
+    },
+    bulk: {
+      colour: "green",
+      comment: "This week's been a real bulk — averaging a genuine surplus. Keep fuelling it."
+    }
+  }
+};
+
+// days: up to the last 7 daily entries — { kcal, loggedAnything, floored }. tdeeBaseline: raw
+// TDEE (maintenance, NOT adjusted for the selected mode — see the spec's own worked example,
+// which measures distance from raw TDEE; that's what lets "reads as" disagree with "selected").
+var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
+  var days = _ref7.days,
+    selectedMode = _ref7.selectedMode,
+    tdeeBaseline = _ref7.tdeeBaseline;
+  var totalDays = days.length;
+  if (totalDays < WEEK_MIN_HISTORY_DAYS) return {
+    state: "filling-in",
+    daysUsed: 0,
+    totalDays: totalDays
+  };
+  var assessable = days.filter(function (d) {
+    return d.loggedAnything;
+  });
+  var daysUsed = assessable.length;
+  // Nothing logged all week → there is no week to read. This check MOVED ABOVE the
+  // majority-floor override on 2026-09-09: below it, a week with nothing logged at all returned
+  // a green "This week's been a real cut — averaging a genuine deficit. Keep going." built from
+  // zero days of evidence. Not logging must never outscore logging honestly — guardrail §6, the
+  // exact inversion the founder's unlogged-day decision was made to close.
+  if (daysUsed === 0) return {
+    state: "filling-in",
+    daysUsed: daysUsed,
+    totalDays: totalDays
+  };
+  var avgKcal = assessable.reduce(function (s, d) {
+    return s + d.kcal;
+  }, 0) / daysUsed;
+  var band = weekBandFor(avgKcal - tdeeBaseline);
+
+  // The founder's majority-floor override (DECIDED 2026-09-04): a week where a safety floor held
+  // the daily target up on 4+ of the 7 days reads as "cut" outright, because there was never a
+  // lower number on offer to compare against.
+  //
+  // NARROWED 2026-09-09: it no longer overrides a week whose logged average is a genuine surplus.
+  // The founder's reasoning is entirely about the TARGET having been floored — it says nothing
+  // about what was actually eaten. As first built, a 50 kg woman pinned at SAFE_MIN 1200 who
+  // logged four days averaging 3,150 kcal was told "This week's been a real cut — averaging a
+  // genuine deficit. Keep going." while the ring beside it showed four red days.
+  //
+  // STILL OPEN, founder call, deliberately not decided here: a day with NO snapshot at all still
+  // gets a vote in this majority, because Dashboard reconstructs its floored-ness from the
+  // CURRENT profile. Whether a day the user never logged should count toward "a week spent mostly
+  // at the safety minimum" is a product judgement, not a bug — see
+  // features/dashboard/04-intake-scoring-implementation-review.md.
+  var flooredCount = days.filter(function (d) {
+    return d.floored;
+  }).length;
+  if (flooredCount >= WEEK_FLOOR_MAJORITY_DAYS && band !== "bulk") return _objectSpread(_objectSpread({
+    readsAs: "cut"
+  }, WEEK_READ_COPY[selectedMode].cut), {}, {
+    daysUsed: daysUsed,
+    totalDays: totalDays,
+    avgKcal: Math.round(avgKcal),
+    override: "floor-majority"
+  });
+  return _objectSpread(_objectSpread({
+    readsAs: band
+  }, WEEK_READ_COPY[selectedMode][band]), {}, {
+    daysUsed: daysUsed,
+    totalDays: totalDays,
+    avgKcal: Math.round(avgKcal)
+  });
+};
+
 // ── Adaptive TDEE ─────────────────────────────────────────────
 
 var dateKey = function dateKey(d) {
@@ -1055,10 +1456,10 @@ var stalledWeeks = function stalledWeeks(weighIns, todayK) {
 // render rather than stored as an event: the explanation should be on screen whenever the
 // situation is real, not only in the moments after a weigh-in. Two weeks rather than one,
 // because a single week of water is exactly the noise this is here to explain away.
-var gainWhileCutting = function gainWhileCutting(_ref) {
-  var weighIns = _ref.weighIns,
-    todayK = _ref.todayK,
-    cutting = _ref.cutting;
+var gainWhileCutting = function gainWhileCutting(_ref8) {
+  var weighIns = _ref8.weighIns,
+    todayK = _ref8.todayK,
+    cutting = _ref8.cutting;
   if (!cutting) return false;
   var rate = trendLossFrac(weighIns, todayK, 14);
   return rate != null && rate < 0; // a negative loss rate is a gain
@@ -1169,20 +1570,20 @@ var daysBetween = function daysBetween(fromK, toK) {
 // loss over that longer span; null (not enough weigh-ins) says nothing rather than
 // guessing. Calendar time alone never triggers this — a gentle cut that IS working stays
 // unbothered however long it runs.
-var cutPromptFor = function cutPromptFor(_ref2) {
-  var block = _ref2.block,
-    profile = _ref2.profile,
-    todayK = _ref2.todayK,
-    _ref2$lossFrac = _ref2.lossFrac,
-    lossFrac = _ref2$lossFrac === void 0 ? null : _ref2$lossFrac,
-    _ref2$stallRate = _ref2.stallRate,
-    stallRate = _ref2$stallRate === void 0 ? null : _ref2$stallRate,
-    _ref2$stallSpanWeeks = _ref2.stallSpanWeeks,
-    stallSpanWeeks = _ref2$stallSpanWeeks === void 0 ? 0 : _ref2$stallSpanWeeks,
-    _ref2$cutting = _ref2.cutting,
-    cutting = _ref2$cutting === void 0 ? false : _ref2$cutting,
-    _ref2$now = _ref2.now,
-    now = _ref2$now === void 0 ? Date.now() : _ref2$now;
+var cutPromptFor = function cutPromptFor(_ref9) {
+  var block = _ref9.block,
+    profile = _ref9.profile,
+    todayK = _ref9.todayK,
+    _ref9$lossFrac = _ref9.lossFrac,
+    lossFrac = _ref9$lossFrac === void 0 ? null : _ref9$lossFrac,
+    _ref9$stallRate = _ref9.stallRate,
+    stallRate = _ref9$stallRate === void 0 ? null : _ref9$stallRate,
+    _ref9$stallSpanWeeks = _ref9.stallSpanWeeks,
+    stallSpanWeeks = _ref9$stallSpanWeeks === void 0 ? 0 : _ref9$stallSpanWeeks,
+    _ref9$cutting = _ref9.cutting,
+    cutting = _ref9$cutting === void 0 ? false : _ref9$cutting,
+    _ref9$now = _ref9.now,
+    now = _ref9$now === void 0 ? Date.now() : _ref9$now;
   if (!block || !block.start) return null;
   var th = cutThresholds(profile || {});
   var bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
@@ -1220,14 +1621,14 @@ var cutPromptFor = function cutPromptFor(_ref2) {
 // appears once your CURRENT load reaches the minimum. While draining, it stays up as long
 // as the load was above the minimum when the break BEGAN — otherwise the bar would vanish
 // just as you were about to finish, which is the worst possible moment to lose it.
-var cutBarFor = function cutBarFor(_ref3) {
-  var block = _ref3.block,
-    profile = _ref3.profile,
-    todayK = _ref3.todayK,
-    _ref3$cutting = _ref3.cutting,
-    cutting = _ref3$cutting === void 0 ? false : _ref3$cutting,
-    _ref3$weightUp = _ref3.weightUp,
-    weightUp = _ref3$weightUp === void 0 ? false : _ref3$weightUp;
+var cutBarFor = function cutBarFor(_ref0) {
+  var block = _ref0.block,
+    profile = _ref0.profile,
+    todayK = _ref0.todayK,
+    _ref0$cutting = _ref0.cutting,
+    cutting = _ref0$cutting === void 0 ? false : _ref0$cutting,
+    _ref0$weightUp = _ref0.weightUp,
+    weightUp = _ref0$weightUp === void 0 ? false : _ref0$weightUp;
   if (!block || !block.start || block.load <= 0) return null;
   if (cutting ? block.load < CUT_BAR_MIN_LOAD : (block.breakLoad || block.load) < CUT_BAR_MIN_LOAD) return null;
   var th = cutThresholds(profile || {});
@@ -1252,11 +1653,11 @@ var cutBarFor = function cutBarFor(_ref3) {
 // The one guarded action: going back to Cut mid-break, and only where the app had
 // actually advised the break (the block reached its soft-nudge threshold before it
 // stopped). A short casual cut never meets friction, and Bulk is never guarded at all.
-var cutGuardFor = function cutGuardFor(_ref4) {
-  var block = _ref4.block,
-    profile = _ref4.profile,
-    _ref4$cutting = _ref4.cutting,
-    cutting = _ref4$cutting === void 0 ? false : _ref4$cutting;
+var cutGuardFor = function cutGuardFor(_ref1) {
+  var block = _ref1.block,
+    profile = _ref1.profile,
+    _ref1$cutting = _ref1.cutting,
+    cutting = _ref1$cutting === void 0 ? false : _ref1$cutting;
   if (!block || !block.start || cutting || block.load <= 0) return null;
   if ((block.breakLoad || 0) < cutThresholds(profile || {}).soft) return null;
   return {
@@ -1307,15 +1708,15 @@ var daysBetweenTs = function daysBetweenTs(aTs, bTs) {
 // Pure: should the escalated check-in nudge show? `lastActivityTs` = the last weigh-in,
 // or (if the user has never weighed) the first day they were active; null when there is
 // no anchor yet (brand-new). Muted entirely when cadence is "off".
-var shouldNudgeWeighIn = function shouldNudgeWeighIn(_ref5) {
-  var cadence = _ref5.cadence,
-    lastActivityTs = _ref5.lastActivityTs,
-    dismissedTs = _ref5.dismissedTs,
-    now = _ref5.now,
-    _ref5$gapDays = _ref5.gapDays,
-    gapDays = _ref5$gapDays === void 0 ? WEIGH_NUDGE_GAP_DAYS : _ref5$gapDays,
-    _ref5$cooldownDays = _ref5.cooldownDays,
-    cooldownDays = _ref5$cooldownDays === void 0 ? WEIGH_NUDGE_COOLDOWN_DAYS : _ref5$cooldownDays;
+var shouldNudgeWeighIn = function shouldNudgeWeighIn(_ref10) {
+  var cadence = _ref10.cadence,
+    lastActivityTs = _ref10.lastActivityTs,
+    dismissedTs = _ref10.dismissedTs,
+    now = _ref10.now,
+    _ref10$gapDays = _ref10.gapDays,
+    gapDays = _ref10$gapDays === void 0 ? WEIGH_NUDGE_GAP_DAYS : _ref10$gapDays,
+    _ref10$cooldownDays = _ref10.cooldownDays,
+    cooldownDays = _ref10$cooldownDays === void 0 ? WEIGH_NUDGE_COOLDOWN_DAYS : _ref10$cooldownDays;
   if (cadence === "off") return false;
   if (lastActivityTs == null) return false;
   if (daysBetweenTs(lastActivityTs, now) < gapDays) return false;
@@ -1323,7 +1724,7 @@ var shouldNudgeWeighIn = function shouldNudgeWeighIn(_ref5) {
   return true;
 };
 var sg = /*#__PURE__*/function () {
-  var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(k) {
+  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(k) {
     var r, _t;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.p = _context.n) {
@@ -1342,11 +1743,11 @@ var sg = /*#__PURE__*/function () {
     }, _callee, null, [[0, 2]]);
   }));
   return function sg(_x) {
-    return _ref6.apply(this, arguments);
+    return _ref11.apply(this, arguments);
   };
 }();
 var ss = /*#__PURE__*/function () {
-  var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(k, v) {
+  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(k, v) {
     var _t2;
     return _regenerator().w(function (_context2) {
       while (1) switch (_context2.p = _context2.n) {
@@ -1366,7 +1767,7 @@ var ss = /*#__PURE__*/function () {
     }, _callee2, null, [[0, 2]]);
   }));
   return function ss(_x2, _x3) {
-    return _ref7.apply(this, arguments);
+    return _ref12.apply(this, arguments);
   };
 }();
 var parseJwt = function parseJwt(token) {
@@ -1405,7 +1806,7 @@ var sb = function sb() {
   return getDevDateOffset() !== 0 ? null : window.supabaseClient;
 };
 var syncUpsert = /*#__PURE__*/function () {
-  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(table, rows, conflict) {
+  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(table, rows, conflict) {
     var _t3;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.p = _context3.n) {
@@ -1433,11 +1834,11 @@ var syncUpsert = /*#__PURE__*/function () {
     }, _callee3, null, [[1, 3]]);
   }));
   return function syncUpsert(_x4, _x5, _x6) {
-    return _ref8.apply(this, arguments);
+    return _ref13.apply(this, arguments);
   };
 }();
 var syncFoodLogs = /*#__PURE__*/function () {
-  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(uid, date, logs) {
+  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(uid, date, logs) {
     var now, _t4;
     return _regenerator().w(function (_context4) {
       while (1) switch (_context4.p = _context4.n) {
@@ -1488,11 +1889,11 @@ var syncFoodLogs = /*#__PURE__*/function () {
     }, _callee4, null, [[1, 3]]);
   }));
   return function syncFoodLogs(_x7, _x8, _x9) {
-    return _ref9.apply(this, arguments);
+    return _ref14.apply(this, arguments);
   };
 }();
 var syncWater = /*#__PURE__*/function () {
-  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(uid, date, glasses) {
+  var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(uid, date, glasses) {
     return _regenerator().w(function (_context5) {
       while (1) switch (_context5.n) {
         case 0:
@@ -1515,11 +1916,11 @@ var syncWater = /*#__PURE__*/function () {
     }, _callee5);
   }));
   return function syncWater(_x0, _x1, _x10) {
-    return _ref0.apply(this, arguments);
+    return _ref15.apply(this, arguments);
   };
 }();
 var syncWorkouts = /*#__PURE__*/function () {
-  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(uid, date, ws) {
+  var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(uid, date, ws) {
     var now, _t5;
     return _regenerator().w(function (_context6) {
       while (1) switch (_context6.p = _context6.n) {
@@ -1568,11 +1969,11 @@ var syncWorkouts = /*#__PURE__*/function () {
     }, _callee6, null, [[1, 3]]);
   }));
   return function syncWorkouts(_x11, _x12, _x13) {
-    return _ref1.apply(this, arguments);
+    return _ref16.apply(this, arguments);
   };
 }();
 var syncProfile = /*#__PURE__*/function () {
-  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(uid, p) {
+  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(uid, p) {
     var _t6;
     return _regenerator().w(function (_context7) {
       while (1) switch (_context7.p = _context7.n) {
@@ -1606,7 +2007,7 @@ var syncProfile = /*#__PURE__*/function () {
     }, _callee7, null, [[1, 3]]);
   }));
   return function syncProfile(_x14, _x15) {
-    return _ref10.apply(this, arguments);
+    return _ref17.apply(this, arguments);
   };
 }();
 
@@ -1618,7 +2019,7 @@ var syncProfile = /*#__PURE__*/function () {
 // resume a break at the right speed AND decide the early-return guard the same way this
 // one would — the off-day count is re-derived from it on pull, so it needs no column.
 var syncCutBlock = /*#__PURE__*/function () {
-  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, b) {
+  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, b) {
     var _t7;
     return _regenerator().w(function (_context8) {
       while (1) switch (_context8.p = _context8.n) {
@@ -1653,14 +2054,14 @@ var syncCutBlock = /*#__PURE__*/function () {
     }, _callee8, null, [[1, 3]]);
   }));
   return function syncCutBlock(_x16, _x17) {
-    return _ref11.apply(this, arguments);
+    return _ref18.apply(this, arguments);
   };
 }();
 
 // Persist the compliance consent record onto the profiles row (R2/R6). Upsert
 // touches only the consent columns, leaving body metrics untouched on conflict.
 var syncConsent = /*#__PURE__*/function () {
-  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, meta) {
+  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, meta) {
     var _t8;
     return _regenerator().w(function (_context9) {
       while (1) switch (_context9.p = _context9.n) {
@@ -1694,13 +2095,13 @@ var syncConsent = /*#__PURE__*/function () {
     }, _callee9, null, [[1, 3]]);
   }));
   return function syncConsent(_x18, _x19) {
-    return _ref12.apply(this, arguments);
+    return _ref19.apply(this, arguments);
   };
 }();
 
 // Record consent withdrawal (R2 — withdrawal must be as easy as giving it).
 var syncConsentWithdrawn = /*#__PURE__*/function () {
-  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid) {
+  var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid) {
     var _t9;
     return _regenerator().w(function (_context0) {
       while (1) switch (_context0.p = _context0.n) {
@@ -1732,11 +2133,11 @@ var syncConsentWithdrawn = /*#__PURE__*/function () {
     }, _callee0, null, [[1, 3]]);
   }));
   return function syncConsentWithdrawn(_x20) {
-    return _ref13.apply(this, arguments);
+    return _ref20.apply(this, arguments);
   };
 }();
 var syncWeighIns = /*#__PURE__*/function () {
-  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, wis) {
+  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, wis) {
     var now;
     return _regenerator().w(function (_context1) {
       while (1) switch (_context1.n) {
@@ -1763,11 +2164,11 @@ var syncWeighIns = /*#__PURE__*/function () {
     }, _callee1);
   }));
   return function syncWeighIns(_x21, _x22) {
-    return _ref14.apply(this, arguments);
+    return _ref21.apply(this, arguments);
   };
 }();
 var syncSettings = /*#__PURE__*/function () {
-  var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, mode, tdeeAdj, customKcal, acked) {
+  var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, mode, tdeeAdj, customKcal, acked) {
     var _t0;
     return _regenerator().w(function (_context10) {
       while (1) switch (_context10.p = _context10.n) {
@@ -1800,11 +2201,11 @@ var syncSettings = /*#__PURE__*/function () {
     }, _callee10, null, [[1, 3]]);
   }));
   return function syncSettings(_x23, _x24, _x25, _x26, _x27) {
-    return _ref15.apply(this, arguments);
+    return _ref22.apply(this, arguments);
   };
 }();
 var syncMeals = /*#__PURE__*/function () {
-  var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, meals) {
+  var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, meals) {
     var now;
     return _regenerator().w(function (_context11) {
       while (1) switch (_context11.n) {
@@ -1834,7 +2235,7 @@ var syncMeals = /*#__PURE__*/function () {
     }, _callee11);
   }));
   return function syncMeals(_x28, _x29) {
-    return _ref16.apply(this, arguments);
+    return _ref23.apply(this, arguments);
   };
 }();
 
@@ -1843,7 +2244,7 @@ var syncMeals = /*#__PURE__*/function () {
 // row by (user_id, name), the same pair the upsert conflicts on. Renaming a meal in the
 // editor orphans the old row the same way, so that path deletes the old name too.
 var syncMealDelete = /*#__PURE__*/function () {
-  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, name) {
+  var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, name) {
     var _t1;
     return _regenerator().w(function (_context12) {
       while (1) switch (_context12.p = _context12.n) {
@@ -1869,11 +2270,11 @@ var syncMealDelete = /*#__PURE__*/function () {
     }, _callee12, null, [[1, 3]]);
   }));
   return function syncMealDelete(_x30, _x31) {
-    return _ref17.apply(this, arguments);
+    return _ref24.apply(this, arguments);
   };
 }();
 var syncBadges = /*#__PURE__*/function () {
-  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid, keys) {
+  var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid, keys) {
     var now;
     return _regenerator().w(function (_context13) {
       while (1) switch (_context13.n) {
@@ -1899,11 +2300,11 @@ var syncBadges = /*#__PURE__*/function () {
     }, _callee13);
   }));
   return function syncBadges(_x32, _x33) {
-    return _ref18.apply(this, arguments);
+    return _ref25.apply(this, arguments);
   };
 }();
 var syncHistory = /*#__PURE__*/function () {
-  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid, hist) {
+  var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid, hist) {
     var now;
     return _regenerator().w(function (_context14) {
       while (1) switch (_context14.n) {
@@ -1917,6 +2318,7 @@ var syncHistory = /*#__PURE__*/function () {
           now = new Date().toISOString();
           _context14.n = 2;
           return syncUpsert("history_snapshots", hist.map(function (h) {
+            var _h$targetKcal, _h$targetProtein, _h$targetFat, _h$targetFatFloor, _h$floored;
             return {
               user_id: uid,
               date: h.date,
@@ -1927,6 +2329,15 @@ var syncHistory = /*#__PURE__*/function () {
               fat: h.fat,
               water: h.water || 0,
               training: h.training || false,
+              // dashboard/04 — the real per-day target, so a week read on another device grades
+              // history against what actually applied that day. Explicit null (not omitted) for
+              // snapshots older than this fix, so an upsert never leaves a stale value sitting
+              // there ambiguously — there IS no real value for those days, so null is correct.
+              target_kcal: (_h$targetKcal = h.targetKcal) !== null && _h$targetKcal !== void 0 ? _h$targetKcal : null,
+              target_protein: (_h$targetProtein = h.targetProtein) !== null && _h$targetProtein !== void 0 ? _h$targetProtein : null,
+              target_fat: (_h$targetFat = h.targetFat) !== null && _h$targetFat !== void 0 ? _h$targetFat : null,
+              target_fat_floor: (_h$targetFatFloor = h.targetFatFloor) !== null && _h$targetFatFloor !== void 0 ? _h$targetFatFloor : null,
+              floored: (_h$floored = h.floored) !== null && _h$floored !== void 0 ? _h$floored : null,
               updated_at: now
             };
           }), "user_id,date");
@@ -1936,11 +2347,11 @@ var syncHistory = /*#__PURE__*/function () {
     }, _callee14);
   }));
   return function syncHistory(_x34, _x35) {
-    return _ref19.apply(this, arguments);
+    return _ref26.apply(this, arguments);
   };
 }();
 var migrateLocalToSupabase = /*#__PURE__*/function () {
-  var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(uid) {
+  var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(uid) {
     var migKey, pv, wiv, m, ta, ck, ak, mv, bv, hv, hist, _iterator2, _step2, _snap$logs, snap, i, key, v, _t10, _t11, _t12, _t13, _t14, _t15;
     return _regenerator().w(function (_context15) {
       while (1) switch (_context15.p = _context15.n) {
@@ -2122,11 +2533,11 @@ var migrateLocalToSupabase = /*#__PURE__*/function () {
     }, _callee15, null, [[20, 25, 26, 27], [1, 31]]);
   }));
   return function migrateLocalToSupabase(_x36) {
-    return _ref20.apply(this, arguments);
+    return _ref27.apply(this, arguments);
   };
 }();
 var pullFromSupabase = /*#__PURE__*/function () {
-  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(uid) {
+  var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(uid) {
     var _weighR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, load, breakLoad, offRun, block, wi, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, byDate, _iterator6, _step6, _w, _i, _Object$entries, _Object$entries$_i, d, ws, _t16, _t17, _t18, _t19;
     return _regenerator().w(function (_context16) {
       while (1) switch (_context16.p = _context16.n) {
@@ -2346,7 +2757,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
             break;
           }
           fullHist = histR.data.map(function (h) {
-            var _ref22, _waterByDate$h$date;
+            var _ref29, _waterByDate$h$date, _h$target_kcal, _h$target_protein, _h$target_fat, _h$target_fat_floor, _h$floored2;
             return {
               date: h.date,
               mode: h.mode,
@@ -2355,8 +2766,16 @@ var pullFromSupabase = /*#__PURE__*/function () {
               carbs: h.carbs,
               fat: h.fat,
               training: h.training,
-              water: (_ref22 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref22 !== void 0 ? _ref22 : 0,
-              logs: foodByDate[h.date] || []
+              water: (_ref29 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref29 !== void 0 ? _ref29 : 0,
+              logs: foodByDate[h.date] || [],
+              // dashboard/04 — carried through so a pulled day still grades against its own real
+              // target rather than falling back to Dashboard's reconstruction. null on older rows
+              // (synced before this fix existed) is the honest answer: there is no real value.
+              targetKcal: (_h$target_kcal = h.target_kcal) !== null && _h$target_kcal !== void 0 ? _h$target_kcal : null,
+              targetProtein: (_h$target_protein = h.target_protein) !== null && _h$target_protein !== void 0 ? _h$target_protein : null,
+              targetFat: (_h$target_fat = h.target_fat) !== null && _h$target_fat !== void 0 ? _h$target_fat : null,
+              targetFatFloor: (_h$target_fat_floor = h.target_fat_floor) !== null && _h$target_fat_floor !== void 0 ? _h$target_fat_floor : null,
+              floored: (_h$floored2 = h.floored) !== null && _h$floored2 !== void 0 ? _h$floored2 : null
             };
           });
           _context16.n = 25;
@@ -2443,7 +2862,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
     }, _callee16, null, [[26, 31, 32, 33], [8, 10], [3, 5], [1, 39]]);
   }));
   return function pullFromSupabase(_x37) {
-    return _ref21.apply(this, arguments);
+    return _ref28.apply(this, arguments);
   };
 }();
 
@@ -2453,7 +2872,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
 
 var SCHEMA_VERSION = 1;
 var runMigrations = /*#__PURE__*/function () {
-  var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
+  var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17() {
     var stored, v;
     return _regenerator().w(function (_context17) {
       while (1) switch (_context17.n) {
@@ -2477,7 +2896,7 @@ var runMigrations = /*#__PURE__*/function () {
     }, _callee17);
   }));
   return function runMigrations() {
-    return _ref23.apply(this, arguments);
+    return _ref30.apply(this, arguments);
   };
 }();
 
@@ -2493,7 +2912,7 @@ var runMigrations = /*#__PURE__*/function () {
 // Runs a single time per device; after that, deletes are meant to stick.
 var REVIVE_KEY = "qa_revive_v68";
 var reviveMeals = /*#__PURE__*/function () {
-  var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(uid, current) {
+  var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(uid, current) {
     var byName, add, before, _yield$sb$from$select, data, error, hv, _iterator7, _step7, snap, _iterator8, _step8, l, revived, _t20, _t21;
     return _regenerator().w(function (_context18) {
       while (1) switch (_context18.p = _context18.n) {
@@ -2611,13 +3030,13 @@ var reviveMeals = /*#__PURE__*/function () {
     }, _callee18, null, [[8, 10], [3, 6]]);
   }));
   return function reviveMeals(_x38, _x39) {
-    return _ref24.apply(this, arguments);
+    return _ref31.apply(this, arguments);
   };
 }();
 
 // Current Supabase access token (JWT) — the worker requires it to authorise AI calls.
 var getAccessToken = /*#__PURE__*/function () {
-  var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19() {
+  var _ref32 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19() {
     var _data$session, client, _yield$client$auth$ge, data, _t22;
     return _regenerator().w(function (_context19) {
       while (1) switch (_context19.p = _context19.n) {
@@ -2644,13 +3063,13 @@ var getAccessToken = /*#__PURE__*/function () {
     }, _callee19, null, [[0, 3]]);
   }));
   return function getAccessToken() {
-    return _ref25.apply(this, arguments);
+    return _ref32.apply(this, arguments);
   };
 }();
 
 // Server-side voucher redemption (Phase A). Sends the code to the worker /redeem endpoint.
 var redeemVoucher = /*#__PURE__*/function () {
-  var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(code) {
+  var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20(code) {
     var token, res, data;
     return _regenerator().w(function (_context20) {
       while (1) switch (_context20.n) {
@@ -2696,14 +3115,14 @@ var redeemVoucher = /*#__PURE__*/function () {
     }, _callee20);
   }));
   return function redeemVoucher(_x40) {
-    return _ref26.apply(this, arguments);
+    return _ref33.apply(this, arguments);
   };
 }();
 
 // Account deletion (R5). The worker deletes the auth.users row with the service
 // role, which cascades to every table. The client cannot do this itself.
 var deleteAccountRequest = /*#__PURE__*/function () {
-  var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
+  var _ref34 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21() {
     var token, res, msg, _t23, _t24;
     return _regenerator().w(function (_context21) {
       while (1) switch (_context21.p = _context21.n) {
@@ -2758,14 +3177,14 @@ var deleteAccountRequest = /*#__PURE__*/function () {
     }, _callee21, null, [[4, 7]]);
   }));
   return function deleteAccountRequest() {
-    return _ref27.apply(this, arguments);
+    return _ref34.apply(this, arguments);
   };
 }();
 
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 var callAI = /*#__PURE__*/function () {
-  var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(prompt) {
+  var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22(prompt) {
     var maxTokens,
       token,
       ctrl,
@@ -2860,7 +3279,7 @@ var callAI = /*#__PURE__*/function () {
     }, _callee22, null, [[3, 5, 6, 7]]);
   }));
   return function callAI(_x41) {
-    return _ref28.apply(this, arguments);
+    return _ref35.apply(this, arguments);
   };
 }();
 var repairJson = function repairJson(text) {
@@ -2878,7 +3297,7 @@ var repairJson = function repairJson(text) {
   return JSON.parse(s);
 };
 var callAIJson = /*#__PURE__*/function () {
-  var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(prompt) {
+  var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(prompt) {
     var maxTokens,
       text,
       _args23 = arguments;
@@ -2895,7 +3314,7 @@ var callAIJson = /*#__PURE__*/function () {
     }, _callee23);
   }));
   return function callAIJson(_x42) {
-    return _ref29.apply(this, arguments);
+    return _ref36.apply(this, arguments);
   };
 }();
 
@@ -2947,10 +3366,10 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
     }
   }]);
 }(React.Component); // ── Premium Modals ────────────────────────────────────────────
-function PremiumModal(_ref30) {
-  var feature = _ref30.feature,
-    onUpgrade = _ref30.onUpgrade,
-    onDismiss = _ref30.onDismiss;
+function PremiumModal(_ref37) {
+  var feature = _ref37.feature,
+    onUpgrade = _ref37.onUpgrade,
+    onDismiss = _ref37.onDismiss;
   var emoji = feature ? feature.emoji : "⭐";
   var name = feature ? feature.name : "This feature";
   return /*#__PURE__*/React.createElement("div", {
@@ -3017,10 +3436,10 @@ function PremiumModal(_ref30) {
       letterSpacing: "0.1em",
       marginBottom: 10
     }
-  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref31, i) {
-    var _ref32 = _slicedToArray(_ref31, 2),
-      e = _ref32[0],
-      t = _ref32[1];
+  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref38, i) {
+    var _ref39 = _slicedToArray(_ref38, 2),
+      e = _ref39[0],
+      t = _ref39[1];
     return /*#__PURE__*/React.createElement("div", {
       key: i,
       style: {
@@ -3075,9 +3494,9 @@ function PremiumModal(_ref30) {
     }
   }, "Maybe Later")));
 }
-function SignInModal(_ref33) {
-  var onSuccess = _ref33.onSuccess,
-    onCancel = _ref33.onCancel;
+function SignInModal(_ref40) {
+  var onSuccess = _ref40.onSuccess,
+    onCancel = _ref40.onCancel;
   var devMode = !GOOGLE_CLIENT_ID;
   var _useState = useState(devMode ? "payment" : "google"),
     _useState2 = _slicedToArray(_useState, 2),
@@ -3193,7 +3612,7 @@ function SignInModal(_ref33) {
     };
   };
   var handleVoucher = /*#__PURE__*/function () {
-    var _ref34 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
+    var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25() {
       var _t27;
       return _regenerator().w(function (_context25) {
         while (1) switch (_context25.p = _context25.n) {
@@ -3235,7 +3654,7 @@ function SignInModal(_ref33) {
       }, _callee25, null, [[3, 5]]);
     }));
     return function handleVoucher() {
-      return _ref34.apply(this, arguments);
+      return _ref41.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3509,10 +3928,10 @@ function SignInModal(_ref33) {
     }
   }, "Cancel"))));
 }
-function SignOutModal(_ref35) {
-  var userName = _ref35.userName,
-    onConfirm = _ref35.onConfirm,
-    onCancel = _ref35.onCancel;
+function SignOutModal(_ref42) {
+  var userName = _ref42.userName,
+    onConfirm = _ref42.onConfirm,
+    onCancel = _ref42.onCancel;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -3585,9 +4004,9 @@ function SignOutModal(_ref35) {
 
 // Retroactive / re-consent prompt (R2). Shown when a signed-in user has not yet
 // agreed to the current privacy-policy version. Blocking — they consent or sign out.
-function ConsentModal(_ref36) {
-  var onConsent = _ref36.onConsent,
-    onSignOut = _ref36.onSignOut;
+function ConsentModal(_ref43) {
+  var onConsent = _ref43.onConsent,
+    onSignOut = _ref43.onSignOut;
   var _useState13 = useState(false),
     _useState14 = _slicedToArray(_useState13, 2),
     ok = _useState14[0],
@@ -3704,13 +4123,13 @@ function ConsentModal(_ref36) {
 // ── Account & Privacy screen ──────────────────────────────────
 // Reached by tapping the avatar. Home for data export (R4), account deletion
 // (R5), policy links, consent status, and sign out (LEGAL_ROADMAP Phase B).
-function AccountScreen(_ref37) {
-  var user = _ref37.user,
-    consentInfo = _ref37.consentInfo,
-    onBack = _ref37.onBack,
-    onExport = _ref37.onExport,
-    onSignOut = _ref37.onSignOut,
-    onDelete = _ref37.onDelete;
+function AccountScreen(_ref44) {
+  var user = _ref44.user,
+    consentInfo = _ref44.consentInfo,
+    onBack = _ref44.onBack,
+    onExport = _ref44.onExport,
+    onSignOut = _ref44.onSignOut,
+    onDelete = _ref44.onDelete;
   var _useState15 = useState(false),
     _useState16 = _slicedToArray(_useState15, 2),
     confirm = _useState16[0],
@@ -3728,7 +4147,7 @@ function AccountScreen(_ref37) {
     err = _useState22[0],
     setErr = _useState22[1];
   var runDelete = /*#__PURE__*/function () {
-    var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
+    var _ref45 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
       var _t28;
       return _regenerator().w(function (_context26) {
         while (1) switch (_context26.p = _context26.n) {
@@ -3752,7 +4171,7 @@ function AccountScreen(_ref37) {
       }, _callee26, null, [[1, 3]]);
     }));
     return function runDelete() {
-      return _ref38.apply(this, arguments);
+      return _ref45.apply(this, arguments);
     };
   }();
   var linkRow = function linkRow(label, href) {
@@ -4041,9 +4460,9 @@ function AccountScreen(_ref37) {
     }
   }, "fuellogadmin@gmail.com"), "."));
 }
-function LapsedModal(_ref39) {
-  var onRenew = _ref39.onRenew,
-    onDismiss = _ref39.onDismiss;
+function LapsedModal(_ref46) {
+  var onRenew = _ref46.onRenew,
+    onDismiss = _ref46.onDismiss;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -4127,10 +4546,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref40) {
-  var title = _ref40.title,
-    onBack = _ref40.onBack,
-    right = _ref40.right;
+function BackHdr(_ref47) {
+  var title = _ref47.title,
+    onBack = _ref47.onBack,
+    right = _ref47.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -4171,10 +4590,10 @@ function BackHdr(_ref40) {
     }
   }, title), right);
 }
-function Chip(_ref41) {
-  var label = _ref41.label,
-    value = _ref41.value,
-    color = _ref41.color;
+function Chip(_ref48) {
+  var label = _ref48.label,
+    value = _ref48.value,
+    color = _ref48.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -4197,14 +4616,25 @@ function Chip(_ref41) {
     }
   }, label));
 }
-function MBar(_ref42) {
-  var label = _ref42.label,
-    value = _ref42.value,
-    target = _ref42.target,
-    color = _ref42.color;
-  var pct = Math.min(100, value / target * 100);
-  var overG = value - target;
-  var accent = overG > 15 ? "var(--over)" : overG > 5 ? "var(--warn)" : null;
+
+// Colour keys used throughout the score card and its bars — resolves the intake-scoring
+// engine's "green"/"amber"/"red"/"grey" to the theme's tokens (rc() for SVG, raw for CSS).
+var SCORE_COLOUR = {
+  green: "var(--good)",
+  amber: "var(--warn)",
+  red: "var(--over)",
+  grey: "var(--text-faint)"
+};
+
+// Replaces the old flat-tolerance MBar (dashboard/02, superseded) — same bar shell, but colour
+// comes from the role-based score (dashboard/04) instead of a flat 5g/15g-over delta.
+function ScoredBar(_ref49) {
+  var label = _ref49.label,
+    value = _ref49.value,
+    target = _ref49.target,
+    score = _ref49.score;
+  var pct = target > 0 ? Math.min(100, value / target * 100) : 0;
+  var accent = SCORE_COLOUR[score.colour] || "var(--text-mid-6)";
   return /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 10
@@ -4220,13 +4650,13 @@ function MBar(_ref42) {
     style: {
       fontWeight: 800,
       letterSpacing: "0.06em",
-      color: accent || "var(--text-mid-6)"
+      color: score.colour === "green" ? "var(--text-mid-6)" : accent
     }
   }, label), /*#__PURE__*/React.createElement("span", {
     style: {
-      color: accent || "var(--text-mid-5)"
+      color: score.colour === "green" ? "var(--text-mid-5)" : accent
     }
-  }, Math.round(value), "g / ", target, "g")), /*#__PURE__*/React.createElement("div", {
+  }, Math.round(value), "g / ", Math.round(target), "g")), /*#__PURE__*/React.createElement("div", {
     style: {
       height: 7,
       background: "var(--surface-2b)",
@@ -4237,23 +4667,266 @@ function MBar(_ref42) {
     style: {
       height: "100%",
       width: "".concat(pct, "%"),
-      background: accent || color,
+      background: accent,
       borderRadius: 99,
       transition: "width 0.4s"
     }
   })));
 }
 
+// Two-ring dial (dashboard/05) — presentation only, computes nothing. Inner ring: today's hero
+// colour + how far through the day it is. Outer ring: the week's colour + how far through the
+// rolling 7-day window it is. Centre: the hero's single word + action line, never blank (05 §1).
+// First-pass sizing/stroke/animation — the spec flags this as needing a design-lead pass before
+// it's a final visual, not a placeholder to be replaced with something functionally different.
+// Founder feedback, 2026-09-04: the outer ring as a single averaged arc was legible as "some
+// colour" but not as anything specific — and with no label on either zone, it read as one
+// ambiguous ring plus a caption, not an obviously daily thing next to an obviously weekly thing.
+// Fixed on two axes: the outer ring is now a literal 7-day strip curved into a circle, one arc
+// segment per day, lit only when that day was logged — the ring shows COVERAGE (did the last 7
+// days actually have data), while the verdict (cut/maintain/bulk, on track or not) stays in the
+// coloured text beside it. Two different questions, two different places to look. Plus explicit
+// "TODAY" / "THIS WEEK" labels on each zone, instead of asking the reader to infer meaning from
+// ring position (inner vs outer) alone.
+var polarXY = function polarXY(cx, cy, r, deg) {
+  var rad = deg * Math.PI / 180;
+  return {
+    x: cx + r * Math.cos(rad),
+    y: cy + r * Math.sin(rad)
+  };
+};
+var arcPath = function arcPath(cx, cy, r, startDeg, endDeg) {
+  var s = polarXY(cx, cy, r, startDeg),
+    e = polarXY(cx, cy, r, endDeg);
+  var largeArc = endDeg - startDeg <= 180 ? 0 : 1;
+  return "M ".concat(s.x, " ").concat(s.y, " A ").concat(r, " ").concat(r, " 0 ").concat(largeArc, " 1 ").concat(e.x, " ").concat(e.y);
+};
+
+// Founder feedback, 2026-09-04 (round 2): one wide card with two rings side by side still read
+// as one ambiguous thing plus a caption. Split into two independent square-ish cards, each with
+// its own title and its own ring — a reader now has to notice two separate boxes before they can
+// even get to "which timeframe," rather than parse a shared ring's position.
+function ScoreCard(_ref50) {
+  var title = _ref50.title,
+    ring = _ref50.ring,
+    children = _ref50.children;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 150,
+      background: CARD,
+      border: "1px solid ".concat(BD),
+      borderRadius: 20,
+      padding: "16px 14px",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      alignSelf: "flex-start",
+      fontSize: 11,
+      color: "var(--text-label)",
+      letterSpacing: "0.12em",
+      fontWeight: 800,
+      marginBottom: 12
+    }
+  }, title), ring, children);
+}
+function IntakeScoreCard(_ref51) {
+  var hero = _ref51.hero,
+    todayMiss = _ref51.todayMiss,
+    _ref51$todayColours = _ref51.todayColours,
+    todayColours = _ref51$todayColours === void 0 ? [] : _ref51$todayColours,
+    weekScore = _ref51.weekScore,
+    _ref51$dayColours = _ref51.dayColours,
+    dayColours = _ref51$dayColours === void 0 ? [] : _ref51$dayColours;
+  var innerColour = SCORE_COLOUR[todayMiss ? "grey" : hero.colour];
+  var isFillingIn = weekScore.state === "filling-in";
+  var verdictColour = SCORE_COLOUR[isFillingIn ? "grey" : weekScore.colour];
+  var SIZE = 104,
+    C = SIZE / 2,
+    R = 44,
+    STROKE = 9;
+
+  // Three arcs — protein / carbs / fat, in the same order as the MACROS bars below — each lit by
+  // that macro's OWN score, not by a wall-clock fill (was `dayFill = nowHour / 24`, which told the
+  // reader what time it was and nothing about fat, calories or protein — a red ring that wasn't
+  // full read as "not done falling short" instead of "10pm"). Founder feedback, 2026-09-09: with
+  // one hero word only, protein sitting quietly at 89% was invisible whenever fat's hard-safety
+  // floor outranked it for the headline. Segmenting the ring the same way the week ring already
+  // does means both show at once — you can see protein's amber next to fat's red, not just infer
+  // that fat won a hidden priority order.
+  var TODAY_GAP_DEG = 10;
+  var todaySegDeg = (360 - 3 * TODAY_GAP_DEG) / 3;
+  var todaySegments = Array.from({
+    length: 3
+  }, function (_, i) {
+    var start = i * (todaySegDeg + TODAY_GAP_DEG);
+    return {
+      d: arcPath(C, C, R, start, start + todaySegDeg),
+      colour: todayMiss ? null : todayColours[i]
+    };
+  });
+
+  // 7 segments, oldest-first, today's segment closing the loop back at the top. Each logged day
+  // is coloured by that day's OWN adherence (the same red/amber/green the per-macro engine
+  // grades "today" with), softened — full-strength colour is reserved for today's segment so the
+  // live day still reads as the one currently in progress. An unlogged day stays the empty grey
+  // track: colouring it would misrepresent absence of data as a known good or bad day.
+  var GAP_DEG = 6;
+  var segDeg = (360 - 7 * GAP_DEG) / 7;
+  var segments = Array.from({
+    length: 7
+  }, function (_, i) {
+    var start = i * (segDeg + GAP_DEG);
+    return {
+      d: arcPath(C, C, R, start, start + segDeg),
+      colour: dayColours[i] || null,
+      isToday: i === 6
+    };
+  });
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 12,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement(ScoreCard, {
+    title: "TODAY",
+    ring: /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "relative",
+        width: SIZE,
+        height: SIZE
+      }
+    }, /*#__PURE__*/React.createElement("svg", {
+      width: SIZE,
+      height: SIZE,
+      style: {
+        transform: "rotate(-90deg)"
+      }
+    }, /*#__PURE__*/React.createElement("circle", {
+      cx: C,
+      cy: C,
+      r: R,
+      fill: "none",
+      stroke: rc("var(--surface-2)"),
+      strokeWidth: STROKE
+    }), todaySegments.map(function (seg, i) {
+      return /*#__PURE__*/React.createElement("path", {
+        key: i,
+        d: seg.d,
+        fill: "none",
+        stroke: rc(seg.colour ? SCORE_COLOUR[seg.colour] : "var(--surface-2)"),
+        strokeWidth: STROKE,
+        strokeLinecap: "round"
+      });
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        fontWeight: 900,
+        letterSpacing: "0.04em",
+        color: innerColour
+      }
+    }, todayMiss ? "NO LOG" : hero.word)))
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "var(--text-mid-4)",
+      marginTop: 10,
+      lineHeight: 1.4
+    }
+  }, todayMiss ? "Nothing logged today" : hero.action)), /*#__PURE__*/React.createElement(ScoreCard, {
+    title: "THIS WEEK",
+    ring: /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "relative",
+        width: SIZE,
+        height: SIZE
+      }
+    }, /*#__PURE__*/React.createElement("svg", {
+      width: SIZE,
+      height: SIZE,
+      style: {
+        transform: "rotate(-90deg)"
+      }
+    }, /*#__PURE__*/React.createElement("circle", {
+      cx: C,
+      cy: C,
+      r: R,
+      fill: "none",
+      stroke: rc("var(--surface-2)"),
+      strokeWidth: STROKE
+    }), segments.map(function (seg, i) {
+      return /*#__PURE__*/React.createElement("path", {
+        key: i,
+        d: seg.d,
+        fill: "none",
+        stroke: rc(seg.colour ? SCORE_COLOUR[seg.colour] : "var(--surface-2)"),
+        strokeWidth: STROKE,
+        strokeLinecap: "round",
+        opacity: seg.colour ? seg.isToday ? 1 : 0.55 : 1
+      });
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        fontWeight: 900,
+        letterSpacing: "0.04em",
+        color: isFillingIn ? "var(--text-faint)" : verdictColour
+      }
+    }, isFillingIn ? "…" : weekScore.readsAs.toUpperCase())))
+  }, isFillingIn ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "var(--text-mid-4)",
+      marginTop: 10,
+      lineHeight: 1.4
+    }
+  }, "Still filling in \u2014 ", weekScore.daysUsed, " of 7 days logged so far.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: verdictColour,
+      fontWeight: 700,
+      marginTop: 10,
+      lineHeight: 1.4
+    }
+  }, weekScore.comment), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: "var(--text-faint)",
+      marginTop: 4
+    }
+  }, "Based on ", weekScore.daysUsed, " of ", weekScore.totalDays, " days logged"))));
+}
+
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref43) {
-  var mode = _ref43.mode,
-    totals = _ref43.totals,
-    targets = _ref43.targets,
-    streak = _ref43.streak,
-    water = _ref43.water,
-    _ref43$logs = _ref43.logs,
-    logs = _ref43$logs === void 0 ? [] : _ref43$logs;
+function CoachCard(_ref52) {
+  var mode = _ref52.mode,
+    totals = _ref52.totals,
+    targets = _ref52.targets,
+    streak = _ref52.streak,
+    water = _ref52.water,
+    _ref52$logs = _ref52.logs,
+    logs = _ref52$logs === void 0 ? [] : _ref52$logs;
   var _useState23 = useState(""),
     _useState24 = _slicedToArray(_useState23, 2),
     tip = _useState24[0],
@@ -4286,7 +4959,7 @@ function CoachCard(_ref43) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
+    var _ref53 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
       var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, eaten, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t29;
       return _regenerator().w(function (_context27) {
         while (1) switch (_context27.p = _context27.n) {
@@ -4359,7 +5032,7 @@ function CoachCard(_ref43) {
       }, _callee27, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref44.apply(this, arguments);
+      return _ref53.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -4433,14 +5106,14 @@ function CoachCard(_ref43) {
 // ── Tag input (feature #8) ────────────────────────────────────
 // A hybrid combobox: free-text that surfaces selectable suggestions and also
 // lets the user commit a CUSTOM tag the app didn't suggest. Tags are removable pills.
-function TagField(_ref45) {
-  var label = _ref45.label,
-    tags = _ref45.tags,
-    suggestions = _ref45.suggestions,
-    onChange = _ref45.onChange,
-    _ref45$accent = _ref45.accent,
-    accent = _ref45$accent === void 0 ? A : _ref45$accent,
-    placeholder = _ref45.placeholder;
+function TagField(_ref54) {
+  var label = _ref54.label,
+    tags = _ref54.tags,
+    suggestions = _ref54.suggestions,
+    onChange = _ref54.onChange,
+    _ref54$accent = _ref54.accent,
+    accent = _ref54$accent === void 0 ? A : _ref54$accent,
+    placeholder = _ref54.placeholder;
   var _useState31 = useState(""),
     _useState32 = _slicedToArray(_useState31, 2),
     input = _useState32[0],
@@ -4610,9 +5283,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kg)];
     },
-    build: function build(_ref46) {
-      var _ref47 = _slicedToArray(_ref46, 1),
-        a = _ref47[0];
+    build: function build(_ref55) {
+      var _ref56 = _slicedToArray(_ref55, 1),
+        a = _ref56[0];
       return a;
     }
   },
@@ -4621,9 +5294,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kgToLb(kg))];
     },
-    build: function build(_ref48) {
-      var _ref49 = _slicedToArray(_ref48, 1),
-        a = _ref49[0];
+    build: function build(_ref57) {
+      var _ref58 = _slicedToArray(_ref57, 1),
+        a = _ref58[0];
       return lbToKg(a);
     }
   },
@@ -4634,10 +5307,10 @@ var MEASURE_CFG = {
       var x = kgToStLb(kg);
       return [String(x.st), String(x.lb)];
     },
-    build: function build(_ref50) {
-      var _ref51 = _slicedToArray(_ref50, 2),
-        s = _ref51[0],
-        p = _ref51[1];
+    build: function build(_ref59) {
+      var _ref60 = _slicedToArray(_ref59, 2),
+        s = _ref60[0],
+        p = _ref60[1];
       return stLbToKg(s, p);
     }
   },
@@ -4646,9 +5319,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cm)];
     },
-    build: function build(_ref52) {
-      var _ref53 = _slicedToArray(_ref52, 1),
-        a = _ref53[0];
+    build: function build(_ref61) {
+      var _ref62 = _slicedToArray(_ref61, 1),
+        a = _ref62[0];
       return a;
     }
   },
@@ -4657,9 +5330,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cmToInch(cm))];
     },
-    build: function build(_ref54) {
-      var _ref55 = _slicedToArray(_ref54, 1),
-        a = _ref55[0];
+    build: function build(_ref63) {
+      var _ref64 = _slicedToArray(_ref63, 1),
+        a = _ref64[0];
       return inchToCm(a);
     }
   },
@@ -4670,18 +5343,18 @@ var MEASURE_CFG = {
       var x = cmToFtIn(cm);
       return [String(x.ft), String(x["in"])];
     },
-    build: function build(_ref56) {
-      var _ref57 = _slicedToArray(_ref56, 2),
-        ft = _ref57[0],
-        i = _ref57[1];
+    build: function build(_ref65) {
+      var _ref66 = _slicedToArray(_ref65, 2),
+        ft = _ref66[0],
+        i = _ref66[1];
       return ftInToCm(ft, i);
     }
   }
 };
-function MeasureField(_ref58) {
-  var metric = _ref58.metric,
-    unit = _ref58.unit,
-    onChange = _ref58.onChange;
+function MeasureField(_ref67) {
+  var metric = _ref67.metric,
+    unit = _ref67.unit,
+    onChange = _ref67.onChange;
   var cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
   var _useState33 = useState(function () {
       return cfg.seed(metric);
@@ -4739,11 +5412,11 @@ function ThemeToggle() {
       borderRadius: 12,
       padding: 4
     }
-  }, opts.map(function (_ref59) {
-    var _ref60 = _slicedToArray(_ref59, 3),
-      v = _ref60[0],
-      icon = _ref60[1],
-      lbl = _ref60[2];
+  }, opts.map(function (_ref68) {
+    var _ref69 = _slicedToArray(_ref68, 3),
+      v = _ref69[0],
+      icon = _ref69[1],
+      lbl = _ref69[2];
     var on = choice === v;
     return /*#__PURE__*/React.createElement("button", {
       key: v,
@@ -4782,10 +5455,10 @@ function ThemeToggle() {
     }, lbl));
   }));
 }
-function UnitSwitch(_ref61) {
-  var value = _ref61.value,
-    options = _ref61.options,
-    onChange = _ref61.onChange;
+function UnitSwitch(_ref70) {
+  var value = _ref70.value,
+    options = _ref70.options,
+    onChange = _ref70.onChange;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -4795,10 +5468,10 @@ function UnitSwitch(_ref61) {
       borderRadius: 999,
       padding: 2
     }
-  }, options.map(function (_ref62) {
-    var _ref63 = _slicedToArray(_ref62, 2),
-      v = _ref63[0],
-      lbl = _ref63[1];
+  }, options.map(function (_ref71) {
+    var _ref72 = _slicedToArray(_ref71, 2),
+      v = _ref72[0],
+      lbl = _ref72[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -4819,18 +5492,18 @@ function UnitSwitch(_ref61) {
     }, lbl);
   }));
 }
-function ProfileScreen(_ref64) {
-  var profile = _ref64.profile,
-    onSave = _ref64.onSave,
-    onBack = _ref64.onBack,
-    _ref64$tdeeAdj = _ref64.tdeeAdj,
-    tdeeAdj = _ref64$tdeeAdj === void 0 ? 0 : _ref64$tdeeAdj,
-    _ref64$weighIns = _ref64.weighIns,
-    weighIns = _ref64$weighIns === void 0 ? [] : _ref64$weighIns,
-    _ref64$aggressiveCutA = _ref64.aggressiveCutAcked,
-    aggressiveCutAcked = _ref64$aggressiveCutA === void 0 ? false : _ref64$aggressiveCutA,
-    _ref64$onResetAdjustm = _ref64.onResetAdjustment,
-    onResetAdjustment = _ref64$onResetAdjustm === void 0 ? function () {} : _ref64$onResetAdjustm;
+function ProfileScreen(_ref73) {
+  var profile = _ref73.profile,
+    onSave = _ref73.onSave,
+    onBack = _ref73.onBack,
+    _ref73$tdeeAdj = _ref73.tdeeAdj,
+    tdeeAdj = _ref73$tdeeAdj === void 0 ? 0 : _ref73$tdeeAdj,
+    _ref73$weighIns = _ref73.weighIns,
+    weighIns = _ref73$weighIns === void 0 ? [] : _ref73$weighIns,
+    _ref73$aggressiveCutA = _ref73.aggressiveCutAcked,
+    aggressiveCutAcked = _ref73$aggressiveCutA === void 0 ? false : _ref73$aggressiveCutA,
+    _ref73$onResetAdjustm = _ref73.onResetAdjustment,
+    onResetAdjustment = _ref73$onResetAdjustm === void 0 ? function () {} : _ref73$onResetAdjustm;
   var _useState37 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState38 = _slicedToArray(_useState37, 2),
     f = _useState38[0],
@@ -5482,10 +6155,10 @@ function ProfileScreen(_ref64) {
     mode: "bulk",
     label: "BULK",
     color: "var(--bulk)"
-  }].map(function (_ref65) {
-    var mode = _ref65.mode,
-      label = _ref65.label,
-      color = _ref65.color;
+  }].map(function (_ref74) {
+    var mode = _ref74.mode,
+      label = _ref74.label,
+      color = _ref74.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -5508,11 +6181,11 @@ function ProfileScreen(_ref64) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref66) {
-      var _ref67 = _slicedToArray(_ref66, 3),
-        k = _ref67[0],
-        key = _ref67[1],
-        u = _ref67[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref75) {
+      var _ref76 = _slicedToArray(_ref75, 3),
+        k = _ref76[0],
+        key = _ref76[1],
+        u = _ref76[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -5588,14 +6261,14 @@ function ProfileScreen(_ref64) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref68) {
-  var meal = _ref68.meal,
-    onSave = _ref68.onSave,
-    onCancel = _ref68.onCancel,
-    _ref68$isPremium = _ref68.isPremium,
-    isPremium = _ref68$isPremium === void 0 ? false : _ref68$isPremium,
-    _ref68$onPremiumGate = _ref68.onPremiumGate,
-    onPremiumGate = _ref68$onPremiumGate === void 0 ? function () {} : _ref68$onPremiumGate;
+function MealForm(_ref77) {
+  var meal = _ref77.meal,
+    onSave = _ref77.onSave,
+    onCancel = _ref77.onCancel,
+    _ref77$isPremium = _ref77.isPremium,
+    isPremium = _ref77$isPremium === void 0 ? false : _ref77$isPremium,
+    _ref77$onPremiumGate = _ref77.onPremiumGate,
+    onPremiumGate = _ref77$onPremiumGate === void 0 ? function () {} : _ref77$onPremiumGate;
   var blank = {
     name: "",
     kcal: "",
@@ -5632,7 +6305,7 @@ function MealForm(_ref68) {
   // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
   // Open Food Facts a bounded background refinement that only wins on confidence.
   var estimate = /*#__PURE__*/function () {
-    var _ref69 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
+    var _ref78 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
       var fill, upd, oft, _t30, _t31;
       return _regenerator().w(function (_context28) {
         while (1) switch (_context28.p = _context28.n) {
@@ -5707,7 +6380,7 @@ function MealForm(_ref68) {
       }, _callee28, null, [[8, 10], [3, 5]]);
     }));
     return function estimate() {
-      return _ref69.apply(this, arguments);
+      return _ref78.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5866,15 +6539,15 @@ function MealForm(_ref68) {
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
-function WeighInWidget(_ref70) {
-  var weighIns = _ref70.weighIns,
-    onWeighIn = _ref70.onWeighIn,
-    tdeeAdj = _ref70.tdeeAdj,
-    baseTDEE = _ref70.baseTDEE,
-    _ref70$tdeeFloor = _ref70.tdeeFloor,
-    tdeeFloor = _ref70$tdeeFloor === void 0 ? baseTDEE : _ref70$tdeeFloor,
-    _ref70$correctionHeld = _ref70.correctionHeld,
-    correctionHeld = _ref70$correctionHeld === void 0 ? false : _ref70$correctionHeld;
+function WeighInWidget(_ref79) {
+  var weighIns = _ref79.weighIns,
+    onWeighIn = _ref79.onWeighIn,
+    tdeeAdj = _ref79.tdeeAdj,
+    baseTDEE = _ref79.baseTDEE,
+    _ref79$tdeeFloor = _ref79.tdeeFloor,
+    tdeeFloor = _ref79$tdeeFloor === void 0 ? baseTDEE : _ref79$tdeeFloor,
+    _ref79$correctionHeld = _ref79.correctionHeld,
+    correctionHeld = _ref79$correctionHeld === void 0 ? false : _ref79$correctionHeld;
   var _useState57 = useState(""),
     _useState58 = _slicedToArray(_useState57, 2),
     val = _useState58[0],
@@ -6096,15 +6769,15 @@ function WeighInWidget(_ref70) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref71) {
-  var workouts = _ref71.workouts,
-    onAdd = _ref71.onAdd,
-    onRemove = _ref71.onRemove,
-    prof = _ref71.prof,
-    _ref71$earnedToday = _ref71.earnedToday,
-    earnedToday = _ref71$earnedToday === void 0 ? 0 : _ref71$earnedToday,
-    isPremium = _ref71.isPremium,
-    onPremiumGate = _ref71.onPremiumGate;
+function WorkoutLogger(_ref80) {
+  var workouts = _ref80.workouts,
+    onAdd = _ref80.onAdd,
+    onRemove = _ref80.onRemove,
+    prof = _ref80.prof,
+    _ref80$earnedToday = _ref80.earnedToday,
+    earnedToday = _ref80$earnedToday === void 0 ? 0 : _ref80$earnedToday,
+    isPremium = _ref80.isPremium,
+    onPremiumGate = _ref80.onPremiumGate;
   var _useState61 = useState("legs"),
     _useState62 = _slicedToArray(_useState61, 2),
     type = _useState62[0],
@@ -6152,7 +6825,7 @@ function WorkoutLogger(_ref71) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref72 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
       var prompt, _t32, _t33;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
@@ -6188,7 +6861,7 @@ function WorkoutLogger(_ref71) {
       }, _callee29, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref72.apply(this, arguments);
+      return _ref81.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -6510,10 +7183,10 @@ function WorkoutLogger(_ref71) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref73) {
-  var user = _ref73.user,
-    _ref73$size = _ref73.size,
-    size = _ref73$size === void 0 ? 34 : _ref73$size;
+function Avatar(_ref82) {
+  var user = _ref82.user,
+    _ref82$size = _ref82.size,
+    size = _ref82$size === void 0 ? 34 : _ref82$size;
   var _useState75 = useState(false),
     _useState76 = _slicedToArray(_useState75, 2),
     failed = _useState76[0],
@@ -6550,12 +7223,12 @@ function Avatar(_ref73) {
 // today-list and the History day view. Every field is editable by all users;
 // the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
 // reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
-function EntryEditor(_ref74) {
-  var entry = _ref74.entry,
-    onSave = _ref74.onSave,
-    onCancel = _ref74.onCancel,
-    isPremium = _ref74.isPremium,
-    onPremiumGate = _ref74.onPremiumGate;
+function EntryEditor(_ref83) {
+  var entry = _ref83.entry,
+    onSave = _ref83.onSave,
+    onCancel = _ref83.onCancel,
+    isPremium = _ref83.isPremium,
+    onPremiumGate = _ref83.onPremiumGate;
   var _useState77 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
@@ -6581,7 +7254,7 @@ function EntryEditor(_ref74) {
     setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref75 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
+    var _ref84 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
       var fill, upd, oft, _t34, _t35;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.p = _context30.n) {
@@ -6659,7 +7332,7 @@ function EntryEditor(_ref74) {
       }, _callee30, null, [[8, 10], [3, 5]]);
     }));
     return function reestimate() {
-      return _ref75.apply(this, arguments);
+      return _ref84.apply(this, arguments);
     };
   }();
   var save = function save() {
@@ -6824,71 +7497,73 @@ function EntryEditor(_ref74) {
     }
   }, "Save")));
 }
-function Dashboard(_ref76) {
-  var logs = _ref76.logs,
-    totals = _ref76.totals,
-    targets = _ref76.targets,
-    remaining = _ref76.remaining,
-    water = _ref76.water,
-    setWater = _ref76.setWater,
-    mode = _ref76.mode,
-    setMode = _ref76.setMode,
-    setView = _ref76.setView,
-    removeLog = _ref76.removeLog,
-    updateLog = _ref76.updateLog,
-    addToQA = _ref76.addToQA,
-    hasProfile = _ref76.hasProfile,
-    streak = _ref76.streak,
-    streakPop = _ref76.streakPop,
-    badgeGlow = _ref76.badgeGlow,
-    prof = _ref76.prof,
-    weighIns = _ref76.weighIns,
-    onWeighIn = _ref76.onWeighIn,
-    tdeeAdj = _ref76.tdeeAdj,
-    baseTDEE = _ref76.baseTDEE,
-    _ref76$tdeeFloor = _ref76.tdeeFloor,
-    tdeeFloor = _ref76$tdeeFloor === void 0 ? baseTDEE : _ref76$tdeeFloor,
-    _ref76$showWeighNudge = _ref76.showWeighNudge,
-    showWeighNudge = _ref76$showWeighNudge === void 0 ? false : _ref76$showWeighNudge,
-    _ref76$onNudgeDismiss = _ref76.onNudgeDismiss,
-    onNudgeDismiss = _ref76$onNudgeDismiss === void 0 ? function () {} : _ref76$onNudgeDismiss,
-    _ref76$onNudgeMute = _ref76.onNudgeMute,
-    onNudgeMute = _ref76$onNudgeMute === void 0 ? function () {} : _ref76$onNudgeMute,
-    coachKey = _ref76.coachKey,
-    _ref76$cutPrompt = _ref76.cutPrompt,
-    cutPrompt = _ref76$cutPrompt === void 0 ? null : _ref76$cutPrompt,
-    _ref76$onCutNudgeDism = _ref76.onCutNudgeDismiss,
-    onCutNudgeDismiss = _ref76$onCutNudgeDism === void 0 ? function () {} : _ref76$onCutNudgeDism,
-    _ref76$onCutPromptSno = _ref76.onCutPromptSnooze,
-    onCutPromptSnooze = _ref76$onCutPromptSno === void 0 ? function () {} : _ref76$onCutPromptSno,
-    _ref76$onStartDietBre = _ref76.onStartDietBreak,
-    onStartDietBreak = _ref76$onStartDietBre === void 0 ? function () {} : _ref76$onStartDietBre,
-    _ref76$cutBar = _ref76.cutBar,
-    cutBar = _ref76$cutBar === void 0 ? null : _ref76$cutBar,
-    _ref76$cutGuard = _ref76.cutGuard,
-    cutGuard = _ref76$cutGuard === void 0 ? null : _ref76$cutGuard,
-    _ref76$showRecharged = _ref76.showRecharged,
-    showRecharged = _ref76$showRecharged === void 0 ? false : _ref76$showRecharged,
-    _ref76$onDismissRecha = _ref76.onDismissRecharged,
-    onDismissRecharged = _ref76$onDismissRecha === void 0 ? function () {} : _ref76$onDismissRecha,
-    _ref76$showGainWhileC = _ref76.showGainWhileCutting,
-    showGainWhileCutting = _ref76$showGainWhileC === void 0 ? false : _ref76$showGainWhileC,
-    _ref76$correctionHeld = _ref76.correctionHeld,
-    correctionHeld = _ref76$correctionHeld === void 0 ? false : _ref76$correctionHeld,
-    workouts = _ref76.workouts,
-    onAddWorkout = _ref76.onAddWorkout,
-    onRemoveWorkout = _ref76.onRemoveWorkout,
-    customKcal = _ref76.customKcal,
-    onSetCustomKcal = _ref76.onSetCustomKcal,
-    isCustomMode = _ref76.isCustomMode,
-    aggressiveCutAcked = _ref76.aggressiveCutAcked,
-    onAckAggressiveCut = _ref76.onAckAggressiveCut,
-    authState = _ref76.authState,
-    authUser = _ref76.authUser,
-    onPremiumGate = _ref76.onPremiumGate,
-    onSignOut = _ref76.onSignOut,
-    isOnline = _ref76.isOnline,
-    syncMsg = _ref76.syncMsg;
+function Dashboard(_ref85) {
+  var logs = _ref85.logs,
+    totals = _ref85.totals,
+    targets = _ref85.targets,
+    remaining = _ref85.remaining,
+    water = _ref85.water,
+    setWater = _ref85.setWater,
+    _ref85$hist = _ref85.hist,
+    hist = _ref85$hist === void 0 ? [] : _ref85$hist,
+    mode = _ref85.mode,
+    setMode = _ref85.setMode,
+    setView = _ref85.setView,
+    removeLog = _ref85.removeLog,
+    updateLog = _ref85.updateLog,
+    addToQA = _ref85.addToQA,
+    hasProfile = _ref85.hasProfile,
+    streak = _ref85.streak,
+    streakPop = _ref85.streakPop,
+    badgeGlow = _ref85.badgeGlow,
+    prof = _ref85.prof,
+    weighIns = _ref85.weighIns,
+    onWeighIn = _ref85.onWeighIn,
+    tdeeAdj = _ref85.tdeeAdj,
+    baseTDEE = _ref85.baseTDEE,
+    _ref85$tdeeFloor = _ref85.tdeeFloor,
+    tdeeFloor = _ref85$tdeeFloor === void 0 ? baseTDEE : _ref85$tdeeFloor,
+    _ref85$showWeighNudge = _ref85.showWeighNudge,
+    showWeighNudge = _ref85$showWeighNudge === void 0 ? false : _ref85$showWeighNudge,
+    _ref85$onNudgeDismiss = _ref85.onNudgeDismiss,
+    onNudgeDismiss = _ref85$onNudgeDismiss === void 0 ? function () {} : _ref85$onNudgeDismiss,
+    _ref85$onNudgeMute = _ref85.onNudgeMute,
+    onNudgeMute = _ref85$onNudgeMute === void 0 ? function () {} : _ref85$onNudgeMute,
+    coachKey = _ref85.coachKey,
+    _ref85$cutPrompt = _ref85.cutPrompt,
+    cutPrompt = _ref85$cutPrompt === void 0 ? null : _ref85$cutPrompt,
+    _ref85$onCutNudgeDism = _ref85.onCutNudgeDismiss,
+    onCutNudgeDismiss = _ref85$onCutNudgeDism === void 0 ? function () {} : _ref85$onCutNudgeDism,
+    _ref85$onCutPromptSno = _ref85.onCutPromptSnooze,
+    onCutPromptSnooze = _ref85$onCutPromptSno === void 0 ? function () {} : _ref85$onCutPromptSno,
+    _ref85$onStartDietBre = _ref85.onStartDietBreak,
+    onStartDietBreak = _ref85$onStartDietBre === void 0 ? function () {} : _ref85$onStartDietBre,
+    _ref85$cutBar = _ref85.cutBar,
+    cutBar = _ref85$cutBar === void 0 ? null : _ref85$cutBar,
+    _ref85$cutGuard = _ref85.cutGuard,
+    cutGuard = _ref85$cutGuard === void 0 ? null : _ref85$cutGuard,
+    _ref85$showRecharged = _ref85.showRecharged,
+    showRecharged = _ref85$showRecharged === void 0 ? false : _ref85$showRecharged,
+    _ref85$onDismissRecha = _ref85.onDismissRecharged,
+    onDismissRecharged = _ref85$onDismissRecha === void 0 ? function () {} : _ref85$onDismissRecha,
+    _ref85$showGainWhileC = _ref85.showGainWhileCutting,
+    showGainWhileCutting = _ref85$showGainWhileC === void 0 ? false : _ref85$showGainWhileC,
+    _ref85$correctionHeld = _ref85.correctionHeld,
+    correctionHeld = _ref85$correctionHeld === void 0 ? false : _ref85$correctionHeld,
+    workouts = _ref85.workouts,
+    onAddWorkout = _ref85.onAddWorkout,
+    onRemoveWorkout = _ref85.onRemoveWorkout,
+    customKcal = _ref85.customKcal,
+    onSetCustomKcal = _ref85.onSetCustomKcal,
+    isCustomMode = _ref85.isCustomMode,
+    aggressiveCutAcked = _ref85.aggressiveCutAcked,
+    onAckAggressiveCut = _ref85.onAckAggressiveCut,
+    authState = _ref85.authState,
+    authUser = _ref85.authUser,
+    onPremiumGate = _ref85.onPremiumGate,
+    onSignOut = _ref85.onSignOut,
+    isOnline = _ref85.isOnline,
+    syncMsg = _ref85.syncMsg;
   var isPremium = authState === "premium";
   var _useState83 = useState(null),
     _useState84 = _slicedToArray(_useState83, 2),
@@ -6920,6 +7595,168 @@ function Dashboard(_ref76) {
   // it the whole background declaration, is dropped and the bar paints nothing.
   var kcalBarBg = overAmt > 500 ? RED : overAmt > 100 ? AMBER : "linear-gradient(90deg,".concat(mix(mc, "88"), ",").concat(mc, ")");
   var kcalBorder = overAmt > 500 ? "color-mix(in srgb, var(--over) 13%, transparent)" : overAmt > 100 ? "color-mix(in srgb, var(--warn) 13%, transparent)" : "var(--border)";
+
+  // ── Intake scoring (dashboard/04 + 05) ──────────────────────────
+  // Today: reuses the same firstMealHour derivation the coach prompt already uses
+  // (Math.min of log ids, which are Date.now() timestamps) rather than parsing the
+  // locale-formatted `time` string on each log.
+  // getCurrentHour(), not `new Date().getHours()` — it is the app's single hour source and the
+  // only one the preview harness's time control can move (app.jsx:205). Using the raw clock here
+  // meant the coach card and this card disagreed about what hour it was whenever that control was
+  // used, and made every day-open/day-close state of this feature unreachable from Playwright,
+  // which is why dashboard/04 and /05 shipped with no UI coverage at all. Fixed 2026-09-09.
+  var nowHour = getCurrentHour();
+  var firstMealHour = logs.length ? new Date(Math.min.apply(Math, _toConsumableArray(logs.map(function (l) {
+    return Number(l.id) || Date.now();
+  })))).getHours() : null;
+  var dayClosed = isDayClosed({
+    firstMealHour: firstMealHour,
+    nowHour: nowHour
+  });
+  var todayMiss = dayClosed && logs.length === 0; // spec: "A fully unlogged day, once closed…"
+  var proteinFrac = targets.protein > 0 ? totals.protein / targets.protein : 1;
+  var proteinPace = paceVerdict(firstMealHour, nowHour, proteinFrac);
+  var proteinScore = proteinDayScore({
+    dayClosed: dayClosed,
+    pctOfTarget: proteinFrac,
+    verdict: proteinPace.verdict
+  });
+  var caloriesScore = calorieDayScore({
+    mode: mode,
+    dayClosed: dayClosed,
+    kcalDelta: totals.kcal - targets.kcal
+  });
+  var fatFloorG = Math.round((Number(prof === null || prof === void 0 ? void 0 : prof.weight) || 80) * FAT_FLOOR_PER_KG);
+  // Fat's floor is paced exactly like protein's while the day is open — same function, same
+  // reason. The fraction is measured against the FLOOR, because that is the bound being paced.
+  var fatPace = paceVerdict(firstMealHour, nowHour, fatFloorG > 0 ? totals.fat / fatFloorG : 1);
+  var fatScore = fatDayScore({
+    fatG: totals.fat,
+    floorG: fatFloorG,
+    targetG: targets.fat,
+    dayClosed: dayClosed,
+    verdict: fatPace.verdict
+  });
+  var carbsScore = carbsDayScore({
+    carbsG: totals.carbs,
+    targetG: targets.carbs,
+    caloriesOver: totals.kcal - targets.kcal > 0
+  });
+  var hero = heroFor({
+    protein: proteinScore,
+    calories: caloriesScore,
+    fat: fatScore
+  });
+  var todayColours = [proteinScore.colour, carbsScore.colour, fatScore.colour];
+
+  // This week: the last 7 calendar days. A day with no history snapshot (never opened, or the
+  // account didn't exist yet) is treated as unlogged, not zeroed — see weeklyIntakeScore. Whole
+  // account newer than 7 days is the one case that shows "still filling in" (spec: "fewer than
+  // 7 days of history"), using total lifetime snapshots as the evidence count.
+  var todayK = todayKey();
+  var last7Keys = Array.from({
+    length: 7
+  }, function (_, i) {
+    var d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - i);
+    return dateKey(d);
+  }).reverse();
+  // Founder feedback, 2026-09-04 (round 3): a logged/not-logged binary on each day segment
+  // still left "how did that day actually go" unanswered — asked for red/amber/green per day,
+  // graded by adherence, not just presence. Today's segment reuses the SAME live `hero` already
+  // computed above; a past day is graded by running the identical per-macro engine against that
+  // day's OWN history snapshot instead of live totals. An unlogged day gets no colour at all
+  // (stays the empty grey track) — colouring it would misrepresent absence of data as a known
+  // good or bad day, the exact confusion the weekly-average fix above exists to prevent.
+  var weekDays = last7Keys.map(function (k) {
+    // `colour: null` when nothing is logged today. Every OTHER day already followed that rule;
+    // today did not, so an unlogged closed day showed a grey "NO LOG" on the TODAY card and a
+    // full-strength red segment for the same day in the ring beside it. Fixed 2026-09-09.
+    if (k === todayK) return {
+      kcal: totals.kcal,
+      loggedAnything: logs.length > 0,
+      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied),
+      colour: logs.length > 0 ? hero.colour : null
+    };
+    var h = hist.find(function (d) {
+      return d.date === k;
+    });
+    var dayMode = h && h.mode || mode;
+    // Prefer the REAL target snapshotted that day (targetKcal etc., added 2026-09-09 — see the
+    // App-level history effect). Only a snapshot recorded BEFORE that fix lacks these fields;
+    // for those, and only those, fall back to reconstructing a target from TODAY'S profile and
+    // tdeeAdj — a known-approximate stand-in for data that was never captured and can't be
+    // recovered, not the normal path.
+    var hasRealTarget = h && h.targetKcal != null;
+    var fallback = hasRealTarget ? null : calcTargets(prof || {}, dayMode, 0, tdeeAdj, 0);
+    var dayTargetKcal = hasRealTarget ? h.targetKcal : fallback.kcal;
+    var dayTargetProtein = hasRealTarget ? h.targetProtein : fallback.protein;
+    var dayTargetFat = hasRealTarget ? h.targetFat : fallback.fat;
+    var dayFatFloor = hasRealTarget ? h.targetFatFloor : fatFloorG;
+    var dayFloored = hasRealTarget ? !!h.floored : !!(fallback.safeMinApplied || fallback.deficitFloorApplied || fallback.bmrFloorApplied);
+    // kcal OR entries, not entries alone. `runCalibration` already uses `d.kcal > 0` as the
+    // app's test for "this day has intake" (app.jsx:651), and a snapshot pulled from Supabase
+    // carries `logs: foodByDate[date] || []` — so a day whose food_logs rows haven't arrived has
+    // real kcal and an empty array. Keying only off the array made six such days read as
+    // "unlogged", greying the ring and dropping them from the weekly average. Fixed 2026-09-09.
+    var loggedAnything = !!(h && ((Number(h.kcal) || 0) > 0 || h.logs && h.logs.length > 0));
+    var colour = null;
+    if (loggedAnything) {
+      var dProteinFrac = dayTargetProtein > 0 ? (h.protein || 0) / dayTargetProtein : 1;
+      var dProtein = proteinDayScore({
+        dayClosed: true,
+        pctOfTarget: dProteinFrac,
+        verdict: "met"
+      });
+      var dCalories = calorieDayScore({
+        mode: dayMode,
+        dayClosed: true,
+        kcalDelta: (h.kcal || 0) - dayTargetKcal
+      });
+      var dFat = fatDayScore({
+        fatG: h.fat || 0,
+        floorG: dayFatFloor,
+        targetG: dayTargetFat,
+        dayClosed: true
+      });
+      colour = heroFor({
+        protein: dProtein,
+        calories: dCalories,
+        fat: dFat
+      }).colour;
+    }
+    return {
+      kcal: h && h.kcal || 0,
+      loggedAnything: loggedAnything,
+      floored: dayFloored,
+      colour: colour
+    };
+  });
+  var accountIsNew = hist.length < WEEK_MIN_HISTORY_DAYS;
+  // The trigger is account AGE (snapshots that exist at all — a brand-new user's missing days
+  // never existed). The NUMBER in the copy is days actually logged, which is a different count:
+  // the daily history effect writes a snapshot every day the app is opened, logged or not, so
+  // `hist.length` claimed "1 of 7 days logged so far" on a morning with nothing logged.
+  var loggedSnapshots = hist.filter(function (h) {
+    return (Number(h.kcal) || 0) > 0 || h.logs && h.logs.length > 0;
+  }).length;
+  var tdeeBaseline = Math.max(sedentaryFloorOf(prof || {}), bmrOf(prof || {}) * activityMult(prof || {}) + tdeeAdj);
+  var weekScore = accountIsNew ? {
+    state: "filling-in",
+    daysUsed: loggedSnapshots,
+    totalDays: hist.length
+  } : weeklyIntakeScore({
+    days: weekDays,
+    selectedMode: mode,
+    tdeeBaseline: tdeeBaseline
+  });
+  // While the card is saying "still filling in" it is explicitly declining to give a verdict, so
+  // the ring must not paint one either — it was showing full red/amber/green day colours under a
+  // grey "…" centre and a caption that said no verdict was being made yet. Fixed 2026-09-09.
+  var dayColours = weekScore.state === "filling-in" ? [] : weekDays.map(function (d) {
+    return d.colour;
+  }); // oldest → newest, last = today; null = not logged
+
   var _useState87 = useState({}),
     _useState88 = _slicedToArray(_useState87, 2),
     savedIds = _useState88[0],
@@ -6978,7 +7815,7 @@ function Dashboard(_ref76) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref77 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(log) {
+    var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31(log) {
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.n) {
           case 0:
@@ -7002,7 +7839,7 @@ function Dashboard(_ref76) {
       }, _callee31);
     }));
     return function handleAddToQA(_x44) {
-      return _ref77.apply(this, arguments);
+      return _ref86.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -7150,10 +7987,10 @@ function Dashboard(_ref76) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref78) {
-    var _ref79 = _slicedToArray(_ref78, 2),
-      k = _ref79[0],
-      v = _ref79[1];
+  }, Object.entries(MODES).map(function (_ref87) {
+    var _ref88 = _slicedToArray(_ref87, 2),
+      k = _ref88[0],
+      v = _ref88[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -8026,7 +8863,13 @@ function Dashboard(_ref76) {
     }
   }, /*#__PURE__*/React.createElement("span", {
     "aria-hidden": "true"
-  }, "\u2248"), /*#__PURE__*/React.createElement("span", null, "Today's intake is mostly AI-estimated (~", intakeConf, "% confident) \u2014 review elements for accuracy."))), /*#__PURE__*/React.createElement("div", {
+  }, "\u2248"), /*#__PURE__*/React.createElement("span", null, "Today's intake is mostly AI-estimated (~", intakeConf, "% confident) \u2014 review elements for accuracy."))), /*#__PURE__*/React.createElement(IntakeScoreCard, {
+    hero: hero,
+    todayMiss: todayMiss,
+    todayColours: todayColours,
+    weekScore: weekScore,
+    dayColours: dayColours
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -8042,21 +8885,21 @@ function Dashboard(_ref76) {
       fontWeight: 800,
       marginBottom: 14
     }
-  }, "MACROS"), /*#__PURE__*/React.createElement(MBar, {
+  }, "MACROS"), /*#__PURE__*/React.createElement(ScoredBar, {
     label: "PROTEIN",
     value: totals.protein,
     target: targets.protein,
-    color: "var(--cut)"
-  }), /*#__PURE__*/React.createElement(MBar, {
+    score: proteinScore
+  }), /*#__PURE__*/React.createElement(ScoredBar, {
     label: "CARBS",
     value: totals.carbs,
     target: targets.carbs,
-    color: "var(--warn)"
-  }), /*#__PURE__*/React.createElement(MBar, {
+    score: carbsScore
+  }), /*#__PURE__*/React.createElement(ScoredBar, {
     label: "FAT",
     value: totals.fat,
     target: targets.fat,
-    color: "var(--bulk)"
+    score: fatScore
   })), isPremium && /*#__PURE__*/React.createElement(CoachCard, {
     key: coachKey,
     mode: mode,
@@ -8805,10 +9648,10 @@ function _searchOFT() {
   }));
   return _searchOFT.apply(this, arguments);
 }
-function ItemRow(_ref80) {
-  var item = _ref80.item,
-    onReestimate = _ref80.onReestimate,
-    reestimating = _ref80.reestimating;
+function ItemRow(_ref89) {
+  var item = _ref89.item,
+    onReestimate = _ref89.onReestimate,
+    reestimating = _ref89.reestimating;
   var _useState95 = useState(false),
     _useState96 = _slicedToArray(_useState95, 2),
     editing = _useState96[0],
@@ -8938,9 +9781,9 @@ function ItemRow(_ref80) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref81) {
-  var onAdd = _ref81.onAdd,
-    onBack = _ref81.onBack;
+function AILog(_ref90) {
+  var onAdd = _ref90.onAdd,
+    onBack = _ref90.onBack;
   var _useState99 = useState(""),
     _useState100 = _slicedToArray(_useState99, 2),
     desc = _useState100[0],
@@ -9082,7 +9925,7 @@ function AILog(_ref81) {
     setListening(false);
   };
   var onPickPhoto = /*#__PURE__*/function () {
-    var _ref82 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(e) {
+    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32(e) {
       var file, _t36, _t37;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
@@ -9114,11 +9957,11 @@ function AILog(_ref81) {
       }, _callee32, null, [[1, 3]]);
     }));
     return function onPickPhoto(_x46) {
-      return _ref82.apply(this, arguments);
+      return _ref91.apply(this, arguments);
     };
   }();
   var estimate = /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
+    var _ref92 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
       var parsed, aiItems, oftResults, merged, k, wConf, _t38, _t39;
       return _regenerator().w(function (_context33) {
         while (1) switch (_context33.p = _context33.n) {
@@ -9210,7 +10053,7 @@ function AILog(_ref81) {
       }, _callee33, null, [[2, 8]]);
     }));
     return function estimate() {
-      return _ref83.apply(this, arguments);
+      return _ref92.apply(this, arguments);
     };
   }();
 
@@ -9241,7 +10084,7 @@ function AILog(_ref81) {
     }
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref84 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(idx, newName) {
+    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(idx, newName) {
       var updated, oft, u, _final, _t40;
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.p = _context34.n) {
@@ -9282,7 +10125,7 @@ function AILog(_ref81) {
       }, _callee34, null, [[1, 4]]);
     }));
     return function reestimate(_x47, _x48) {
-      return _ref84.apply(this, arguments);
+      return _ref93.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -9721,17 +10564,17 @@ function AILog(_ref81) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref85) {
-  var onAdd = _ref85.onAdd,
-    onBack = _ref85.onBack,
-    meals = _ref85.meals,
-    setMeals = _ref85.setMeals,
-    _ref85$onForget = _ref85.onForget,
-    onForget = _ref85$onForget === void 0 ? function () {} : _ref85$onForget,
-    _ref85$isPremium = _ref85.isPremium,
-    isPremium = _ref85$isPremium === void 0 ? false : _ref85$isPremium,
-    _ref85$onPremiumGate = _ref85.onPremiumGate,
-    onPremiumGate = _ref85$onPremiumGate === void 0 ? function () {} : _ref85$onPremiumGate;
+function QuickAdd(_ref94) {
+  var onAdd = _ref94.onAdd,
+    onBack = _ref94.onBack,
+    meals = _ref94.meals,
+    setMeals = _ref94.setMeals,
+    _ref94$onForget = _ref94.onForget,
+    onForget = _ref94$onForget === void 0 ? function () {} : _ref94$onForget,
+    _ref94$isPremium = _ref94.isPremium,
+    isPremium = _ref94$isPremium === void 0 ? false : _ref94$isPremium,
+    _ref94$onPremiumGate = _ref94.onPremiumGate,
+    onPremiumGate = _ref94$onPremiumGate === void 0 ? function () {} : _ref94$onPremiumGate;
   var _useState127 = useState(""),
     _useState128 = _slicedToArray(_useState127, 2),
     search = _useState128[0],
@@ -9741,7 +10584,7 @@ function QuickAdd(_ref85) {
     modal = _useState130[0],
     setModal = _useState130[1];
   var save = /*#__PURE__*/function () {
-    var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(m) {
+    var _ref95 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(m) {
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.n) {
           case 0:
@@ -9754,7 +10597,7 @@ function QuickAdd(_ref85) {
       }, _callee35);
     }));
     return function save(_x49) {
-      return _ref86.apply(this, arguments);
+      return _ref95.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -9920,9 +10763,9 @@ function QuickAdd(_ref85) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref87) {
-  var onAdd = _ref87.onAdd,
-    onBack = _ref87.onBack;
+function FoodSearch(_ref96) {
+  var onAdd = _ref96.onAdd,
+    onBack = _ref96.onBack;
   var _useState131 = useState(""),
     _useState132 = _slicedToArray(_useState131, 2),
     q = _useState132[0],
@@ -9944,7 +10787,7 @@ function FoodSearch(_ref87) {
     done = _useState140[0],
     setDone = _useState140[1];
   var search = /*#__PURE__*/function () {
-    var _ref88 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36() {
+    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36() {
       var res, data, parseServing, parseKcal, valid, _t41;
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.p = _context36.n) {
@@ -10026,7 +10869,7 @@ function FoodSearch(_ref87) {
       }, _callee36, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref88.apply(this, arguments);
+      return _ref97.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -10157,23 +11000,23 @@ function FoodSearch(_ref87) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref89) {
+function History(_ref98) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref89.history,
-    onBack = _ref89.onBack,
-    onUpdateDay = _ref89.onUpdateDay,
-    _ref89$weighIns = _ref89.weighIns,
-    weighIns = _ref89$weighIns === void 0 ? [] : _ref89$weighIns,
-    _ref89$meals = _ref89.meals,
-    meals = _ref89$meals === void 0 ? DEF_MEALS : _ref89$meals,
-    _ref89$setMeals = _ref89.setMeals,
-    setMeals = _ref89$setMeals === void 0 ? function () {} : _ref89$setMeals,
-    _ref89$onForget = _ref89.onForget,
-    onForget = _ref89$onForget === void 0 ? function () {} : _ref89$onForget,
-    _ref89$isPremium = _ref89.isPremium,
-    isPremium = _ref89$isPremium === void 0 ? false : _ref89$isPremium,
-    _ref89$onPremiumGate = _ref89.onPremiumGate,
-    onPremiumGate = _ref89$onPremiumGate === void 0 ? function () {} : _ref89$onPremiumGate;
+  var history = _ref98.history,
+    onBack = _ref98.onBack,
+    onUpdateDay = _ref98.onUpdateDay,
+    _ref98$weighIns = _ref98.weighIns,
+    weighIns = _ref98$weighIns === void 0 ? [] : _ref98$weighIns,
+    _ref98$meals = _ref98.meals,
+    meals = _ref98$meals === void 0 ? DEF_MEALS : _ref98$meals,
+    _ref98$setMeals = _ref98.setMeals,
+    setMeals = _ref98$setMeals === void 0 ? function () {} : _ref98$setMeals,
+    _ref98$onForget = _ref98.onForget,
+    onForget = _ref98$onForget === void 0 ? function () {} : _ref98$onForget,
+    _ref98$isPremium = _ref98.isPremium,
+    isPremium = _ref98$isPremium === void 0 ? false : _ref98$isPremium,
+    _ref98$onPremiumGate = _ref98.onPremiumGate,
+    onPremiumGate = _ref98$onPremiumGate === void 0 ? function () {} : _ref98$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -10860,10 +11703,10 @@ function History(_ref89) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref90) {
-    var _ref91 = _slicedToArray(_ref90, 2),
-      k = _ref91[0],
-      m = _ref91[1];
+  }, Object.entries(MM).map(function (_ref99) {
+    var _ref100 = _slicedToArray(_ref99, 2),
+      k = _ref100[0],
+      m = _ref100[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -10901,10 +11744,10 @@ function History(_ref89) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref92) {
-    var _ref93 = _slicedToArray(_ref92, 2),
-      t = _ref93[0],
-      e = _ref93[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref101) {
+    var _ref102 = _slicedToArray(_ref101, 2),
+      t = _ref102[0],
+      e = _ref102[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -11070,10 +11913,10 @@ function History(_ref89) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref94) {
-    var _ref95 = _slicedToArray(_ref94, 2),
-      k = _ref95[0],
-      m = _ref95[1];
+  }, Object.entries(MM).map(function (_ref103) {
+    var _ref104 = _slicedToArray(_ref103, 2),
+      k = _ref104[0],
+      m = _ref104[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -11206,9 +12049,9 @@ function History(_ref89) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref96) {
-  var earnedBdgs = _ref96.earnedBdgs,
-    onBack = _ref96.onBack;
+function Achievements(_ref105) {
+  var earnedBdgs = _ref105.earnedBdgs,
+    onBack = _ref105.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -11307,9 +12150,9 @@ function Achievements(_ref96) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref97) {
-  var badge = _ref97.badge,
-    onDone = _ref97.onDone;
+function BadgeFanfare(_ref106) {
+  var badge = _ref106.badge,
+    onDone = _ref106.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
@@ -11430,9 +12273,9 @@ function BadgeFanfare(_ref97) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref98) {
-  var streak = _ref98.streak,
-    onDone = _ref98.onDone;
+function StreakPip(_ref107) {
+  var streak = _ref107.streak,
+    onDone = _ref107.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -11483,9 +12326,9 @@ function StreakPip(_ref98) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref99) {
-  var badge = _ref99.badge,
-    onDone = _ref99.onDone;
+function BadgeToast(_ref108) {
+  var badge = _ref108.badge,
+    onDone = _ref108.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -11547,9 +12390,9 @@ function BadgeToast(_ref99) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref100) {
-  var text = _ref100.text,
-    onDone = _ref100.onDone;
+function NoteToast(_ref109) {
+  var text = _ref109.text,
+    onDone = _ref109.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -11795,7 +12638,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
+      var _ref110 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
         var k, lv, wv, mv, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t42;
         return _regenerator().w(function (_context37) {
           while (1) switch (_context37.p = _context37.n) {
@@ -12022,7 +12865,7 @@ function App() {
         }, _callee37, null, [[26, 28]]);
       }));
       return function load() {
-        return _ref101.apply(this, arguments);
+        return _ref110.apply(this, arguments);
       };
     }();
     load();
@@ -12076,7 +12919,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(l) {
+    var _ref111 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(l) {
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.n) {
           case 0:
@@ -12091,11 +12934,11 @@ function App() {
       }, _callee38);
     }));
     return function saveLogs(_x50) {
-      return _ref102.apply(this, arguments);
+      return _ref111.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(w) {
+    var _ref112 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(w) {
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
           case 0:
@@ -12110,11 +12953,11 @@ function App() {
       }, _callee39);
     }));
     return function saveWater(_x51) {
-      return _ref103.apply(this, arguments);
+      return _ref112.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(m) {
+    var _ref113 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(m) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -12129,11 +12972,11 @@ function App() {
       }, _callee40);
     }));
     return function saveMode(_x52) {
-      return _ref104.apply(this, arguments);
+      return _ref113.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(p) {
+    var _ref114 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(p) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -12149,11 +12992,11 @@ function App() {
       }, _callee41);
     }));
     return function saveProf(_x53) {
-      return _ref105.apply(this, arguments);
+      return _ref114.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref106 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
+    var _ref115 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -12168,7 +13011,7 @@ function App() {
       }, _callee42);
     }));
     return function saveWorkouts(_x54) {
-      return _ref106.apply(this, arguments);
+      return _ref115.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -12182,7 +13025,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref107 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(e) {
+    var _ref116 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
@@ -12222,7 +13065,7 @@ function App() {
       }, _callee43);
     }));
     return function addLog(_x55) {
-      return _ref107.apply(this, arguments);
+      return _ref116.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -12248,7 +13091,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref108 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(kcal) {
+    var _ref117 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(kcal) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -12273,11 +13116,11 @@ function App() {
       }, _callee44);
     }));
     return function saveCustomKcal(_x56) {
-      return _ref108.apply(this, arguments);
+      return _ref117.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref109 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(m) {
+    var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(m) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
@@ -12295,11 +13138,11 @@ function App() {
       }, _callee45);
     }));
     return function handleSetMode(_x57) {
-      return _ref109.apply(this, arguments);
+      return _ref118.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref110 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
+    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46() {
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
           case 0:
@@ -12314,11 +13157,11 @@ function App() {
       }, _callee46);
     }));
     return function handleAckAggressiveCut() {
-      return _ref110.apply(this, arguments);
+      return _ref119.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref111 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(updated) {
+    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(updated) {
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.n) {
           case 0:
@@ -12333,7 +13176,7 @@ function App() {
       }, _callee47);
     }));
     return function saveMeals(_x58) {
-      return _ref111.apply(this, arguments);
+      return _ref120.apply(this, arguments);
     };
   }();
 
@@ -12343,7 +13186,7 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref112 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(entry) {
+    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(entry) {
       var name, clean;
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
@@ -12373,14 +13216,14 @@ function App() {
       }, _callee48);
     }));
     return function addToQA(_x59) {
-      return _ref112.apply(this, arguments);
+      return _ref121.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref113 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(googleUser, grantedBy, consentMeta) {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t43;
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.p = _context49.n) {
@@ -12479,13 +13322,13 @@ function App() {
       }, _callee49, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x60, _x61, _x62) {
-      return _ref113.apply(this, arguments);
+      return _ref122.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref114 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
       var meta, rec;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
@@ -12516,11 +13359,11 @@ function App() {
       }, _callee50);
     }));
     return function handleConsent() {
-      return _ref114.apply(this, arguments);
+      return _ref123.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref115 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51() {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51() {
       var clearKeys, _i2, _clearKeys, k, i, key, _t44;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.p = _context51.n) {
@@ -12588,7 +13431,7 @@ function App() {
       }, _callee51, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref115.apply(this, arguments);
+      return _ref124.apply(this, arguments);
     };
   }();
 
@@ -12598,7 +13441,7 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref116 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52() {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52() {
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.n) {
           case 0:
@@ -12618,7 +13461,7 @@ function App() {
       }, _callee52);
     }));
     return function resetTdeeAdj() {
-      return _ref116.apply(this, arguments);
+      return _ref125.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -12673,7 +13516,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref117 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.n) {
           case 0:
@@ -12688,36 +13531,11 @@ function App() {
       }, _callee53);
     }));
     return function handleDeleteAccount() {
-      return _ref117.apply(this, arguments);
+      return _ref126.apply(this, arguments);
     };
   }();
-  useEffect(function () {
-    if (!ready) return;
-    var k = todayKey();
-    var tots = sumLogs(logs);
-    var snap = {
-      date: k,
-      mode: mode,
-      kcal: Math.round(tots.kcal),
-      protein: Math.round(tots.protein * 10) / 10,
-      carbs: Math.round(tots.carbs * 10) / 10,
-      fat: Math.round(tots.fat * 10) / 10,
-      water: water,
-      training: workouts.length > 0,
-      logs: _toConsumableArray(logs)
-    };
-    var upd = [].concat(_toConsumableArray(hist.filter(function (d) {
-      return d.date !== k;
-    })), [snap]).sort(function (a, b) {
-      return a.date.localeCompare(b.date);
-    });
-    setHist(upd);
-    ss("history", JSON.stringify(upd));
-    if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncHistory(authUser.id, upd)["catch"](function () {});
-  }, [logs, water, workouts, mode, ready]); // eslint-disable-line
-
   var updateDay = /*#__PURE__*/function () {
-    var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54(upd) {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54(upd) {
       var nh;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.n) {
@@ -12741,11 +13559,11 @@ function App() {
       }, _callee54);
     }));
     return function updateDay(_x63) {
-      return _ref118.apply(this, arguments);
+      return _ref127.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55(weight) {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.n) {
@@ -12817,7 +13635,7 @@ function App() {
       }, _callee55);
     }));
     return function onWeighIn(_x64) {
-      return _ref119.apply(this, arguments);
+      return _ref128.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -12857,7 +13675,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
       var ts;
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
@@ -12872,11 +13690,11 @@ function App() {
       }, _callee56);
     }));
     return function dismissWeighNudge() {
-      return _ref120.apply(this, arguments);
+      return _ref129.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
           case 0:
@@ -12893,7 +13711,7 @@ function App() {
       }, _callee57);
     }));
     return function muteWeighNudge() {
-      return _ref121.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
 
@@ -12929,6 +13747,44 @@ function App() {
       lowFuel: isLeanBody(p) && todayWorkoutKcal > 0 && energyAvailability(safeKcal, todayWorkoutKcal, p) < EA_HARD
     });
   }();
+
+  // Moved here (was above, before `targets` existed) on founder feedback, 2026-09-09: dashboard/04's
+  // weekly card was re-deriving every PAST day's target from TODAY'S profile/adjustment, which
+  // silently drifted from the truth the moment either changed — a real accuracy bug in anything
+  // calling itself "history." Snapshots now carry the REAL target that applied that day, read
+  // directly off `targets` (the same canonical value the dashboard shows right now), including the
+  // custom-kcal override and every floor. Old snapshots recorded before this field existed have no
+  // recoverable historical target — Dashboard's weekDays falls back to the old reconstruction only
+  // for those, never for anything snapshotted from here on.
+  useEffect(function () {
+    if (!ready) return;
+    var k = todayKey();
+    var tots = sumLogs(logs);
+    var snap = {
+      date: k,
+      mode: mode,
+      kcal: Math.round(tots.kcal),
+      protein: Math.round(tots.protein * 10) / 10,
+      carbs: Math.round(tots.carbs * 10) / 10,
+      fat: Math.round(tots.fat * 10) / 10,
+      water: water,
+      training: workouts.length > 0,
+      logs: _toConsumableArray(logs),
+      targetKcal: Math.round(targets.kcal),
+      targetProtein: Math.round(targets.protein),
+      targetFat: Math.round(targets.fat),
+      targetFatFloor: Math.round((Number(p.weight) || 80) * FAT_FLOOR_PER_KG),
+      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied)
+    };
+    var upd = [].concat(_toConsumableArray(hist.filter(function (d) {
+      return d.date !== k;
+    })), [snap]).sort(function (a, b) {
+      return a.date.localeCompare(b.date);
+    });
+    setHist(upd);
+    ss("history", JSON.stringify(upd));
+    if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncHistory(authUser.id, upd)["catch"](function () {});
+  }, [logs, water, workouts, mode, ready, prof, tdeeAdj, customKcal]); // eslint-disable-line
 
   // ── Cut cycling (energy Step 5; features/energy-safety/02) ──────
   // How much today weighs comes from the PRESCRIBED deficit depth. Whether it counts at
@@ -12997,7 +13853,7 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(next) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(next) {
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.n) {
           case 0:
@@ -13012,7 +13868,7 @@ function App() {
       }, _callee58);
     }));
     return function saveCutBlock(_x65) {
-      return _ref122.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -13035,7 +13891,7 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59() {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59() {
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.n) {
           case 0:
@@ -13055,7 +13911,7 @@ function App() {
       }, _callee59);
     }));
     return function startDietBreak() {
-      return _ref123.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -13117,10 +13973,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref124) {
-    var _ref125 = _slicedToArray(_ref124, 2),
-      lbl = _ref125[0],
-      fn = _ref125[1];
+  }]].map(function (_ref133) {
+    var _ref134 = _slicedToArray(_ref133, 2),
+      lbl = _ref134[0],
+      fn = _ref134[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -13190,6 +14046,7 @@ function App() {
     totals: totals,
     targets: targets,
     remaining: remaining,
+    hist: hist,
     water: water,
     setWater: saveWater,
     mode: effectiveMode,

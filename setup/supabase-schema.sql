@@ -180,6 +180,19 @@ CREATE TABLE IF NOT EXISTS history_snapshots (
   UNIQUE(user_id, date)
 );
 
+-- dashboard/04 (intake scoring), added 2026-09-09. Each day's REAL target now gets recorded
+-- alongside what was eaten, so a later week's read can grade history against what actually
+-- applied that day instead of reconstructing a guess from a later profile — the old approach
+-- silently drifted the moment weight, activity or the adaptive adjustment changed.
+-- ⚠️ RUN THIS BEFORE deploying the build that writes it: an upsert naming a column that doesn't
+-- exist 400s and takes the whole history sync down with it (see the ⚠️ note at the top of this
+-- file — run these lines ALONE against a live database, not the whole file).
+ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS target_kcal      INTEGER;
+ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS target_protein   NUMERIC;
+ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS target_fat       NUMERIC;
+ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS target_fat_floor NUMERIC;
+ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS floored          BOOLEAN;
+
 -- ── AI coach tip cache ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS coach_tips (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
