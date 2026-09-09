@@ -1,18 +1,33 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-08-26 (session 19). **Jest 239/239 · Playwright 68/68 · sw v74 · `main` — pushed.**
+**Updated:** 2026-09-09 (session 20). **Jest 304/304 · Playwright 78/78 · sw v77 · `main` — pushed.**
 
-> **v73 fixes F4 — the last open bug, and a data-loss one.** The AI re-estimate on a logged entry
-> could write `NaN`, claim "✓ Updated", and save the meal as **0 kcal**. `MealForm`'s guard is now
-> ported to `EntryEditor`, with a regression test whose real assertion is the stored record.
-> **The suite is carrying nothing open.**
->
 > **v74 removes the "Below your resting metabolism" card**, on three weeks of real cut data. It only
 > fired when *no* floor had applied — the band the app already considers fine — so it warned about a
 > non-event, went unread, and had trained its only user past amber entirely. Depth stays with the
 > floors, duration with the break prompts. First change made on lived evidence rather than reasoning.
+>
+> **v77 replaces the flat MACROS bars with the intake-scoring engine.** New TODAY/THIS WEEK cards on
+> the dashboard, each a segmented ring — TODAY by macro (protein/carbs/fat), THIS WEEK by day. Colour
+> comes from what each macro actually is (a floor, a ceiling, flex) instead of a flat 5g/15g-over
+> delta. A background multi-persona swarm review (QA, Critical-Thinking, Nutrition-Coach, Design-Lead,
+> Anti-Metaphor, Engineer) caught and fixed three real bugs before this reached a phone: the fat
+> health floor reading red from the first meal onward; the weekly override grading whether the
+> *target* was floored instead of what was actually eaten; and TODAY/THIS WEEK disagreeing about
+> today's own colour. New Playwright file `e2e/intake-scoring.spec.js` (10 tests) covers all three.
+> Deployed; **on-phone verification in progress** (see ▶ below). Rollback point: **`pre-intake-scoring`**.
 
 > ## ▶ START HERE
+>
+> **The intake-scoring feature (dashboard/04 + 05) is BUILT, REVIEWED AND DEPLOYED — v77, live on
+> Pages.** Replaces the old flat MACROS bars with a role-based scoring engine and two new dashboard
+> cards, TODAY and THIS WEEK, each a segmented ring. Committed as `ce341ce`. **The one job left is
+> the phone check** — in progress right now: fully close and reopen the installed PWA, log a couple
+> of real items, and specifically watch for the three things the swarm review already fixed once
+> (see the v77 note above) rather than only eyeballing that it looks fine. Two feature files
+> (`dashboard/01-calorie-tolerance.feature`, `02-macro-tolerance.feature`) are marked `@superseded`
+> rather than deleted — that's the founder's call, still open. `SAFE_MIN`'s flat 1400/1200 floor was
+> reopened mid-session and deliberately parked again, tracked in `04`'s own header, not here.
 >
 > **The energy-safety workstream is MERGED AND DEPLOYED.** Steps 1–5 of `ENERGY_MODEL.md` are live on
 > Pages, including the auto-lowering fix that closes the original harm. Rollback tag:
@@ -64,8 +79,8 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v74**.
-- Run `npx jest` before claiming anything works. Currently **239/239**. `npm run test:ui` is **68/68**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v77**.
+- Run `npx jest` before claiming anything works. Currently **304/304**. `npm run test:ui` is **78/78**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -96,16 +111,17 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `7fb31f8` is what is **live on GitHub Pages** (sw **v74**) — the removal of the
-"Below your resting metabolism" card. Verify any time by reading the deployed worker:
-`curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
+`main` @ `ce341ce` is what is **live on GitHub Pages** (sw **v77**) — the intake-scoring feature.
+Verify any time by reading the deployed worker: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
+Rollback tag **`pre-intake-scoring`** is the state right before it (`52452a9`, sw v76).
 
-Before it, in order: `d01fe5f` (sw **v73**, the F4 data-loss fix); `d21d7d6` (sw **v72**, the spec
-split, the scenario audit and the profile confirmation fix); and `efad462` (sw **v70**), deployed
-2026-08-11, which carried the whole energy-safety workstream (Steps 1–5), the Quick Add fix, the
-weigh-in reporting fix, and the AI capture follow-up fix. Rollback tag **`pre-energy-safety`** is the state before the workstream
-(`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch `energy-safety-bmr-floor` is
-merged and can be deleted once the device test passes.
+Before it, in order: `7fb31f8` (sw **v74**, removed the "Below your resting metabolism" card);
+`d01fe5f` (sw **v73**, the F4 data-loss fix); `d21d7d6` (sw **v72**, the spec split, the scenario
+audit and the profile confirmation fix); and `efad462` (sw **v70**), deployed 2026-08-11, which
+carried the whole energy-safety workstream (Steps 1–5), the Quick Add fix, the weigh-in reporting
+fix, and the AI capture follow-up fix. Rollback tag **`pre-energy-safety`** is the state before the
+workstream (`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch
+`energy-safety-bmr-floor` is merged and can be deleted once the device test passes.
 
 **Three user-visible changes went out in v69–v70 and none has been seen on a phone yet:**
 1. The weight card no longer says *"your logged results match the estimate"* when it has in fact
@@ -157,6 +173,48 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 ---
 
 ## Right now
+
+**Session 20 built the intake-scoring feature end to end and shipped it as v77.** New role-based
+scoring functions in `app.jsx` (`proteinDayScore`, `calorieDayScore`, `fatDayScore`, `carbsDayScore`,
+`weeklyIntakeScore`, `heroFor`) replace the old flat 5g/15g-over MACROS colouring — a macro's colour
+now depends on what it actually is: protein and fat-floor are floors (under is the penalty), fat also
+has a ceiling, calories is the master constraint per mode, carbs is pure flex. Two founder decisions
+closed the spec's `@founder-blocking` items: a week where a safety floor held the target up on 4+ of
+7 days reads as "cut" outright rather than comparing against a target that was never real; unlogged
+days are excluded from the weekly average (never counted as a favourable zero), with the summary
+always stating how many of the 7 days it's built from.
+
+**Then a background multi-persona swarm review ran** — QA-automation, Critical-Thinking,
+Nutrition-Coach, Design-Lead, Anti-Metaphor and Engineer, each reading and responding to the others'
+reports (full transcript's own trail lives in `features/dashboard/04-intake-scoring-swarm-review.md`
+and the feature file's own headers). It found and fixed three real bugs no unit test could have
+caught: the fat health floor was judged flat from the first meal onward, so a perfectly on-plan
+breakfast could read a red "FAT · Add some healthy fats" all morning; the weekly majority-floor
+override graded whether the *target* had been floored rather than what was actually eaten, so a week
+with nothing logged, or a week of logged binges, could both read a green "real cut"; and TODAY and
+THIS WEEK's own last segment could show different colours for the same day. New Playwright file
+`e2e/intake-scoring.spec.js` (10 tests) asserts the screen, not just the arithmetic, for all three —
+`__tests__/logic.test.js` still owns the numbers.
+
+**The TODAY ring itself got one more fix, from the founder driving it on a live screenshot.** Its fill
+used to be `nowHour / 24` — the wall clock — so a red ring that wasn't full read as "the day isn't
+over" rather than "you're a long way short," and a fat-floor breach hid an equally real protein
+shortfall behind one hero word. It's now three segments, protein/carbs/fat, each lit by that macro's
+own score — the same segmented-by-item idea the weekly ring already used, applied to today.
+
+**Supabase migration:** `history_snapshots` gained `target_kcal` / `target_protein` / `target_fat` /
+`target_fat_floor` / `floored` (5 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` lines, run live via the
+Dashboard SQL Editor, confirmed via `information_schema.columns` before any code wired to them — see
+the gotcha below). This also fixed a real historical-accuracy bug: past days used to be graded by
+reconstructing targets from *today's* profile instead of using what actually applied that day; the
+`hist`-snapshot effect was relocated to after `targets` is computed so each day now stores its own
+real target.
+
+Committed as `ce341ce`, pushed, deployed. Rollback tag **`pre-intake-scoring`**. Two now-stale spec
+files were marked `@superseded` rather than deleted (`dashboard/01-calorie-tolerance.feature`,
+`02-macro-tolerance.feature`) — deleting them is the founder's call, still open. **Not yet done:**
+the phone check (in progress), and a `SAFE_MIN` flat-1400/1200-floor redesign the founder reopened
+mid-session and then re-parked, tracked in `04`'s own header.
 
 **Session 18 split the feature specs into one file per feature.** `features/fuel-log.feature` was
 1,065 lines and 25 features in one file; it is now 32 files across eight topic folders, indexed by
@@ -285,6 +343,12 @@ that §4 warns against leaning on.
    > genuinely lost is the ability to catch someone whose numbers look fine but who feels awful; that
    > needs data the app doesn't have and would have to ask for. Worth revisiting only if real usage
    > shows people sailing past every structural guardrail.
+2. **◀ Phone-verify the intake-scoring feature (v77)** — in progress. Fully close and reopen the
+   installed PWA first. Watch specifically for the three bugs the swarm review already found and
+   fixed once (see "Right now" above): a false red "FAT" hero mid-morning on an on-plan day; a week
+   ring that disagrees with what was actually logged; TODAY and THIS WEEK's last segment showing
+   different colours for the same day. Then: decide whether to delete the two `@superseded` spec
+   files, and whether to pick the `SAFE_MIN` redesign back up.
 3. **◀ Device-test the live release** — the checklist is **`DEVICE-TEST.md`**, written for this go-live
    and deletable once done. It covers what you can check in normal use on your phone, plus Chrome
    console snippets for the time-dependent surfaces (cut blocks, the drain, the guard, the stall) that
@@ -307,9 +371,10 @@ that §4 warns against leaning on.
 ## Reference — operational facts (don't lose these)
 
 **Git**
-- `main` @ `88a283a` = the harm-fix, **live on Pages** (sw v56).
+- `main` @ `ce341ce` = the intake-scoring feature, **live on Pages** (sw v77).
 - `energy-safety-bmr-floor` carries Steps 1–5a committed (`2209548` = file 02, `d509d86` = its docs).
-- Rollback tags: `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` · Phase B → `8622d24`.
+- Rollback tags: `pre-intake-scoring` (pre-v77 `main`, sw v76) · `pre-energy-safety` ·
+  `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` · Phase B → `8622d24`.
 - Parked branch `targets-bmr-floor-wip` was **deleted** — superseded, don't resurrect it.
 
 **Gotchas that have already cost time**
@@ -334,6 +399,9 @@ that §4 warns against leaning on.
   `syncCutBlock` and the pull-merge. The **rest-day count is derived, not stored** —
   `offRun = 14 × (1 − load ÷ breakLoad)` on pull, so there's nothing extra to drift.
 - ✅ **`cut_break_load` was run on Supabase 2026-08-09.** Every synced column above now exists.
+- ✅ **`history_snapshots` gained `target_kcal`/`target_protein`/`target_fat`/`target_fat_floor`/
+  `floored` on 2026-09-09**, via `syncHistory` push and `pullFromSupabase`'s `fullHist` pull.
+  Confirmed live via `information_schema.columns` before the code was wired to them.
 - 🪦 **Retired:** `cut_load_year` — the column still exists but nothing reads or writes it (file 03
   removed the rolling-year track). Left in place deliberately; safe to drop by hand if you ever want to.
 - ⚠️ **Still local-only:** `weighCadence` (no column), `weigh_nudge_dismissed`, `tdee_adj_log`, and the
