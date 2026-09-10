@@ -132,6 +132,24 @@ CREATE TABLE IF NOT EXISTS weigh_ins (
   UNIQUE(user_id, date)
 );
 
+-- ── Body measurements — Navy-method body-fat % (features/body/01) ──
+-- `formula` records which formula ('male'|'female') computed_bf was actually derived
+-- under, so a later sex change ages old-formula rows out of the sync window instead of
+-- silently averaging two different formulas together (finding 5 of the feature's swarm
+-- review). `hip` is nullable — male readings never set it.
+CREATE TABLE IF NOT EXISTS body_measurements (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  date        DATE NOT NULL,
+  neck        NUMERIC NOT NULL,
+  waist       NUMERIC NOT NULL,
+  hip         NUMERIC,
+  formula     TEXT NOT NULL,
+  computed_bf NUMERIC NOT NULL,
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, date)
+);
+
 -- ── User settings ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS settings (
   id                    UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -230,6 +248,7 @@ ALTER TABLE food_logs        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE water_logs       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weigh_ins        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE body_measurements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meal_library     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE badges           ENABLE ROW LEVEL SECURITY;
@@ -248,6 +267,7 @@ CREATE POLICY "own food_logs"         ON food_logs         FOR ALL USING (auth.u
 CREATE POLICY "own water_logs"        ON water_logs        FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "own workouts"          ON workouts          FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "own weigh_ins"         ON weigh_ins         FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "own body_measurements" ON body_measurements FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "own settings"          ON settings          FOR ALL USING (auth.uid() = id)      WITH CHECK (auth.uid() = id);
 CREATE POLICY "own meal_library"      ON meal_library      FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "own badges"            ON badges            FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -262,6 +282,7 @@ CREATE INDEX IF NOT EXISTS food_logs_user_date     ON food_logs(user_id, date);
 CREATE INDEX IF NOT EXISTS water_logs_user_date    ON water_logs(user_id, date);
 CREATE INDEX IF NOT EXISTS workouts_user_date      ON workouts(user_id, date);
 CREATE INDEX IF NOT EXISTS weigh_ins_user_date     ON weigh_ins(user_id, date);
+CREATE INDEX IF NOT EXISTS body_measurements_user_date ON body_measurements(user_id, date);
 CREATE INDEX IF NOT EXISTS history_user_date       ON history_snapshots(user_id, date);
 CREATE INDEX IF NOT EXISTS coach_tips_user_date    ON coach_tips(user_id, date);
 CREATE INDEX IF NOT EXISTS meal_library_user       ON meal_library(user_id);

@@ -295,6 +295,45 @@ const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
 };
 
+// Mirror of app.jsx body-measurement logic (features/body/01)
+const bodyMeasurementFormula = sex => (sex === "female" ? "female" : "male");
+const navyBodyFat = ({ sex, heightCm, neckCm, waistCm, hipCm }) => {
+  const formula = bodyMeasurementFormula(sex);
+  const h = Number(heightCm), n = Number(neckCm), w = Number(waistCm), hip = Number(hipCm);
+  if (!(h > 0) || !(n > 0) || !(w > 0)) return null;
+  if (formula === "male") {
+    const domain = w - n;
+    if (!(domain > 0)) return null;
+    const bf = 495 / (1.0324 - 0.19077 * Math.log10(domain) + 0.15456 * Math.log10(h)) - 450;
+    return Math.round(bf * 10) / 10;
+  }
+  if (!(hip > 0)) return null;
+  const domain = w + hip - n;
+  if (!(domain > 0)) return null;
+  const bf = 495 / (1.29579 - 0.35004 * Math.log10(domain) + 0.221 * Math.log10(h)) - 450;
+  return Math.round(bf * 10) / 10;
+};
+const SYNC_GATE        = 4;
+const TREND_MIN_POINTS = 4;
+const BF_SYNC_STEP_CAP = 3;
+const bodyFatRollingAvg = (measurements, sex, beforeDate, n = SYNC_GATE) => {
+  const formula = bodyMeasurementFormula(sex);
+  const subset = (measurements || [])
+    .filter(m => m.formula === formula && m.date < beforeDate)
+    .slice(-n);
+  if (subset.length < n) return null;
+  return subset.reduce((a, m) => a + m.computed_bf, 0) / subset.length;
+};
+const syncedBodyFat = ({ currentBodyFat, measurements, sex, beforeDate, cutting }) => {
+  const avg = bodyFatRollingAvg(measurements, sex, beforeDate, SYNC_GATE);
+  if (avg == null) return null;
+  const current = Number(currentBodyFat) || 18;
+  const target = Math.round(avg * 10) / 10;
+  if (target === current) return null;
+  if (target < current || !cutting) return target;
+  return Math.round(Math.min(target, current + BF_SYNC_STEP_CAP) * 10) / 10;
+};
+
 // Mirror of app.jsx runCalibration (energy Step 2): dead-time-compensated, damped,
 // confidence-scaled convergence. inFlightAdj = adjustments applied in the last 7 days
 // (the weight window hasn't reflected them yet) — subtracted to prevent overshoot.
@@ -968,6 +1007,151 @@ describe("weighRollingAvg", () => {
 
   test("returns null for empty array", () => {
     expect(weighRollingAvg([], "2026-04-10")).toBeNull();
+  });
+});
+
+describe("navyBodyFat", () => {
+  test("computes a plausible male result and matches a hand-worked example", () => {
+    const bf = navyBodyFat({ sex: "male", heightCm: 178, neckCm: 38, waistCm: 83 });
+    expect(bf).toBeCloseTo(14.9, 0); // hand-derived from the published Hodgdon & Beckett coefficients
+  });
+
+  test("male: returns null when waist does not exceed neck (domain guard)", () => {
+    expect(navyBodyFat({ sex: "male", heightCm: 178, neckCm: 40, waistCm: 40 })).toBeNull();
+    expect(navyBodyFat({ sex: "male", heightCm: 178, neckCm: 40, waistCm: 38 })).toBeNull();
+  });
+
+  test("male: increasing waist increases the computed body fat", () => {
+    const lo = navyBodyFat({ sex: "male", heightCm: 178, neckCm: 38, waistCm: 80 });
+    const hi = navyBodyFat({ sex: "male", heightCm: 178, neckCm: 38, waistCm: 95 });
+    expect(hi).toBeGreaterThan(lo);
+  });
+
+  test("taller frame computes lower body fat for identical circumferences", () => {
+    const short = navyBodyFat({ sex: "male", heightCm: 165, neckCm: 38, waistCm: 83 });
+    const tall  = navyBodyFat({ sex: "male", heightCm: 195, neckCm: 38, waistCm: 83 });
+    expect(tall).toBeLessThan(short);
+  });
+
+  test("female: requires a positive hip value even when waist exceeds neck", () => {
+    expect(navyBodyFat({ sex: "female", heightCm: 165, neckCm: 32, waistCm: 70, hipCm: 0 })).toBeNull();
+    expect(navyBodyFat({ sex: "female", heightCm: 165, neckCm: 32, waistCm: 70 })).toBeNull();
+  });
+
+  test("female: computes a plausible result once hip is supplied", () => {
+    const bf = navyBodyFat({ sex: "female", heightCm: 165, neckCm: 32, waistCm: 70, hipCm: 95 });
+    expect(bf).toBeGreaterThan(15);
+    expect(bf).toBeLessThan(35);
+  });
+
+  test("female: waist alone not exceeding neck does not block the domain when hip closes the gap", () => {
+    // waist + hip - neck > 0 is the real guard — waist > neck alone is neither necessary nor
+    // the right condition to check for the female formula (features/body/01 finding 4).
+    const bf = navyBodyFat({ sex: "female", heightCm: 165, neckCm: 40, waistCm: 39, hipCm: 95 });
+    expect(bf).not.toBeNull();
+  });
+
+  test("unset sex defaults to the male 3-field formula", () => {
+    const withNoSex = navyBodyFat({ heightCm: 178, neckCm: 38, waistCm: 83 });
+    const withMale  = navyBodyFat({ sex: "male", heightCm: 178, neckCm: 38, waistCm: 83 });
+    expect(withNoSex).toBe(withMale);
+  });
+
+  test("returns null when height, neck, or waist is missing", () => {
+    expect(navyBodyFat({ sex: "male", neckCm: 38, waistCm: 83 })).toBeNull();
+    expect(navyBodyFat({ sex: "male", heightCm: 178, waistCm: 83 })).toBeNull();
+    expect(navyBodyFat({ sex: "male", heightCm: 178, neckCm: 38 })).toBeNull();
+  });
+});
+
+describe("bodyFatRollingAvg", () => {
+  const makeMeasurements = (values, sex = "male", startDate = "2026-04-01") =>
+    values.map((computed_bf, i) => {
+      const d = new Date(startDate); d.setDate(d.getDate() + i);
+      return { date: d.toISOString().split("T")[0], formula: bodyMeasurementFormula(sex), computed_bf };
+    });
+
+  test("returns null with fewer than the sync gate's readings", () => {
+    const m = makeMeasurements([20, 19.5, 19]);
+    expect(bodyFatRollingAvg(m, "male", "2026-05-01")).toBeNull();
+  });
+
+  test("computes the average of the last 4 same-formula readings", () => {
+    const m = makeMeasurements([22, 21, 20, 19, 18]);
+    const avg = bodyFatRollingAvg(m, "male", "2026-05-01");
+    expect(avg).toBeCloseTo((21 + 20 + 19 + 18) / 4, 5);
+  });
+
+  test("a sex change ages old-formula readings out of the window with no stored reset state", () => {
+    // Same person, first 4 readings taken while sex was "male" (no hip), then switches to
+    // "female" — features/body/01 finding 5. The male-formula rows simply stop matching the
+    // current-formula filter; nothing is deleted, nothing needs to be reset.
+    const maleReadings   = makeMeasurements([22, 21, 20, 19], "male", "2026-01-01");
+    const femaleReadings = makeMeasurements([24, 23, 22], "female", "2026-06-01");
+    const all = [...maleReadings, ...femaleReadings];
+    expect(bodyFatRollingAvg(all, "female", "2026-07-01")).toBeNull(); // only 3 female readings so far
+    expect(bodyFatRollingAvg(all, "male", "2026-02-01")).toBeCloseTo((22 + 21 + 20 + 19) / 4, 5);
+  });
+
+  test("gap-tolerant: a multi-month gap between readings doesn't change the computed average", () => {
+    const tight = makeMeasurements([22, 21, 20, 19], "male", "2026-01-01"); // 4 readings, 1 day apart
+    const spread = [
+      { date: "2026-01-01", formula: "male", computed_bf: 22 },
+      { date: "2026-02-15", formula: "male", computed_bf: 21 },
+      { date: "2026-05-01", formula: "male", computed_bf: 20 },
+      { date: "2026-08-20", formula: "male", computed_bf: 19 },
+    ];
+    expect(bodyFatRollingAvg(spread, "male", "2026-09-01"))
+      .toBeCloseTo(bodyFatRollingAvg(tight, "male", "2026-02-01"), 5);
+  });
+});
+
+describe("syncedBodyFat — the asymmetric sync cap", () => {
+  const fourReadings = bf4 => bf4.map((computed_bf, i) => {
+    const d = new Date("2026-04-01"); d.setDate(d.getDate() + i);
+    return { date: d.toISOString().split("T")[0], formula: "male", computed_bf };
+  });
+
+  test("returns null below the sync gate", () => {
+    const m = fourReadings([20, 19, 18]);
+    expect(syncedBodyFat({ currentBodyFat: 22, measurements: m, sex: "male",
+      beforeDate: "2026-05-01", cutting: true })).toBeNull();
+  });
+
+  test("returns null when the rolling average equals the current value", () => {
+    const m = fourReadings([20, 20, 20, 20]);
+    expect(syncedBodyFat({ currentBodyFat: 20, measurements: m, sex: "male",
+      beforeDate: "2026-05-01", cutting: true })).toBeNull();
+  });
+
+  test("a LEANER reading applies in full, uncapped, even while cutting", () => {
+    // Real recomposition — the exact case this feature exists to surface. A cap here would
+    // delay isLeanBody tripping exactly when it matters most (features/body/01, Round 3).
+    const m = fourReadings([14, 13, 12, 11]); // averages to 12.5, well below current
+    const next = syncedBodyFat({ currentBodyFat: 22, measurements: m, sex: "male",
+      beforeDate: "2026-05-01", cutting: true });
+    expect(next).toBeCloseTo(12.5, 5); // full move, not capped at 22 − BF_SYNC_STEP_CAP
+  });
+
+  test("a FATTER reading while cutting is capped at BF_SYNC_STEP_CAP", () => {
+    const m = fourReadings([28, 29, 30, 31]); // averages to 29.5, well above current
+    const next = syncedBodyFat({ currentBodyFat: 20, measurements: m, sex: "male",
+      beforeDate: "2026-05-01", cutting: true });
+    expect(next).toBe(23); // 20 + BF_SYNC_STEP_CAP(3), not the raw 29.5 average
+  });
+
+  test("a FATTER reading while NOT cutting applies in full, uncapped", () => {
+    const m = fourReadings([28, 29, 30, 31]);
+    const next = syncedBodyFat({ currentBodyFat: 20, measurements: m, sex: "male",
+      beforeDate: "2026-05-01", cutting: false });
+    expect(next).toBeCloseTo(29.5, 5);
+  });
+
+  test("a rise smaller than the cap while cutting is not artificially reduced further", () => {
+    const m = fourReadings([21, 21, 21, 21]); // averages to 21, only +1 over current
+    const next = syncedBodyFat({ currentBodyFat: 20, measurements: m, sex: "male",
+      beforeDate: "2026-05-01", cutting: true });
+    expect(next).toBe(21);
   });
 });
 

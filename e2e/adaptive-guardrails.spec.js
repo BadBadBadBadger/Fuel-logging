@@ -35,20 +35,24 @@ test.describe("Weight up while eating less than maintenance", () => {
     await expect(page.getByText("WEIGHT UP WHILE EATING LESS THAN MAINTENANCE"))
       .toBeVisible({ timeout: 15_000 });
     // The load-bearing sentence. If the app ever does lower the target here, this line becomes a
-    // lie before it becomes a bug report — so it is asserted verbatim.
-    await expect(page.getByText(/This is usually water, glycogen or muscle — not a slower metabolism/))
+    // lie before it becomes a bug report — so it is asserted verbatim. Updated for features/body/01:
+    // a rise in measured body fat joined the list of innocent causes alongside water/glycogen/muscle.
+    await expect(page.getByText(/This is usually water, glycogen, muscle, or a rise in your measured body fat — not a slower metabolism/))
       .toBeVisible();
     await expect(page.getByText(/Your target\s+hasn't been lowered/)).toBeVisible();
 
     await page.screenshot({ path: "e2e/screenshots/b5-weight-up-cutting.png" });
   });
 
-  test("it offers a body-fat update, and carries no mode buttons", async ({ page }) => {
+  test("it points at Body Measurements, and carries no mode buttons", async ({ page }) => {
+    // features/body/01: once auto-sync exists, "update it yourself" stops being the right
+    // instruction — the button now opens the surface that keeps bodyFat current automatically,
+    // not the raw manual field.
     await open(page, { weighInsSpec: RISING, mode: "cut" });
     await expect(page.getByText("WEIGHT UP WHILE EATING LESS THAN MAINTENANCE"))
       .toBeVisible({ timeout: 15_000 });
 
-    await expect(page.getByRole("button", { name: "Update my body-fat %" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Body Measurements" })).toBeVisible();
     // The mode picker is the only surface that changes mode — no card duplicates it.
     await expect(page.getByRole("button", { name: "Start a 2-week break" })).toHaveCount(0);
   });

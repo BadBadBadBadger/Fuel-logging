@@ -194,3 +194,37 @@ test.describe("Two months of weigh-ins — the scale hasn't moved", () => {
     await shot(page, "weighin-60d-stalled-maintain");
   });
 });
+
+test.describe("The headline weight-trend badge — rolling averages, not a raw two-point jump", () => {
+  // The badge used to be `newest entry − oldest of the last 7` — exactly as exposed to one
+  // noisy day (water, sodium, a full gut) as the raw scale reading itself. A founder watching
+  // this card during an otherwise-ordinary noisy week had no way to tell a real trend from a
+  // bad day. Fixed to reuse the same 7-day-rolling-average-vs-a-week-ago comparison
+  // runCalibration already trusts internally (its own `actualChange`).
+  test("a single spiked day doesn't read as a gain when the real trend is a loss", async ({ page }) => {
+    const fmt = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+      "-" + String(d.getDate()).padStart(2, "0");
+    const today = new Date();
+
+    // 13 days of a real, steady decline (100.0 → 98.8kg), then today spikes +2.5kg — a
+    // bloated/water-retention day, not a real reversal.
+    const series = [];
+    for (let i = 0; i <= 12; i++) {
+      const d = new Date(today); d.setDate(d.getDate() - (12 - i));
+      series.push({ date: fmt(d), weight: Math.round((100 - i * 0.1) * 100) / 100 });
+    }
+    series.push({ date: fmt(today), weight: series[series.length - 1].weight + 2.5 });
+
+    await open(page, { weighIns: series, mode: "cut" });
+    await expect(page.getByText("BODY WEIGHT")).toBeVisible({ timeout: 15_000 });
+
+    // Worked out from weighRollingAvg on the same series: recent 7-day avg (last 7 entries,
+    // including today's spike) ≈ 99.37, a-week-ago 7-day avg (the 6 entries before that
+    // window) ≈ 99.75 → −0.4kg/wk. The OLD calculation (today's 101.3 − the entry 7 back,
+    // 99.3) would have shown +2.0kg/wk — a false gain signal from one noisy day.
+    await expect(page.getByText("-0.4kg", { exact: false })).toBeVisible();
+    await expect(page.getByText(/\+2(\.0)?kg/)).toHaveCount(0);
+
+    await shot(page, "weight-trend-badge-rolling-not-raw-jump");
+  });
+});

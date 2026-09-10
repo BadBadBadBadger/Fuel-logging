@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-04. **34 files · 300 scenarios.** Replaces the single
+**Updated:** 2026-09-09. **35 files · 333 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -30,6 +30,33 @@
 | [02-body-fat-guidance](profile/02-body-fat-guidance.feature) | Body fat % guidance on profile screen | 2 |
 | [03-display-units](profile/03-display-units.feature) | Independent metric / imperial display units | 17 |
 | [04-weight-sync](profile/04-weight-sync.feature) | Weight input sync — weigh-in updates profile weight | 1 |
+
+## body/ — measuring composition, not just weight
+
+| File | Feature | Scen | Tag |
+|---|---|---|---|
+| [01-measurement-tracking](body/01-measurement-tracking.feature) | Weekly body measurements and Navy-method body-fat % tracking | 33 | `@wip` |
+
+> New 2026-09-09, through three rounds: (1) a design-lead + nutrition-coach shaping pass, each
+> reviewing the founder's handover cold and blind to the other; (2) a solo Critical-Thinking pass
+> on the resulting spec, finding real gaps beyond the two items already flagged; (3) a QA +
+> Engineering (`personas/engineering.md`, new — created for this round) + Design-Lead debate,
+> each forming an independent position, cross-reading the other two, then Critical Thinking
+> moderating the close-out. The feature computes a body-fat % estimate from weekly tape
+> measurements (US Navy method — height, neck, waist, +hip for female) and trends it the same way
+> weight already gets a rolling-average "truth layer" (`weighRollingAvg`, app.jsx:657). Both
+> original `@founder-blocking` items (the sync mechanism, the tap-cost of double-measuring) were
+> resolved through the debate rather than left for the founder to pick blind — silent sync, no
+> confirm dialog, because the synced value is transparently visible on Profile after every write;
+> soft, dismissible tip. The debate's own sanity-check against the founder's success criterion
+> (simple, intuitive, accurate and supportive) surfaced a gap none of the three specialists caught
+> on their own: a symmetric sync cap would have delayed the app's own lean-body safety check
+> exactly when a real recomposition (falling body fat) is happening — fixed by reusing
+> `runCalibration`'s existing cutting-aware asymmetry rather than inventing new machinery. One
+> item stays genuinely open, correctly deferred rather than guessed: whether a reading taken after
+> a multi-month gap deserves less trust going in (a measurement-protocol question, not an
+> averaging-math one). Full transcript, all three rounds:
+> [`01-measurement-tracking-swarm-review.md`](body/01-measurement-tracking-swarm-review.md).
 
 ## targets/ — what the daily numbers are
 

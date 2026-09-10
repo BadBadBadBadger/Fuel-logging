@@ -743,6 +743,70 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
 
+// ── Body measurements — Navy-method body-fat % (features/body/01) ─────
+// US Navy circumference method (Hodgdon & Beckett, 1984, Naval Health Research
+// Center), metric form. Male: height + neck + waist. Female: + hip. The domain
+// guard (waist − neck, or waist + hip − neck for female) must be a positive
+// number before log10 is taken — callers check this first.
+const bodyMeasurementFormula = sex => (sex === "female" ? "female" : "male");
+
+const navyBodyFat = ({ sex, heightCm, neckCm, waistCm, hipCm }) => {
+  const formula = bodyMeasurementFormula(sex);
+  const h = Number(heightCm), n = Number(neckCm), w = Number(waistCm), hip = Number(hipCm);
+  if (!(h > 0) || !(n > 0) || !(w > 0)) return null;
+  if (formula === "male") {
+    const domain = w - n;
+    if (!(domain > 0)) return null;
+    const bf = 495 / (1.0324 - 0.19077 * Math.log10(domain) + 0.15456 * Math.log10(h)) - 450;
+    return Math.round(bf * 10) / 10;
+  }
+  if (!(hip > 0)) return null;
+  const domain = w + hip - n;
+  if (!(domain > 0)) return null;
+  const bf = 495 / (1.29579 - 0.35004 * Math.log10(domain) + 0.221 * Math.log10(h)) - 450;
+  return Math.round(bf * 10) / 10;
+};
+
+// Before any reading can touch p.bodyFat — proposed, pending founder confirmation
+// (features/body/01-measurement-tracking.feature Numbers Contract).
+const SYNC_GATE          = 4;   // measurements, same formula
+const TREND_MIN_POINTS   = 4;   // chart trend-line sufficiency — same value today, a separate constant
+const BF_SYNC_STEP_CAP   = 3;   // percentage points a single sync may move p.bodyFat, RAISING direction only
+
+// Mirrors weighRollingAvg's n-before-averaging shape, filtered to the formula the
+// profile's CURRENT sex computes (app.jsx body/01 finding 5) — a sex change ages old-
+// formula readings out of the window with no stored reset state, just a different
+// filter result on the next call.
+const bodyFatRollingAvg = (measurements, sex, beforeDate, n = SYNC_GATE) => {
+  const formula = bodyMeasurementFormula(sex);
+  const subset = (measurements || [])
+    .filter(m => m.formula === formula && m.date < beforeDate)
+    .slice(-n);
+  if (subset.length < n) return null;
+  return subset.reduce((a, m) => a + m.computed_bf, 0) / subset.length;
+};
+
+// The sync mechanism itself: one function, called unconditionally on every measurement
+// save or edit — not a separate "gate-crossing" path — so isLeanBody/bmrOf/computeMacros
+// (app.jsx:282-390) never have a code path where a raw, unsynced reading reaches them,
+// at any reading count, not only the first four. Returns the new p.bodyFat value, or null
+// if nothing should change (below the sync gate, or the average didn't move the number).
+//
+// ASYMMETRIC by direction, mirroring runCalibration's own cutting-aware refusal
+// (app.jsx:718-739): a reading that computes LEANER than the current value applies in
+// full, promptly — the direction this feature exists to surface. A reading that computes
+// FATTER while the user is cutting is the risky direction (it would understate lean mass
+// and delay isLeanBody tripping exactly when a real recomposition needs it most) and gets
+// capped at BF_SYNC_STEP_CAP. Not damped while not cutting — same asymmetry, same reason.
+const syncedBodyFat = ({ currentBodyFat, measurements, sex, beforeDate, cutting }) => {
+  const avg = bodyFatRollingAvg(measurements, sex, beforeDate, SYNC_GATE);
+  if (avg == null) return null;
+  const current = Number(currentBodyFat) || 18;
+  const target = Math.round(avg * 10) / 10;
+  if (target === current) return null;
+  if (target < current || !cutting) return target;
+  return Math.round(Math.min(target, current + BF_SYNC_STEP_CAP) * 10) / 10;
+};
 
 // ── Cut cycling (energy-model Step 5; features/energy-safety/02) ──────
 // Nothing in the app capped how LONG a cut ran. A deficit from January to June with
@@ -1160,6 +1224,15 @@ const syncWeighIns = async (uid, wis) => {
     "user_id,date");
 };
 
+const syncBodyMeasurements = async (uid, ms) => {
+  if (!uid || !navigator.onLine || !ms?.length) return;
+  const now = new Date().toISOString();
+  await syncUpsert("body_measurements",
+    ms.map(m => ({ user_id:uid, date:m.date, neck:m.neck, waist:m.waist,
+      hip:m.hip ?? null, formula:m.formula, computed_bf:m.computed_bf, updated_at:now })),
+    "user_id,date");
+};
+
 const syncSettings = async (uid, mode, tdeeAdj, customKcal, acked) => {
   if (!uid || !navigator.onLine) return;
   try {
@@ -1255,9 +1328,10 @@ const migrateLocalToSupabase = async uid => {
 const pullFromSupabase = async uid => {
   if (!uid || !navigator.onLine) return {};
   try {
-    const [profR, weighR, settR, mealsR, badgesR, histR, foodR, waterR, workR] = await Promise.all([
+    const [profR, weighR, bodyMeasR, settR, mealsR, badgesR, histR, foodR, waterR, workR] = await Promise.all([
       sb().from("profiles").select("*").eq("id", uid).maybeSingle(),
       sb().from("weigh_ins").select("*").eq("user_id", uid).order("date"),
+      sb().from("body_measurements").select("*").eq("user_id", uid).order("date"),
       sb().from("settings").select("*").eq("id", uid).maybeSingle(),
       sb().from("meal_library").select("*").eq("user_id", uid),
       sb().from("badges").select("badge_key").eq("user_id", uid),
@@ -1303,6 +1377,12 @@ const pullFromSupabase = async uid => {
       const wi = weighR.data.map(r => ({ date:r.date, weight:Number(r.weight) }));
       await ss("weighins", JSON.stringify(wi));
       result.weighIns = wi;
+    }
+    if (bodyMeasR.data?.length) {
+      const bm = bodyMeasR.data.map(r => ({ date:r.date, neck:Number(r.neck), waist:Number(r.waist),
+        hip: r.hip == null ? null : Number(r.hip), formula:r.formula, computed_bf:Number(r.computed_bf) }));
+      await ss("bodymeasurements", JSON.stringify(bm));
+      result.bodyMeasurements = bm;
     }
     if (settR.data) {
       const s = settR.data;
@@ -2463,7 +2543,9 @@ function UnitSwitch({ value, options, onChange }) {
 }
 
 function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false,
-  onResetAdjustment = () => {} }) {
+  onResetAdjustment = () => {}, bodyMeasurements = [], onMeasurement = () => {},
+  measurementNote = "", onSaveMeasurementNote = () => {},
+  muteMeasurements = false, onToggleMuteMeasurements = () => {} }) {
   const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
   const [saved, setSaved] = useState(false);
   // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein floor, so the
@@ -2643,6 +2725,55 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
         </div>
       </div>
 
+      {/* Body measurements (features/body/01) — sibling to BODY STATS/WEIGH-INS above.
+          Reuses MeasurementRow, the same form the weigh-in widget uses, so "Log now" here
+          really is the same flow, not a second implementation of it. */}
+      <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
+        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
+          BODY MEASUREMENTS
+        </div>
+        {bodyMeasurements.length ? (() => {
+          const last = bodyMeasurements[bodyMeasurements.length - 1];
+          const daysAgo = Math.max(0, Math.floor((Date.now() - new Date(last.date + "T00:00:00").getTime()) / 86400000));
+          return (
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:12, color:"var(--text-mid)" }}>
+                Neck {last.neck}cm · Waist {last.waist}cm{last.hip != null && ` · Hip ${last.hip}cm`}
+              </div>
+              <div style={{ fontSize:10.5, color:"var(--text-faint)", marginTop:2 }}>
+                Last logged {daysAgo === 0 ? "today" : daysAgo === 1 ? "1 day ago" : daysAgo + " days ago"}
+              </div>
+            </div>
+          );
+        })() : (
+          <p style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.6, marginBottom:10 }}>
+            Tape measurements estimate body fat % from neck, waist, and (if applicable) hip —
+            no scan needed, under a minute.
+          </p>
+        )}
+        <MeasurementRow measurements={bodyMeasurements} sex={f.sex} note={measurementNote}
+          onSave={onMeasurement} onSaveNote={onSaveMeasurementNote}
+          showNudge={false} onNudgeDismiss={() => {}}/>
+        <div style={{ borderTop:`1px solid ${BD}`, marginTop:14, paddingTop:14,
+          display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:11.5, color:"var(--text-mid-2)", maxWidth:260 }}>
+            Don't ask me for these
+          </span>
+          <button onClick={() => onToggleMuteMeasurements(!muteMeasurements)}
+            role="switch" aria-checked={muteMeasurements} aria-label="Don't ask me for these"
+            style={{ width:40, height:24, borderRadius:99, position:"relative", flexShrink:0,
+              border: muteMeasurements ? "none" : `1px solid ${BD}`,
+              background: muteMeasurements ? A : "var(--surface-2)", cursor:"pointer" }}>
+            <span style={{ position:"absolute", top:3, width:16, height:16, borderRadius:"50%",
+              transition:"left 0.15s, right 0.15s",
+              left: muteMeasurements ? "auto" : 3, right: muteMeasurements ? 3 : "auto",
+              background: muteMeasurements ? "var(--bg)" : "var(--text-faint)" }}/>
+          </button>
+        </div>
+        {/* This fallback stays available even when muted — a deliberate visit isn't a push
+            (features/body/01). Not conditionally hidden on muteMeasurements above. */}
+      </div>
+
       {/* Dietary requirements & allergies (#8) — steers every AI food suggestion */}
       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"20px", marginBottom:16 }}>
         <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:6 }}>DIET & ALLERGIES</div>
@@ -2666,6 +2797,23 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
           {row("Lean Body Mass", prev.lbm, "kg", "var(--cut)")}
           {row("BMR",           prev.bmr, "kcal/day", "var(--warn)")}
           {row("Formula TDEE",  formulaTDEE, "kcal/day", "var(--text-mid-6)")}
+          {bodyMeasurements.filter(m => m.formula === bodyMeasurementFormula(f.sex)).length >= SYNC_GATE && (() => {
+            const last = bodyMeasurements[bodyMeasurements.length - 1];
+            const daysAgo = Math.max(0, Math.floor((Date.now() - new Date(last.date + "T00:00:00").getTime()) / 86400000));
+            return (
+              <div style={{ padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between" }}>
+                  <span style={{ fontSize:12, color:"var(--text-mid)" }}>Body Fat % (measured)</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:"var(--text-hi)" }}>{f.bodyFat}
+                    <span style={{ fontSize:11, color:"var(--text-label)", marginLeft:3 }}>%</span>
+                  </span>
+                </div>
+                <div style={{ fontSize:10, color:"var(--text-faint)", textAlign:"right", marginTop:2 }}>
+                  from tape, updated {daysAgo === 0 ? "today" : daysAgo === 1 ? "1 day ago" : daysAgo + " days ago"}
+                </div>
+              </div>
+            );
+          })()}
           {tdeeAdj !== 0 && (
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${BD}` }}>
               <span style={{ fontSize:12, color:"var(--text-mid)" }}>Adaptive adjustment</span>
@@ -2894,8 +3042,151 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
 
 // ── Weigh-In Widget ───────────────────────────────────────────
 
+// ── Body measurement row (features/body/01) — sits inside WeighInWidget ───
+// A quiet status line is always-on (any gap); the nudge is a SEPARATE, dismissible
+// mechanism layered on top, not a second copy-branch of the same line — this is what
+// lets the nudge carry its own opt-out/cooldown state independent of the status line.
+function MeasurementRow({ measurements, sex, note, onSave, onSaveNote, showNudge, onNudgeDismiss }) {
+  const [expanded, setExpanded] = useState(false);
+  const [neck,  setNeck]  = useState("");
+  const [waist, setWaist] = useState("");
+  const [hip,   setHip]   = useState("");
+  const [localNote, setLocalNote] = useState("");
+  const [justSaved, setJustSaved] = useState(null);
+  const [tipDismissed, setTipDismissed] = useState(false);
+
+  const formula = bodyMeasurementFormula(sex);
+  const last = measurements.length ? measurements[measurements.length - 1] : null;
+  const daysAgo = last
+    ? Math.max(0, Math.floor((Date.now() - new Date(last.date + "T00:00:00").getTime()) / 86400000))
+    : null;
+  const isFirstEver = measurements.length === 0;
+
+  const neckNum = Number(neck), waistNum = Number(waist), hipNum = Number(hip);
+  const filledIn = neckNum > 0 && waistNum > 0 && (formula === "male" || hipNum > 0);
+  const domainOk = formula === "male" ? waistNum > neckNum : (waistNum + hipNum - neckNum > 0);
+  const canSave  = filledIn && domainOk;
+
+  const save = async () => {
+    if (!canSave) return;
+    const bf = await onSave({ neck: neckNum, waist: waistNum, hip: formula === "female" ? hipNum : null });
+    if (isFirstEver && localNote.trim()) onSaveNote(localNote.trim());
+    setJustSaved(bf);
+    setNeck(""); setWaist(""); setHip(""); setLocalNote("");
+  };
+
+  if (!expanded) {
+    return (
+      <div style={{ marginTop:10 }}>
+        {showNudge ? (
+          <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"10px 12px",
+            background:"var(--surface-2)", border:`1px solid ${BD}`, borderRadius:12 }}>
+            <div style={{ fontSize:15 }}>📏</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:11.5, color:"var(--text-hi-2)", fontWeight:700 }}>
+                Also log this week's measurements?
+              </div>
+              <div style={{ fontSize:10.5, color:"var(--text-lo)", marginTop:2 }}>
+                Takes under a minute — {formula === "male" ? "neck, waist" : "neck, waist, hip"}.
+              </div>
+              <div style={{ display:"flex", gap:14, marginTop:6 }}>
+                <button onClick={() => setExpanded(true)}
+                  style={{ background:"none", border:"none", color:A, fontSize:11, fontWeight:800,
+                    padding:0, cursor:"pointer" }}>Log now</button>
+                <button onClick={onNudgeDismiss}
+                  style={{ background:"none", border:"none", color:"var(--text-label)", fontSize:11,
+                    fontWeight:700, padding:0, cursor:"pointer" }}>Not now</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setExpanded(true)}
+            style={{ display:"flex", alignItems:"center", gap:8, background:"none", border:"none",
+              padding:"8px 2px 0", fontSize:11.5, cursor:"pointer",
+              color: last ? "var(--text-mid)" : A, fontWeight: last ? 400 : 700 }}>
+            {last
+              ? `📏 Measured ${daysAgo === 0 ? "today" : daysAgo === 1 ? "1 day ago" : daysAgo + " days ago"}`
+              : "📏 Log your first body measurement"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${BD}` }}>
+      {!sex && (
+        <div style={{ fontSize:10.5, color:"var(--warn)", marginBottom:8, lineHeight:1.5 }}>
+          Set your sex in Profile for an accurate read — using the standard 2-field form for now.
+        </div>
+      )}
+      {note && (
+        <div style={{ fontSize:10.5, color:"var(--text-lo)", background:"var(--bg)", border:`1px solid ${BD}`,
+          borderRadius:8, padding:"7px 10px", marginBottom:10, fontStyle:"italic" }}>
+          You usually measure: {note}
+        </div>
+      )}
+      <div style={{ fontSize:10, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:6 }}>
+        {formula === "male" ? "NECK & WAIST" : "NECK, WAIST & HIP"}
+      </div>
+      <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+        <input type="number" inputMode="decimal" value={neck} onChange={e => setNeck(e.target.value)}
+          placeholder="neck cm" aria-label="neck cm" style={{ ...INP, flex:1, textAlign:"center" }}/>
+        <input type="number" inputMode="decimal" value={waist} onChange={e => setWaist(e.target.value)}
+          placeholder="waist cm" aria-label="waist cm" style={{ ...INP, flex:1, textAlign:"center" }}/>
+        {formula === "female" && (
+          <input type="number" inputMode="decimal" value={hip} onChange={e => setHip(e.target.value)}
+            placeholder="hip cm" aria-label="hip cm" style={{ ...INP, flex:1, textAlign:"center" }}/>
+        )}
+      </div>
+      {filledIn && !domainOk && (
+        <div style={{ fontSize:10.5, color:"var(--over)", marginBottom:8, lineHeight:1.5 }}>
+          {formula === "male"
+            ? "Waist needs to be bigger than neck for the calculation to work."
+            : "Waist plus hip needs to be bigger than neck for the calculation to work."}
+        </div>
+      )}
+      {!tipDismissed && (
+        <div style={{ display:"flex", justifyContent:"space-between", gap:8, marginBottom:8 }}>
+          <div style={{ fontSize:10.5, color:"var(--text-faint)", lineHeight:1.5 }}>
+            💡 Tip: measure each site twice and use the closer pair for accuracy.
+          </div>
+          <button onClick={() => setTipDismissed(true)} aria-label="dismiss tip"
+            style={{ background:"none", border:"none", color:"var(--text-faint)", fontSize:11,
+              cursor:"pointer", padding:0, flexShrink:0 }}>✕</button>
+        </div>
+      )}
+      {isFirstEver && (
+        <input type="text" value={localNote} onChange={e => setLocalNote(e.target.value)}
+          placeholder="Your usual conditions (e.g. mornings, fasted, before shower) — optional"
+          style={{ ...INP, fontSize:11, marginBottom:8 }}/>
+      )}
+      {justSaved != null && (
+        <div style={{ fontSize:11, color:"var(--text-mid)", marginBottom:8 }}>
+          Estimated body fat: <strong style={{ color:"var(--text-hi)" }}>{justSaved}%</strong>
+        </div>
+      )}
+      <div style={{ display:"flex", gap:8 }}>
+        <button onClick={save} disabled={!canSave} aria-label="Log measurement"
+          style={{ padding:"9px 18px", background: canSave ? A : "var(--surface-2)",
+            color: canSave ? "var(--bg)" : "var(--border-strong)", border:"none",
+            borderRadius:10, fontWeight:900, fontSize:12.5, cursor: canSave ? "pointer" : "default" }}>
+          LOG
+        </button>
+        <button onClick={() => setExpanded(false)}
+          style={{ padding:"9px 14px", background:"none", border:`1px solid ${BD}`,
+            borderRadius:10, color:"var(--text-label)", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
-    correctionHeld = false }) {
+    correctionHeld = false, sex = null, bodyMeasurements = [], onMeasurement = () => {},
+    measurementNote = "", onSaveMeasurementNote = () => {},
+    showMeasurementNudge = false, onMeasurementNudgeDismiss = () => {} }) {
   const [val, setVal]   = useState(""); // kg · lb · or stone (when st mode)
   const [val2, setVal2] = useState(""); // pounds (st mode only)
   const wUnit = getWUnit();
@@ -2905,12 +3196,21 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
   const today       = todayKey();
   const todayEntry  = weighIns.find(w => w.date === today);
 
+  // Rolling-average trend, not a raw two-point jump: the badge used to be
+  // `newest entry − oldest of the last 7`, which is exactly as exposed to a single
+  // noisy day as the raw scale reading itself — a founder watching this card
+  // during a week that swung several kg had no way to tell it from a real trend.
+  // This now reuses the SAME comparison runCalibration already trusts internally
+  // (`actualChange`) — two 7-day rolling averages, a week apart — so the headline
+  // number agrees with what the safety engine is actually acting on, instead of
+  // being the noisiest figure on the whole screen.
   const trend7 = (() => {
-    if (weighIns.length < 4) return null;
-    const recent = weighIns.slice(-7);
-    const old    = recent[0].weight;
-    const now    = recent[recent.length - 1].weight;
-    return Math.round((now - old) * 10) / 10;
+    const today = new Date();
+    const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+    const recentAvg = weighRollingAvg(weighIns, dateKey(new Date(today.getTime() + 86400000)), 7);
+    const olderAvg  = weighRollingAvg(weighIns, dateKey(weekAgo), 7);
+    if (recentAvg == null || olderAvg == null) return null;
+    return Math.round((recentAvg - olderAvg) * 10) / 10;
   })();
 
   const confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : "Estimating";
@@ -2994,6 +3294,10 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
         {calibrating && !correctionHeld && tdeeAdj === 0 && `🔄 ${confidence} — your logged results match the estimate, no adjustment needed yet.`}
         {calibrating && !correctionHeld && tdeeAdj !== 0 && `🔄 ${confidence} — your real TDEE looks ${tdeeAdj > 0 ? "higher" : "lower"} than the estimate, so targets are adjusted to match.`}
       </div>
+
+      <MeasurementRow measurements={bodyMeasurements} sex={sex} note={measurementNote}
+        onSave={onMeasurement} onSaveNote={onSaveMeasurementNote}
+        showNudge={showMeasurementNudge} onNudgeDismiss={onMeasurementNudgeDismiss}/>
     </div>
   );
 }
@@ -3281,6 +3585,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
   hasProfile, streak, streakPop, badgeGlow, prof,
   weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = baseTDEE,
   showWeighNudge = false, onNudgeDismiss = () => {}, onNudgeMute = () => {}, coachKey,
+  bodyMeasurements = [], onMeasurement = () => {}, measurementNote = "", onSaveMeasurementNote = () => {},
+  showMeasurementNudge = false, onMeasurementNudgeDismiss = () => {},
   cutPrompt = null, onCutNudgeDismiss = () => {}, onCutPromptSnooze = () => {}, onStartDietBreak = () => {},
   cutBar = null, cutGuard = null, showRecharged = false, onDismissRecharged = () => {},
   showGainWhileCutting = false, correctionHeld = false,
@@ -3719,8 +4025,8 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
               WEIGHT UP WHILE EATING LESS THAN MAINTENANCE
             </div>
             <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
-              This is usually water, glycogen or muscle — not a slower metabolism. Your target
-              hasn't been lowered.
+              This is usually water, glycogen, muscle, or a rise in your measured body fat —
+              not a slower metabolism. Your target hasn't been lowered.
               <details style={{ marginTop:4 }}>
                 <summary style={{ cursor:"pointer", color:A, fontWeight:700, fontSize:11 }}>Why?</summary>
                 <div style={{ marginTop:4, color:"var(--text-mid)" }}>
@@ -3728,14 +4034,18 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
                   hold water, glycogen swings a kilo either way, and training builds tissue that
                   weighs more than it looks. None of that means you burn less than we thought, so
                   the app leaves your number where it is rather than asking you to eat less.
-                  {" "}If you've been training hard, updating your body-fat % in your profile keeps
-                  your targets tracking your real lean mass.
+                  {/* Once body measurements can auto-sync bodyFat, "update it yourself" is no
+                      longer the right instruction — this is a status line now, not a CTA
+                      (features/body/01, required as part of that work, not a follow-up). */}
+                  {" "}{bodyMeasurements.length > 0
+                    ? "If you're logging body measurements, your body-fat % keeps updating from those automatically."
+                    : "If you've been training hard, logging a body measurement keeps your targets tracking your real lean mass."}
                 </div>
               </details>
               <button onClick={() => setView("profile")}
                 style={{ background:"none", border:"none", color:A, fontSize:11, fontWeight:700,
                   padding:"6px 0 0", cursor:"pointer", textDecoration:"underline" }}>
-                Update my body-fat %
+                Open Body Measurements
               </button>
             </div>
           </div>
@@ -4044,7 +4354,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
       {/* Weigh-in */}
       <WeighInWidget weighIns={weighIns} onWeighIn={onWeighIn}
         tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
-        correctionHeld={correctionHeld}/>
+        correctionHeld={correctionHeld} sex={prof?.sex}
+        bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
+        measurementNote={measurementNote} onSaveMeasurementNote={onSaveMeasurementNote}
+        showMeasurementNudge={showMeasurementNudge} onMeasurementNudgeDismiss={onMeasurementNudgeDismiss}/>
 
       {/* Add food */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
@@ -4968,7 +5281,7 @@ function FoodSearch({ onAdd, onBack }) {
 
 const chartsAvailable = typeof ResponsiveContainer !== "undefined";
 
-function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
+function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -4981,6 +5294,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
   const [range,      setRange]      = useState("30D");
   const [metrics,    setMetrics]    = useState(["KCAL"]);
   const [showWeight, setShowWeight] = useState(false);
+  const [showBodyFat, setShowBodyFat] = useState(false);
   const [chartType,  setChartType]  = useState("line");
   const [dayIdx,     setDayIdx]     = useState(Math.max(0, history.length - 1));
   const [addCtx,     setAddCtx]     = useState(null);
@@ -5023,6 +5337,35 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
       ROLLING: win.length >= 3 ? Math.round(wConv(avg) * 10) / 10 : null,
     };
   });
+
+  // Body-fat % chart data (features/body/01) — points always shown; a rolling trend line
+  // once TREND_MIN_POINTS readings exist. Never colour-coded (design review §2) — this
+  // mirrors weightChartData's shape exactly, one deliberate difference: no unit conversion
+  // (body fat % has no imperial equivalent) and the window is by reading count, matching
+  // SYNC_GATE's own gap-tolerant "last n" shape rather than weight's calendar-day window.
+  const filteredBodyMeasurements = (() => {
+    if (range === "DAY" || !bodyMeasurements.length) return [];
+    const days = { W:7, "30D":30, "3M":90, "1Y":365, ALL:99999 }[range];
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+    return bodyMeasurements.filter(m => m.date >= cutoff);
+  })();
+  const bodyFatChartData = filteredBodyMeasurements.map((m, i, arr) => {
+    const win = arr.slice(Math.max(0, i - (TREND_MIN_POINTS - 1)), i + 1);
+    const avg = win.reduce((s, x) => s + x.computed_bf, 0) / win.length;
+    return {
+      date: fmtShort(m.date), BODYFAT: m.computed_bf,
+      ROLLING: win.length >= TREND_MIN_POINTS ? Math.round(avg * 10) / 10 : null,
+    };
+  });
+  const bodyFatChangeSinceLastMonth = (() => {
+    if (filteredBodyMeasurements.length < 2) return null;
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+    const before = filteredBodyMeasurements.filter(m => m.date <= monthAgo);
+    if (!before.length) return null;
+    const first = before[before.length - 1].computed_bf;
+    const last  = filteredBodyMeasurements[filteredBodyMeasurements.length - 1].computed_bf;
+    return Math.round((last - first) * 10) / 10;
+  })();
 
   const day     = history[dayIdx] || null;
   const dayTots = day ? sumLogs(day.logs || []) : null;
@@ -5264,13 +5607,23 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   </button>
                 ))}
                 {filteredWeighIns.length > 0 && (
-                  <button onClick={() => setShowWeight(w => !w)}
+                  <button onClick={() => { setShowWeight(w => !w); setShowBodyFat(false); }}
                     style={{ padding:"6px 13px",
                       background: showWeight ? "color-mix(in srgb, var(--cut) 13%, transparent)" : "var(--surface-2)",
                       color:      showWeight ? "var(--cut)"   : "var(--text-label)",
                       border: `1px solid ${showWeight ? "color-mix(in srgb, var(--cut) 33%, transparent)" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     ⚖️ Weight
+                  </button>
+                )}
+                {bodyMeasurements.length > 0 && (
+                  <button onClick={() => { setShowBodyFat(v => !v); setShowWeight(false); }}
+                    style={{ padding:"6px 13px",
+                      background: showBodyFat ? "var(--border)" : "var(--surface-2)",
+                      color:      showBodyFat ? "var(--text-hi)" : "var(--text-label)",
+                      border: `1px solid ${showBodyFat ? "var(--raised-2)" : BD}`,
+                      borderRadius:99, fontSize:11, fontWeight:900 }}>
+                    📏 Body Fat %
                   </button>
                 )}
                 <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
@@ -5289,7 +5642,18 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 8px 8px", marginBottom:16 }}>
                 {chartsAvailable ? (
                   <ResponsiveContainer width="100%" height={200}>
-                    {showWeight ? (
+                    {showBodyFat ? (
+                      <LineChart data={bodyFatChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                        <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
+                        {/* Deliberately no colour-coding (features/body/01) — a single neutral
+                            line for both the raw points and the rolling average, unlike weight's
+                            cut/accent split above. */}
+                        <Tooltip formatter={(v, n) => [v + "%", n === "ROLLING" ? `${TREND_MIN_POINTS}-reading avg` : "Body fat %"]}/>
+                        <Line type="monotone" dataKey="BODYFAT" stroke={rc("var(--text-mid)")} strokeWidth={1.5} dot={{ r:2.5, fill:rc("var(--text-mid)") }} name="Body fat %" connectNulls={false}/>
+                        <Line type="monotone" dataKey="ROLLING" stroke={rc(A)} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
+                      </LineChart>
+                    ) : showWeight ? (
                       <LineChart data={weightChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
                         <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
                         <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
@@ -5317,6 +5681,19 @@ function History({ history, onBack, onUpdateDay, weighIns = [], meals = DEF_MEAL
                   <div style={{ fontSize:11, color:"var(--text-label)", padding:"12px 8px" }}>Charts unavailable — Recharts CDN failed to load.</div>
                 )}
               </div>
+
+              {/* Change is always framed over a window, never a single most-recent-reading
+                  delta (features/body/01) — no card at all when there isn't 30 days of span
+                  to frame the change against yet, rather than falling back to a shorter,
+                  noisier window. */}
+              {showBodyFat && bodyFatChangeSinceLastMonth != null && (
+                <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"12px 16px", marginBottom:16 }}>
+                  <div style={{ fontSize:11, color:"var(--text-mid)" }}>
+                    {bodyFatChangeSinceLastMonth < 0 ? "▼" : bodyFatChangeSinceLastMonth > 0 ? "▲" : "="}{" "}
+                    {Math.abs(bodyFatChangeSinceLastMonth)} pts of body fat since last month
+                  </div>
+                </div>
+              )}
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
                 <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
@@ -5578,6 +5955,12 @@ function App() {
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
   const [adjLog,     setAdjLog]     = useState([]); // recent {date,adj} events — dead-time comp (local-only)
   const [weighNudgeAt, setWeighNudgeAt] = useState(null); // last weigh-in-nudge dismissal (ms; local-only)
+  // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
+  // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
+  const [bodyMeasurements,      setBodyMeasurements]      = useState([]);
+  const [muteMeasurements,      setMuteMeasurements]      = useState(false);
+  const [measurementNote,       setMeasurementNote]       = useState("");
+  const [measurementNudgeAt,    setMeasurementNudgeAt]    = useState(null);
   const [cutBlock,   setCutBlock]   = useState(EMPTY_CUT_BLOCK); // cut-cycling state (Step 5); 4 fields sync
   const [coachKey,         setCoachKey]         = useState(0);
   const [streakPop,        setStreakPop]        = useState(null);  // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
@@ -5652,6 +6035,10 @@ function App() {
       const bv = await sg("badges");     if (bv)  setEarnedBdgs(JSON.parse(bv));
       const hv = await sg("history");    if (hv)  setHist(JSON.parse(hv));
       const wiv = await sg("weighins");  if (wiv) setWeighIns(JSON.parse(wiv));
+      const bmv = await sg("bodymeasurements"); if (bmv) { try { setBodyMeasurements(JSON.parse(bmv) || []); } catch(e) {} }
+      const mmv = await sg("mute_body_measurements"); if (mmv) setMuteMeasurements(mmv === "1");
+      const mnv = await sg("body_measurement_note"); if (mnv) setMeasurementNote(mnv);
+      const mnav = await sg("body_measurement_nudge_dismissed"); if (mnav) setMeasurementNudgeAt(parseInt(mnav) || null);
       const tav = await sg("tdee_adj");  if (tav) setTdeeAdj(parseInt(tav) || 0);
       const alv = await sg("tdee_adj_log"); if (alv) { try { setAdjLog(JSON.parse(alv) || []); } catch(e) {} }
       const wnv = await sg("weigh_nudge_dismissed"); if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
@@ -5687,6 +6074,7 @@ function App() {
               if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
               if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
               if (pulled.weighIns) setWeighIns(pulled.weighIns);
+              if (pulled.bodyMeasurements) setBodyMeasurements(pulled.bodyMeasurements);
               if (pulled.meals && !revive.done) setMeals(pulled.meals);
               if (pulled.badges)   setEarnedBdgs(pulled.badges);
               if (pulled.settings) {
@@ -5902,6 +6290,7 @@ function App() {
         if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
         if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
         if (pulled.weighIns) setWeighIns(pulled.weighIns);
+        if (pulled.bodyMeasurements) setBodyMeasurements(pulled.bodyMeasurements);
         if (pulled.meals)    setMeals(pulled.meals);
         if (pulled.badges)   setEarnedBdgs(pulled.badges);
         if (pulled.settings) {
@@ -5955,6 +6344,7 @@ function App() {
     setLogs([]); setWater(0); setMode("cut"); setProf(null);
     setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
     setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setAdjLog([]); setWeighNudgeAt(null); setCustomKcal(null);
+    setBodyMeasurements([]); setMuteMeasurements(false); setMeasurementNote(""); setMeasurementNudgeAt(null);
     setCutBlock(EMPTY_CUT_BLOCK);
     setConsentInfo(null); setNeedsConsent(false);
     setShowSignOut(false);
@@ -6068,6 +6458,44 @@ function App() {
     }
   };
 
+  // Body measurement save/edit (features/body/01). One handler for both a new date and a
+  // correction to an existing one — the array upsert-by-date below already treats them
+  // identically, which is what makes syncedBodyFat's "one writer, every save" safety
+  // property hold without a separate code path for the gate-crossing reading.
+  const onMeasurement = async ({ neck, waist, hip }) => {
+    haptic();
+    const measureProf = prof || DEF_PROFILE;
+    const sex = measureProf.sex;
+    const formula = bodyMeasurementFormula(sex);
+    const computed_bf = navyBodyFat({ sex, heightCm: measureProf.height, neckCm: neck, waistCm: waist, hipCm: hip });
+    if (computed_bf == null) return; // hard-blocked domain — UI should already have refused this
+    const entry = { date: todayKey(), neck: Number(neck), waist: Number(waist),
+      hip: formula === "female" ? Number(hip) : null, formula, computed_bf };
+    const updated = [...bodyMeasurements.filter(m => m.date !== entry.date), entry]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    setBodyMeasurements(updated);
+    await ss("bodymeasurements", JSON.stringify(updated));
+    if (authState === "premium" && authUser?.id)
+      syncBodyMeasurements(authUser.id, updated).catch(() => {});
+
+    // effectiveMode is computed a little further down this same component function — safe to
+    // close over here because onMeasurement only ever runs later, from a user action, by
+    // which point this render's effectiveMode has long since been assigned.
+    const next = syncedBodyFat({ currentBodyFat: measureProf.bodyFat, measurements: updated, sex,
+      beforeDate: dateKey(new Date(Date.now() + 86400000)), cutting: effectiveMode === "cut" });
+    if (next != null) await saveProf({ ...measureProf, bodyFat: next });
+    return computed_bf;
+  };
+
+  const toggleMuteMeasurements = async on => {
+    setMuteMeasurements(on);
+    await ss("mute_body_measurements", on ? "1" : "");
+  };
+  const saveMeasurementNote = async note => {
+    setMeasurementNote(note);
+    await ss("body_measurement_note", note);
+  };
+
   const p         = prof || DEF_PROFILE;
   const baseTDEE  = seedTDEE(p);            // seeded estimate (activity-adjusted); may exceed sedentary
   const tdeeFloor = sedentaryFloorOf(p);    // absolute maintenance floor (BMR × 1.2)
@@ -6102,6 +6530,22 @@ function App() {
     const ts = Date.now(); setWeighNudgeAt(ts); await ss("weigh_nudge_dismissed", String(ts));
   };
   const muteWeighNudge = async () => { await dismissWeighNudge(); await saveProf({ ...p, weighCadence: "off" }); };
+
+  // Body-measurement nudge (features/body/01) — reuses shouldNudgeWeighIn wholesale, with
+  // its own anchor/dismissal state, rather than a hand-rolled day-count check (fires AT 7
+  // days, matching WEIGH_NUDGE_GAP_DAYS exactly). Muted whenever EITHER weigh-in cadence is
+  // "off" OR the dedicated measurement mute is on — the more loaded number never asks once
+  // the less loaded one has already been declined.
+  const measurementNudgeAnchorTs = bodyMeasurements.length
+    ? new Date(bodyMeasurements[bodyMeasurements.length - 1].date).getTime()
+    : (hist.length ? hist.reduce((m, d) => Math.min(m, new Date(d.date).getTime()), Infinity) : null);
+  const showMeasurementNudge = shouldNudgeWeighIn({
+    cadence: (weighCadenceOf(p) === "off" || muteMeasurements) ? "off" : "few",
+    lastActivityTs: measurementNudgeAnchorTs,
+    dismissedTs: measurementNudgeAt, now: Date.now() });
+  const dismissMeasurementNudge = async () => {
+    const ts = Date.now(); setMeasurementNudgeAt(ts); await ss("body_measurement_nudge_dismissed", String(ts));
+  };
 
   // Earn-to-eat is SMOOTHED (Step 3): today's applied bonus is a weighted average of
   // today's + the prior two days' workout kcal, not today's raw session total. This
@@ -6316,6 +6760,9 @@ function App() {
           weighIns={weighIns} onWeighIn={onWeighIn} tdeeAdj={tdeeAdj} baseTDEE={baseTDEE} tdeeFloor={tdeeFloor}
           correctionHeld={correctionHeld}
           showWeighNudge={showWeighNudge} onNudgeDismiss={dismissWeighNudge} onNudgeMute={muteWeighNudge}
+          bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
+          measurementNote={measurementNote} onSaveMeasurementNote={saveMeasurementNote}
+          showMeasurementNudge={showMeasurementNudge} onMeasurementNudgeDismiss={dismissMeasurementNudge}
           coachKey={coachKey}
           cutPrompt={cutPrompt} onCutNudgeDismiss={dismissCutNudge} onCutPromptSnooze={snoozeCutPrompt}
           onStartDietBreak={startDietBreak}
@@ -6329,11 +6776,14 @@ function App() {
           onPremiumGate={feature => setPremiumGate(feature)}
           onSignOut={() => setShowSignOut(true)}
           isOnline={isOnline} syncMsg={syncMsg}/>}
-      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}/>}
+      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
+          bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
+          measurementNote={measurementNote} onSaveMeasurementNote={saveMeasurementNote}
+          muteMeasurements={muteMeasurements} onToggleMuteMeasurements={toggleMuteMeasurements}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}
