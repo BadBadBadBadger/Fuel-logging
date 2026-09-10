@@ -1,17 +1,28 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.7.2 (AI meal capture + the energy plan, Steps 1–5) — **live**, sw v74
-**Last Updated:** 26 August 2026
+**Version:** 6.8 (the dashboard rebuild — intake scoring + body composition) — **live**, sw v78
+**Last Updated:** 10 September 2026
 
-> **What's new** — the **energy plan** rebuilt how targets are worked out, in five steps:
-> a lifestyle activity chip seeds a believable TDEE (Step 1); the adaptive engine converges
-> on your real one instead of over-correcting (Step 2); a workout's calories spread across
-> three days rather than all unlocking at once (Step 3); a **body-sized steady-loss
-> floor** replaced the flat safe minimum as the real protection, with energy availability
-> demoted to a rare warning (Step 4); and a cut now runs as **load-weighted blocks** that
-> prompt a diet break, with the auto-lowering fix that closes the original harm (Step 5).
-> **All of it is merged and deployed** — rollback tag `pre-energy-safety`. File 05 of the
-> workstream (the low-energy-availability symptom check) is **shelved**, see `ENERGY_MODEL.md` §5.5.
-> See §3 Calorie Calculation (its **Calorie floors** table), §10 Safe Minimum, §37 Changelog, and
+> **What's new** — the dashboard's macro readout was rebuilt twice over.
+> **Intake scoring** (sw v77) replaced the flat MACROS bars with a role-based engine: a
+> macro's colour now depends on what it *is* — protein and the fat floor are floors (under
+> is the penalty), fat also has a ceiling, calories is the master constraint per mode, carbs
+> is flex. Two new cards, **TODAY** (a ring segmented by macro) and **THIS WEEK** (a ring
+> segmented by day, each day graded red/amber/green), sit where the bars were. See §8 and §37.
+> **Body-measurement tracking** (sw v78) adds a weekly tape-measure entry — neck, waist, and
+> hip for women — that computes body-fat % by the US Navy method and feeds it into the same
+> `bodyFat` field that drives Katch-McArdle targets. It syncs like weigh-ins, and it moves the
+> stored figure with the same cutting-aware asymmetry `runCalibration` already uses (leaner
+> applies promptly; leaner-looking *while cutting* is capped, so a real recomposition can't
+> stall the app's own lean-body safety check). See §12 and §37.
+>
+> Before this, the **energy plan** rebuilt how targets are worked out, in five steps — a
+> lifestyle activity chip seeds TDEE (Step 1); the adaptive engine converges instead of
+> over-correcting (Step 2); a workout's calories spread across three days (Step 3); a
+> **body-sized steady-loss floor** replaced the flat safe minimum (Step 4); a cut runs as
+> **load-weighted blocks** with a diet-break prompt and the auto-lowering fix that closes the
+> original harm (Step 5). All merged and deployed — rollback tag `pre-energy-safety`. File 05
+> (the low-energy-availability symptom check) is **shelved**, see `ENERGY_MODEL.md` §5.5.
+> See §3 Calorie Calculation (its **Calorie floors** table), §10 Safe Minimum, and
 > `ENERGY_MODEL.md` for the model behind it.
 
 ---
@@ -219,6 +230,10 @@ cumulativeAdj  = cumulativeAdj + adj, held within -600…+600       // lifetime 
 | `auth_user` | JSON: `{name, email, picture, grantedBy, subExpiry, since}` — null/absent when anonymous |
 | `sync_migrated__<uid>` | `"1"` — set once a signed-in user's local data has been migrated to Supabase, prevents re-migrating on later sign-ins (premium only) |
 | `fuel_schema_v` | Integer string: stored data schema version (current `SCHEMA_VERSION = 1`); see §38 |
+| `bodymeasurements` | JSON: `[{date, neck, waist, hip, formula, computed_bf}, ...]` — weekly tape measurements (features/body/01); `hip` is `null` for male-formula rows |
+| `mute_body_measurements` | `"1"` when the dedicated "don't ask me for these" opt-out is on — local-only, never synced |
+| `body_measurement_note` | String: the user's one-time freeform routine note (e.g. "mornings, fasted, before shower"), echoed back on every later measurement form — local-only |
+| `body_measurement_nudge_dismissed` | Integer string (ms epoch): last dismissal of the measurement nudge — local-only, mirrors `weigh_nudge_dismissed` |
 
 ---
 
@@ -283,6 +298,16 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 ---
 
 ## 8. Calorie & Macro Tolerance (Forgiving Colour Logic)
+
+> **Superseded for macros as of sw v77 (intake scoring).** The flat "under is always fine, 5g/15g
+> over = amber/red, each macro its own tint" model below is no longer what the dashboard paints.
+> Macro colour now comes from the role-based scoring engine — protein and the fat floor are floors
+> (under is the penalty), fat also has a ceiling, calories is the master constraint per mode, carbs
+> is flex — and all three bars use one uniform green/amber/red instead of per-macro tints. The
+> engine and its worked bands live in `features/dashboard/04-intake-scoring.feature`;
+> `features/dashboard/02-macro-tolerance.feature` (the old model) is marked `@superseded`. The
+> **calorie** table below still holds — calories keeps its own tolerance and its own dashboard card.
+> See §37 *"The dashboard's macro bars stop lying about what a macro is"*.
 
 ### Calorie display
 
@@ -389,6 +414,32 @@ The sex selector shows MALE / FEMALE toggle buttons. No default is pre-selected 
 - When the body fat % input is focused, inline helper text expands below: *"Not sure? Use 25% for men or 30% for women as a starting estimate"* + explanation that a more accurate figure improves targets.
 - If the entered value is below 4% or above 50%, an amber inline warning appears: *"That seems unusual — double-check this number as it affects your calorie targets"*. Saving is not blocked.
 
+### Body-measurement tracking (sw v78 — `features/body/01-measurement-tracking.feature`)
+
+Instead of guessing or paying for a scan, the user can log a weekly tape measurement and let the
+app compute body-fat % for them.
+
+- **What's measured.** Neck and waist for everyone, plus hip for the female formula. Height comes
+  from the profile. Values are centimetres, one decimal.
+- **How it's computed.** The **US Navy method** (`navyBodyFat()`, mirrored in `logic.test.js`).
+  `formula` (`"male"` | `"female"`) is stored on every row so a later sex change ages
+  old-formula rows out of the trend window (`bodyFatRollingAvg`, `SYNC_GATE` readings) rather than
+  averaging two formulas together.
+- **How it feeds targets.** A saved measurement's `computed_bf` moves the profile's `bodyFat`
+  field — the same field §3's Katch-McArdle path already uses — via `syncedBodyFat()`, off the
+  rolling average, not a single reading. The move is **asymmetric, reusing `runCalibration`'s
+  cutting-aware rule**: a figure that makes you *leaner* applies promptly; a figure that makes you
+  look leaner **while cutting** is capped per sync, so a genuine recomposition can't outrun the
+  app's own lean-body safety check. Not cutting → both directions apply promptly.
+- **Cadence & nudges.** Weekly. A dismissible nudge (`body_measurement_nudge_dismissed`, mirrors
+  the weigh-in nudge) appears when one is due; a dedicated opt-out (`mute_body_measurements`) turns
+  it off for good. A one-time freeform routine note (`body_measurement_note`, e.g. *"mornings,
+  fasted, before shower"*) is echoed back on every later form so conditions stay consistent.
+- **History.** Measurements plot on the History chart alongside weight (§17), on the same
+  week/month/all ranges.
+- **Sync.** `body_measurements` table, one row per `(user_id, date)` — see §29. Local key
+  `bodymeasurements`; the note / mute / nudge keys are **local-only, never synced** (§5).
+
 ---
 
 ## 13. Streak Celebration Animation
@@ -473,6 +524,7 @@ The History screen supports:
 - **Range filters**: Day / 7 Days / 30 Days / 3 Months / 1 Year / All Time
 - **Macro charts**: Kcal, Protein, Carbs, Fat (line or bar)
 - **Weight chart**: Toggle ⚖️ Weight to see body weight trend. Shows daily readings (blue dots, #4b9fff) + 7-day rolling average line (cream accent, `A`) to cut through noise. Rolling avg requires ≥3 readings in the window.
+- **Body-fat % chart** (features/body/01): the Navy-method `computed_bf` from weekly measurements (§12), plotted with a rolling trend line. Windowed by reading count, not days (measurements are weekly); shown on any range except Day, once ≥2 readings exist. No unit toggle — body-fat % has no imperial form.
 - **Weight trend summary**: First → last weight and total change shown in averages card
 - **Day view**: Full food log, macro pie chart, water, training toggle, add/remove entries, CSV export
 
@@ -917,6 +969,7 @@ Add to the storage key reference table in §5:
 | `water_logs` | Daily water count — unique on `(user_id, date)` |
 | `workouts` | Workout entries — unique on `(user_id, entry_id)` |
 | `weigh_ins` | Daily body weight — unique on `(user_id, date)` |
+| `body_measurements` | Weekly tape measurements + Navy-method `computed_bf` — unique on `(user_id, date)`; columns `neck, waist, hip, formula, computed_bf` (`hip` nullable, male rows). Added live 2026-09-10 (§12, §37) |
 | `settings` | Mode, tdeeAdj, customKcal, aggressiveCutAcked |
 | `meal_library` | Custom meals — unique on `(user_id, name)` |
 | `badges` | Earned badge keys — unique on `(user_id, badge_key)` |
@@ -941,6 +994,7 @@ All tables have `updated_at TIMESTAMPTZ` and Row Level Security.
 | `syncWorkouts(uid, date, ws)` | Delete+re-insert workouts for a date |
 | `syncProfile(uid, p)` | Upsert fitness profile |
 | `syncWeighIns(uid, wis)` | Upsert all weigh-in rows |
+| `syncBodyMeasurements(uid, ms)` | Upsert all body-measurement rows (`user_id,date` conflict) |
 | `syncSettings(uid, mode, tdeeAdj, customKcal, acked)` | Upsert settings row |
 | `syncMeals(uid, meals)` | Upsert meal library |
 | `syncBadges(uid, keys)` | Upsert badge rows |
@@ -996,6 +1050,22 @@ callback: async resp => {
 ## 31. Supabase Setup (Step by Step — complete)
 
 **Done.** Project: `hvohicddolqpcgzgrbwc.supabase.co`. Schema run. Google OAuth provider linked. Credentials wired into `index.html`.
+
+### Statements applied to the live database *after* the initial schema run
+
+`setup/supabase-schema.sql` is the reference shape, not a migration runner. **Never re-run it whole**
+against the live database — `CREATE POLICY` has no `IF NOT EXISTS`, so it fails `42710`, and because
+the SQL Editor runs the file in one transaction that abort rolls back every `CREATE TABLE` /
+`ALTER TABLE` above it. Run only the isolated block you need, then confirm via
+`information_schema.columns` / `information_schema.tables`. This log is the record of what has
+actually been run live:
+
+| Date | Statement(s) | For |
+|---|---|---|
+| 2026-08-09 | `ALTER TABLE profiles ADD COLUMN ... cut_break_load` (+ the other cut-block columns) | Energy Step 5 |
+| 2026-08-16 | `ALTER TABLE food_logs ADD COLUMN ... conf, elements` | Confidence model |
+| 2026-09-09 | `ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS` × 5: `target_kcal, target_protein, target_fat, target_fat_floor, floored` | Intake scoring (§37) |
+| 2026-09-10 | `CREATE TABLE IF NOT EXISTS body_measurements (...)` + `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY "own body_measurements"` + `CREATE INDEX ... body_measurements_user_date` | Body-measurement tracking (§12, §37) |
 
 1. Go to https://supabase.com → **New Project**
 2. Name: "fuel-log", region: closest to your users (Europe West for UK)
@@ -1402,6 +1472,71 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Body-measurement tracking — a tape measure instead of a guess (Sep 2026)
+A weekly neck/waist (+hip for women) entry now computes body-fat % by the **US Navy method** and
+feeds it into the `bodyFat` field that drives Katch-McArdle targets (§3, §12). Built through a
+three-round persona swarm (design-lead + coach shaping → a solo critical-thinking pass →
+a QA / Engineering / design-lead debate closed out by critical thinking); full transcript in
+`features/body/01-measurement-tracking-swarm-review.md`. Jest **323/323** (19 new), Playwright
+**89/89** (11 new), sw `v77→v78`.
+- **DB change — a new table.** `body_measurements` (`id, user_id, date, neck, waist, hip, formula,
+  computed_bf, updated_at`; unique on `(user_id, date)`; `hip` nullable for male rows), plus its
+  RLS enable, `"own body_measurements"` policy, and `(user_id, date)` index. **Run against the live
+  database on 2026-09-10** via the SQL Editor as an isolated block — not a whole-file re-run (see
+  §31, and the note there about `CREATE POLICY` and the single-transaction rollback). The feature
+  shipped in v78 wired to sync at both ends (`syncBodyMeasurements`, and the `body_measurements`
+  read in `pullFromSupabase`); until the table existed, measurements saved on-device and the sync
+  failed silently — no cascade, because it's its own upsert, not folded into the profile row.
+- **`formula` is stored per row** so a later sex change ages old-formula readings out of the trend
+  window (`bodyFatRollingAvg`) instead of averaging a male and a female formula together — finding
+  5 of the feature's swarm review.
+- **The stored figure moves asymmetrically.** A swarm sanity-check against *"simple, intuitive,
+  accurate, supportive"* caught a gap none of the three specialists found alone: a symmetric
+  per-sync cap would delay the app's own lean-body safety check exactly when a real recomposition
+  is happening. Fixed by **reusing `runCalibration`'s existing cutting-aware asymmetry** rather
+  than new machinery — a leaner reading applies promptly; a leaner-looking reading *while cutting*
+  is capped. `syncedBodyFat()` works off the rolling average, not a single reading.
+- **Also fixed: the dashboard weight-trend badge**, found live-debugging this against real data. It
+  compared two raw points (newest vs. oldest of the last 7 entries), so one noisy day could read as
+  a gain during a real loss. Now uses the same 7-day rolling-average comparison `runCalibration`
+  already trusts internally.
+- **New persona: `personas/engineering.md`** — an implementation / data-integrity review hat. No
+  such lens existed in the project before this swarm needed one.
+
+### The dashboard's macro bars stop lying about what a macro is — intake scoring (Sep 2026)
+The flat MACROS bars are gone. Colour now comes from a **role-based scoring engine**: protein and
+the fat floor are floors (under is the penalty), fat also has a ceiling, calories is the master
+constraint per mode, carbs is pure flex — and all three bars use one uniform green/amber/red
+instead of per-macro tints. Two new cards replace the bar strip: **TODAY**, a ring segmented into
+protein / carbs / fat each lit by its own score; and **THIS WEEK**, a ring segmented into the last
+7 days, each day graded red/amber/green, with a rolling read of whether the week has actually run
+as the selected mode. Spec: `features/dashboard/04-intake-scoring.feature` (+ `05` for the card
+layout). A background persona swarm (QA, Critical-Thinking, Nutrition-Coach, Design-Lead,
+Anti-Metaphor, Engineer) reviewed the build. Jest **304/304** (65 new), Playwright **78/78** (10
+new, `e2e/intake-scoring.spec.js`), sw `v74→v77`. Rollback tag `pre-intake-scoring`.
+- **DB change — 5 columns on `history_snapshots`.** `target_kcal, target_protein, target_fat,
+  target_fat_floor, floored`. **Run against the live database on 2026-09-09** as an isolated
+  `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` block, confirmed via `information_schema.columns`
+  before the sync code was wired to them (`syncHistory` push, `pullFromSupabase` `fullHist` pull).
+  Past days now grade against the target that actually applied that day, not today's profile
+  reconstructed backwards.
+- **Three bugs the swarm caught before this reached a phone.** (1) The fat health floor was judged
+  flat from the first meal onward, so an on-plan breakfast could show a red *"FAT · Add some
+  healthy fats"* all morning — and fat outranks everything in the hero order. (2) The weekly
+  majority-floor override graded whether the *target* had been floored, not what was eaten, so a
+  week with nothing logged — or a week of logged binges — could both read a green *"real cut."*
+  (3) TODAY and THIS WEEK's own last segment could show different colours for the same day.
+- **Two founder decisions closed the spec's open items.** A week where a safety floor held the
+  target up on 4+ of 7 days reads as *"cut"* outright, rather than comparing against a number that
+  was never on offer. Unlogged days are excluded from the weekly average (never a favourable zero),
+  and the summary always states how many of the 7 days it is built from.
+- **The TODAY ring's fill used to be the wall clock** (`nowHour / 24`) — it told you the time and
+  nothing about your macros, so a red ring that wasn't full read as *"not done falling short."*
+  Now it's the three macro segments, the same segmented-by-item idea the week ring uses.
+- **Superseded:** `features/dashboard/02-macro-tolerance.feature` (the flat model) is marked
+  `@superseded`; `01-calorie-tolerance.feature` scoped down to "the Cut role" — deleting them is
+  the founder's call, still open. See §8.
 
 ### The calorie bar paints again — no hex alpha on a CSS variable (Aug 2026)
 Reported from real use: the dashboard's calorie progress bar had stopped filling. Its background

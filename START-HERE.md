@@ -1,33 +1,42 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-09 (session 20). **Jest 304/304 · Playwright 78/78 · sw v77 · `main` — pushed.**
+**Updated:** 2026-09-10 (session 21). **Jest 323/323 · Playwright 89/89 · sw v78 · `main` — pushed.**
 
-> **v74 removes the "Below your resting metabolism" card**, on three weeks of real cut data. It only
-> fired when *no* floor had applied — the band the app already considers fine — so it warned about a
-> non-event, went unread, and had trained its only user past amber entirely. Depth stays with the
-> floors, duration with the break prompts. First change made on lived evidence rather than reasoning.
->
-> **v77 replaces the flat MACROS bars with the intake-scoring engine.** New TODAY/THIS WEEK cards on
+> **v77 replaced the flat MACROS bars with the intake-scoring engine.** New TODAY/THIS WEEK cards on
 > the dashboard, each a segmented ring — TODAY by macro (protein/carbs/fat), THIS WEEK by day. Colour
 > comes from what each macro actually is (a floor, a ceiling, flex) instead of a flat 5g/15g-over
 > delta. A background multi-persona swarm review (QA, Critical-Thinking, Nutrition-Coach, Design-Lead,
 > Anti-Metaphor, Engineer) caught and fixed three real bugs before this reached a phone: the fat
 > health floor reading red from the first meal onward; the weekly override grading whether the
 > *target* was floored instead of what was actually eaten; and TODAY/THIS WEEK disagreeing about
-> today's own colour. New Playwright file `e2e/intake-scoring.spec.js` (10 tests) covers all three.
-> Deployed; **on-phone verification in progress** (see ▶ below). Rollback point: **`pre-intake-scoring`**.
+> today's own colour. Playwright `e2e/intake-scoring.spec.js`. Rollback tag: **`pre-intake-scoring`**.
+>
+> **v78 adds weekly body-measurement tracking (`features/body/01`).** A neck/waist (+hip for women)
+> tape entry computes body-fat % by the US Navy method and feeds the `bodyFat` field that drives
+> Katch-McArdle targets. Syncs like weigh-ins; the stored figure moves with `runCalibration`'s
+> cutting-aware asymmetry (leaner applies promptly; leaner-looking *while cutting* is capped, so a
+> real recomposition can't stall the lean-body safety check). Also fixed the dashboard weight-trend
+> badge — it compared two raw points, so one noisy day could read as a gain during a real loss; now
+> uses the same 7-day rolling average `runCalibration` trusts. New persona `personas/engineering.md`.
+> Committed `bde4098` (another session, no rollback tag was cut). **DB: the `body_measurements` table
+> was created live on 2026-09-10** — see Cloud sync state below.
 
 > ## ▶ START HERE
 >
-> **The intake-scoring feature (dashboard/04 + 05) is BUILT, REVIEWED AND DEPLOYED — v77, live on
-> Pages.** Replaces the old flat MACROS bars with a role-based scoring engine and two new dashboard
-> cards, TODAY and THIS WEEK, each a segmented ring. Committed as `ce341ce`. **The one job left is
-> the phone check** — in progress right now: fully close and reopen the installed PWA, log a couple
-> of real items, and specifically watch for the three things the swarm review already fixed once
-> (see the v77 note above) rather than only eyeballing that it looks fine. Two feature files
-> (`dashboard/01-calorie-tolerance.feature`, `02-macro-tolerance.feature`) are marked `@superseded`
-> rather than deleted — that's the founder's call, still open. `SAFE_MIN`'s flat 1400/1200 floor was
-> reopened mid-session and deliberately parked again, tracked in `04`'s own header, not here.
+> **Two dashboard features shipped back-to-back and both are live on Pages: intake scoring (v77) and
+> body-measurement tracking (v78).** Their DB work is done — `history_snapshots` gained 5 columns on
+> 2026-09-09, the `body_measurements` table was created on 2026-09-10, both confirmed via
+> `information_schema`. **What's still open:**
+> - **Phone-verify both** on a real device — fully close and reopen the installed PWA first. For
+>   intake scoring, watch for the three things the swarm review fixed once (v77 note above), not just
+>   "looks fine". For body measurements, log one and confirm it syncs and the History body-fat chart
+>   draws.
+> - **`features/body/01` is still tagged `@wip`** though the code is built and deployed — clear it on
+>   device-verify, same as 06/07 below.
+> - **Two `@superseded` spec files** (`dashboard/01-calorie-tolerance.feature`,
+>   `02-macro-tolerance.feature`) — delete-or-keep is the founder's call, still open.
+> - **`SAFE_MIN`'s flat 1400/1200 floor** was reopened then re-parked — tracked in
+>   `dashboard/04-intake-scoring.feature`'s own header, not here.
 >
 > **The energy-safety workstream is MERGED AND DEPLOYED.** Steps 1–5 of `ENERGY_MODEL.md` are live on
 > Pages, including the auto-lowering fix that closes the original harm. Rollback tag:
@@ -79,8 +88,8 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v77**.
-- Run `npx jest` before claiming anything works. Currently **304/304**. `npm run test:ui` is **78/78**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v78**.
+- Run `npx jest` before claiming anything works. Currently **323/323**. `npm run test:ui` is **89/89**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -111,11 +120,12 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `ce341ce` is what is **live on GitHub Pages** (sw **v77**) — the intake-scoring feature.
-Verify any time by reading the deployed worker: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
-Rollback tag **`pre-intake-scoring`** is the state right before it (`52452a9`, sw v76).
+`main` @ `bde4098` is what is **live on GitHub Pages** (sw **v78**) — body-measurement tracking
+(another session's commit; no rollback tag was cut for it). Verify any time by reading the deployed
+worker: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 
-Before it, in order: `7fb31f8` (sw **v74**, removed the "Below your resting metabolism" card);
+Before it: `ce341ce` (sw **v77**, the intake-scoring feature) — rollback tag **`pre-intake-scoring`**
+is the state right before that (`52452a9`, sw v76). Then `7fb31f8` (sw **v74**, removed the "Below your resting metabolism" card);
 `d01fe5f` (sw **v73**, the F4 data-loss fix); `d21d7d6` (sw **v72**, the spec split, the scenario
 audit and the profile confirmation fix); and `efad462` (sw **v70**), deployed 2026-08-11, which
 carried the whole energy-safety workstream (Steps 1–5), the Quick Add fix, the weigh-in reporting
@@ -173,6 +183,24 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 ---
 
 ## Right now
+
+**Session 21 — body-measurement tracking (v78, `bde4098`, another session) and the docs to match.**
+A weekly neck/waist (+hip for women) tape entry computes body-fat % by the US Navy method
+(`navyBodyFat`) and feeds the profile's `bodyFat` field via `syncedBodyFat()`, off a rolling average
+(`bodyFatRollingAvg`, `SYNC_GATE` readings) not a single reading. The move reuses `runCalibration`'s
+cutting-aware asymmetry rather than new machinery — leaner applies promptly, leaner-looking *while
+cutting* is capped — so a genuine recomposition can't stall the app's own lean-body safety check.
+`formula` (`male`/`female`) is stored per row so a later sex change ages old-formula readings out of
+the trend window instead of averaging two formulas together. Built through a three-round persona
+swarm; the debate also introduced `personas/engineering.md` (data-integrity review hat). Also fixed
+the dashboard weight-trend badge — it compared two raw points, so one noisy day could read as a gain
+during a real loss; now the 7-day rolling average. **DB:** the `body_measurements` table (+ RLS,
+policy, index) was created live on 2026-09-10, confirmed via `information_schema` — until then,
+measurements saved on-device and synced silently nowhere (no cascade — it's its own upsert). Docs
+brought current in this session: `DOCS.md` §8 (macros superseded note), §12 (the feature), §17
+(body-fat chart), §29 (`body_measurements` table + `syncBodyMeasurements`), §31 (a new **"statements
+applied to the live database"** log), §37 (two changelog entries — this and intake scoring), header
+→ v6.8 / sw v78.
 
 **Session 20 built the intake-scoring feature end to end and shipped it as v77.** New role-based
 scoring functions in `app.jsx` (`proteinDayScore`, `calorieDayScore`, `fatDayScore`, `carbsDayScore`,
@@ -343,12 +371,14 @@ that §4 warns against leaning on.
    > genuinely lost is the ability to catch someone whose numbers look fine but who feels awful; that
    > needs data the app doesn't have and would have to ask for. Worth revisiting only if real usage
    > shows people sailing past every structural guardrail.
-2. **◀ Phone-verify the intake-scoring feature (v77)** — in progress. Fully close and reopen the
-   installed PWA first. Watch specifically for the three bugs the swarm review already found and
-   fixed once (see "Right now" above): a false red "FAT" hero mid-morning on an on-plan day; a week
-   ring that disagrees with what was actually logged; TODAY and THIS WEEK's last segment showing
-   different colours for the same day. Then: decide whether to delete the two `@superseded` spec
-   files, and whether to pick the `SAFE_MIN` redesign back up.
+2. **◀ Phone-verify the two dashboard features (v77 intake scoring + v78 body measurements).** Fully
+   close and reopen the installed PWA first. For intake scoring, watch for the three bugs the swarm
+   review found and fixed once (see "Right now" / the v77 note): a false red "FAT" hero mid-morning
+   on an on-plan day; a week ring that disagrees with what was actually logged; TODAY and THIS WEEK's
+   last segment showing different colours for the same day. For body measurements, log one and
+   confirm it syncs to Supabase and the History body-fat chart draws. Then: clear `features/body/01`'s
+   `@wip` tag, decide the two `@superseded` spec files, and decide whether to pick the `SAFE_MIN`
+   redesign back up.
 3. **◀ Device-test the live release** — the checklist is **`DEVICE-TEST.md`**, written for this go-live
    and deletable once done. It covers what you can check in normal use on your phone, plus Chrome
    console snippets for the time-dependent surfaces (cut blocks, the drain, the guard, the stall) that
@@ -371,7 +401,8 @@ that §4 warns against leaning on.
 ## Reference — operational facts (don't lose these)
 
 **Git**
-- `main` @ `ce341ce` = the intake-scoring feature, **live on Pages** (sw v77).
+- `main` @ `bde4098` = body-measurement tracking, **live on Pages** (sw v78). No rollback tag was
+  cut for it (another session's commit); `ce341ce` / `pre-intake-scoring` is the nearest clean point.
 - `energy-safety-bmr-floor` carries Steps 1–5a committed (`2209548` = file 02, `d509d86` = its docs).
 - Rollback tags: `pre-intake-scoring` (pre-v77 `main`, sw v76) · `pre-energy-safety` ·
   `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` · Phase B → `8622d24`.
@@ -402,6 +433,10 @@ that §4 warns against leaning on.
 - ✅ **`history_snapshots` gained `target_kcal`/`target_protein`/`target_fat`/`target_fat_floor`/
   `floored` on 2026-09-09**, via `syncHistory` push and `pullFromSupabase`'s `fullHist` pull.
   Confirmed live via `information_schema.columns` before the code was wired to them.
+- ✅ **`body_measurements` table created on Supabase 2026-09-10** (`CREATE TABLE` + RLS + policy +
+  index, run as an isolated block, confirmed via `information_schema`). Columns `neck, waist, hip,
+  formula, computed_bf`; unique on `(user_id, date)`. Push `syncBodyMeasurements`, pull in
+  `pullFromSupabase`. The note / mute / nudge keys stay **local-only** (see `DOCS.md` §5, §31).
 - 🪦 **Retired:** `cut_load_year` — the column still exists but nothing reads or writes it (file 03
   removed the rolling-year track). Left in place deliberately; safe to drop by hand if you ever want to.
 - ⚠️ **Still local-only:** `weighCadence` (no column), `weigh_nudge_dismissed`, `tdee_adj_log`, and the
