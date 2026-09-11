@@ -680,8 +680,34 @@ const CAL_STEP_CAP     = { low: 100, medium: 150, high: 200 }; // per-run cap by
 const CAL_STEP_ROUND   = 25;                              // step granularity (kcal)
 const CAL_MIN_STEP     = 25;                              // ignore sub-25 nudges (applied at the call site)
 const ADJ_CAP          = 600;                             // accumulated adjustment limit (feature 04)
+// features/energy-safety/09 — a raise can't be re-credited off substantially the same
+// evidence a prior raise already used (recentAvg/olderAvg are themselves 7-day windows),
+// and while cutting, a lowering signal can undo a raise's own recent, still-provisional
+// work without touching older, settled evidence. Both `@founder-blocking` in the spec;
+// confirmed at these values 2026-09-11.
+const RAISE_MIN_INTERVAL_DAYS    = 7;
+const RAISE_REVERSAL_WINDOW_DAYS = 21;
 
-const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
+// How much of the current adjustment is still "provisional" (from a raise applied within
+// RAISE_REVERSAL_WINDOW_DAYS) vs "settled" (older), and how many days since the last
+// APPLIED raise — both derived from adjLog, which already exists for dead-time
+// compensation. One function so the two call sites (applying a new step, and previewing
+// whether a correction is currently held) can never quietly diverge.
+const raiseContext = (adjLog, tdeeAdj) => {
+  const now = Date.now();
+  const cutoffKey = dateKey(new Date(now - RAISE_REVERSAL_WINDOW_DAYS * 86400000));
+  const recentPortion = adjLog.filter(a => a.date > cutoffKey).reduce((s, a) => s + a.adj, 0);
+  const lastRaise = [...adjLog].reverse().find(a => a.adj > 0);
+  return {
+    settledAdj: tdeeAdj - recentPortion,
+    daysSinceLastRaise: lastRaise
+      ? Math.floor((now - new Date(lastRaise.date + "T00:00:00").getTime()) / 86400000)
+      : Infinity,
+  };
+};
+
+const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState = {}) => {
+  const { daysSinceLastRaise = Infinity, tdeeAdj = 0, settledAdj = tdeeAdj } = raiseState;
   if (weighIns.length < CAL_MIN_WEIGHINS) return null;
   const today = new Date();
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -700,12 +726,19 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
   // (<50%) so a biased AI estimate can't silently retrain TDEE. Days whose logs
   // we can't inspect default to full confidence (legacy snapshots / no `conf`).
   const trusted = recentHist
-    .map(d => ({ kcal: d.kcal, w: (d.logs ? intakeConfidence(d.logs) : 100) / 100 }))
+    .map(d => ({ kcal: d.kcal, bonus: d.workoutBonus || 0, w: (d.logs ? intakeConfidence(d.logs) : 100) / 100 }))
     .filter(x => x.w >= 0.5);
   if (trusted.length < 4) return null;
   const wSum         = trusted.reduce((a, x) => a + x.w, 0);
   const avgKcal      = trusted.reduce((a, x) => a + x.kcal * x.w, 0) / wSum;
-  const avgDeficit   = baseTDEE - avgKcal;
+  // features/energy-safety/10 — baseTDEE alone is what the day was expected to burn WITHOUT
+  // training. A day the user trained, the target already carries a workout bonus (earn-to-
+  // eat) on top of baseTDEE — so eating up near that elevated, correct target must credit
+  // the training's own burn too, or it reads as "burns more than we thought" from the bonus
+  // alone, every single week the user trains. avgBonus defaults to 0 for snapshots recorded
+  // before this field existed — no real value for those days, same as target_kcal's null.
+  const avgBonus     = trusted.reduce((a, x) => a + x.bonus * x.w, 0) / wSum;
+  const avgDeficit   = (baseTDEE + avgBonus) - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
   const errKcal      = -discrepancy * 7700 / 7;           // signed estimate error, kcal/day
@@ -736,9 +769,28 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
   // signal file 02 uses, so it holds up for a patchy logger.
   const weekDays   = history.filter(d => d.date >= weekAgoKey);
   const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
-  const refused    = rawAdj < 0 && wasCutting;
 
-  return { adj: refused ? 0 : rawAdj, refused, wouldHaveBeen: rawAdj, confidence,
+  // features/energy-safety/09, Fix A — a raise re-triggering under RAISE_MIN_INTERVAL_DAYS
+  // after the last APPLIED raise is still mostly the same evidence as that raise already
+  // used (recentAvg/olderAvg are themselves 7-day windows), so it's held rather than
+  // credited again. Nothing is hidden: `wouldHaveBeen` still reports it, same as `refused`.
+  const raiseHeld = rawAdj > 0 && daysSinceLastRaise < RAISE_MIN_INTERVAL_DAYS;
+
+  // Fix B — while cutting, a lowering signal can erode a raise's OWN recent, still-
+  // provisional contribution, but never dip below the older, settled evidence beneath it —
+  // exactly file 04's original protection, now scoped to what's actually still provisional
+  // instead of the whole accumulated adjustment. With no recent raise (settledAdj ===
+  // tdeeAdj), this reduces to file 04's original refusal, unchanged.
+  let adj = rawAdj, refused = false;
+  if (raiseHeld) {
+    adj = 0;
+  } else if (rawAdj < 0 && wasCutting) {
+    const floor = Math.min(settledAdj, tdeeAdj); // the floor can never sit above the current value
+    adj = Math.max(floor, tdeeAdj + rawAdj) - tdeeAdj;
+    refused = adj === 0;
+  }
+
+  return { adj, refused, raiseHeld, wouldHaveBeen: rawAdj, confidence,
     actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
@@ -1284,6 +1336,9 @@ const syncHistory = async (uid, hist) => {
       target_kcal: h.targetKcal ?? null, target_protein: h.targetProtein ?? null,
       target_fat: h.targetFat ?? null, target_fat_floor: h.targetFatFloor ?? null,
       floored: h.floored ?? null,
+      // energy-safety/10 — null for snapshots recorded before this field existed, same
+      // honest-null convention as the target_* columns above.
+      workout_bonus: h.workoutBonus ?? null,
       updated_at:now })),
     "user_id,date");
 };
@@ -1426,6 +1481,7 @@ const pullFromSupabase = async uid => {
         targetKcal: h.target_kcal ?? null, targetProtein: h.target_protein ?? null,
         targetFat: h.target_fat ?? null, targetFatFloor: h.target_fat_floor ?? null,
         floored: h.floored ?? null,
+        workoutBonus: h.workout_bonus ?? null,
       }));
       await ss("history", JSON.stringify(fullHist));
       for (const snap of fullHist) {
@@ -6442,14 +6498,20 @@ function App() {
     const wk = new Date(); wk.setDate(wk.getDate() - 7);
     const weekAgoKey = dateKey(wk);
     const inFlight = adjLog.filter(a => a.date > weekAgoKey).reduce((s, a) => s + a.adj, 0);
-    const result = runCalibration(hist, updated, base + tdeeAdj, inFlight);
+    const { settledAdj, daysSinceLastRaise } = raiseContext(adjLog, tdeeAdj);
+    const result = runCalibration(hist, updated, base + tdeeAdj, inFlight,
+      { daysSinceLastRaise, tdeeAdj, settledAdj });
     if (result && Math.abs(result.adj) >= CAL_MIN_STEP) {
       const newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
       const applied = newAdj - tdeeAdj;
       if (applied !== 0) {
         setTdeeAdj(newAdj);
         await ss("tdee_adj", String(newAdj));
-        const nextLog = [...adjLog, { date: todayKey(), adj: applied }].slice(-14);
+        // Retention bumped 14→30 (file 09): raiseContext looks back RAISE_REVERSAL_WINDOW_DAYS
+        // (21), and a dense run of Maintain/Bulk adjustments could otherwise evict an entry
+        // still inside that window before it aged out, silently under-counting the "recent"
+        // portion and over-protecting settled evidence.
+        const nextLog = [...adjLog, { date: todayKey(), adj: applied }].slice(-30);
         setAdjLog(nextLog);
         await ss("tdee_adj_log", JSON.stringify(nextLog));
         if (authState === "premium" && authUser?.id)
@@ -6512,7 +6574,9 @@ function App() {
   // as it stands today — the same reasoning as gainWhileCutting above.
   const heldWeekAgo = new Date(); heldWeekAgo.setDate(heldWeekAgo.getDate() - 7);
   const heldInFlight = adjLog.filter(a => a.date > dateKey(heldWeekAgo)).reduce((s, a) => s + a.adj, 0);
-  const correctionHeld = !!(runCalibration(hist, weighIns, baseTDEE + tdeeAdj, heldInFlight) || {}).refused;
+  const heldRaiseCtx = raiseContext(adjLog, tdeeAdj);
+  const correctionHeld = !!(runCalibration(hist, weighIns, baseTDEE + tdeeAdj, heldInFlight,
+    { ...heldRaiseCtx, tdeeAdj }) || {}).refused;
   const effectiveMode = customKcal != null
     ? (customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain")
     : mode;
@@ -6600,7 +6664,11 @@ function App() {
       targetKcal: Math.round(targets.kcal), targetProtein: Math.round(targets.protein),
       targetFat: Math.round(targets.fat),
       targetFatFloor: Math.round((Number(p.weight) || 80) * FAT_FLOOR_PER_KG),
-      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied) };
+      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied),
+      // energy-safety/10 — the earn-to-eat bonus actually folded into TODAY's target, so
+      // runCalibration can credit real training burn instead of reading it as a higher
+      // metabolism (see runCalibration's avgBonus, app.jsx ~line 733).
+      workoutBonus: Math.round(targets.bonus || 0) };
     const upd = [...hist.filter(d => d.date !== k), snap]
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(upd);

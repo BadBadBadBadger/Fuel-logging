@@ -9,10 +9,6 @@ function _isNativeReflectConstruct() { try { var t = !Boolean.prototype.valueOf.
 function _getPrototypeOf(t) { return _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf.bind() : function (t) { return t.__proto__ || Object.getPrototypeOf(t); }, _getPrototypeOf(t); }
 function _inherits(t, e) { if ("function" != typeof e && null !== e) throw new TypeError("Super expression must either be null or a function"); t.prototype = Object.create(e && e.prototype, { constructor: { value: t, writable: !0, configurable: !0 } }), Object.defineProperty(t, "prototype", { writable: !1 }), e && _setPrototypeOf(t, e); }
 function _setPrototypeOf(t, e) { return _setPrototypeOf = Object.setPrototypeOf ? Object.setPrototypeOf.bind() : function (t, e) { return t.__proto__ = e, t; }, _setPrototypeOf(t, e); }
-function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
-function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
-function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
@@ -21,6 +17,10 @@ function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present,
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
 function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
@@ -1269,9 +1269,44 @@ var CAL_STEP_CAP = {
 var CAL_STEP_ROUND = 25; // step granularity (kcal)
 var CAL_MIN_STEP = 25; // ignore sub-25 nudges (applied at the call site)
 var ADJ_CAP = 600; // accumulated adjustment limit (feature 04)
+// features/energy-safety/09 — a raise can't be re-credited off substantially the same
+// evidence a prior raise already used (recentAvg/olderAvg are themselves 7-day windows),
+// and while cutting, a lowering signal can undo a raise's own recent, still-provisional
+// work without touching older, settled evidence. Both `@founder-blocking` in the spec;
+// confirmed at these values 2026-09-11.
+var RAISE_MIN_INTERVAL_DAYS = 7;
+var RAISE_REVERSAL_WINDOW_DAYS = 21;
 
+// How much of the current adjustment is still "provisional" (from a raise applied within
+// RAISE_REVERSAL_WINDOW_DAYS) vs "settled" (older), and how many days since the last
+// APPLIED raise — both derived from adjLog, which already exists for dead-time
+// compensation. One function so the two call sites (applying a new step, and previewing
+// whether a correction is currently held) can never quietly diverge.
+var raiseContext = function raiseContext(adjLog, tdeeAdj) {
+  var now = Date.now();
+  var cutoffKey = dateKey(new Date(now - RAISE_REVERSAL_WINDOW_DAYS * 86400000));
+  var recentPortion = adjLog.filter(function (a) {
+    return a.date > cutoffKey;
+  }).reduce(function (s, a) {
+    return s + a.adj;
+  }, 0);
+  var lastRaise = _toConsumableArray(adjLog).reverse().find(function (a) {
+    return a.adj > 0;
+  });
+  return {
+    settledAdj: tdeeAdj - recentPortion,
+    daysSinceLastRaise: lastRaise ? Math.floor((now - new Date(lastRaise.date + "T00:00:00").getTime()) / 86400000) : Infinity
+  };
+};
 var runCalibration = function runCalibration(history, weighIns, baseTDEE) {
   var inFlightAdj = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
+  var raiseState = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
+  var _raiseState$daysSince = raiseState.daysSinceLastRaise,
+    daysSinceLastRaise = _raiseState$daysSince === void 0 ? Infinity : _raiseState$daysSince,
+    _raiseState$tdeeAdj = raiseState.tdeeAdj,
+    tdeeAdj = _raiseState$tdeeAdj === void 0 ? 0 : _raiseState$tdeeAdj,
+    _raiseState$settledAd = raiseState.settledAdj,
+    settledAdj = _raiseState$settledAd === void 0 ? tdeeAdj : _raiseState$settledAd;
   if (weighIns.length < CAL_MIN_WEIGHINS) return null;
   var today = new Date();
   var weekAgo = new Date(today);
@@ -1293,6 +1328,7 @@ var runCalibration = function runCalibration(history, weighIns, baseTDEE) {
   var trusted = recentHist.map(function (d) {
     return {
       kcal: d.kcal,
+      bonus: d.workoutBonus || 0,
       w: (d.logs ? intakeConfidence(d.logs) : 100) / 100
     };
   }).filter(function (x) {
@@ -1305,7 +1341,16 @@ var runCalibration = function runCalibration(history, weighIns, baseTDEE) {
   var avgKcal = trusted.reduce(function (a, x) {
     return a + x.kcal * x.w;
   }, 0) / wSum;
-  var avgDeficit = baseTDEE - avgKcal;
+  // features/energy-safety/10 — baseTDEE alone is what the day was expected to burn WITHOUT
+  // training. A day the user trained, the target already carries a workout bonus (earn-to-
+  // eat) on top of baseTDEE — so eating up near that elevated, correct target must credit
+  // the training's own burn too, or it reads as "burns more than we thought" from the bonus
+  // alone, every single week the user trains. avgBonus defaults to 0 for snapshots recorded
+  // before this field existed — no real value for those days, same as target_kcal's null.
+  var avgBonus = trusted.reduce(function (a, x) {
+    return a + x.bonus * x.w;
+  }, 0) / wSum;
+  var avgDeficit = baseTDEE + avgBonus - avgKcal;
   var expectedChange = -(avgDeficit * 7) / 7700;
   var discrepancy = actualChange - expectedChange;
   var errKcal = -discrepancy * 7700 / 7; // signed estimate error, kcal/day
@@ -1339,10 +1384,31 @@ var runCalibration = function runCalibration(history, weighIns, baseTDEE) {
   var wasCutting = weekDays.filter(function (d) {
     return d.mode === "cut";
   }).length > weekDays.length / 2;
-  var refused = rawAdj < 0 && wasCutting;
+
+  // features/energy-safety/09, Fix A — a raise re-triggering under RAISE_MIN_INTERVAL_DAYS
+  // after the last APPLIED raise is still mostly the same evidence as that raise already
+  // used (recentAvg/olderAvg are themselves 7-day windows), so it's held rather than
+  // credited again. Nothing is hidden: `wouldHaveBeen` still reports it, same as `refused`.
+  var raiseHeld = rawAdj > 0 && daysSinceLastRaise < RAISE_MIN_INTERVAL_DAYS;
+
+  // Fix B — while cutting, a lowering signal can erode a raise's OWN recent, still-
+  // provisional contribution, but never dip below the older, settled evidence beneath it —
+  // exactly file 04's original protection, now scoped to what's actually still provisional
+  // instead of the whole accumulated adjustment. With no recent raise (settledAdj ===
+  // tdeeAdj), this reduces to file 04's original refusal, unchanged.
+  var adj = rawAdj,
+    refused = false;
+  if (raiseHeld) {
+    adj = 0;
+  } else if (rawAdj < 0 && wasCutting) {
+    var floor = Math.min(settledAdj, tdeeAdj); // the floor can never sit above the current value
+    adj = Math.max(floor, tdeeAdj + rawAdj) - tdeeAdj;
+    refused = adj === 0;
+  }
   return {
-    adj: refused ? 0 : rawAdj,
+    adj: adj,
     refused: refused,
+    raiseHeld: raiseHeld,
     wouldHaveBeen: rawAdj,
     confidence: confidence,
     actualChange: Math.round(actualChange * 10) / 10,
@@ -2436,7 +2502,7 @@ var syncHistory = /*#__PURE__*/function () {
           now = new Date().toISOString();
           _context15.n = 2;
           return syncUpsert("history_snapshots", hist.map(function (h) {
-            var _h$targetKcal, _h$targetProtein, _h$targetFat, _h$targetFatFloor, _h$floored;
+            var _h$targetKcal, _h$targetProtein, _h$targetFat, _h$targetFatFloor, _h$floored, _h$workoutBonus;
             return {
               user_id: uid,
               date: h.date,
@@ -2456,6 +2522,9 @@ var syncHistory = /*#__PURE__*/function () {
               target_fat: (_h$targetFat = h.targetFat) !== null && _h$targetFat !== void 0 ? _h$targetFat : null,
               target_fat_floor: (_h$targetFatFloor = h.targetFatFloor) !== null && _h$targetFatFloor !== void 0 ? _h$targetFatFloor : null,
               floored: (_h$floored = h.floored) !== null && _h$floored !== void 0 ? _h$floored : null,
+              // energy-safety/10 — null for snapshots recorded before this field existed, same
+              // honest-null convention as the target_* columns above.
+              workout_bonus: (_h$workoutBonus = h.workoutBonus) !== null && _h$workoutBonus !== void 0 ? _h$workoutBonus : null,
               updated_at: now
             };
           }), "user_id,date");
@@ -2895,7 +2964,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
             break;
           }
           fullHist = histR.data.map(function (h) {
-            var _ref32, _waterByDate$h$date, _h$target_kcal, _h$target_protein, _h$target_fat, _h$target_fat_floor, _h$floored2;
+            var _ref32, _waterByDate$h$date, _h$target_kcal, _h$target_protein, _h$target_fat, _h$target_fat_floor, _h$floored2, _h$workout_bonus;
             return {
               date: h.date,
               mode: h.mode,
@@ -2913,7 +2982,8 @@ var pullFromSupabase = /*#__PURE__*/function () {
               targetProtein: (_h$target_protein = h.target_protein) !== null && _h$target_protein !== void 0 ? _h$target_protein : null,
               targetFat: (_h$target_fat = h.target_fat) !== null && _h$target_fat !== void 0 ? _h$target_fat : null,
               targetFatFloor: (_h$target_fat_floor = h.target_fat_floor) !== null && _h$target_fat_floor !== void 0 ? _h$target_fat_floor : null,
-              floored: (_h$floored2 = h.floored) !== null && _h$floored2 !== void 0 ? _h$floored2 : null
+              floored: (_h$floored2 = h.floored) !== null && _h$floored2 !== void 0 ? _h$floored2 : null,
+              workoutBonus: (_h$workout_bonus = h.workout_bonus) !== null && _h$workout_bonus !== void 0 ? _h$workout_bonus : null
             };
           });
           _context17.n = 27;
@@ -14408,7 +14478,7 @@ function App() {
   }();
   var onWeighIn = /*#__PURE__*/function () {
     var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(weight) {
-      var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, result, newAdj, applied, nextLog;
+      var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
           case 0:
@@ -14449,7 +14519,12 @@ function App() {
             }).reduce(function (s, a) {
               return s + a.adj;
             }, 0);
-            result = runCalibration(hist, updated, base + tdeeAdj, inFlight);
+            _raiseContext = raiseContext(adjLog, tdeeAdj), settledAdj = _raiseContext.settledAdj, daysSinceLastRaise = _raiseContext.daysSinceLastRaise;
+            result = runCalibration(hist, updated, base + tdeeAdj, inFlight, {
+              daysSinceLastRaise: daysSinceLastRaise,
+              tdeeAdj: tdeeAdj,
+              settledAdj: settledAdj
+            });
             if (!(result && Math.abs(result.adj) >= CAL_MIN_STEP)) {
               _context57.n = 5;
               break;
@@ -14464,10 +14539,14 @@ function App() {
             _context57.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
+            // Retention bumped 14→30 (file 09): raiseContext looks back RAISE_REVERSAL_WINDOW_DAYS
+            // (21), and a dense run of Maintain/Bulk adjustments could otherwise evict an entry
+            // still inside that window before it aged out, silently under-counting the "recent"
+            // portion and over-protecting settled evidence.
             nextLog = [].concat(_toConsumableArray(adjLog), [{
               date: todayKey(),
               adj: applied
-            }]).slice(-14);
+            }]).slice(-30);
             setAdjLog(nextLog);
             _context57.n = 4;
             return ss("tdee_adj_log", JSON.stringify(nextLog));
@@ -14613,7 +14692,10 @@ function App() {
   }).reduce(function (s, a) {
     return s + a.adj;
   }, 0);
-  var correctionHeld = !!(runCalibration(hist, weighIns, baseTDEE + tdeeAdj, heldInFlight) || {}).refused;
+  var heldRaiseCtx = raiseContext(adjLog, tdeeAdj);
+  var correctionHeld = !!(runCalibration(hist, weighIns, baseTDEE + tdeeAdj, heldInFlight, _objectSpread(_objectSpread({}, heldRaiseCtx), {}, {
+    tdeeAdj: tdeeAdj
+  })) || {}).refused;
   var effectiveMode = customKcal != null ? customKcal > effectiveTDEE ? "bulk" : customKcal < effectiveTDEE ? "cut" : "maintain" : mode;
 
   // Weigh-in check-in nudge (energy Step 2 companion; features/energy-safety/06). Anchor on
@@ -14762,7 +14844,11 @@ function App() {
       targetProtein: Math.round(targets.protein),
       targetFat: Math.round(targets.fat),
       targetFatFloor: Math.round((Number(p.weight) || 80) * FAT_FLOOR_PER_KG),
-      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied)
+      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied),
+      // energy-safety/10 — the earn-to-eat bonus actually folded into TODAY's target, so
+      // runCalibration can credit real training burn instead of reading it as a higher
+      // metabolism (see runCalibration's avgBonus, app.jsx ~line 733).
+      workoutBonus: Math.round(targets.bonus || 0)
     };
     var upd = [].concat(_toConsumableArray(hist.filter(function (d) {
       return d.date !== k;

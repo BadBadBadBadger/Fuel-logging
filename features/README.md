@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-09. **35 files · 333 scenarios.** Replaces the single
+**Updated:** 2026-09-11. **37 files · 347 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -85,6 +85,26 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [06-weigh-in-engagement](energy-safety/06-weigh-in-engagement.feature) | Encouraging weigh-ins without pressure | 11 | built |
 | [07-smoothed-earn-to-eat](energy-safety/07-smoothed-earn-to-eat.feature) | Spreading earned workout calories across days | 8 | built |
 | [08-maintenance-bmr-floor](energy-safety/08-maintenance-bmr-floor.feature) | Maintenance never floored below sedentary TDEE (BMR × 1.2) | 5 | built |
+| [09-adaptive-tdee-raise-safeguards](energy-safety/09-adaptive-tdee-raise-safeguards.feature) | A raise needs fresh evidence, and can undo its own recent mistake while cutting | 9 | built |
+| [10-workout-burn-calibration-credit](energy-safety/10-workout-burn-calibration-credit.feature) | Calibration credits real training burn instead of reading it as a higher metabolism | 5 | built |
+
+> **`09` and `10` are new, 2026-09-11**, both written from a live bug report rather than a planning
+> pass: the founder's own adaptive adjustment hit its +600 cap in five days off two days of mostly-
+> water weight loss. A QA/Nutrition-Coach/Critical-Thinking/Engineer swarm reproduced `09`'s bug
+> exactly against his real Supabase data (`09-tdee-raise-runaway-bug-swarm-review.md`) and found two
+> compounding defects in `runCalibration`: a raise can be re-credited off substantially the same
+> short-lived swing as new weigh-ins trickle through overlapping 7-day windows (Fix A), and file
+> `04`'s own cutting-aware refusal — correct for genuine lowering evidence — had no way to instead
+> undo its own recent bad raise (Fix B). `04`'s asymmetry is not reopened; its "Good news still
+> arrives at full speed" scenario got a small `REFINED` note pointing here. Both proposed constants
+> (`RAISE_MIN_INTERVAL_DAYS`=7, `RAISE_REVERSAL_WINDOW_DAYS`=21) were confirmed by the founder the
+> same day. Mid-session the founder raised a THIRD, independent suspicion — the activity multiplier
+> and/or logged workouts inflating the estimate — and a Critical-Thinking pass confirmed a real,
+> deterministic (not noise) defect: `runCalibration` compared intake against `baseTDEE` alone,
+> never crediting the earn-to-eat bonus already baked into the target, so a trained, on-target week
+> manufactured a false raise every time, with no bad luck required. That fix, scoped separately on
+> the Critical Thinker's own recommendation because it's a different failure class than `09`'s noise
+> bug, is `10`. Both built same-day: Jest 329/329, Playwright 92/92, sw v79.
 
 ## dashboard/ — how the day reads at a glance
 

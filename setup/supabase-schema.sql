@@ -211,6 +211,14 @@ ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS target_fat       NUMERIC;
 ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS target_fat_floor NUMERIC;
 ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS floored          BOOLEAN;
 
+-- energy-safety/10 (workout-burn calibration credit), added 2026-09-11. Records the exact
+-- earn-to-eat bonus that day's target carried, so runCalibration can credit real training
+-- burn instead of reading "ate more, still lost weight" as a higher metabolism every week
+-- the user trains — see 09-tdee-raise-runaway-bug-swarm-review.md and
+-- 10-workout-burn-calibration-credit.feature for the bug and the fix.
+-- ⚠️ RUN THIS BEFORE deploying the build that writes it — same rule as above.
+ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS workout_bonus    NUMERIC;
+
 -- ── AI coach tip cache ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS coach_tips (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

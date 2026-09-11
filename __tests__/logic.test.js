@@ -342,7 +342,24 @@ const CAL_GAIN         = 0.8;
 const CAL_STEP_CAP     = { low: 100, medium: 150, high: 200 };
 const CAL_STEP_ROUND   = 25;
 const ADJ_CAP          = 600;
-const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
+// Mirror of app.jsx RAISE_MIN_INTERVAL_DAYS / RAISE_REVERSAL_WINDOW_DAYS / raiseContext
+// (features/energy-safety/09).
+const RAISE_MIN_INTERVAL_DAYS    = 7;
+const RAISE_REVERSAL_WINDOW_DAYS = 21;
+const raiseContext = (adjLog, tdeeAdj) => {
+  const now = Date.now();
+  const cutoffKey = dateKey(new Date(now - RAISE_REVERSAL_WINDOW_DAYS * 86400000));
+  const recentPortion = adjLog.filter(a => a.date > cutoffKey).reduce((s, a) => s + a.adj, 0);
+  const lastRaise = [...adjLog].reverse().find(a => a.adj > 0);
+  return {
+    settledAdj: tdeeAdj - recentPortion,
+    daysSinceLastRaise: lastRaise
+      ? Math.floor((now - new Date(lastRaise.date + "T00:00:00").getTime()) / 86400000)
+      : Infinity,
+  };
+};
+const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState = {}) => {
+  const { daysSinceLastRaise = Infinity, tdeeAdj = 0, settledAdj = tdeeAdj } = raiseState;
   if (weighIns.length < CAL_MIN_WEIGHINS) return null;
   const today = new Date();
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -361,12 +378,14 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
   // Confidence-weight intake; drop near-guess days (<50%) so a biased AI estimate
   // can't silently retrain TDEE. Days without inspectable logs default to 100%.
   const trusted = recentHist
-    .map(d => ({ kcal: d.kcal, w: (d.logs ? intakeConfidence(d.logs) : 100) / 100 }))
+    .map(d => ({ kcal: d.kcal, bonus: d.workoutBonus || 0, w: (d.logs ? intakeConfidence(d.logs) : 100) / 100 }))
     .filter(x => x.w >= 0.5);
   if (trusted.length < 4) return null;
   const wSum         = trusted.reduce((a, x) => a + x.w, 0);
   const avgKcal      = trusted.reduce((a, x) => a + x.kcal * x.w, 0) / wSum;
-  const avgDeficit   = baseTDEE - avgKcal;
+  // Mirror of app.jsx Fix C (features/energy-safety/10): credit real training burn.
+  const avgBonus     = trusted.reduce((a, x) => a + x.bonus * x.w, 0) / wSum;
+  const avgDeficit   = (baseTDEE + avgBonus) - avgKcal;
   const expectedChange = -(avgDeficit * 7) / 7700;
   const discrepancy  = actualChange - expectedChange;
   const errKcal      = -discrepancy * 7700 / 7;
@@ -377,8 +396,17 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0) => {
   // The asymmetry (file 04): only ever LOWER the estimate when the user was not cutting.
   const weekDays   = history.filter(d => d.date >= weekAgoKey);
   const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
-  const refused    = rawAdj < 0 && wasCutting;
-  return { adj: refused ? 0 : rawAdj, refused, wouldHaveBeen: rawAdj, confidence,
+  // Mirror of app.jsx Fix A/B (features/energy-safety/09).
+  const raiseHeld = rawAdj > 0 && daysSinceLastRaise < RAISE_MIN_INTERVAL_DAYS;
+  let adj = rawAdj, refused = false;
+  if (raiseHeld) {
+    adj = 0;
+  } else if (rawAdj < 0 && wasCutting) {
+    const floor = Math.min(settledAdj, tdeeAdj);
+    adj = Math.max(floor, tdeeAdj + rawAdj) - tdeeAdj;
+    refused = adj === 0;
+  }
+  return { adj, refused, raiseHeld, wouldHaveBeen: rawAdj, confidence,
     actualChange: Math.round(actualChange * 10) / 10,
     expectedChange: Math.round(expectedChange * 10) / 10, avgKcal: Math.round(avgKcal) };
 };
@@ -1232,11 +1260,18 @@ describe("runCalibration", () => {
   // user eating exactly at target while their true TDEE is 500 above the seed; each day
   // re-anchors the trailing windows to "today" and applies the ≥25 step under the ±600 cap
   // with dead-time compensation, exactly as the app does.
-  test("closes a 500 kcal gap in ≤3 weeks and settles without overshooting the cap", () => {
+  test("closes a 500 kcal gap without overshooting the cap, now paced by Fix A", () => {
+    // REVISED (features/energy-safety/09, Fix A, 2026-09-11): this used to close in ≤21 days
+    // by applying a raise on nearly every eligible weigh-in. That same speed is exactly what
+    // let noise reach the cap in 5 days against a REAL, non-monotonic weigh-in series (see
+    // 09-tdee-raise-runaway-bug-swarm-review.md) — so a genuine, smooth gap now converges over
+    // a materially longer, still-bounded window, paced by RAISE_MIN_INTERVAL_DAYS between
+    // applied raises. It must still close well within the 35-day simulation, still never
+    // overshoot ADJ_CAP, and still never take a single step past the high-confidence cap.
     const dk = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
     const seed = 2200, trueTDEE = 2700, today = new Date();
-    let tdeeAdj = 0, weight = 80, closedDay = null, maxAdj = 0, maxStep = 0;
-    const series = [], adjLog = [], N = 35;
+    let tdeeAdj = 0, weight = 80, closedDay = null, maxAdj = 0, maxStep = 0, lastRaiseDay = null;
+    const series = [], adjLog = [], N = 35; // adjLog: { dayIdx, adj } — one simulated day per iteration
     for (let day = 0; day < N; day++) {
       const intake = seed + tdeeAdj;
       weight += (intake - trueTDEE) / 7700;            // maintain, perfect adherence
@@ -1245,22 +1280,134 @@ describe("runCalibration", () => {
       const weighIns = series.map((s, i) => ({ date: dk(new Date(today.getTime() - (len-1-i)*86400000)), weight: s.weight }));
       const history  = series.map((s, i) => ({ date: dk(new Date(today.getTime() - (len-1-i)*86400000)), kcal: s.kcal }));
       const inFlight = adjLog.filter(a => a.dayIdx > day - 7).reduce((s, a) => s + a.adj, 0);
-      const r = runCalibration(history, weighIns, seed + tdeeAdj, inFlight);
+      // Mirror of raiseContext (app.jsx), expressed in this simulation's own dayIdx clock
+      // rather than real calendar dates — the loop already re-anchors every iteration's
+      // weighIns/history to a fixed real "today", so dayIdx is the only genuine clock here.
+      const recentPortion = adjLog.filter(a => a.dayIdx > day - RAISE_REVERSAL_WINDOW_DAYS).reduce((s, a) => s + a.adj, 0);
+      const settledAdj = tdeeAdj - recentPortion;
+      const daysSinceLastRaise = lastRaiseDay == null ? Infinity : day - lastRaiseDay;
+      const r = runCalibration(history, weighIns, seed + tdeeAdj, inFlight,
+        { daysSinceLastRaise, tdeeAdj, settledAdj });
       if (r && Math.abs(r.adj) >= 25) {
         const prev = tdeeAdj;
         tdeeAdj = Math.max(-600, Math.min(600, tdeeAdj + r.adj));
         const applied = tdeeAdj - prev;
-        if (applied !== 0) { adjLog.push({ dayIdx: day, adj: applied }); maxStep = Math.max(maxStep, Math.abs(applied)); }
+        if (applied !== 0) {
+          adjLog.push({ dayIdx: day, adj: applied });
+          maxStep = Math.max(maxStep, Math.abs(applied));
+          if (applied > 0) lastRaiseDay = day;
+        }
       }
       maxAdj = Math.max(maxAdj, tdeeAdj);
       if (closedDay === null && tdeeAdj >= 450) closedDay = day + 1;
     }
     expect(closedDay).not.toBeNull();
-    expect(closedDay).toBeLessThanOrEqual(21);         // ≤ 3 weeks
+    expect(closedDay).toBeLessThanOrEqual(35);         // closes within the simulated window
     expect(maxAdj).toBeLessThan(600);                  // never pinned at the safety cap (no runaway overshoot)
     expect(maxStep).toBeLessThanOrEqual(200);          // no single lurch beyond the high-confidence cap
     expect(tdeeAdj).toBeGreaterThanOrEqual(450);       // settled at the true gap (±50)
     expect(tdeeAdj).toBeLessThanOrEqual(575);
+  });
+
+  // features/energy-safety/09, Fix A — a raise re-triggering under RAISE_MIN_INTERVAL_DAYS
+  // after the last applied raise is held, not credited again.
+  test("Fix A: a raise within RAISE_MIN_INTERVAL_DAYS of the last applied raise is held", () => {
+    const held = scenario(0, 20); // medium confidence, positive signal (loses faster than expected)
+    expect(held.wouldHaveBeen).toBeGreaterThan(0);
+    const r = runCalibration(
+      Array.from({ length: 8 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - 7 + i);
+        return { date: d.toISOString().split("T")[0], kcal: 1800 };
+      }).filter(d => d.date >= (() => { const w = new Date(); w.setDate(w.getDate() - 7); return w.toISOString().split("T")[0]; })()),
+      Array.from({ length: 20 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - 19 + i);
+        return { date: d.toISOString().split("T")[0], weight: 80 - i * 0.1 };
+      }),
+      2400, 0, { daysSinceLastRaise: 3, tdeeAdj: 100, settledAdj: 100 }
+    );
+    expect(r.raiseHeld).toBe(true);
+    expect(r.adj).toBe(0);
+    expect(r.wouldHaveBeen).toBeGreaterThan(0); // nothing hidden — still reported
+  });
+
+  test("Fix A: the very first raise is never held back (no prior raise in adjLog)", () => {
+    const r = scenario(0, 20); // daysSinceLastRaise defaults to Infinity via raiseState = {}
+    expect(r.raiseHeld).toBe(false);
+    expect(r.adj).toBe(r.wouldHaveBeen);
+  });
+
+  // features/energy-safety/09, Fix B — while cutting, a lowering signal can erode a raise's
+  // own recent contribution, never the settled portion beneath it.
+  const gainingWhileCuttingCase = () => {
+    const history = Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - 7 + i);
+      return { date: d.toISOString().split("T")[0], kcal: 2400, mode: "cut" };
+    });
+    const weighIns = Array.from({ length: 20 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - 19 + i);
+      return { date: d.toISOString().split("T")[0], weight: 80 + i * 0.05 }; // gaining, not losing
+    });
+    return { history, weighIns };
+  };
+
+  test("Fix B: a raw step smaller than the recent cushion applies in full", () => {
+    const { history, weighIns } = gainingWhileCuttingCase();
+    // tdeeAdj 600, of which 500 is "recent" (settledAdj 100) — a big cushion, so whatever the
+    // raw signal turns out to be here, it applies unclipped, exactly as file 04 always did.
+    const r = runCalibration(history, weighIns, 2400 + 600, 0,
+      { daysSinceLastRaise: Infinity, tdeeAdj: 600, settledAdj: 100 });
+    expect(r.wouldHaveBeen).toBeLessThan(0);   // gaining while cutting → a lowering signal
+    expect(r.adj).toBe(r.wouldHaveBeen);       // well inside the cushion — nothing clipped
+    expect(r.refused).toBe(false);
+  });
+
+  test("Fix B: a raw step bigger than the recent cushion is clipped to the settled floor", () => {
+    const { history, weighIns } = gainingWhileCuttingCase();
+    // tdeeAdj 150, of which only 50 is "recent" (settledAdj 100) — a small cushion, so the
+    // same raw signal (bounded to at most 200 by CAL_STEP_CAP) can genuinely exceed it here.
+    const r = runCalibration(history, weighIns, 2400 + 150, 0,
+      { daysSinceLastRaise: Infinity, tdeeAdj: 150, settledAdj: 100 });
+    expect(r.wouldHaveBeen).toBeLessThan(-50); // confirms this scenario really would overshoot the cushion
+    expect(r.adj).toBe(-50);                   // clipped to exactly what's left above the settled floor
+    expect(150 + r.adj).toBe(100);             // lands exactly on the settled floor, never below
+    expect(r.refused).toBe(false);             // NOT a full refusal — partial erosion still applied
+  });
+
+  test("Fix B: with no recent raise, file 04's original refusal is unchanged", () => {
+    const history = Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - 7 + i);
+      return { date: d.toISOString().split("T")[0], kcal: 2400, mode: "cut" };
+    });
+    const weighIns = Array.from({ length: 20 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - 19 + i);
+      return { date: d.toISOString().split("T")[0], weight: 80 + i * 0.05 };
+    });
+    // settledAdj === tdeeAdj: nothing recent to erode.
+    const r = runCalibration(history, weighIns, 2400 + 400, 0,
+      { daysSinceLastRaise: Infinity, tdeeAdj: 400, settledAdj: 400 });
+    expect(r.adj).toBe(0);
+    expect(r.refused).toBe(true);
+  });
+
+  // features/energy-safety/10 — crediting real training burn in the calibration model.
+  test("Fix C: a workout bonus baked into the target is credited, not read as a higher TDEE", () => {
+    const weighIns = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - 13 + i);
+      return { date: d.toISOString().split("T")[0], weight: 80 - i * 0.065 }; // ~0.45kg/wk, matches a 500 kcal/day deficit
+    });
+    const withoutBonus = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - 6 + i);
+      return { date: d.toISOString().split("T")[0], kcal: 1900 }; // eating to a plain 500-kcal cut, no training
+    });
+    const withBonus = withoutBonus.map(d => ({ ...d, kcal: d.kcal + 300, workoutBonus: 300 })); // + a trained, earn-to-eat day
+    const base = 2400;
+    const plain  = runCalibration(withoutBonus, weighIns, base);
+    const trained = runCalibration(withBonus, weighIns, base);
+    // Without Fix C, eating 300 kcal more (correctly, for real training burn) while losing
+    // weight at the SAME real rate would read as a spurious raise. With the bonus credited,
+    // the two cases should land close to the same estimate error.
+    expect(Math.abs(trained.avgKcal - plain.avgKcal - 300)).toBeLessThan(1); // sanity: bonus really is +300 intake
+    expect(Math.abs((trained.wouldHaveBeen ?? 0) - (plain.wouldHaveBeen ?? 0))).toBeLessThanOrEqual(25);
   });
 });
 

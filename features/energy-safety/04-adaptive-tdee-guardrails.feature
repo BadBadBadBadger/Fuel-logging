@@ -158,11 +158,20 @@ Feature: The app's own guess can never talk you into under-eating
     And it does not tell me to eat less, or treat the rise as something I did wrong
     And the card has no mode buttons — changing mode is the picker's job
 
+  # REFINED by `09-adaptive-tdee-raise-safeguards.feature`, 2026-09-11 (`@draft`, not yet built).
+  # A live bug showed this scenario's own evidence can be noise, not signal: two days of
+  # mostly-water weight loss on a short history drove this loop to its hard cap in five days,
+  # reproduced and confirmed against real data (`09-tdee-raise-runaway-bug-swarm-review.md`).
+  # "Full speed" still means undamped — the STEP is never shrunk — but 09 adds a minimum
+  # interval between two APPLIED raises, so the same short-lived swing can't be credited
+  # more than once as it trickles through overlapping 7-day windows. This scenario is regression
+  # cover for the step itself; 09 owns the timing rule around it.
   Scenario: Good news still arrives at full speed
     Given my 7-day average weight has fallen faster than the app predicted
+    And enough days have passed since the last applied raise (see file 09)
     When the weekly calibration runs
     Then my target is raised by the full step the evidence supports
-    And no damping or refusal applies in this direction
+    And no damping shrinks that step — only file 09's timing rule can hold it entirely
 
   Scenario Outline: Lowering is refused whenever I am cutting, whatever the scale did
     Given my prescribed target sits <position> maintenance
