@@ -29,23 +29,36 @@ read each other → implement → update documentation.
 | 1 | QA review | **Launched, did not report back.** No file written. |
 | 2 | Engineering review | **Launched, did not report back.** No file written. |
 | 3 | Nutrition-coach review | ✅ `swarm/03-nutrition-coach.md` (546 lines) |
-| 4 | Design-lead review | **Launched, did not report back.** No file written. |
-| 5 | Critical-thinking review | **Launched, did not report back.** No file written. |
+| 4 | Design-lead review | ✅ `swarm/04-design-lead.md` |
+| 5 | Critical-thinking review | ✅ `swarm/05-critical-thinking.md` (556 lines) |
 | 6 | Anti-jargon review | ✅ `swarm/06-anti-jargon.md` (400 lines) |
 | 7 | Critical-thinking-led debate | ❌ not started |
 | 8 | Implement | ❌ not started |
 | 9 | Update documentation | ❌ not started |
 
-Four of the six reviews produced nothing. **Re-run steps 1, 2, 4 and 5 before the debate** — the
-brief they were given is saved verbatim at `swarm/00-brief.md`, so they can be relaunched as-is.
-Gaps that matters most: nobody has yet done the engineering pass on data integrity, and nobody has
-independently checked the report's own arithmetic.
+**Re-run steps 1 and 2 before the debate** — the brief they were given is saved verbatim at
+`swarm/00-brief.md`, so they can be relaunched as-is. The gap that matters: nobody has done the
+engineering pass on data integrity, so the sync and migration risk in any fix is still unassessed.
 
-## What the two completed reviews established
+## What the four completed reviews established
 
-Read the two reports for the full workings. The load-bearing conclusions:
+Read the reports for the full workings. The load-bearing conclusions:
 
-### Settled — two reviewers agreed independently, by different routes
+### The report's arithmetic is correct — all of it
+
+Verified independently: 2665+2580+2334+2228+2504+2927+2331 = **17,569** (the zero day is included
+and invisible, since adding 0 changes nothing). 17569÷8 = 2196.125 → **2196** ✓; ÷7 = 2509.86 →
+**2510** ✓. Fat 67+72+80+80+83+79+83 = **544** ✓; ÷8 = exactly **68** ✓; ÷7 = 77.71 → **78** ✓.
+
+The "maybe it's an 8th day with real data" alternative was tested and **ruled out**: that day would
+need ~0 kcal and exactly 0g fat, i.e. an empty day. Not a competing explanation.
+
+**FL-002's slope figures cannot be checked and do not reproduce.** Five of the seven weights are
+unstated, and the x-variable is unstated too — calendar-day spacing vs reading-index differ by 17%
+with 12/09 missing. The verified finding is **+0.4 kg vs the +1.7 kg shown — a 4× overstatement,
+not a direction reversal.** Do not carry the "+0.87 vs −0.08 kg/week" figures forward as fact.
+
+### Settled — four reviewers agreed independently, by different routes
 
 **FL-003's and FL-010's central claim is false.** No day's `mode` is an input to
 `weeklyIntakeScore`. The amber verdict the founder saw is the six logged days averaging
@@ -80,6 +93,44 @@ promised, so "my burn must be lower" → eat less. That is the exact inference
 - `WEIGHT TREND` (`app.jsx:6090`) also contradicts the app's own copy, which promises "we use your
   7-day trend, not any single day" in three separate places.
 
+### ⚠️ The reference line FL-002 wants to trust is itself broken
+
+**This is the biggest finding in the batch and it is not in the bug report.** The report treats the
+smoothed line on the chart as the trustworthy reading and asks the headline to match it. It is not
+trustworthy.
+
+`weightChartData` (`app.jsx:5632-5639`) rolls over the **range-filtered** array with an
+**expanding 3-to-7-reading window**, not a calendar-day window. Replicated: a **perfectly flat**
+98.5 kg week with one low first reading draws **+0.30 kg** — which is exactly the "about 0.3kg rise"
+the report cites as the chart's honest answer. The comment at `5644-5645` explicitly claims weight
+uses a calendar-day window. It does not.
+
+So "make the headline agree with the chart" would make the headline agree with a second bug. Both
+need fixing, and the chart's line is the one nobody was looking at.
+
+### FL-001's fix as written is a blunt instrument
+
+`filtered` has **six consumers** — `app.jsx:5625, 5931, 6073, 6077, 6108, 6145`. Excluding today
+from `filtered` also deletes today's chart point and today's tappable day row, which nobody asked
+for. The actual defect is narrower: **today is being counted as a complete day worth zero.** The app
+already computes the right denominator twice, at `618-627` and `721` — reuse it rather than filtering
+rows away.
+
+Also note the tempting partial fixes are wrong: changing `W:7`→`6`, or `>=`→`>`, yields **2129** —
+further from the truth than the 2196 it replaces, while the header still reads "7 DAYS".
+
+### The same off-by-one sits in a safety path
+
+FL-001's `>=` off-by-one also appears in `runCalibration` at **`app.jsx:770`**, feeding `wasCutting`
+— which gates whether the calorie target is allowed to be lowered. This is the energy-safety
+mechanism, so the bug is not confined to a display. Fix both or neither.
+
+### Three unreconciled weekly averages
+
+**2196** (History card), **2484** (Dashboard weekly score), **2510** (the truth) — all on screen at
+once, diverging to 324 kcal apart once breakfast is logged. Whatever is built must end with one
+number or with each number plainly labelled as answering a different question.
+
 ### FL-007 — no new column needed, and the report's own fix was rejected
 
 - Entry times are **already stored and synced** (`app.jsx:1340`), so "this log was probably
@@ -98,13 +149,72 @@ promised, so "my burn must be lower" → eat less. That is the exact inference
 2. **The cutoff expression is copy-pasted three times** — `app.jsx:5609` (intake), `5616`
    (weigh-ins), `5646` (body measurements). FL-004 requires intake and weight to use *different*
    windows, so this is not a one-place fix.
-3. **`toISOString()` in those cutoffs is UTC, not local calendar days.** FL-001 is likely two
-   defects braided together: an inclusive `>=` over a 7-day subtraction yielding 8 keys, *and* a
-   timezone shift. Under BST the window can hold 9 rows, not 8, between local midnight and 01:00.
-   Nobody has yet separated these two — that was the engineering pass that did not run.
+3. **`toISOString()` is NOT what causes the ÷8 — the missing upper bound is.** An early guess in
+   this session (mine) was that the UTC date key was the culprit. The engineering pass separated
+   them: the ÷8 comes from there being **no upper bound on the window at all**, so today is included.
+   `toISOString` being UTC is a real but *separate* defect — under BST the window can hold 9 rows,
+   not 8, between local midnight and 01:00. Fix both, but do not confuse them, and do not expect
+   fixing the timezone to fix the average.
+4. **A third defect: there is no dev-clock offset, so the Playwright harness cannot reach this code
+   at all.** Any test plan that assumes the existing harness can drive a date boundary is wrong
+   until that is addressed. This is why 89 Playwright tests never saw FL-001.
 4. **`features/body/02` (`2a9de4c`) touched all three cutoffs and the whole `History` component.**
    Any fix builds on it, not around it.
 5. `sw.js` cache version must be bumped on every build. It is at **v81**.
+
+### ⚠️ FL-010 was refused by the engineering pass — it can silently corrupt the calorie target
+
+Two independent reasons, both worse than the bug FL-010 describes.
+
+**1. Recomputing a past day's target needs inputs that were never stored.** The snapshot
+(`app.jsx:6989-7001`) stores `targetKcal`, `targetFat` and `floored` — all *derived from* that day's
+mode by `calcTargets`, and the grader reads mode and stored target as a pair (`3934`, `3958`).
+Editing the mode alone changes one half of that pair. A correct recomputation needs that day's
+weight, body fat, `tdeeAdj`, workout bonus and custom-kcal override — **none of which are stored**,
+which is the stated purpose of the snapshot (`6977-6984`). The obvious shortcut, shifting the target
+by ±500, is wrong on any day a safety floor held (`calcTargets:403-414`) and would push a historical
+target **below SAFE_MIN**. `h.floored` guards most of that, but a **user-typed custom target is
+invisible**: `customKcalApplied` is set on `targets` (`6967`), never snapshotted, and `floored` reads
+false. Closing that hole needs a new column — which is house rule 5, the one that has already cost
+this repo its sync twice.
+
+**2. Editing a past mode can unblock a TDEE lowering that cannot be undone.** Mode feeds
+`runCalibration`'s `wasCutting` majority (`app.jsx:770-771`), which gates whether a **downward** TDEE
+correction is refused (`784-791`). A CUT→MAINTAIN edit can lift that refusal; the lowering is then
+written to `tdee_adj` and `adjLog` (`6838-6846`), and **editing the mode back does not undo it**. It
+is latent — it fires at the next weigh-in, not at the moment of the edit. This is the
+auto-lowering harm the whole energy-safety workstream exists to prevent.
+
+**Also refused:** FL-002's "take the figure from the ends of the smoothed line" (that differences a
+trailing mean against itself), and FL-007 *if it needs a new column* — it doesn't, `l.id`/`l.time`
+are already stored and synced.
+
+### The design pass's answer to FL-005, with literal copy
+
+Dates identify a window; counts only qualify it. **No header states a day count.**
+
+- Averages card: `DAILY AVERAGE · 6–12 SEP` over `7 of 7 days logged · today not counted yet`
+- List header: `DAY BY DAY · 6–13 SEP`, with the word `TODAY` on today's row only
+- Dashboard ring: `6 of 7 days logged` / `7–13 Sep` on two deliberate lines
+
+Nobody subtracts anything: the list says 6–13, the average says 6–12, and the single row that
+differs is labelled. Add one pure `fmtRange()` helper so every label formats identically, fed by the
+same two local day-keys that filtered the rows.
+
+**FL-002's card:** keep one big number, but only once it is the line's own number —
+`97.6 → 98.0 kg · 8–13 Sep` / `+0.4 kg`, with `Raw readings 97.1–98.8 kg, 6–13 Sep` beneath as a
+separate fact. **Take the colour off entirely:** `diff <= 0 ? accent : bulk` (`app.jsx:6095`) rewards
+a lower number on a scale and paints a gain orange during a bulk. The same flaw is still live on the
+Dashboard badge (`app.jsx:3493`).
+
+**Two more implementation notes from that pass:** writing today's mode through `patch()` silently
+reverts on the next snapshot (`app.jsx:6985-7008`) — it needs one `onSetDayMode` prop routed to
+`handleSetMode`. And `--text-faint` at 9px fails AA contrast in dark mode (4.10:1) on the exact line
+FL-005 is about.
+
+**Don't build:** FL-003's warning (the information is already said twice; replace with one factual
+line) and FL-007 (every available signal is a guess). Design ranked FL-005 High, FL-009 Medium,
+FL-003 Low, FL-007 won't-fix.
 
 ## Founder decisions needed before step 8 — these block implementation
 
@@ -147,10 +257,30 @@ gate. Same question, two screens, possibly two different right answers.
 
 ## Suggested next session, in order
 
-1. Relaunch the four reviews that did not report (QA, engineering, design-lead, critical-thinking)
-   using `swarm/00-brief.md` verbatim. Engineering and critical-thinking are the two biggest gaps.
-2. Run the debate (step 7).
-3. Put the five founder decisions above to the founder **before** writing code.
+1. Relaunch the **QA** review only — the one pass that did not report — using `swarm/00-brief.md`
+   verbatim. Tell it what engineering already found: there is no dev-clock offset, so the Playwright
+   harness cannot drive a date boundary as things stand. That is its first problem to solve, not an
+   afterthought.
+2. Run the debate (step 7) across all six.
+3. Put the founder decisions above to the founder **before** writing code. The FL-010 one is not a
+   preference — engineering refused to build it as specified, so it needs a scope change, not a
+   ruling.
 4. Write the `features/history/01-*.feature` spec, then implement, then Jest, then Playwright.
 5. Update `START-HERE.md`, `DOCS.md` and `features/README.md`. **START-HERE has not been touched
-   this session** — it still describes the v78 state and says Jest 323/323.
+   this session** — it still describes the v78 state and says Jest 323/323, when the tree is at
+   `2a9de4c` with Jest 370/370 and sw v81.
+
+## The shortest defensible first slice, if the founder wants movement before all of that
+
+Four reviews converged on this much being safe, small, and independent of every open decision:
+
+1. **FL-001** — stop counting today as a complete day worth zero. Use the denominator the app
+   already has (`app.jsx:618-627`, `721`); do not filter today's row out of `filtered`.
+2. **The broken rolling line** (`app.jsx:5632-5639`) — a calendar-day window, not an expanding
+   reading-count one, and fix the comment at `5644-5645` that describes the behaviour it doesn't have.
+3. **`runCalibration:770`** — the same off-by-one, on the path that moves the calorie target.
+4. **Take the colour off the weight delta** (`app.jsx:6095`, and `3493` on the Dashboard).
+5. **FL-008** — one edited string.
+
+Everything else waits on a decision or on the debate. **FL-010 should not be attempted in this
+slice.**
