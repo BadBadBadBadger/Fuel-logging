@@ -26,8 +26,8 @@ read each other → implement → update documentation.
 
 | # | Step | Status |
 |---|---|---|
-| 1 | QA review | **Launched, did not report back.** No file written. |
-| 2 | Engineering review | **Launched, did not report back.** No file written. |
+| 1 | QA review | ✅ `swarm/01-qa.md` (836 lines) |
+| 2 | Engineering review | ✅ `swarm/02-engineering.md` (622 lines) |
 | 3 | Nutrition-coach review | ✅ `swarm/03-nutrition-coach.md` (546 lines) |
 | 4 | Design-lead review | ✅ `swarm/04-design-lead.md` |
 | 5 | Critical-thinking review | ✅ `swarm/05-critical-thinking.md` (556 lines) |
@@ -139,6 +139,57 @@ number or with each number plainly labelled as answering a different question.
   which is the evidence of under-eating this app was built to catch. It also breaks a decided
   guardrail (`dashboard/04:691`). FL-001 and FL-007 compound in the same direction — −403 kcal/day
   together.
+
+### ⚠️ The test suite cannot see this code at all — `logic.test.js` is a hand-typed mirror
+
+**This is the answer to "how did 370 green tests miss a ÷8 bug", and it invalidates the suite as
+evidence for anything in `History`.** `__tests__/logic.test.js` contains **zero `require` of
+`app.jsx`**. It is a 3,525-line hand-retyped copy of selected logic. Code that was never copied in
+cannot be tested, and **nothing reports the omission** — the History cutoffs were never mirrored, so
+370 passing tests carry no information about them whatsoever.
+
+The cruelty of it: `weeklyIntakeScore` (`app.jsx:618-627`) divides by *logged* days **correctly**, and
+`logic.test.js:3468` is literally a test named "an unlogged day is excluded from the average". The
+right rule is implemented and tested — on the other engine, 5,000 lines away from the one that shows
+the number the founder reads.
+
+**Write the cheap guard first.** `__tests__/styles.test.js` already exists as the template: a static
+source-text guard, written after a silent bug survived every DOM assertion. **Four lines in that
+style** catch `toISOString().split("T")[0]` and every future recurrence. That is the highest-value
+test in this batch and it does not need a clock, a fixture or a browser.
+
+**And `dayOffset` cannot test the cutoffs** — they ignore `getDevDateOffset()` entirely, so a test
+written that way **passes vacuously**. Combined with the missing dev-clock offset, that is two
+independent reasons the date boundary is currently untestable. Fix the testability before writing
+the date tests.
+
+### QA's corrections to the report, all reproduced against the real screen
+
+Every figure the founder reported by eye is **exact** — `"7 DAYS AVERAGES · 8 DAYS"`, KCAL 2196,
+FAT 68g, `"+1.7 kg"`, `"Based on 6 of 7 days logged"`. FL-009 was measured: dot gaps 48.3px uniform
+across a two-day jump. But:
+
+- **The off-by-one hits every range, not just 7 days.** 30D verified: header reads "31 DAYS",
+  average 2323 against a true 2400.
+- **A naive FL-001 fix breaks FL-004 silently.** The entire chart / averages / day-list block is
+  gated on `filtered.length > 0` (`app.jsx:5930`). Narrow `filtered` to complete days and on day one
+  the weight chart, the body-fat chart and today's weigh-in **all vanish**. No existing test asserts
+  that chart is present.
+- **FL-005's "6 of 7" is correct and deliberately spec'd** (`app.jsx:588`, **2463** — the brief's map
+  said 2455, which was wrong). It counts a different date set on purpose. Label the counts; do not
+  unify them.
+- **FL-008's predicted NaN does not happen** — the guard at `6077` holds. The real symptom is a
+  confident **"0 KCAL"** 30-day average plus two unreachable empty states. That is worse than a NaN:
+  a wrong number gets acted on, a NaN gets reported.
+- **FL-002's fix understates by ~3×** because the window is an expanding prefix (`app.jsx:5633`) — a
+  genuinely linear +0.6 kg week would report +0.2. And "just call the dashboard's `trend7`" shows
+  **nothing at all**, because it returns `null` on his exact data.
+- **FL-003 and FL-007 are unbuilt features, not defects.** FL-004 is an acceptance criterion, not a
+  bug — and QA rates it the riskiest item in the batch.
+
+**Correct suite counts: 370 Jest / 113 Playwright** (not the 323/89 in START-HERE). And
+`features/history/` still has **no `.feature` file** — per house rule, that spec gets written before
+the implementation, not after.
 
 ## Traps — read before writing any code
 
