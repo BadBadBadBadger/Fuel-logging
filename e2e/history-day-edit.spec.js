@@ -64,25 +64,54 @@ test.describe("A past day's mode", () => {
     await shot(page, "history-past-day-mode-corrected");
   });
 
-  test("changing the mode does not move the target behind your back", async ({ page }) => {
-    // The whole point of the deterministic choice: a label must never silently change a number.
+  // Read the target currently shown on the "Scored against" line.
+  const shownTarget = async page => {
+    const t = await page.getByText(/Scored against .* · target /).first().innerText();
+    return parseInt(t.match(/target ([\d,]+) kcal/)[1].replace(/,/g, ""), 10);
+  };
+
+  test("changing the mode re-targets the day for that mode", async ({ page }) => {
+    // The app works out the target for the mode you picked, rather than leaving the day graded
+    // against the one it had. A cut target is a deficit below maintenance, so it must be lower.
     await open(page, { history: history() });
     await openPastDay(page);
 
     await expect(page.getByText(/target 2,709 kcal/)).toBeVisible();
+
     await page.getByRole("button", { name: "CUT" }).click();
-    await expect(page.getByText(/target 2,709 kcal/)).toBeVisible();
+    const cut = await shownTarget(page);
+    expect(cut).not.toBe(2709);
+
+    await page.getByRole("button", { name: "MAINTAIN" }).click();
+    const maintain = await shownTarget(page);
+    expect(cut).toBeLessThan(maintain);
   });
 
-  test("correcting MAINTAIN to CUT turns the day green, because under is never a penalty", async ({ page }) => {
-    // 2,331 against the 2,709 target that actually applied is 378 UNDER. On a cut that is in
-    // range (app.jsx:497). It reads amber only while the day claims to be a maintenance day.
+  test("the re-targeting is stored, so going back and forth lands on the same number", async ({ page }) => {
+    // Computed once when the mode changes and written to the day — never re-derived on read,
+    // so the number cannot drift as the adaptive TDEE moves on.
     await open(page, { history: history() });
     await openPastDay(page);
 
-    await expect(page.getByText(/378 under/)).toBeVisible();
     await page.getByRole("button", { name: "CUT" }).click();
-    await expect(page.getByText(/Scored against CUT · target 2,709 kcal · 378 under/)).toBeVisible();
+    const first = await shownTarget(page);
+    await page.getByRole("button", { name: "BULK" }).click();
+    await page.getByRole("button", { name: "CUT" }).click();
+    expect(await shownTarget(page)).toBe(first);
+  });
+
+  test("a typed target survives until the mode is changed again", async ({ page }) => {
+    // Overriding is the last word — until you pick a different mode, which re-targets the day.
+    await open(page, { history: history() });
+    await openPastDay(page);
+
+    await page.getByRole("button", { name: "✎" }).click();
+    await page.locator('input[type="number"]').first().fill("2209");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(/target 2,209 kcal/)).toBeVisible();
+
+    await page.getByRole("button", { name: "CUT" }).click();
+    expect(await shownTarget(page)).not.toBe(2209);
   });
 
   test("today is not editable here — its own control is on the dashboard", async ({ page }) => {

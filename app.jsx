@@ -5699,7 +5699,7 @@ function BodyFatTooltip({ active, payload }) {
   );
 }
 
-function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], sex = null, profile = {}, meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
+function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], sex = null, profile = {}, tdeeAdj = 0, meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -5826,11 +5826,20 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
   };
 
   // ── Correcting a past day (FL-010, founder decision 2026-09-13) ──────────────────────────
-  // A past day is editable the same way today is: pick the mode, and set the calorie target
-  // yourself. The app does NOT try to work out what the target "would have been" — that needs
-  // the day's TDEE adjustment and whether a custom target was applied, neither of which was
-  // ever saved, so any reconstruction would be a guess dressed as a record. A typed number is
-  // deterministic: whatever is stored is what the day is graded against, and the screen says so.
+  // A past day is editable the same way today is: pick the mode, and the target for that mode
+  // is worked out and applied — then override it by hand if you disagree.
+  //
+  // The determinism comes from WHEN it is worked out, not from refusing to. The new target is
+  // computed once, at the moment the mode is changed, and STORED on the day. It is never
+  // re-derived on read, so re-opening the day months later shows the same number, even though
+  // the adaptive TDEE it was built from has moved on since. A target recomputed on every render
+  // would be the non-deterministic version, and that is the thing being avoided.
+  //
+  // One input genuinely cannot be recovered: the adaptive TDEE adjustment as it stood that day
+  // is not saved per day, so today's value stands in. The app already does exactly this, and
+  // calls it "a known-approximate stand-in", when grading a snapshot older than the stored
+  // targets. Everything else is real: the day's own workout bonus is on the snapshot, and its
+  // weight and body fat are looked up by date.
   //
   // TODAY is deliberately excluded. The daily snapshot effect rewrites today's row from live
   // state, so a mode or target written here would silently revert; today's own controls are one
@@ -5846,9 +5855,21 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
     bodyFat: measurementOnDate[date]?.computed_bf ?? profile.bodyFat,
   });
 
-  // Changing the mode changes ONLY the mode. The stored target stays put until it is edited on
-  // purpose — a label must never move a number behind the user's back.
-  const setDayMode = m => patch({ mode: m });
+  // The fat floor is a function of bodyweight alone, and the dashboard grades against the value
+  // stored on the day — so it is computed from that day's weight, not today's.
+  const fatFloorOn = b => Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG);
+
+  // Changing the mode re-targets the day for that mode and stores the result, so the change is
+  // visible immediately on the line below rather than happening silently. Override with ✎.
+  const setDayMode = m => {
+    const b = bodyOn(day.date);
+    const t = calcTargets(b, m, day.workoutBonus || 0, tdeeAdj, 0);
+    patch({
+      mode: m, targetKcal: t.kcal, targetProtein: t.protein, targetFat: t.fat,
+      targetFatFloor: fatFloorOn(b),
+      floored: !!(t.safeMinApplied || t.deficitFloorApplied || t.bmrFloorApplied),
+    });
+  };
 
   // Setting the target re-derives the macro split from it, the same way today's typed target
   // does (app.jsx targets): the safety floor holds, protein and fat keep their floors, and
@@ -5860,8 +5881,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
     const m = computeMacros(b, day.mode || "maintain", safeKcal);
     patch({
       targetKcal: safeKcal, targetProtein: m.protein, targetFat: m.fat,
-      targetFatFloor: Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG),
-      floored: safeKcal > kcal,
+      targetFatFloor: fatFloorOn(b), floored: safeKcal > kcal,
     });
   };
 
@@ -7471,7 +7491,7 @@ function App() {
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}
