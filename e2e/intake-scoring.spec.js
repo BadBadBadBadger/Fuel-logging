@@ -36,14 +36,18 @@ const FAT_FLOOR_G = 59;
 const card = (page, title) => page.locator("div").filter({
   has: page.locator(`> div:text-is("${title}")`) }).filter({ has: page.locator("svg") }).first();
 
-/** The 7 weekly ring segments, as "<stroke>@<opacity>" — grey track segments included.
+/** The 7 weekly ring segments, by stroke colour — grey track segments included.
  * Scoped to the THIS WEEK card specifically since 2026-09-09: TODAY's ring also renders <path>
  * segments now (one per macro, coloured by that macro's own score instead of a wall-clock fill —
  * founder feedback, the old fill told you the time and nothing about what was actually wrong), so
- * an unscoped query would pick up both rings' arcs. */
+ * an unscoped query would pick up both rings' arcs.
+ *
+ * Opacity dropped from this read on 2026-09-13 (FL-011): every segment is a finished day now, so
+ * they are all drawn at full strength. The old softening existed only to make today's live
+ * segment stand out, and today is no longer in this window. */
 const segments = async page => card(page, "THIS WEEK").locator("path").evaluateAll(paths =>
   paths.filter(p => p.getAttribute("d")?.startsWith("M "))
-    .map(p => p.getAttribute("stroke") + "@" + p.getAttribute("opacity")));
+    .map(p => p.getAttribute("stroke")));
 
 /** A history snapshot in the shape the daily effect writes since 2026-09-09 (real targets stored). */
 const snap = (daysAgo, { kcal, protein = 175, carbs = 220, fat = 72, logged = true, floored = false }) => ({
@@ -115,7 +119,7 @@ test.describe("THIS WEEK — the rolling read", () => {
     await open(page, sevenLoggedDays({ dev_time_hour: "11" }));
 
     const week = card(page, "THIS WEEK");
-    await expect(week).toContainText("Based on 6 of 7 days logged");
+    await expect(week).toContainText("6 of 7 days logged");
     // The count in that sentence and the ring have to be the same fact: one unlogged day in the
     // seed means exactly one segment left on the empty track, and six carrying a day's colour.
     const track = await page.evaluate(() =>
@@ -123,7 +127,35 @@ test.describe("THIS WEEK — the rolling read", () => {
         .getAttribute("stroke"));
     const segs = await segments(page);
     expect(segs).toHaveLength(7);
-    expect(segs.filter(s => s.split("@")[0] === track)).toHaveLength(1);
+    expect(segs.filter(s => s === track)).toHaveLength(1);
+  });
+
+  // FL-011 — the window is the last 7 COMPLETE days, so the card names them and the History
+  // screen's average now describes exactly the same dates. Two screens, one weekly number.
+  test("it names the dates it covers, and they end yesterday", async ({ page }) => {
+    await open(page, sevenLoggedDays({ dev_time_hour: "11" }));
+
+    const fmt = n => {
+      const d = new Date(Date.now() - n * 86400000);
+      return d.getDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+    };
+    const week = card(page, "THIS WEEK");
+    // Same-month windows print as "6–12 Sep"; one that crosses prints both months.
+    const from = fmt(7), to = fmt(1);
+    const expected = from.split(" ")[1] === to.split(" ")[1]
+      ? `${from.split(" ")[0]}–${to}` : `${from}–${to}`;
+    await expect(week).toContainText(expected);
+  });
+
+  // The bug this window change closes: a part-finished day counted as a whole one, so one
+  // breakfast could flip the week's verdict and dinner could flip it back.
+  test("logging breakfast does not change the week's verdict", async ({ page }) => {
+    const seed = sevenLoggedDays({ dev_time_hour: "11" });
+    await open(page, { ...seed, logs: [] });
+    const before = await card(page, "THIS WEEK").innerText();
+
+    await open(page, seed); // the same seven finished days, plus a part-logged today
+    expect(await card(page, "THIS WEEK").innerText()).toBe(before);
   });
 
   // Guardrail §6, the inversion the founder's unlogged-day decision exists to close. It came
@@ -138,7 +170,7 @@ test.describe("THIS WEEK — the rolling read", () => {
     });
 
     const week = card(page, "THIS WEEK");
-    await expect(week).toContainText("Still filling in");
+    await expect(week).toContainText("Nothing logged in the last 7 days");
     await expect(week).not.toContainText("genuine deficit");
   });
 
@@ -164,12 +196,10 @@ test.describe("THIS WEEK — the rolling read", () => {
     await open(page, { extra: { dev_time_hour: "11" },
       logs: [mealAt(8, { kcal: 1100, protein: 90, carbs: 110, fat: 38 })] });
 
-    await expect(card(page, "THIS WEEK")).toContainText("Still filling in");
+    await expect(card(page, "THIS WEEK")).toContainText("still filling in");
     const segs = await segments(page);
-    const opacities = new Set(segs.map(s => s.split("@")[1]));
     expect(segs).toHaveLength(7);
-    expect(opacities).toEqual(new Set(["1"]));               // no softened, graded day
-    expect(new Set(segs.map(s => s.split("@")[0])).size).toBe(1); // one colour: the empty track
+    expect(new Set(segs).size).toBe(1); // one colour: the empty track, no graded day
   });
 });
 
@@ -182,9 +212,12 @@ test.describe("The two cards together (05)", () => {
     await expect(page.locator('div:text-is("THIS WEEK")')).toBeVisible();
   });
 
-  // They sit side by side and describe the same day at their shared edge. An unlogged closed day
-  // used to show a grey "NO LOG" on the left and a full-strength red segment on the right.
-  test("an unlogged closed day is not coloured in the week ring while TODAY calls it a miss", async ({ page }) => {
+  // The two cards used to describe the same day at their shared edge, and could disagree about
+  // it: an unlogged closed day showed a grey "NO LOG" on the left and a full-strength red
+  // segment on the right. FL-011 removed the overlap rather than reconciling it — today belongs
+  // to TODAY, and THIS WEEK covers the seven finished days behind it. Neither card can now say
+  // anything about a day the other one owns.
+  test("today is not in the week ring at all — the two cards cover different days", async ({ page }) => {
     await open(page, { extra: { dev_time_hour: "23" }, logs: [],
       history: resolveHistory([1, 2, 3, 4, 5, 6, 7].map(d => snap(d, { kcal: 2200 }))) });
 
@@ -195,8 +228,10 @@ test.describe("The two cards together (05)", () => {
       document.querySelectorAll("circle")[document.querySelectorAll("circle").length - 1]
         .getAttribute("stroke"));
     const segs = await segments(page);
+    // All seven finished days are logged, so every segment carries a colour. If today were
+    // still in this ring it would be the eighth day and would leave one segment on the track.
     expect(segs).toHaveLength(7);
-    expect(segs.slice(-1)[0].split("@")[0]).toBe(track); // today closes the loop, and is uncoloured
-    expect(segs.slice(0, 6).every(s => s.split("@")[0] !== track)).toBe(true); // the six logged days are
+    expect(segs.every(s => s !== track)).toBe(true);
+    await expect(card(page, "THIS WEEK")).toContainText("7 of 7 days logged");
   });
 });

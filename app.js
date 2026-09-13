@@ -5320,6 +5320,10 @@ function IntakeScoreCard(_ref54) {
   // grades "today" with), softened — full-strength colour is reserved for today's segment so the
   // live day still reads as the one currently in progress. An unlogged day stays the empty grey
   // track: colouring it would misrepresent absence of data as a known good or bad day.
+  // Every segment is now a finished day, so they are all drawn at full strength. The old
+  // softening existed only to make today's live segment stand out against the days behind it;
+  // with today gone from this window (FL-011) there is no day in progress to contrast against,
+  // and dimming six of seven finished days would emphasise the last one for no reason.
   var GAP_DEG = 6;
   var segDeg = (360 - 7 * GAP_DEG) / 7;
   var segments = Array.from({
@@ -5328,8 +5332,7 @@ function IntakeScoreCard(_ref54) {
     var start = i * (segDeg + GAP_DEG);
     return {
       d: arcPath(C, C, R, start, start + segDeg),
-      colour: dayColours[i] || null,
-      isToday: i === 6
+      colour: dayColours[i] || null
     };
   });
   return /*#__PURE__*/React.createElement("div", {
@@ -5419,8 +5422,7 @@ function IntakeScoreCard(_ref54) {
         fill: "none",
         stroke: rc(seg.colour ? SCORE_COLOUR[seg.colour] : "var(--surface-2)"),
         strokeWidth: STROKE,
-        strokeLinecap: "round",
-        opacity: seg.colour ? seg.isToday ? 1 : 0.55 : 1
+        strokeLinecap: "round"
       });
     })), /*#__PURE__*/React.createElement("div", {
       style: {
@@ -5445,7 +5447,7 @@ function IntakeScoreCard(_ref54) {
       marginTop: 10,
       lineHeight: 1.4
     }
-  }, "Still filling in \u2014 ", weekScore.daysUsed, " of 7 days logged so far.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, weekScore.daysUsed > 0 ? "Your first week is still filling in \u2014 ".concat(weekScore.daysUsed, " of 7 days so far.") : "Nothing logged in the last 7 days — log a day and this comes back.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
       color: verdictColour,
@@ -5456,10 +5458,11 @@ function IntakeScoreCard(_ref54) {
   }, weekScore.comment), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 9,
-      color: "var(--text-faint)",
-      marginTop: 4
+      color: "var(--text-lo)",
+      marginTop: 4,
+      lineHeight: 1.5
     }
-  }, "Based on ", weekScore.daysUsed, " of ", weekScore.totalDays, " days logged"))));
+  }, weekScore.daysUsed, " of ", weekScore.totalDays, " days logged", weekScore.from && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("br", null), fmtRange(weekScore.from, weekScore.to))))));
 }
 
 // ── Coach Card ────────────────────────────────────────────────
@@ -8779,35 +8782,38 @@ function Dashboard(_ref90) {
   });
   var todayColours = [proteinScore.colour, carbsScore.colour, fatScore.colour];
 
-  // This week: the last 7 calendar days. A day with no history snapshot (never opened, or the
-  // account didn't exist yet) is treated as unlogged, not zeroed — see weeklyIntakeScore. Whole
-  // account newer than 7 days is the one case that shows "still filling in" (spec: "fewer than
-  // 7 days of history"), using total lifetime snapshots as the evidence count.
+  // This week: the last 7 COMPLETE days, ending yesterday (FL-011, founder decision
+  // 2026-09-13). Today is deliberately not among them. It used to be, and a part-finished day
+  // was counted as a whole one: with nothing logged the week read 14,904/6 = 2,484 against a
+  // 2,709 estimate and showed amber, then one 400 kcal breakfast made it 15,304/7 = 2,186 and
+  // flipped the week to a green "keep going" — which dinner then flipped back. A false
+  // all-clear, in the morning, with an instruction in it.
+  //
+  // Dropping today also removes real duplication rather than just a bug: today's progress is
+  // the hero ring on the left, in full detail. A segment for it on the right said the same
+  // thing twice and disagreed with itself while the day was still open.
+  //
+  // This is now the same window the History average uses, so the two screens can no longer
+  // report different weekly numbers for the same week. A day with no history snapshot (never
+  // opened, or the account didn't exist yet) is treated as unlogged, not zeroed — see
+  // weeklyIntakeScore. Whole account newer than 7 days is the one case that shows "still
+  // filling in", using total lifetime snapshots as the evidence count.
   var todayK = todayKey();
   var last7Keys = Array.from({
     length: 7
   }, function (_, i) {
     var d = new Date(Date.now() + getDevDateOffset() * 86400000);
-    d.setDate(d.getDate() - i);
+    d.setDate(d.getDate() - (i + 1));
     return dateKey(d);
   }).reverse();
   // Founder feedback, 2026-09-04 (round 3): a logged/not-logged binary on each day segment
   // still left "how did that day actually go" unanswered — asked for red/amber/green per day,
-  // graded by adherence, not just presence. Today's segment reuses the SAME live `hero` already
-  // computed above; a past day is graded by running the identical per-macro engine against that
-  // day's OWN history snapshot instead of live totals. An unlogged day gets no colour at all
+  // graded by adherence, not just presence. Every segment is now graded the same way, by running
+  // the per-macro engine against that day's OWN history snapshot; there is no live-totals branch
+  // left, because today is no longer in this window. An unlogged day gets no colour at all
   // (stays the empty grey track) — colouring it would misrepresent absence of data as a known
   // good or bad day, the exact confusion the weekly-average fix above exists to prevent.
   var weekDays = last7Keys.map(function (k) {
-    // `colour: null` when nothing is logged today. Every OTHER day already followed that rule;
-    // today did not, so an unlogged closed day showed a grey "NO LOG" on the TODAY card and a
-    // full-strength red segment for the same day in the ring beside it. Fixed 2026-09-09.
-    if (k === todayK) return {
-      kcal: totals.kcal,
-      loggedAnything: logs.length > 0,
-      floored: !!(targets.safeMinApplied || targets.deficitFloorApplied || targets.bmrFloorApplied),
-      colour: logs.length > 0 ? hero.colour : null
-    };
     var h = hist.find(function (d) {
       return d.date === k;
     });
@@ -8871,21 +8877,27 @@ function Dashboard(_ref90) {
     return (Number(h.kcal) || 0) > 0 || h.logs && h.logs.length > 0;
   }).length;
   var tdeeBaseline = Math.max(sedentaryFloorOf(prof || {}), bmrOf(prof || {}) * activityMult(prof || {}) + tdeeAdj);
-  var weekScore = accountIsNew ? {
+  // The card names the window it covers, so its count never has to be reconciled against the
+  // History screen's — both now describe the same seven complete days.
+  var weekWin = {
+    from: last7Keys[0],
+    to: last7Keys[6]
+  };
+  var weekScore = accountIsNew ? _objectSpread({
     state: "filling-in",
     daysUsed: loggedSnapshots,
     totalDays: hist.length
-  } : weeklyIntakeScore({
+  }, weekWin) : _objectSpread(_objectSpread({}, weeklyIntakeScore({
     days: weekDays,
     selectedMode: mode,
     tdeeBaseline: tdeeBaseline
-  });
+  })), weekWin);
   // While the card is saying "still filling in" it is explicitly declining to give a verdict, so
   // the ring must not paint one either — it was showing full red/amber/green day colours under a
   // grey "…" centre and a caption that said no verdict was being made yet. Fixed 2026-09-09.
   var dayColours = weekScore.state === "filling-in" ? [] : weekDays.map(function (d) {
     return d.colour;
-  }); // oldest → newest, last = today; null = not logged
+  }); // oldest → newest, last = YESTERDAY; null = not logged
 
   var _useState101 = useState({}),
     _useState102 = _slicedToArray(_useState101, 2),
