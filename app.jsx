@@ -654,10 +654,100 @@ const weeklyIntakeScore = ({ days, selectedMode, tdeeBaseline }) => {
 
 const dateKey = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
 
+// ── Range windows and day-key arithmetic (features/history/01) ────────
+// The History screen shows three windows that are NOT the same, and the bug they caused
+// (FL-001) was the result of one expression trying to be all three:
+//   • the ROW window    — which days appear on the chart and in the day list
+//   • the AVERAGE window — which days the headline average divides by
+//   • the label          — which states, in dates, the window the number came from
+// Keep them named and separate. Every key here is a LOCAL calendar day via dateKey and
+// honours the dev clock, so a window's size cannot change with the hour it is read.
+// Never toISOString — that is UTC, and __tests__/datekeys.test.js now fails the build for it.
+const RANGE_DAYS = { W:7, "30D":30, "3M":90, "1Y":365, ALL:0 };
+
+// The ROW window, inclusive at both ends. Deliberately n+1 keys (for W: 06–13, eight days,
+// exactly what shipped) so the chart and the day list keep every row they have today —
+// narrowing this instead of the denominator would empty both body charts on day one and make
+// today untappable. `ALL` returns an empty lower bound rather than doing Date arithmetic on
+// 99999 days.
+const rangeWindow = (range, nowMs = Date.now() + getDevDateOffset() * 86400000) => {
+  const to = dateKey(new Date(nowMs));
+  const n  = RANGE_DAYS[range];
+  if (!n) return { from:"", to };
+  const s = new Date(nowMs);
+  s.setDate(s.getDate() - n);
+  return { from: dateKey(s), to };
+};
+
+// The app's one test for "this day has intake". Lifted verbatim from the weekly ring so the
+// two engines cannot drift: kcal OR entries, never entries alone, because a snapshot pulled
+// from Supabase before its food_logs rows arrive has real kcal and an empty array.
+const hasIntake = row =>
+  !!row && ((Number(row.kcal) || 0) > 0 || (row.logs && row.logs.length > 0));
+
+// The AVERAGE window: complete days with intake. Two clauses, not one — "complete days only"
+// alone still counts every past day the app was merely OPENED as a favourable zero, because
+// the daily snapshot effect writes a row whether or not anything was logged.
+const avgRowsOf = (rows, todayK) => rows.filter(d => d.date < todayK && hasIntake(d));
+
+// One formatter for every window label, so Jest owns the format and no two labels can
+// disagree. Both keys come from the same window that filtered the rows — never re-derived.
+// An explicit month list, not toLocaleDateString({month:"short"}) — that renders September as
+// "Sept" in Node and "Sep" in some browsers, which would make the label format depend on where
+// it ran and the test unable to pin it.
+const MON_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtRange = (fromKey, toKey) => {
+  if (!fromKey || !toKey) return "";
+  const a = new Date(fromKey + "T12:00:00"), b = new Date(toKey + "T12:00:00");
+  return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
+    ? `${a.getDate()}–${b.getDate()} ${MON_SHORT[b.getMonth()]}`
+    : `${a.getDate()} ${MON_SHORT[a.getMonth()]}–${b.getDate()} ${MON_SHORT[b.getMonth()]}`;
+};
+// One date on its own, for "vs 14 Aug" — same month names, same rules.
+const fmtDay = key => {
+  if (!key) return "";
+  const d = new Date(key + "T12:00:00");
+  return `${d.getDate()} ${MON_SHORT[d.getMonth()]}`;
+};
+
 const weighRollingAvg = (weighIns, beforeDate, n = 7) => {
   const subset = weighIns.filter(w => w.date < beforeDate).slice(-n);
   if (subset.length < 3) return null;
   return subset.reduce((a, w) => a + w.weight, 0) / subset.length;
+};
+
+// FL-013 — a trailing mean over CALENDAR days, computed from the FULL weigh-in list.
+// The chart's old version counted READINGS over the range-filtered array, so at the left edge the
+// window expanded from 3 readings to 7 and manufactured slope out of nothing: replicated, a
+// perfectly flat 98.5 kg week with one low first reading drew +0.30 kg, and a genuine slow loss
+// drew +0.2 against a real +0.6. It also changed meaning when the range chip changed, while the
+// tooltip called it a 7-day average. Returns null rather than averaging thin air.
+const WEIGHT_MEAN_MIN_READINGS = 3;
+const rollingWeightMean = (weighIns, key, spanDays = 7, minReadings = WEIGHT_MEAN_MIN_READINGS) => {
+  const s = new Date(key + "T12:00:00");
+  s.setDate(s.getDate() - (spanDays - 1));
+  const from = dateKey(s);
+  const win = weighIns.filter(w => w.date >= from && w.date <= key);
+  if (win.length < minReadings) return null;
+  return { kg: win.reduce((a, w) => a + w.weight, 0) / win.length, n: win.length, from, to: key };
+};
+
+// The weight figure, per founder decision Q4 (2026-09-13): this week's 7-day mean against the
+// PREVIOUS 7-day mean. Two non-overlapping calendar windows, so the figure rests on 14 days of
+// data even though it reads as a week, and no mean is ever differenced against itself — that last
+// part is what made the old headline overstate by roughly 3x. Two readings per window is the
+// floor; below that it returns null and the card says so instead of guessing.
+const WEIGHT_TREND_MIN_PER_WINDOW = 2;
+const weightTrendKg = (weighIns, toKey, spanDays = 7) => {
+  const recent = rollingWeightMean(weighIns, toKey, spanDays, WEIGHT_TREND_MIN_PER_WINDOW);
+  const pe = new Date(toKey + "T12:00:00");
+  pe.setDate(pe.getDate() - spanDays);
+  const prior = rollingWeightMean(weighIns, dateKey(pe), spanDays, WEIGHT_TREND_MIN_PER_WINDOW);
+  if (!recent || !prior) return null;
+  return {
+    kg: Math.round((recent.kg - prior.kg) * 10) / 10,
+    recent, prior, from: prior.from, to: recent.to,
+  };
 };
 
 // Adaptive-TDEE convergence (energy-model Step 2). The estimate error (in kcal/day) is
@@ -709,7 +799,9 @@ const raiseContext = (adjLog, tdeeAdj) => {
 const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState = {}) => {
   const { daysSinceLastRaise = Infinity, tdeeAdj = 0, settledAdj = tdeeAdj } = raiseState;
   if (weighIns.length < CAL_MIN_WEIGHINS) return null;
-  const today = new Date();
+  // Honour the dev clock, like todayKey does. A raw `new Date()` here meant a seeded test day
+  // calibrated against the real calendar, so no test could reach this window's edges.
+  const today = new Date(Date.now() + getDevDateOffset() * 86400000);
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoKey = dateKey(weekAgo);
 
@@ -718,7 +810,14 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState
   if (!recentAvg || !olderAvg) return null;
 
   const actualChange = recentAvg - olderAvg;
-  const recentHist   = history.filter(d => d.date >= weekAgoKey && d.kcal > 0);
+
+  // The intake window: 7 COMPLETE days ending yesterday. Two defects fixed in one expression.
+  // FL-012 — `>= weekAgoKey` alone spans eight keys, the same off-by-one as FL-001, and here it
+  // moves the calorie target rather than a label.
+  // FL-014 — a partial today entered this average: with 400 kcal logged, avgKcal fell 2510 → 2246
+  // and the apparent estimate error more than doubled (−199 → −463), in the lowering direction.
+  const yesterdayKey = dateKey(new Date(today.getTime() - 86400000));
+  const recentHist   = history.filter(d => d.date >= weekAgoKey && d.date <= yesterdayKey && d.kcal > 0);
   if (recentHist.length < 4) return null;
 
   // Coach safeguard: AI-estimated days are softer evidence than weighed/typed
@@ -765,10 +864,21 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState
   // surfaces as a stall, file 03's stall check suggests a break, and a break is Maintain
   // — where this refusal lifts and the loop converges normally. Raising is NEVER damped.
   //
-  // "Was I cutting" reads the DECLARED daily mode from the history snapshots, the same
-  // signal file 02 uses, so it holds up for a patchy logger.
-  const weekDays   = history.filter(d => d.date >= weekAgoKey);
-  const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
+  // "Was I cutting" is measured from what was EATEN, not from the declared daily mode
+  // (founder decision Q3, 2026-09-13). Two reasons the mode is the wrong source here:
+  //
+  // 1. It is editable. A past day's mode can be corrected from History (FL-010), and a
+  //    CUT→MAINTAIN edit inside this window could tip the majority, lift the refusal below,
+  //    and let a lowering through at the NEXT weigh-in — written to tdee_adj and adjLog, and
+  //    not undone by putting the mode back. A label should never be able to move the target.
+  // 2. The prose above already says the real test: the innocent explanations apply "while
+  //    eating below maintenance", and clean evidence is "eating AT or ABOVE maintenance and
+  //    still not losing". That is avgDeficit, which is right here, weighted by intake
+  //    confidence, and derived from food that was actually logged.
+  //
+  // The daily mode still grades every day and still colours the ring — this changes only
+  // which signal is allowed to gate the calorie target.
+  const wasCutting = avgDeficit > 0;
 
   // features/energy-safety/09, Fix A — a raise re-triggering under RAISE_MIN_INTERVAL_DAYS
   // after the last APPLIED raise is still mostly the same evidence as that raise already
@@ -918,7 +1028,11 @@ const siteChangeColor = (site, change, formula) =>
 // sites moves this estimate ±0.67 points while a full week of real fat loss moves it 0.40. A
 // month of real change is 1.61 points, which clears that band (features/body/02 header).
 const BF_WINDOW_DAYS = 30;
-const bodyFatWindowChange = (measurements, sex, asOfMs = Date.now(), days = BF_WINDOW_DAYS) => {
+// The two readings the window change is built from. Split out so the number and the label that
+// names its comparison date share ONE definition of the window — the old copy said "since last
+// month" while subtracting a reading with no upper age limit, so a reading from six months ago
+// was reported as last month's.
+const bodyFatWindowRows = (measurements, sex, asOfMs = Date.now(), days = BF_WINDOW_DAYS) => {
   const formula = bodyMeasurementFormula(sex);
   const rows = (measurements || []).filter(m => m.formula === formula && m.computed_bf != null);
   if (rows.length < 2) return null;
@@ -927,7 +1041,12 @@ const bodyFatWindowChange = (measurements, sex, asOfMs = Date.now(), days = BF_W
   if (last.date <= startKey) return null;
   const before = rows.filter(m => m.date <= startKey);
   if (!before.length) return null;
-  return Math.round((last.computed_bf - before[before.length - 1].computed_bf) * 10) / 10;
+  return { last, before: before[before.length - 1] };
+};
+
+const bodyFatWindowChange = (measurements, sex, asOfMs = Date.now(), days = BF_WINDOW_DAYS) => {
+  const r = bodyFatWindowRows(measurements, sex, asOfMs, days);
+  return r ? Math.round((r.last.computed_bf - r.before.computed_bf) * 10) / 10 : null;
 };
 
 // The CSV export. Its row set is the UNION of the dates that have a history snapshot, a
@@ -5606,19 +5725,31 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
   const toggleM = m => setMetrics(p =>
     p.includes(m) ? (p.length > 1 ? p.filter(x => x !== m) : p) : [...p, m]);
 
-  const filtered = (() => {
-    if (range === "DAY") return history;
-    const days = { W:7, "30D":30, "3M":90, "1Y":365, ALL:99999 }[range];
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
-    return history.filter(d => d.date >= cutoff);
-  })();
+  // The three windows, named once (features/history/01). `win` is the ROW window and keeps
+  // exactly the rows that shipped — narrowing it would empty both body charts on day one and
+  // make today untappable. The AVERAGE is a separate derived set, below. FL-001 was one
+  // expression trying to be both.
+  const todayK = todayKey();
+  const win    = rangeWindow(range);
+  const inWin  = d => (!win.from || d.date >= win.from) && d.date <= win.to;
 
-  const filteredWeighIns = (() => {
-    if (range === "DAY" || !weighIns.length) return [];
-    const days = { W:7, "30D":30, "3M":90, "1Y":365, ALL:99999 }[range];
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
-    return weighIns.filter(w => w.date >= cutoff);
+  const filtered = range === "DAY" ? history : history.filter(inWin);
+
+  const filteredWeighIns = (range === "DAY" || !weighIns.length) ? [] : weighIns.filter(inWin);
+
+  // The AVERAGE window — complete days with intake, and the dates to label it with. This is the
+  // whole of FL-001: `filtered` keeps its rows, and the denominator stops being the row count.
+  // A weigh-in, unlike a day's intake, means something the moment it is taken, so the weight
+  // figure below deliberately reads `weighIns` and today is not held back from it (FL-004).
+  const avgRows = avgRowsOf(filtered, todayK);
+  const yesterdayK = (() => {
+    const d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - 1);
+    return dateKey(d);
   })();
+  const avgWin = win.from ? { from: win.from, to: yesterdayK } : null;
+  // How many complete days the window COULD hold, so the sub-line can say "7 of 7".
+  const completeDaysInWin = RANGE_DAYS[range] || avgRows.length;
 
   // Merge weight into chart data by date
   const weightByDate = Object.fromEntries(filteredWeighIns.map(w => [w.date, w.weight]));
@@ -5628,27 +5759,28 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
     WEIGHT: weightByDate[d.date] ?? null,
   }));
 
-  // Weight-only chart data with 7-day rolling average
-  const weightChartData = filteredWeighIns.map((w, i, arr) => {
-    const win = arr.slice(Math.max(0, i - 6), i + 1);
-    const avg = win.reduce((s, x) => s + x.weight, 0) / win.length;
+  // Weight-only chart data with a true 7-calendar-day rolling average (FL-013).
+  // Each point's average is computed by rollingWeightMean over the FULL weigh-in list, not over
+  // the range-filtered array this chart plots. The old version did the latter, sliced by reading
+  // COUNT — so at the left edge the window expanded from 3 readings to 7 and invented slope: a
+  // perfectly flat week with one low first reading drew +0.30 kg, and the 7-day chip starved the
+  // line so the same labelled quantity changed meaning when the chip changed.
+  const weightChartData = filteredWeighIns.map(w => {
+    const m = rollingWeightMean(weighIns, w.date);
     return {
       date: fmtShort(w.date), WEIGHT: wConv(w.weight),
-      ROLLING: win.length >= 3 ? Math.round(wConv(avg) * 10) / 10 : null,
+      ROLLING: m ? Math.round(wConv(m.kg) * 10) / 10 : null,
     };
   });
 
   // Body-fat % chart data (features/body/01) — points always shown; a rolling trend line
   // once TREND_MIN_POINTS readings exist. Never colour-coded (design review §2) — this
-  // mirrors weightChartData's shape exactly, one deliberate difference: no unit conversion
-  // (body fat % has no imperial equivalent) and the window is by reading count, matching
-  // SYNC_GATE's own gap-tolerant "last n" shape rather than weight's calendar-day window.
-  const filteredBodyMeasurements = (() => {
-    if (range === "DAY" || !bodyMeasurements.length) return [];
-    const days = { W:7, "30D":30, "3M":90, "1Y":365, ALL:99999 }[range];
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
-    return bodyMeasurements.filter(m => m.date >= cutoff);
-  })();
+  // mirrors weightChartData's shape, with one deliberate difference: no unit conversion, because
+  // body fat % has no imperial equivalent. Its window is by reading count, matching SYNC_GATE's
+  // own gap-tolerant "last n" shape — weight's is by calendar day (they genuinely differ, and
+  // before FL-013 the comment here claimed weight had a calendar-day window when it did not).
+  const filteredBodyMeasurements =
+    (range === "DAY" || !bodyMeasurements.length) ? [] : bodyMeasurements.filter(inWin);
   // One row set, both body charts (features/body/02). The body-fat chart and the tape chart
   // draw different series out of the same rows, so they cannot disagree about which readings
   // are plotted or what an average is built from.
@@ -5663,6 +5795,8 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
   // it reporting a change of 0 when every reading is older than a month — the old inline
   // version compared the newest reading against itself in that case.
   const bodyFatChangeSinceLastMonth = bodyFatWindowChange(bodyMeasurements, sex);
+  // The date the change is measured FROM, so the card can name it instead of claiming a month.
+  const bodyFatWindowStartKey = bodyFatWindowRows(bodyMeasurements, sex)?.before.date;
 
   // features/body/02 — the join by date, built from the FULL arrays rather than the
   // range-filtered ones. A row only ever exists for a date already in `filtered`, so an
@@ -6063,37 +6197,75 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                 <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"12px 16px", marginBottom:16 }}>
                   <div style={{ fontSize:11, color:"var(--text-mid)" }}>
                     {bodyFatChangeSinceLastMonth < 0 ? "▼" : bodyFatChangeSinceLastMonth > 0 ? "▲" : "="}{" "}
-                    {Math.abs(bodyFatChangeSinceLastMonth)} pts of body fat since last month
+                    {Math.abs(bodyFatChangeSinceLastMonth)} points of body fat vs {fmtDay(bodyFatWindowStartKey)}
                   </div>
                 </div>
               )}
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, padding:"16px 18px", marginBottom:16 }}>
+                {/* The header states DATES, never a day count (FL-005). Three windows on this
+                    screen legitimately differ once the denominator stops being the row count, so
+                    naming them is the fix — forcing the counts to agree would be a regression. */}
                 <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:12 }}>
-                  {RLBL[range].toUpperCase()} AVERAGES · {filtered.length} DAYS
+                  DAILY AVERAGE{avgWin ? ` · ${fmtRange(avgWin.from, avgWin.to).toUpperCase()}` : ""}
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-                  {Object.entries(MM).map(([k, m]) => {
-                    const avg = filtered.length
-                      ? filtered.reduce((a, d) => a + (d[m.key] || 0), 0) / filtered.length : 0;
-                    return <Chip key={k} label={m.label.toUpperCase()} value={Math.round(avg) + m.unit} color={m.color}/>;
-                  })}
-                </div>
-                {filteredWeighIns.length >= 2 && (() => {
-                  const first = wConv(filteredWeighIns[0].weight);
-                  const last  = wConv(filteredWeighIns[filteredWeighIns.length - 1].weight);
-                  const diff  = Math.round((last - first) * 10) / 10;
+                {avgRows.length > 0 ? (
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                    {Object.entries(MM).map(([k, m]) => {
+                      const avg = avgRows.reduce((a, d) => a + (d[m.key] || 0), 0) / avgRows.length;
+                      return <Chip key={k} label={m.label.toUpperCase()} value={Math.round(avg) + m.unit} color={m.color}/>;
+                    })}
+                  </div>
+                ) : (
+                  /* FL-008 — day one, and any range with no complete day in it. The old code
+                     rendered a confident "0 KCAL" here, which is worse than a blank: a wrong
+                     number gets acted on. */
+                  <div style={{ fontSize:12, color:"var(--text-lo)", lineHeight:1.5 }}>
+                    No complete days yet. Your average starts once today has finished.
+                  </div>
+                )}
+                {/* FL-007 — the card says what it is built from and what the number is a record
+                    of. No detector, no exclusion: a day where logging was abandoned still counts
+                    in full, because dropping low days would delete the evidence of under-eating
+                    this app exists to catch. */}
+                {avgRows.length > 0 && (
+                  <div style={{ fontSize:10, color:"var(--text-lo)", marginTop:8, lineHeight:1.5 }}>
+                    {avgRows.length} of {completeDaysInWin} days logged · today not counted yet<br/>
+                    What you logged. Today isn&rsquo;t counted until it&rsquo;s done.
+                  </div>
+                )}
+                {/* The weight figure (FL-002, founder decision Q4): this week's 7-day average
+                    against the PREVIOUS 7-day average. Two non-overlapping windows, so it rests
+                    on 14 days of data, and no average is ever differenced against itself — that
+                    is what made the old first-to-last figure overstate by roughly 3x. No colour:
+                    the old `diff <= 0 ? A : bulk` rewarded a lower number on a scale and painted
+                    a gain orange during a bulk, with MODES sitting right there unconsulted. */}
+                {(() => {
+                  const t = weightTrendKg(weighIns, todayK);
+                  if (!t) return filteredWeighIns.length > 0 ? (
+                    <div style={{ marginTop:10, background:"var(--bg)", borderRadius:10, padding:"10px 14px" }}>
+                      <div style={{ fontSize:10, color:"var(--text-label)", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT</div>
+                      <div style={{ fontSize:12, color:"var(--text-lo)", marginTop:2 }}>
+                        {filteredWeighIns.length} weigh-{filteredWeighIns.length === 1 ? "in" : "ins"} in view.
+                        Two weeks of weigh-ins and this shows which way you&rsquo;re going.
+                      </div>
+                    </div>
+                  ) : null;
+                  const kg = Math.round(wConv(Math.abs(t.kg)) * 10) / 10;
                   return (
                     <div style={{ marginTop:10, display:"flex", justifyContent:"space-between",
                       background:"var(--bg)", borderRadius:10, padding:"10px 14px", alignItems:"center" }}>
                       <div>
-                        <div style={{ fontSize:10, color:"var(--text-label)", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT TREND</div>
+                        <div style={{ fontSize:10, color:"var(--text-label)", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT, WEEK ON WEEK</div>
                         <div style={{ fontSize:12, color:"var(--text-lo)", marginTop:2 }}>
-                          {first}{wUnit} → {last}{wUnit}
+                          {wConv(t.prior.kg).toFixed(1)}{wUnit} → {wConv(t.recent.kg).toFixed(1)}{wUnit} · 7-day averages
+                        </div>
+                        <div style={{ fontSize:10, color:"var(--text-lo)", marginTop:2 }}>
+                          Averages, not single days — water and food still swing this.
                         </div>
                       </div>
-                      <div style={{ fontSize:15, fontWeight:900, color: diff <= 0 ? A : "var(--bulk)" }}>
-                        {diff > 0 ? "+" : ""}{diff} {wUnit}
+                      <div style={{ fontSize:15, fontWeight:900, color:"var(--text-hi)" }}>
+                        {t.kg > 0 ? "+" : t.kg < 0 ? "−" : ""}{kg} {wUnit}
                       </div>
                     </div>
                   );
@@ -6101,9 +6273,11 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
               </div>
 
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden" }}>
+                {/* Dates, not a count. The old "N DAYS LOGGED" also counted days the app was
+                    merely OPENED, not days with food in them — one edit, two findings. */}
                 <div style={{ padding:"12px 18px 10px", fontSize:11, color:"var(--text-label)",
                   letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}` }}>
-                  {filtered.length} DAYS LOGGED
+                  DAY BY DAY{win.from ? ` · ${fmtRange(win.from, win.to).toUpperCase()}` : ""}
                 </div>
                 {[...filtered].reverse().map((d, i) => (
                   <div key={d.date} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
@@ -6114,6 +6288,10 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                         {fmtFull(d.date)}
                         {d.mode && <span style={{ fontSize:10, fontWeight:900, color: MODES[d.mode]?.color || A, marginLeft:8 }}>{MODES[d.mode]?.label}</span>}
                         {d.training && <span style={{ fontSize:10, color:A, marginLeft:6 }}>⚡</span>}
+                        {/* The list runs to today; the average stops at yesterday. Marking the
+                            one row that differs means nobody has to subtract two counts to
+                            work out why (FL-005). */}
+                        {d.date === todayK && <span style={{ fontSize:10, fontWeight:800, color:"var(--text-lo)", marginLeft:6, letterSpacing:"0.06em" }}>TODAY</span>}
                       </div>
                       {/* features/body/02 — weight and the day's tape reading join onto the
                           EXISTING sub-line by date. Six days in seven have no reading, so an
@@ -6142,11 +6320,17 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
             </>
           )}
 
-          {range !== "DAY" && filtered.length === 0 && (
-            <div style={{ textAlign:"center", padding:"40px 0", color:"var(--text-faint-2)", fontSize:14 }}>
-              No data for this range yet.
-            </div>
-          )}
+          {/* FL-008 — name the window that is empty, and point at the data that does exist,
+              rather than saying "no data" while the account plainly has some. */}
+          {range !== "DAY" && filtered.length === 0 && (() => {
+            const last = history.filter(hasIntake).slice(-1)[0];
+            return (
+              <div style={{ textAlign:"center", padding:"40px 18px", color:"var(--text-lo)", fontSize:14, lineHeight:1.6 }}>
+                {win.from ? `Nothing logged between ${fmtRange(win.from, win.to)}.` : "Nothing logged yet."}
+                {last && <><br/><span style={{ fontSize:12 }}>Your last logged day was {fmtDay(last.date)}.</span></>}
+              </div>
+            );
+          })()}
         </>
       )}
     </div>

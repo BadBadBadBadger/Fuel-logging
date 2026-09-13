@@ -463,7 +463,11 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState
   if (!recentAvg || !olderAvg) return null;
 
   const actualChange = recentAvg - olderAvg;
-  const recentHist   = history.filter(d => d.date >= weekAgoKey && d.kcal > 0);
+  // FL-012 / FL-014 — 7 COMPLETE days ending yesterday. `>= weekAgoKey` alone spanned eight
+  // keys, and a partial today entered the intake average in the lowering direction.
+  const yesterday = new Date(today.getTime() - 86400000);
+  const yesterdayKey = yesterday.getFullYear() + "-" + String(yesterday.getMonth()+1).padStart(2,"0") + "-" + String(yesterday.getDate()).padStart(2,"0");
+  const recentHist   = history.filter(d => d.date >= weekAgoKey && d.date <= yesterdayKey && d.kcal > 0);
   if (recentHist.length < 4) return null;
 
   // Confidence-weight intake; drop near-guess days (<50%) so a biased AI estimate
@@ -485,8 +489,9 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState
   const cap = CAL_STEP_CAP[confidence];
   const rawAdj = Math.max(-cap, Math.min(cap, Math.round(CAL_GAIN * effErr / CAL_STEP_ROUND) * CAL_STEP_ROUND));
   // The asymmetry (file 04): only ever LOWER the estimate when the user was not cutting.
-  const weekDays   = history.filter(d => d.date >= weekAgoKey);
-  const wasCutting = weekDays.filter(d => d.mode === "cut").length > weekDays.length / 2;
+  // Founder decision Q3 — measured from what was EATEN, not from the editable daily mode, so a
+  // corrected past day can never unlock a lowering of the calorie target.
+  const wasCutting = avgDeficit > 0;
   // Mirror of app.jsx Fix A/B (features/energy-safety/09).
   const raiseHeld = rawAdj > 0 && daysSinceLastRaise < RAISE_MIN_INTERVAL_DAYS;
   let adj = rawAdj, refused = false;
@@ -2947,9 +2952,11 @@ describe("trendLossFrac — the same averages over a longer span", () => {
 describe("the asymmetry — a disappointing scale can't cut a dieter's target", () => {
   const key = d => d.toISOString().split("T")[0];
 
-  // A week eating 1,800 against a 2,400 estimate predicts a loss. What the scale
-  // actually does is the variable; `modes` is the declared mode of each of those days.
-  const calibrate = ({ modes, weightStep }) => {
+  // A week eating `kcal` against a 2,400 estimate. What the scale actually does is one
+  // variable; what was EATEN is the other. Since founder decision Q3 the refusal is gated on
+  // intake against maintenance, not on the declared mode — `modes` is still set so these tests
+  // can prove the label has no influence on the calorie target.
+  const calibrate = ({ modes, weightStep, kcal = 1800 }) => {
     const today = new Date();
     const weighIns = Array.from({ length: 14 }, (_, i) => {
       const d = new Date(today); d.setDate(d.getDate() - 13 + i);
@@ -2958,7 +2965,7 @@ describe("the asymmetry — a disappointing scale can't cut a dieter's target", 
     const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
     const history = Array.from({ length: 8 }, (_, i) => {
       const d = new Date(today); d.setDate(d.getDate() - 7 + i);
-      return { date: key(d), kcal: 1800, mode: Array.isArray(modes) ? modes[i] : modes };
+      return { date: key(d), kcal, mode: Array.isArray(modes) ? modes[i] : modes };
     }).filter(d => d.date >= key(weekAgo));
     return runCalibration(history, weighIns, 2400);
   };
@@ -2978,10 +2985,17 @@ describe("the asymmetry — a disappointing scale can't cut a dieter's target", 
   });
 
   test("the same evidence at maintenance IS acted on — there it is clean", () => {
-    const r = calibrate({ modes: "maintain", weightStep: 0.1 });
+    // "At maintenance" now means EATING at maintenance, which is what the rule was always
+    // about: a stall while eating 2,400 against a 2,400 estimate is clean evidence.
+    const r = calibrate({ modes: "maintain", weightStep: 0.1, kcal: 2400 });
     expect(r.refused).toBe(false);
     expect(r.adj).toBeLessThan(0);
     expect(r.adj).toBe(r.wouldHaveBeen);
+  });
+
+  test("eating above maintenance and not losing is acted on too", () => {
+    const r = calibrate({ modes: "bulk", weightStep: 0, kcal: 2700 });
+    expect(r.refused).toBe(false);
   });
 
   test("good news is never damped, cutting or not", () => {
@@ -2993,18 +3007,37 @@ describe("the asymmetry — a disappointing scale can't cut a dieter's target", 
     }
   });
 
-  test("the week is judged by its majority, so one odd day decides nothing", () => {
-    const mostlyCut = ["cut", "cut", "cut", "cut", "cut", "maintain", "maintain", "maintain"];
-    const mostlyNot = ["maintain", "maintain", "maintain", "maintain", "maintain", "cut", "cut", "cut"];
-    expect(calibrate({ modes: mostlyCut, weightStep: 0.1 }).refused).toBe(true);
-    expect(calibrate({ modes: mostlyNot, weightStep: 0.1 }).refused).toBe(false);
+  // The guarantee founder decision Q3 bought, and the reason FL-010 is safe to ship: a day's
+  // declared mode is editable from History, so it must not be able to move the calorie target.
+  // Before Q3 this was a real path — a CUT→MAINTAIN edit could tip the week's majority, lift the
+  // refusal, and let a lowering through at the next weigh-in, written to tdee_adj and not undone
+  // by putting the mode back.
+  test("the declared mode cannot lift the refusal — only eating at maintenance can", () => {
+    for (const modes of ["cut", "maintain", "bulk"]) {
+      expect(calibrate({ modes, weightStep: 0.1, kcal: 1800 }).refused).toBe(true);
+    }
+    expect(calibrate({ modes: "cut", weightStep: 0.1, kcal: 2400 }).refused).toBe(false);
+  });
+
+  test("relabelling one day of a deficit week changes nothing about the target", () => {
+    const allCut   = ["cut", "cut", "cut", "cut", "cut", "cut", "cut", "cut"];
+    const oneEdited = ["cut", "cut", "cut", "cut", "cut", "cut", "cut", "maintain"];
+    const a = calibrate({ modes: allCut,    weightStep: 0.1 });
+    const b = calibrate({ modes: oneEdited, weightStep: 0.1 });
+    expect(b.refused).toBe(a.refused);
+    expect(b.adj).toBe(a.adj);
   });
 
   test("a cut that ends lets the deferred correction run — nothing is thrown away", () => {
-    const during = calibrate({ modes: "cut",      weightStep: 0.1 });
-    const after  = calibrate({ modes: "maintain", weightStep: 0.1 });
+    // The correction is deferred, not discarded. It runs once intake actually returns to
+    // maintenance — the direction is preserved, and the size is recomputed from the new
+    // evidence rather than replayed, because the expected loss changes with the intake.
+    const during = calibrate({ modes: "cut",      weightStep: 0.1, kcal: 1800 });
+    const after  = calibrate({ modes: "maintain", weightStep: 0.1, kcal: 2400 });
     expect(during.adj).toBe(0);
-    expect(after.adj).toBe(during.wouldHaveBeen);   // same correction, taken later
+    expect(during.wouldHaveBeen).toBeLessThan(0);
+    expect(after.refused).toBe(false);
+    expect(after.adj).toBeLessThan(0);
   });
 });
 

@@ -174,23 +174,38 @@ test.describe("Two months of weigh-ins — the scale hasn't moved", () => {
     expect(await targetKcal(page)).toBeGreaterThanOrEqual(1400);
   });
 
-  test("at Maintain the same evidence IS acted on — the control", async ({ page }) => {
-    // Without this the test above proves nothing: an adjustment that never fires looks identical
-    // to one that is deliberately refused. Same weigh-ins, same intake, same stall — declared at
-    // maintenance instead of cut, where the evidence is clean. Here the loop must actually move.
+  // Founder decision Q3 (2026-09-13) changed what "was I cutting" is measured from: what was
+  // EATEN, not the day's declared mode. A mode is editable from History (FL-010) and must never
+  // be able to move the calorie target — before this, a CUT→MAINTAIN edit could tip the week's
+  // majority, lift the refusal, and let a lowering through at the next weigh-in.
+  //
+  // So MAINTAIN_HISTORY is no longer a control: 2,241 kcal against a ~2,700 estimate is a deficit
+  // whatever the day is called, and water, glycogen and a full gut still explain a flat scale.
+  // Intake above the estimate is what makes the evidence clean now.
+  const OVER_HISTORY = { days: DAYS, kcal: 3400, mode: "maintain", endDaysAgo: 1 };
+
+  test("a Maintain LABEL over a real deficit still protects the target", async ({ page }) => {
     await open(page, { weighInsSpec: STALLED_OPEN, historySpec: MAINTAIN_HISTORY,
       cutBlock: LONG_BLOCK, mode: "maintain" });
     await expect(page.getByText("CONSUMED")).toBeVisible({ timeout: 15_000 });
 
     const adjBefore = await storedAdj(page);
     await logWeight(page, 98.5);
+    expect(await storedAdj(page)).toBeGreaterThanOrEqual(adjBefore);
+  });
 
-    // Eating below the estimate and not losing, at maintenance, genuinely does mean the estimate
-    // was too high — so it comes DOWN here. That it moves at all is the point: it proves the
-    // cutting case above is runCalibration returning refused:true, and not runCalibration
-    // returning null or an adjustment below CAL_MIN_STEP.
-    const adjAfter = await storedAdj(page);
-    expect(adjAfter).toBeLessThan(adjBefore);
+  test("eating ABOVE the estimate lets the loop move — the control", async ({ page }) => {
+    // Without a control, an adjustment that never fires looks identical to one deliberately
+    // refused. Here intake is unambiguously above the estimate, so the deficit is negative, the
+    // refusal cannot apply, and the loop must actually move — which proves the cutting case above
+    // is runCalibration returning refused:true, not returning null or a step under CAL_MIN_STEP.
+    await open(page, { weighInsSpec: STALLED_OPEN, historySpec: OVER_HISTORY,
+      cutBlock: LONG_BLOCK, mode: "maintain" });
+    await expect(page.getByText("CONSUMED")).toBeVisible({ timeout: 15_000 });
+
+    const adjBefore = await storedAdj(page);
+    await logWeight(page, 98.5);
+    expect(await storedAdj(page)).not.toBe(adjBefore);
     await shot(page, "weighin-60d-stalled-maintain");
   });
 });
