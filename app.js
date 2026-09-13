@@ -1499,6 +1499,190 @@ var syncedBodyFat = function syncedBodyFat(_ref9) {
   return Math.round(Math.min(target, current + BF_SYNC_STEP_CAP) * 10) / 10;
 };
 
+// ── Body measurements: what a save reports, and History (features/body/02) ──
+// 02 is presentation and feedback only. Every value below is a JOIN BY DATE over what 01
+// already stores — weighIns[] and bodyMeasurements[], both keyed by `date`. Nothing here
+// adds a stored field and nothing here goes into a sync payload: a column that does not
+// exist in Postgres makes the whole upsert fail with no visible error, which is what cost
+// this repo its history sync on 2026-09-11. The history snapshot carries no body data.
+
+var MEASUREMENT_SITES = ["neck", "waist", "hip"];
+
+// The signed change at each tape site between two readings, rounded to 0.1cm — subtracting
+// two one-decimal numbers in binary floating point does not give a one-decimal number
+// (95.3 − 94.8 = 0.5000000000000071), so the rounding is load-bearing. `hip` is explicitly
+// null on every male-formula row, so a site is reported only when BOTH readings have it —
+// which also means a reading taken under the other formula still reports neck and waist,
+// because a neck is a neck under either. Returns null when there is no earlier reading:
+// the first one ever has nothing to say here.
+var measurementSiteChanges = function measurementSiteChanges(prev, next) {
+  if (!prev || !next) return null;
+  var out = [];
+  for (var _i = 0, _MEASUREMENT_SITES = MEASUREMENT_SITES; _i < _MEASUREMENT_SITES.length; _i++) {
+    var site = _MEASUREMENT_SITES[_i];
+    var a = prev[site],
+      b = next[site];
+    if (a == null || b == null || !isFinite(Number(a)) || !isFinite(Number(b))) continue;
+    out.push({
+      site: site,
+      change: Math.round((Number(b) - Number(a)) * 10) / 10
+    });
+  }
+  return out.length ? out : null;
+};
+
+// Which sites have a direction that means something. Waist (both formulas) and hip (female
+// formula) are fat-storage sites: a smaller number is the direction this app exists to help
+// with, so they take the same accent colour the weight trend already uses for a falling
+// weight. NECK IS DELIBERATELY ABSENT. Under the Navy formula a BIGGER neck computes a
+// LEANER body-fat %, so applying the waist rule to neck would show a shrinking neck as the
+// bad result and a growing one as the good one — during a deficit a shrinking neck is most
+// likely lost muscle or a tape sitting differently, and neither is something to colour.
+// Neck's change is still shown at any size; it just carries no valence.
+// (features/body/02, nutrition-coach veto.)
+var fatDirectionSites = function fatDirectionSites(formula) {
+  return formula === "female" ? ["waist", "hip"] : ["waist"];
+};
+
+// "+0.5cm" / "-0.5cm" / "no change". Same sign formatting the weight trend badge uses, per
+// the founder's "keep ui consistent with weight graph". There is no size below which a
+// change is hidden or shown differently (DECIDED, founder, 2026-09-11).
+var formatSiteChange = function formatSiteChange(v) {
+  return v === 0 ? "no change" : (v > 0 ? "+" : "") + v + "cm";
+};
+var siteChangeColor = function siteChangeColor(site, change, formula) {
+  return change === 0 || !fatDirectionSites(formula).includes(site) ? "var(--text-hi)" : change < 0 ? "var(--accent)" : "var(--bulk)";
+};
+
+// The body-fat change across a stated window, in percentage points, filtered to one formula
+// the same way bodyFatRollingAvg is — a sex change switches regressions and the two numbers
+// are not comparable. Null unless a reading exists at or before the window start AND the
+// newest reading is inside the window: with every reading older than 30 days the newest one
+// would be compared against itself and report 0, which reads as "your body fat has not moved
+// in a month" when nothing has been measured in a month.
+//
+// 30 days, not a reading-to-reading difference, because half a centimetre of tape slip at two
+// sites moves this estimate ±0.67 points while a full week of real fat loss moves it 0.40. A
+// month of real change is 1.61 points, which clears that band (features/body/02 header).
+var BF_WINDOW_DAYS = 30;
+var bodyFatWindowChange = function bodyFatWindowChange(measurements, sex) {
+  var asOfMs = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : Date.now();
+  var days = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : BF_WINDOW_DAYS;
+  var formula = bodyMeasurementFormula(sex);
+  var rows = (measurements || []).filter(function (m) {
+    return m.formula === formula && m.computed_bf != null;
+  });
+  if (rows.length < 2) return null;
+  var startKey = dateKey(new Date(asOfMs - days * 86400000));
+  var last = rows[rows.length - 1];
+  if (last.date <= startKey) return null;
+  var before = rows.filter(function (m) {
+    return m.date <= startKey;
+  });
+  if (!before.length) return null;
+  return Math.round((last.computed_bf - before[before.length - 1].computed_bf) * 10) / 10;
+};
+
+// The CSV export. Its row set is the UNION of the dates that have a history snapshot, a
+// weigh-in, or a tape reading — not just the days with food logged. A snapshot can genuinely
+// be missing for a date whose body rows exist, because the two upserts are separate calls and
+// one can fail while the other succeeds. Missing cells are left EMPTY: a 0 in a waist column
+// is a measurement of zero centimetres, which is a different claim from "not measured".
+// Values are exported as stored — kilograms and centimetres — with the unit in the heading,
+// because a column whose meaning changes with a display setting is not an archive.
+// The raw tape sites for one reading, on one line, WAIST FIRST: waist is the dominant term in
+// the Navy formula and the site that actually moves week to week, so it leads and neck follows.
+// A site the reading does not have — hip on a male-formula row — is left out entirely. No dash,
+// no placeholder: the reading is complete, that site was simply never part of it.
+var formatTapeSites = function formatTapeSites(m) {
+  if (!m) return "";
+  var parts = [];
+  if (m.waist != null) parts.push("waist " + m.waist);
+  if (m.neck != null) parts.push("neck " + m.neck);
+  if (m.hip != null) parts.push("hip " + m.hip);
+  return parts.join(" · ");
+};
+
+// Whole days between two reading dates. Null when there is no earlier reading, which is what
+// makes the first reading's interval omitted rather than shown as 0 — and null again if the
+// dates are the same or out of order, so a corrected same-day entry says nothing instead of
+// claiming "0 days later".
+var readingIntervalDays = function readingIntervalDays(prevDate, date) {
+  if (!prevDate || !date) return null;
+  var ms = new Date(date + "T00:00:00").getTime() - new Date(prevDate + "T00:00:00").getTime();
+  return ms > 0 ? Math.round(ms / 86400000) : null;
+};
+
+// One row per reading, carrying everything BOTH body charts draw and everything the body-fat
+// tooltip reports. One builder, so the two charts can never disagree about which readings are
+// plotted or what the average is built from (features/body/02).
+//
+// The rolling average uses TREND_MIN_POINTS exactly as the body-fat chart already did — this
+// file does not invent a second smoothing rule and does not change that constant. Each row
+// also carries `avgN`, the number of readings its average is actually built from, so the
+// tooltip states what it is built from rather than implying a fixed count. When founder
+// decision 3 lands and TREND_MIN_POINTS drops, both charts follow from one edit.
+var measurementChartRows = function measurementChartRows(measurements) {
+  var n = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : TREND_MIN_POINTS;
+  return (measurements || []).map(function (m, i, arr) {
+    var _m$neck, _m$waist, _m$hip;
+    var win = arr.slice(Math.max(0, i - (n - 1)), i + 1);
+    var enough = win.length >= n;
+    var avgOf = function avgOf(pick) {
+      var vals = win.map(pick).filter(function (v) {
+        return v != null && isFinite(Number(v));
+      }).map(Number);
+      return enough && vals.length === win.length ? Math.round(vals.reduce(function (s, v) {
+        return s + v;
+      }, 0) / vals.length * 10) / 10 : null;
+    };
+    return {
+      date: fmtShort(m.date),
+      rawDate: m.date,
+      BODYFAT: m.computed_bf,
+      ROLLING: avgOf(function (x) {
+        return x.computed_bf;
+      }),
+      avgN: enough ? win.length : null,
+      NECK: (_m$neck = m.neck) !== null && _m$neck !== void 0 ? _m$neck : null,
+      WAIST: (_m$waist = m.waist) !== null && _m$waist !== void 0 ? _m$waist : null,
+      HIP: (_m$hip = m.hip) !== null && _m$hip !== void 0 ? _m$hip : null,
+      NECK_AVG: avgOf(function (x) {
+        return x.neck;
+      }),
+      WAIST_AVG: avgOf(function (x) {
+        return x.waist;
+      }),
+      HIP_AVG: avgOf(function (x) {
+        return x.hip;
+      }),
+      sites: formatTapeSites(m),
+      sinceDays: readingIntervalDays(i > 0 ? arr[i - 1].date : null, m.date)
+    };
+  });
+};
+var CSV_HEADER = ["Date", "Mode", "Calories", "Protein(g)", "Carbs(g)", "Fat(g)", "Water", "Training", "Weight(kg)", "Neck(cm)", "Waist(cm)", "Hip(cm)", "BodyFat(%)"];
+var csvRows = function csvRows(history, weighIns, bodyMeasurements) {
+  var byDate = function byDate(arr) {
+    return Object.fromEntries((arr || []).map(function (x) {
+      return [x.date, x];
+    }));
+  };
+  var days = byDate(history),
+    wIn = byDate(weighIns),
+    tape = byDate(bodyMeasurements);
+  var dates = _toConsumableArray(new Set([].concat(_toConsumableArray(Object.keys(days)), _toConsumableArray(Object.keys(wIn)), _toConsumableArray(Object.keys(tape))))).sort();
+  var num = function num(v) {
+    return v == null || v === "" || !isFinite(Number(v)) ? "" : Number(v);
+  };
+  return [CSV_HEADER].concat(_toConsumableArray(dates.map(function (date) {
+    var d = days[date],
+      w = wIn[date],
+      m = tape[date];
+    return [date, d ? d.mode || "" : "", d ? Math.round(d.kcal || 0) : "", d ? Math.round(d.protein || 0) : "", d ? Math.round(d.carbs || 0) : "", d ? Math.round(d.fat || 0) : "", d ? num(d.water) : "", d ? d.training ? "Yes" : "No" : "", w ? Math.round((Number(w.weight) || 0) * 100) / 100 : "", m ? num(m.neck) : "", m ? num(m.waist) : "", m ? num(m.hip) : "", m ? num(m.computed_bf) : ""];
+  })));
+};
+
 // ── Cut cycling (energy-model Step 5; features/energy-safety/02) ──────
 // Nothing in the app capped how LONG a cut ran. A deficit from January to June with
 // no structured break is the harm this whole workstream exists to prevent.
@@ -2330,13 +2514,13 @@ var syncBodyMeasurements = /*#__PURE__*/function () {
           now = new Date().toISOString();
           _context10.n = 2;
           return syncUpsert("body_measurements", ms.map(function (m) {
-            var _m$hip;
+            var _m$hip2;
             return {
               user_id: uid,
               date: m.date,
               neck: m.neck,
               waist: m.waist,
-              hip: (_m$hip = m.hip) !== null && _m$hip !== void 0 ? _m$hip : null,
+              hip: (_m$hip2 = m.hip) !== null && _m$hip2 !== void 0 ? _m$hip2 : null,
               formula: m.formula,
               computed_bf: m.computed_bf,
               updated_at: now
@@ -2725,7 +2909,7 @@ var migrateLocalToSupabase = /*#__PURE__*/function () {
 }();
 var pullFromSupabase = /*#__PURE__*/function () {
   var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(uid) {
-    var _weighR$data, _bodyMeasR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, bodyMeasR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, load, breakLoad, offRun, block, wi, bm, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, byDate, _iterator6, _step6, _w, _i, _Object$entries, _Object$entries$_i, d, ws, _t16, _t17, _t18, _t19;
+    var _weighR$data, _bodyMeasR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, bodyMeasR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, load, breakLoad, offRun, block, wi, bm, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, byDate, _iterator6, _step6, _w, _i2, _Object$entries, _Object$entries$_i, d, ws, _t16, _t17, _t18, _t19;
     return _regenerator().w(function (_context17) {
       while (1) switch (_context17.p = _context17.n) {
         case 0:
@@ -3045,17 +3229,17 @@ var pullFromSupabase = /*#__PURE__*/function () {
           } finally {
             _iterator6.f();
           }
-          _i = 0, _Object$entries = Object.entries(byDate);
+          _i2 = 0, _Object$entries = Object.entries(byDate);
         case 37:
-          if (!(_i < _Object$entries.length)) {
+          if (!(_i2 < _Object$entries.length)) {
             _context17.n = 39;
             break;
           }
-          _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2), d = _Object$entries$_i[0], ws = _Object$entries$_i[1];
+          _Object$entries$_i = _slicedToArray(_Object$entries[_i2], 2), d = _Object$entries$_i[0], ws = _Object$entries$_i[1];
           _context17.n = 38;
           return ss("workouts__" + d, JSON.stringify(ws));
         case 38:
-          _i++;
+          _i2++;
           _context17.n = 37;
           break;
         case 39:
@@ -6943,9 +7127,21 @@ function MeasurementRow(_ref82) {
   var filledIn = neckNum > 0 && waistNum > 0 && (formula === "male" || hipNum > 0);
   var domainOk = formula === "male" ? waistNum > neckNum : waistNum + hipNum - neckNum > 0;
   var canSave = filledIn && domainOk;
+
+  // The reading this save is measured against: the most recent one from a DIFFERENT date.
+  // Saving upserts by date, so a correction to today's entry replaces today's row —
+  // comparing against that row would report the size of the typo being corrected
+  // (features/body/02).
+  var prevReading = function () {
+    var before = measurements.filter(function (m) {
+      return m.date < todayKey();
+    });
+    return before.length ? before[before.length - 1] : null;
+  }();
+  var prevDaysAgo = prevReading ? Math.max(0, Math.floor((Date.now() - new Date(prevReading.date + "T00:00:00").getTime()) / 86400000)) : null;
   var save = /*#__PURE__*/function () {
     var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
-      var bf;
+      var before, entered, bf, after;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.n) {
           case 0:
@@ -6955,16 +7151,36 @@ function MeasurementRow(_ref82) {
             }
             return _context30.a(2);
           case 1:
-            _context30.n = 2;
-            return onSave({
+            before = prevReading;
+            entered = {
               neck: neckNum,
               waist: waistNum,
               hip: formula === "female" ? hipNum : null
-            });
+            };
+            _context30.n = 2;
+            return onSave(entered);
           case 2:
             bf = _context30.v;
             if (isFirstEver && localNote.trim()) onSaveNote(localNote.trim());
-            setJustSaved(bf);
+            if (bf != null) {
+              // The window figure is computed against the list as it will be AFTER this save — the
+              // parent's state update has not reached this component's props yet.
+              after = [].concat(_toConsumableArray(measurements.filter(function (m) {
+                return m.date !== todayKey();
+              })), [_objectSpread(_objectSpread({}, entered), {}, {
+                date: todayKey(),
+                formula: formula,
+                computed_bf: bf
+              })]).sort(function (a, b) {
+                return a.date.localeCompare(b.date);
+              });
+              setJustSaved({
+                bf: bf,
+                daysAgo: prevDaysAgo,
+                changes: measurementSiteChanges(before, entered),
+                windowChange: bodyFatWindowChange(after, sex)
+              });
+            }
             setNeck("");
             setWaist("");
             setHip("");
@@ -7187,13 +7403,40 @@ function MeasurementRow(_ref82) {
     style: {
       fontSize: 11,
       color: "var(--text-mid)",
-      marginBottom: 8
+      marginBottom: 8,
+      lineHeight: 1.6
     }
-  }, "Estimated body fat: ", /*#__PURE__*/React.createElement("strong", {
+  }, /*#__PURE__*/React.createElement("div", null, "Estimated body fat: ", /*#__PURE__*/React.createElement("strong", {
     style: {
       color: "var(--text-hi)"
     }
-  }, justSaved, "%")), /*#__PURE__*/React.createElement("div", {
+  }, justSaved.bf, "%")), justSaved.changes ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 2
+    }
+  }, "Since your last reading, ", justSaved.daysAgo === 1 ? "1 day" : justSaved.daysAgo + " days", " ago:", " ", justSaved.changes.map(function (c, i) {
+    return /*#__PURE__*/React.createElement("span", {
+      key: c.site
+    }, i > 0 && " · ", /*#__PURE__*/React.createElement("span", {
+      style: {
+        textTransform: "capitalize"
+      }
+    }, c.site), " ", /*#__PURE__*/React.createElement("strong", {
+      "data-site": c.site,
+      style: {
+        color: siteChangeColor(c.site, c.change, formula)
+      }
+    }, formatSiteChange(c.change)));
+  })) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 2,
+      color: "var(--text-faint)"
+    }
+  }, "First reading \u2014 your next one will show what has changed."), justSaved.windowChange != null && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 2
+    }
+  }, justSaved.windowChange < 0 ? "▼" : justSaved.windowChange > 0 ? "▲" : "=", Math.abs(justSaved.windowChange), " pts of body fat since last month")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8
@@ -11741,25 +11984,93 @@ function FoodSearch(_ref101) {
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
-function History(_ref103) {
+
+// The tape chart's series (features/body/02). Waist leads because it is the dominant term in
+// the Navy formula and the site that actually moves; hip is drawn only when the readings in
+// view have one. These colours identify a series — they are NOT direction colours, and in
+// particular neck is never coloured by whether it went up or down (nutrition-coach veto: a
+// bigger neck computes a leaner body fat, so a direction colour on neck would show a
+// shrinking neck as the bad result).
+var TAPE_SERIES = [{
+  key: "WAIST",
+  avg: "WAIST_AVG",
+  label: "Waist",
+  color: "var(--accent)"
+}, {
+  key: "NECK",
+  avg: "NECK_AVG",
+  label: "Neck",
+  color: "var(--text-mid)"
+}, {
+  key: "HIP",
+  avg: "HIP_AVG",
+  label: "Hip",
+  color: "var(--cut)"
+}];
+
+// The body-fat chart's tooltip is a diagnostic, not a value readout (features/body/02): the
+// reading, the raw sites that produced it, what the average is actually built from, and how
+// long since the previous reading — because a change reads identically whether it happened
+// over a week or over a season. Every row is left out when it has nothing to say: no average
+// until TREND_MIN_POINTS readings exist, no hip on a male-formula reading, no interval on the
+// first reading. None of them renders a dash or a blank in place of a value.
+//
+// At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
+// can land under the thumb, so a taller card would cover the point being inspected.
+function BodyFatTooltip(_ref103) {
+  var active = _ref103.active,
+    payload = _ref103.payload;
+  if (!active || !payload || !payload.length) return null;
+  var r = payload[0].payload || {};
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: CARD,
+      border: "1px solid ".concat(BD),
+      borderRadius: 10,
+      padding: "8px 10px",
+      fontSize: 11,
+      lineHeight: 1.5,
+      color: "var(--text-mid)",
+      maxWidth: 210
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--text-label)",
+      fontSize: 10,
+      letterSpacing: "0.06em"
+    }
+  }, r.date), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--text-hi)",
+      fontWeight: 700
+    }
+  }, "Body fat ", r.BODYFAT, "%"), r.sites && /*#__PURE__*/React.createElement("div", null, r.sites), r.ROLLING != null && /*#__PURE__*/React.createElement("div", null, "avg of last ", r.avgN, ": ", r.ROLLING, "%"), r.sinceDays != null && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--text-faint)"
+    }
+  }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
+}
+function History(_ref104) {
   var _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref103.history,
-    onBack = _ref103.onBack,
-    onUpdateDay = _ref103.onUpdateDay,
-    _ref103$weighIns = _ref103.weighIns,
-    weighIns = _ref103$weighIns === void 0 ? [] : _ref103$weighIns,
-    _ref103$bodyMeasureme = _ref103.bodyMeasurements,
-    bodyMeasurements = _ref103$bodyMeasureme === void 0 ? [] : _ref103$bodyMeasureme,
-    _ref103$meals = _ref103.meals,
-    meals = _ref103$meals === void 0 ? DEF_MEALS : _ref103$meals,
-    _ref103$setMeals = _ref103.setMeals,
-    setMeals = _ref103$setMeals === void 0 ? function () {} : _ref103$setMeals,
-    _ref103$onForget = _ref103.onForget,
-    onForget = _ref103$onForget === void 0 ? function () {} : _ref103$onForget,
-    _ref103$isPremium = _ref103.isPremium,
-    isPremium = _ref103$isPremium === void 0 ? false : _ref103$isPremium,
-    _ref103$onPremiumGate = _ref103.onPremiumGate,
-    onPremiumGate = _ref103$onPremiumGate === void 0 ? function () {} : _ref103$onPremiumGate;
+  var history = _ref104.history,
+    onBack = _ref104.onBack,
+    onUpdateDay = _ref104.onUpdateDay,
+    _ref104$weighIns = _ref104.weighIns,
+    weighIns = _ref104$weighIns === void 0 ? [] : _ref104$weighIns,
+    _ref104$bodyMeasureme = _ref104.bodyMeasurements,
+    bodyMeasurements = _ref104$bodyMeasureme === void 0 ? [] : _ref104$bodyMeasureme,
+    _ref104$sex = _ref104.sex,
+    sex = _ref104$sex === void 0 ? null : _ref104$sex,
+    _ref104$meals = _ref104.meals,
+    meals = _ref104$meals === void 0 ? DEF_MEALS : _ref104$meals,
+    _ref104$setMeals = _ref104.setMeals,
+    setMeals = _ref104$setMeals === void 0 ? function () {} : _ref104$setMeals,
+    _ref104$onForget = _ref104.onForget,
+    onForget = _ref104$onForget === void 0 ? function () {} : _ref104$onForget,
+    _ref104$isPremium = _ref104.isPremium,
+    isPremium = _ref104$isPremium === void 0 ? false : _ref104$isPremium,
+    _ref104$onPremiumGate = _ref104.onPremiumGate,
+    onPremiumGate = _ref104$onPremiumGate === void 0 ? function () {} : _ref104$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -11811,22 +12122,26 @@ function History(_ref103) {
     _useState162 = _slicedToArray(_useState161, 2),
     showBodyFat = _useState162[0],
     setShowBodyFat = _useState162[1];
-  var _useState163 = useState("line"),
+  var _useState163 = useState(false),
     _useState164 = _slicedToArray(_useState163, 2),
-    chartType = _useState164[0],
-    setChartType = _useState164[1];
-  var _useState165 = useState(Math.max(0, history.length - 1)),
+    showTape = _useState164[0],
+    setShowTape = _useState164[1];
+  var _useState165 = useState("line"),
     _useState166 = _slicedToArray(_useState165, 2),
-    dayIdx = _useState166[0],
-    setDayIdx = _useState166[1];
-  var _useState167 = useState(null),
+    chartType = _useState166[0],
+    setChartType = _useState166[1];
+  var _useState167 = useState(Math.max(0, history.length - 1)),
     _useState168 = _slicedToArray(_useState167, 2),
-    addCtx = _useState168[0],
-    setAddCtx = _useState168[1];
+    dayIdx = _useState168[0],
+    setDayIdx = _useState168[1];
   var _useState169 = useState(null),
     _useState170 = _slicedToArray(_useState169, 2),
-    editId = _useState170[0],
-    setEditId = _useState170[1];
+    addCtx = _useState170[0],
+    setAddCtx = _useState170[1];
+  var _useState171 = useState(null),
+    _useState172 = _slicedToArray(_useState171, 2),
+    editId = _useState172[0],
+    setEditId = _useState172[1];
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -11917,28 +12232,34 @@ function History(_ref103) {
       return m.date >= cutoff;
     });
   }();
-  var bodyFatChartData = filteredBodyMeasurements.map(function (m, i, arr) {
-    var win = arr.slice(Math.max(0, i - (TREND_MIN_POINTS - 1)), i + 1);
-    var avg = win.reduce(function (s, x) {
-      return s + x.computed_bf;
-    }, 0) / win.length;
-    return {
-      date: fmtShort(m.date),
-      BODYFAT: m.computed_bf,
-      ROLLING: win.length >= TREND_MIN_POINTS ? Math.round(avg * 10) / 10 : null
-    };
+  // One row set, both body charts (features/body/02). The body-fat chart and the tape chart
+  // draw different series out of the same rows, so they cannot disagree about which readings
+  // are plotted or what an average is built from.
+  var bodyFatChartData = measurementChartRows(filteredBodyMeasurements);
+  // Hip is drawn when the readings in view actually HAVE a hip, not when the profile currently
+  // says female — so a sex change never hides readings that really do carry one.
+  var tapeHasHip = filteredBodyMeasurements.some(function (m) {
+    return m.hip != null;
   });
-  var bodyFatChangeSinceLastMonth = function () {
-    if (filteredBodyMeasurements.length < 2) return null;
-    var monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
-    var before = filteredBodyMeasurements.filter(function (m) {
-      return m.date <= monthAgo;
-    });
-    if (!before.length) return null;
-    var first = before[before.length - 1].computed_bf;
-    var last = filteredBodyMeasurements[filteredBodyMeasurements.length - 1].computed_bf;
-    return Math.round((last - first) * 10) / 10;
-  }();
+  // One definition of the 30-day window, used here and by the save feedback in
+  // MeasurementRow (features/body/02). Reads the FULL measurement list rather than the
+  // range-filtered one: the card names its own window ("since last month"), so the figure
+  // should not change meaning because the chart above it is set to 7 days. This also stops
+  // it reporting a change of 0 when every reading is older than a month — the old inline
+  // version compared the newest reading against itself in that case.
+  var bodyFatChangeSinceLastMonth = bodyFatWindowChange(bodyMeasurements, sex);
+
+  // features/body/02 — the join by date, built from the FULL arrays rather than the
+  // range-filtered ones. A row only ever exists for a date already in `filtered`, so an
+  // unfiltered lookup cannot add rows; what it does avoid is the two range cutoffs above
+  // disagreeing with the day keys, since those cutoffs come from a UTC date string while
+  // the day keys are local (they differ for an hour a day under British Summer Time).
+  var weightOnDate = Object.fromEntries(weighIns.map(function (w) {
+    return [w.date, w.weight];
+  }));
+  var measurementOnDate = Object.fromEntries(bodyMeasurements.map(function (m) {
+    return [m.date, m];
+  }));
   var day = history[dayIdx] || null;
   var dayTots = day ? sumLogs(day.logs || []) : null;
   var pieData = dayTots ? [{
@@ -11966,10 +12287,9 @@ function History(_ref103) {
     onUpdateDay(u);
   };
   var exportCSV = function exportCSV() {
-    var rows = [["Date", "Mode", "Calories", "Protein(g)", "Carbs(g)", "Fat(g)", "Water", "Training"]];
-    history.forEach(function (d) {
-      return rows.push([d.date, d.mode || "", Math.round(d.kcal), Math.round(d.protein), Math.round(d.carbs), Math.round(d.fat), d.water, d.training ? "Yes" : "No"]);
-    });
+    // Row building is a pure function (app.jsx, features/body/02) so the shape of the
+    // export is owned by __tests__/logic.test.js rather than by a click no test can open.
+    var rows = csvRows(history, weighIns, bodyMeasurements);
     var a = document.createElement("a");
     a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows.map(function (r) {
       return r.join(",");
@@ -12324,7 +12644,52 @@ function History(_ref103) {
       alignItems: "center",
       justifyContent: "center"
     }
-  }, "+"))), /*#__PURE__*/React.createElement("div", {
+  }, "+"))), (weightOnDate[day.date] != null || measurementOnDate[day.date]) && function () {
+    var m = measurementOnDate[day.date] || {};
+    var bodyRows = [weightOnDate[day.date] != null && ["Weight", "".concat(wConv(weightOnDate[day.date]), " ").concat(wUnit), "var(--cut)"], m.neck != null && ["Neck", "".concat(m.neck, " cm")], m.waist != null && ["Waist", "".concat(m.waist, " cm")], m.hip != null && ["Hip", "".concat(m.hip, " cm")], m.computed_bf != null && ["Estimated body fat", "".concat(m.computed_bf, "%")]].filter(Boolean);
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: CARD,
+        border: "1px solid ".concat(BD),
+        borderRadius: 18,
+        padding: "14px 18px",
+        marginBottom: 14
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: "var(--text-label)",
+        letterSpacing: "0.12em",
+        fontWeight: 800,
+        marginBottom: 4
+      }
+    }, "BODY"), bodyRows.map(function (_ref105, i) {
+      var _ref106 = _slicedToArray(_ref105, 3),
+        label = _ref106[0],
+        value = _ref106[1],
+        color = _ref106[2];
+      return /*#__PURE__*/React.createElement("div", {
+        key: label,
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          padding: "7px 0",
+          borderBottom: i < bodyRows.length - 1 ? "1px solid ".concat(BD) : "none"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 12,
+          color: "var(--text-mid)"
+        }
+      }, label), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 13,
+          fontWeight: 700,
+          color: color || "var(--text-hi)"
+        }
+      }, value));
+    }));
+  }(), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -12492,21 +12857,23 @@ function History(_ref103) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref104) {
-    var _ref105 = _slicedToArray(_ref104, 2),
-      k = _ref105[0],
-      m = _ref105[1];
+  }, Object.entries(MM).map(function (_ref107) {
+    var _ref108 = _slicedToArray(_ref107, 2),
+      k = _ref108[0],
+      m = _ref108[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
         setShowWeight(false);
+        setShowBodyFat(false);
+        setShowTape(false);
         toggleM(k);
       },
       style: {
         padding: "6px 13px",
-        background: !showWeight && metrics.includes(k) ? mix(m.color, "22") : "var(--surface-2)",
-        color: !showWeight && metrics.includes(k) ? m.color : "var(--text-label)",
-        border: "1px solid ".concat(!showWeight && metrics.includes(k) ? mix(m.color, "55") : BD),
+        background: !showWeight && !showBodyFat && !showTape && metrics.includes(k) ? mix(m.color, "22") : "var(--surface-2)",
+        color: !showWeight && !showBodyFat && !showTape && metrics.includes(k) ? m.color : "var(--text-label)",
+        border: "1px solid ".concat(!showWeight && !showBodyFat && !showTape && metrics.includes(k) ? mix(m.color, "55") : BD),
         borderRadius: 99,
         fontSize: 11,
         fontWeight: 900
@@ -12518,6 +12885,7 @@ function History(_ref103) {
         return !w;
       });
       setShowBodyFat(false);
+      setShowTape(false);
     },
     style: {
       padding: "6px 13px",
@@ -12534,6 +12902,7 @@ function History(_ref103) {
         return !v;
       });
       setShowWeight(false);
+      setShowTape(false);
     },
     style: {
       padding: "6px 13px",
@@ -12544,16 +12913,33 @@ function History(_ref103) {
       fontSize: 11,
       fontWeight: 900
     }
-  }, "\uD83D\uDCCF Body Fat %"), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDCCF Body Fat %"), bodyMeasurements.length > 0 && /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      setShowTape(function (v) {
+        return !v;
+      });
+      setShowWeight(false);
+      setShowBodyFat(false);
+    },
+    style: {
+      padding: "6px 13px",
+      background: showTape ? "var(--border)" : "var(--surface-2)",
+      color: showTape ? "var(--text-hi)" : "var(--text-label)",
+      border: "1px solid ".concat(showTape ? "var(--raised-2)" : BD),
+      borderRadius: 99,
+      fontSize: 11,
+      fontWeight: 900
+    }
+  }, "\uD83D\uDCD0 Tape"), /*#__PURE__*/React.createElement("div", {
     style: {
       marginLeft: "auto",
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref106) {
-    var _ref107 = _slicedToArray(_ref106, 2),
-      t = _ref107[0],
-      e = _ref107[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref109) {
+    var _ref110 = _slicedToArray(_ref109, 2),
+      t = _ref110[0],
+      e = _ref110[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -12579,7 +12965,15 @@ function History(_ref103) {
   }, chartsAvailable ? /*#__PURE__*/React.createElement(ResponsiveContainer, {
     width: "100%",
     height: 200
-  }, showBodyFat ? /*#__PURE__*/React.createElement(LineChart, {
+  }, showTape ?
+  /*#__PURE__*/
+  /* Neck and waist (and hip when the readings have one) on ONE shared
+     centimetre axis — the gap between the lines is what the Navy formula
+     reads. Each site's raw readings are the thin line with dots and its
+     rolling average is the dashed line in the same colour, the same
+     raw-plus-average shape the weight and body-fat charts already use, over
+     the same TREND_MIN_POINTS window. */
+  React.createElement(LineChart, {
     data: bodyFatChartData,
     margin: {
       top: 5,
@@ -12605,8 +12999,64 @@ function History(_ref103) {
     domain: ["auto", "auto"]
   }), /*#__PURE__*/React.createElement(Tooltip, {
     formatter: function formatter(v, n) {
-      return [v + "%", n === "ROLLING" ? "".concat(TREND_MIN_POINTS, "-reading avg") : "Body fat %"];
+      return [v + " cm", n];
     }
+  }), TAPE_SERIES.filter(function (s) {
+    return s.key !== "HIP" || tapeHasHip;
+  }).map(function (s) {
+    return /*#__PURE__*/React.createElement(Line, {
+      key: s.key,
+      type: "monotone",
+      dataKey: s.key,
+      stroke: rc(s.color),
+      strokeWidth: 1.5,
+      dot: {
+        r: 2.5,
+        fill: rc(s.color)
+      },
+      name: s.label,
+      connectNulls: false
+    });
+  }), TAPE_SERIES.filter(function (s) {
+    return s.key !== "HIP" || tapeHasHip;
+  }).map(function (s) {
+    return /*#__PURE__*/React.createElement(Line, {
+      key: s.avg,
+      type: "monotone",
+      dataKey: s.avg,
+      stroke: rc(s.color),
+      strokeWidth: 2.5,
+      strokeDasharray: "4 3",
+      dot: false,
+      name: s.label + " avg",
+      connectNulls: true
+    });
+  })) : showBodyFat ? /*#__PURE__*/React.createElement(LineChart, {
+    data: bodyFatChartData,
+    margin: {
+      top: 5,
+      right: 10,
+      left: -20,
+      bottom: 0
+    }
+  }, /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "date",
+    tick: {
+      fill: rc("var(--text-lo)"),
+      fontSize: 10
+    },
+    axisLine: false,
+    tickLine: false
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tick: {
+      fill: rc("var(--text-lo)"),
+      fontSize: 10
+    },
+    axisLine: false,
+    tickLine: false,
+    domain: ["auto", "auto"]
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    content: /*#__PURE__*/React.createElement(BodyFatTooltip, null)
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
     dataKey: "BODYFAT",
@@ -12779,10 +13229,10 @@ function History(_ref103) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref108) {
-    var _ref109 = _slicedToArray(_ref108, 2),
-      k = _ref109[0],
-      m = _ref109[1];
+  }, Object.entries(MM).map(function (_ref111) {
+    var _ref112 = _slicedToArray(_ref111, 2),
+      k = _ref112[0],
+      m = _ref112[1];
     var avg = filtered.length ? filtered.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / filtered.length : 0;
@@ -12885,7 +13335,15 @@ function History(_ref103) {
         color: "var(--text-lo)",
         marginTop: 2
       }
-    }, "P:", Math.round(d.protein), "g \xB7 C:", Math.round(d.carbs), "g \xB7 F:", Math.round(d.fat), "g \xB7 \uD83D\uDCA7", d.water)), /*#__PURE__*/React.createElement("div", {
+    }, "P:", Math.round(d.protein), "g \xB7 C:", Math.round(d.carbs), "g \xB7 F:", Math.round(d.fat), "g \xB7 \uD83D\uDCA7", d.water, weightOnDate[d.date] != null && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "var(--cut)"
+      }
+    }, " \xB7 \u2696\uFE0F", wConv(weightOnDate[d.date]), wUnit), measurementOnDate[d.date] && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "var(--text-mid)"
+      }
+    }, " \xB7 \uD83D\uDCCF", measurementOnDate[d.date].computed_bf, "%"))), /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
         alignItems: "center",
@@ -12915,9 +13373,9 @@ function History(_ref103) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref110) {
-  var earnedBdgs = _ref110.earnedBdgs,
-    onBack = _ref110.onBack;
+function Achievements(_ref113) {
+  var earnedBdgs = _ref113.earnedBdgs,
+    onBack = _ref113.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -13016,17 +13474,17 @@ function Achievements(_ref110) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref111) {
-  var badge = _ref111.badge,
-    onDone = _ref111.onDone;
+function BadgeFanfare(_ref114) {
+  var badge = _ref114.badge,
+    onDone = _ref114.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState171 = useState(0),
-    _useState172 = _slicedToArray(_useState171, 2),
-    count = _useState172[0],
-    setCount = _useState172[1];
-  var _useState173 = useState(function () {
+  var _useState173 = useState(0),
+    _useState174 = _slicedToArray(_useState173, 2),
+    count = _useState174[0],
+    setCount = _useState174[1];
+  var _useState175 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -13040,8 +13498,8 @@ function BadgeFanfare(_ref111) {
         };
       });
     }),
-    _useState174 = _slicedToArray(_useState173, 1),
-    floaters = _useState174[0];
+    _useState176 = _slicedToArray(_useState175, 1),
+    floaters = _useState176[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -13139,9 +13597,9 @@ function BadgeFanfare(_ref111) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref112) {
-  var streak = _ref112.streak,
-    onDone = _ref112.onDone;
+function StreakPip(_ref115) {
+  var streak = _ref115.streak,
+    onDone = _ref115.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -13192,9 +13650,9 @@ function StreakPip(_ref112) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref113) {
-  var badge = _ref113.badge,
-    onDone = _ref113.onDone;
+function BadgeToast(_ref116) {
+  var badge = _ref116.badge,
+    onDone = _ref116.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -13256,9 +13714,9 @@ function BadgeToast(_ref113) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref114) {
-  var text = _ref114.text,
-    onDone = _ref114.onDone;
+function NoteToast(_ref117) {
+  var text = _ref117.text,
+    onDone = _ref117.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -13299,125 +13757,125 @@ function NoteToast(_ref114) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState175 = useState("dashboard"),
-    _useState176 = _slicedToArray(_useState175, 2),
-    view = _useState176[0],
-    setView = _useState176[1];
-  var _useState177 = useState([]),
+  var _useState177 = useState("dashboard"),
     _useState178 = _slicedToArray(_useState177, 2),
-    logs = _useState178[0],
-    setLogs = _useState178[1];
-  var _useState179 = useState(0),
+    view = _useState178[0],
+    setView = _useState178[1];
+  var _useState179 = useState([]),
     _useState180 = _slicedToArray(_useState179, 2),
-    water = _useState180[0],
-    setWater = _useState180[1];
-  var _useState181 = useState("cut"),
+    logs = _useState180[0],
+    setLogs = _useState180[1];
+  var _useState181 = useState(0),
     _useState182 = _slicedToArray(_useState181, 2),
-    mode = _useState182[0],
-    setMode = _useState182[1];
-  var _useState183 = useState(null),
+    water = _useState182[0],
+    setWater = _useState182[1];
+  var _useState183 = useState("cut"),
     _useState184 = _slicedToArray(_useState183, 2),
-    prof = _useState184[0],
-    setProf = _useState184[1];
-  var _useState185 = useState([]),
+    mode = _useState184[0],
+    setMode = _useState184[1];
+  var _useState185 = useState(null),
     _useState186 = _slicedToArray(_useState185, 2),
-    hist = _useState186[0],
-    setHist = _useState186[1];
-  var _useState187 = useState([].concat(DEF_MEALS)),
+    prof = _useState186[0],
+    setProf = _useState186[1];
+  var _useState187 = useState([]),
     _useState188 = _slicedToArray(_useState187, 2),
-    meals = _useState188[0],
-    setMeals = _useState188[1];
-  var _useState189 = useState([]),
+    hist = _useState188[0],
+    setHist = _useState188[1];
+  var _useState189 = useState([].concat(DEF_MEALS)),
     _useState190 = _slicedToArray(_useState189, 2),
-    workouts = _useState190[0],
-    setWorkouts = _useState190[1];
+    meals = _useState190[0],
+    setMeals = _useState190[1];
+  var _useState191 = useState([]),
+    _useState192 = _slicedToArray(_useState191, 2),
+    workouts = _useState192[0],
+    setWorkouts = _useState192[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState191 = useState([0, 0]),
-    _useState192 = _slicedToArray(_useState191, 2),
-    priorWorkoutKcal = _useState192[0],
-    setPriorWorkoutKcal = _useState192[1];
-  var _useState193 = useState([]),
+  var _useState193 = useState([0, 0]),
     _useState194 = _slicedToArray(_useState193, 2),
-    earnedBdgs = _useState194[0],
-    setEarnedBdgs = _useState194[1];
-  var _useState195 = useState(null),
+    priorWorkoutKcal = _useState194[0],
+    setPriorWorkoutKcal = _useState194[1];
+  var _useState195 = useState([]),
     _useState196 = _slicedToArray(_useState195, 2),
-    newBadge = _useState196[0],
-    setNewBadge = _useState196[1];
-  var _useState197 = useState(false),
+    earnedBdgs = _useState196[0],
+    setEarnedBdgs = _useState196[1];
+  var _useState197 = useState(null),
     _useState198 = _slicedToArray(_useState197, 2),
-    ready = _useState198[0],
-    setReady = _useState198[1];
-  var _useState199 = useState([]),
+    newBadge = _useState198[0],
+    setNewBadge = _useState198[1];
+  var _useState199 = useState(false),
     _useState200 = _slicedToArray(_useState199, 2),
-    weighIns = _useState200[0],
-    setWeighIns = _useState200[1];
-  var _useState201 = useState(0),
+    ready = _useState200[0],
+    setReady = _useState200[1];
+  var _useState201 = useState([]),
     _useState202 = _slicedToArray(_useState201, 2),
-    tdeeAdj = _useState202[0],
-    setTdeeAdj = _useState202[1];
-  var _useState203 = useState([]),
+    weighIns = _useState202[0],
+    setWeighIns = _useState202[1];
+  var _useState203 = useState(0),
     _useState204 = _slicedToArray(_useState203, 2),
-    adjLog = _useState204[0],
-    setAdjLog = _useState204[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState205 = useState(null),
+    tdeeAdj = _useState204[0],
+    setTdeeAdj = _useState204[1];
+  var _useState205 = useState([]),
     _useState206 = _slicedToArray(_useState205, 2),
-    weighNudgeAt = _useState206[0],
-    setWeighNudgeAt = _useState206[1]; // last weigh-in-nudge dismissal (ms; local-only)
+    adjLog = _useState206[0],
+    setAdjLog = _useState206[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState207 = useState(null),
+    _useState208 = _slicedToArray(_useState207, 2),
+    weighNudgeAt = _useState208[0],
+    setWeighNudgeAt = _useState208[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState207 = useState([]),
-    _useState208 = _slicedToArray(_useState207, 2),
-    bodyMeasurements = _useState208[0],
-    setBodyMeasurements = _useState208[1];
-  var _useState209 = useState(false),
+  var _useState209 = useState([]),
     _useState210 = _slicedToArray(_useState209, 2),
-    muteMeasurements = _useState210[0],
-    setMuteMeasurements = _useState210[1];
-  var _useState211 = useState(""),
+    bodyMeasurements = _useState210[0],
+    setBodyMeasurements = _useState210[1];
+  var _useState211 = useState(false),
     _useState212 = _slicedToArray(_useState211, 2),
-    measurementNote = _useState212[0],
-    setMeasurementNote = _useState212[1];
-  var _useState213 = useState(null),
+    muteMeasurements = _useState212[0],
+    setMuteMeasurements = _useState212[1];
+  var _useState213 = useState(""),
     _useState214 = _slicedToArray(_useState213, 2),
-    measurementNudgeAt = _useState214[0],
-    setMeasurementNudgeAt = _useState214[1];
-  var _useState215 = useState(EMPTY_CUT_BLOCK),
+    measurementNote = _useState214[0],
+    setMeasurementNote = _useState214[1];
+  var _useState215 = useState(null),
     _useState216 = _slicedToArray(_useState215, 2),
-    cutBlock = _useState216[0],
-    setCutBlock = _useState216[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState217 = useState(0),
+    measurementNudgeAt = _useState216[0],
+    setMeasurementNudgeAt = _useState216[1];
+  var _useState217 = useState(EMPTY_CUT_BLOCK),
     _useState218 = _slicedToArray(_useState217, 2),
-    coachKey = _useState218[0],
-    setCoachKey = _useState218[1];
-  var _useState219 = useState(null),
+    cutBlock = _useState218[0],
+    setCutBlock = _useState218[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState219 = useState(0),
     _useState220 = _slicedToArray(_useState219, 2),
-    streakPop = _useState220[0],
-    setStreakPop = _useState220[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState220[0],
+    setCoachKey = _useState220[1];
   var _useState221 = useState(null),
     _useState222 = _slicedToArray(_useState221, 2),
-    badgeToast = _useState222[0],
-    setBadgeToast = _useState222[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState222[0],
+    setStreakPop = _useState222[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState223 = useState(null),
     _useState224 = _slicedToArray(_useState223, 2),
-    noteToast = _useState224[0],
-    setNoteToast = _useState224[1]; // plain one-line confirmations
-  var _useState225 = useState(false),
+    badgeToast = _useState224[0],
+    setBadgeToast = _useState224[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState225 = useState(null),
     _useState226 = _slicedToArray(_useState225, 2),
-    badgeGlow = _useState226[0],
-    setBadgeGlow = _useState226[1]; // the 🏆 glow paired with the toast
-  var _useState227 = useState(null),
+    noteToast = _useState226[0],
+    setNoteToast = _useState226[1]; // plain one-line confirmations
+  var _useState227 = useState(false),
     _useState228 = _slicedToArray(_useState227, 2),
-    customKcal = _useState228[0],
-    setCustomKcal = _useState228[1];
-  var _useState229 = useState(false),
+    badgeGlow = _useState228[0],
+    setBadgeGlow = _useState228[1]; // the 🏆 glow paired with the toast
+  var _useState229 = useState(null),
     _useState230 = _slicedToArray(_useState229, 2),
-    aggressiveCutAcked = _useState230[0],
-    setAggressiveCutAcked = _useState230[1];
-  var _useState231 = useState(0),
+    customKcal = _useState230[0],
+    setCustomKcal = _useState230[1];
+  var _useState231 = useState(false),
     _useState232 = _slicedToArray(_useState231, 2),
-    setThemeTick = _useState232[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState232[0],
+    setAggressiveCutAcked = _useState232[1];
+  var _useState233 = useState(0),
+    _useState234 = _slicedToArray(_useState233, 2),
+    setThemeTick = _useState234[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -13443,46 +13901,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState233 = useState("anonymous"),
-    _useState234 = _slicedToArray(_useState233, 2),
-    authState = _useState234[0],
-    setAuthState = _useState234[1];
-  var _useState235 = useState(null),
+  var _useState235 = useState("anonymous"),
     _useState236 = _slicedToArray(_useState235, 2),
-    authUser = _useState236[0],
-    setAuthUser = _useState236[1];
+    authState = _useState236[0],
+    setAuthState = _useState236[1];
   var _useState237 = useState(null),
     _useState238 = _slicedToArray(_useState237, 2),
-    premiumGate = _useState238[0],
-    setPremiumGate = _useState238[1]; // {emoji, name} | null
-  var _useState239 = useState(false),
+    authUser = _useState238[0],
+    setAuthUser = _useState238[1];
+  var _useState239 = useState(null),
     _useState240 = _slicedToArray(_useState239, 2),
-    showSignIn = _useState240[0],
-    setShowSignIn = _useState240[1];
+    premiumGate = _useState240[0],
+    setPremiumGate = _useState240[1]; // {emoji, name} | null
   var _useState241 = useState(false),
     _useState242 = _slicedToArray(_useState241, 2),
-    showSignOut = _useState242[0],
-    setShowSignOut = _useState242[1];
+    showSignIn = _useState242[0],
+    setShowSignIn = _useState242[1];
   var _useState243 = useState(false),
     _useState244 = _slicedToArray(_useState243, 2),
-    showLapsed = _useState244[0],
-    setShowLapsed = _useState244[1];
+    showSignOut = _useState244[0],
+    setShowSignOut = _useState244[1];
   var _useState245 = useState(false),
     _useState246 = _slicedToArray(_useState245, 2),
-    needsConsent = _useState246[0],
-    setNeedsConsent = _useState246[1]; // retroactive Art. 9 consent (R2)
-  var _useState247 = useState(null),
+    showLapsed = _useState246[0],
+    setShowLapsed = _useState246[1];
+  var _useState247 = useState(false),
     _useState248 = _slicedToArray(_useState247, 2),
-    consentInfo = _useState248[0],
-    setConsentInfo = _useState248[1]; // parsed local health_consent for display
-  var _useState249 = useState(navigator.onLine),
+    needsConsent = _useState248[0],
+    setNeedsConsent = _useState248[1]; // retroactive Art. 9 consent (R2)
+  var _useState249 = useState(null),
     _useState250 = _slicedToArray(_useState249, 2),
-    isOnline = _useState250[0],
-    setIsOnline = _useState250[1];
-  var _useState251 = useState(""),
+    consentInfo = _useState250[0],
+    setConsentInfo = _useState250[1]; // parsed local health_consent for display
+  var _useState251 = useState(navigator.onLine),
     _useState252 = _slicedToArray(_useState251, 2),
-    syncMsg = _useState252[0],
-    setSyncMsg = _useState252[1];
+    isOnline = _useState252[0],
+    setIsOnline = _useState252[1];
+  var _useState253 = useState(""),
+    _useState254 = _slicedToArray(_useState253, 2),
+    syncMsg = _useState254[0],
+    setSyncMsg = _useState254[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -13522,7 +13980,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref115 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39() {
+      var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39() {
         var k, lv, wv, mv, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t42;
         return _regenerator().w(function (_context39) {
           while (1) switch (_context39.p = _context39.n) {
@@ -13774,7 +14232,7 @@ function App() {
         }, _callee39, null, [[30, 32]]);
       }));
       return function load() {
-        return _ref115.apply(this, arguments);
+        return _ref118.apply(this, arguments);
       };
     }();
     load();
@@ -13828,7 +14286,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref116 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(l) {
+    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(l) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -13843,11 +14301,11 @@ function App() {
       }, _callee40);
     }));
     return function saveLogs(_x52) {
-      return _ref116.apply(this, arguments);
+      return _ref119.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref117 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(w) {
+    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(w) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -13862,11 +14320,11 @@ function App() {
       }, _callee41);
     }));
     return function saveWater(_x53) {
-      return _ref117.apply(this, arguments);
+      return _ref120.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(m) {
+    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(m) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -13881,11 +14339,11 @@ function App() {
       }, _callee42);
     }));
     return function saveMode(_x54) {
-      return _ref118.apply(this, arguments);
+      return _ref121.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(p) {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(p) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -13901,11 +14359,11 @@ function App() {
       }, _callee43);
     }));
     return function saveProf(_x55) {
-      return _ref119.apply(this, arguments);
+      return _ref122.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(w) {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(w) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -13920,7 +14378,7 @@ function App() {
       }, _callee44);
     }));
     return function saveWorkouts(_x56) {
-      return _ref120.apply(this, arguments);
+      return _ref123.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -13934,7 +14392,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(e) {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
@@ -13974,7 +14432,7 @@ function App() {
       }, _callee45);
     }));
     return function addLog(_x57) {
-      return _ref121.apply(this, arguments);
+      return _ref124.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -14000,7 +14458,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(kcal) {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(kcal) {
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
           case 0:
@@ -14025,11 +14483,11 @@ function App() {
       }, _callee46);
     }));
     return function saveCustomKcal(_x58) {
-      return _ref122.apply(this, arguments);
+      return _ref125.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(m) {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(m) {
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.n) {
           case 0:
@@ -14047,11 +14505,11 @@ function App() {
       }, _callee47);
     }));
     return function handleSetMode(_x59) {
-      return _ref123.apply(this, arguments);
+      return _ref126.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -14066,11 +14524,11 @@ function App() {
       }, _callee48);
     }));
     return function handleAckAggressiveCut() {
-      return _ref124.apply(this, arguments);
+      return _ref127.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(updated) {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(updated) {
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
           case 0:
@@ -14085,7 +14543,7 @@ function App() {
       }, _callee49);
     }));
     return function saveMeals(_x60) {
-      return _ref125.apply(this, arguments);
+      return _ref128.apply(this, arguments);
     };
   }();
 
@@ -14095,7 +14553,7 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(entry) {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(entry) {
       var name, clean;
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
@@ -14125,14 +14583,14 @@ function App() {
       }, _callee50);
     }));
     return function addToQA(_x61) {
-      return _ref126.apply(this, arguments);
+      return _ref129.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(googleUser, grantedBy, consentMeta) {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t43;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.p = _context51.n) {
@@ -14232,13 +14690,13 @@ function App() {
       }, _callee51, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x62, _x63, _x64) {
-      return _ref127.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52() {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52() {
       var meta, rec;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.n) {
@@ -14269,12 +14727,12 @@ function App() {
       }, _callee52);
     }));
     return function handleConsent() {
-      return _ref128.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
-      var clearKeys, _i2, _clearKeys, k, i, key, _t44;
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
+      var clearKeys, _i3, _clearKeys, k, i, key, _t44;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
@@ -14293,17 +14751,17 @@ function App() {
             _t44 = _context53.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "tdee_adj_log", "weigh_nudge_dismissed", "cut_block", "target_kcal", "aggressive_cut_acked", "health_consent"];
-            _i2 = 0, _clearKeys = clearKeys;
+            _i3 = 0, _clearKeys = clearKeys;
           case 5:
-            if (!(_i2 < _clearKeys.length)) {
+            if (!(_i3 < _clearKeys.length)) {
               _context53.n = 7;
               break;
             }
-            k = _clearKeys[_i2];
+            k = _clearKeys[_i3];
             _context53.n = 6;
             return ss(k, "");
           case 6:
-            _i2++;
+            _i3++;
             _context53.n = 5;
             break;
           case 7:
@@ -14345,7 +14803,7 @@ function App() {
       }, _callee53, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref129.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
 
@@ -14355,7 +14813,7 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.n) {
           case 0:
@@ -14375,7 +14833,7 @@ function App() {
       }, _callee54);
     }));
     return function resetTdeeAdj() {
-      return _ref130.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -14430,7 +14888,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.n) {
           case 0:
@@ -14445,11 +14903,11 @@ function App() {
       }, _callee55);
     }));
     return function handleDeleteAccount() {
-      return _ref131.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(upd) {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(upd) {
       var nh;
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
@@ -14473,11 +14931,11 @@ function App() {
       }, _callee56);
     }));
     return function updateDay(_x65) {
-      return _ref132.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(weight) {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
@@ -14558,7 +15016,7 @@ function App() {
       }, _callee57);
     }));
     return function onWeighIn(_x66) {
-      return _ref133.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
 
@@ -14567,12 +15025,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(_ref134) {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(_ref137) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.n) {
           case 0:
-            neck = _ref134.neck, waist = _ref134.waist, hip = _ref134.hip;
+            neck = _ref137.neck, waist = _ref137.waist, hip = _ref137.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -14634,11 +15092,11 @@ function App() {
       }, _callee58);
     }));
     return function onMeasurement(_x67) {
-      return _ref135.apply(this, arguments);
+      return _ref138.apply(this, arguments);
     };
   }();
   var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(on) {
+    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(on) {
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.n) {
           case 0:
@@ -14651,11 +15109,11 @@ function App() {
       }, _callee59);
     }));
     return function toggleMuteMeasurements(_x68) {
-      return _ref136.apply(this, arguments);
+      return _ref139.apply(this, arguments);
     };
   }();
   var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(note) {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(note) {
       return _regenerator().w(function (_context60) {
         while (1) switch (_context60.n) {
           case 0:
@@ -14668,7 +15126,7 @@ function App() {
       }, _callee60);
     }));
     return function saveMeasurementNote(_x69) {
-      return _ref137.apply(this, arguments);
+      return _ref140.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -14711,7 +15169,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61() {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61() {
       var ts;
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
@@ -14726,11 +15184,11 @@ function App() {
       }, _callee61);
     }));
     return function dismissWeighNudge() {
-      return _ref138.apply(this, arguments);
+      return _ref141.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.n) {
           case 0:
@@ -14747,7 +15205,7 @@ function App() {
       }, _callee62);
     }));
     return function muteWeighNudge() {
-      return _ref139.apply(this, arguments);
+      return _ref142.apply(this, arguments);
     };
   }();
 
@@ -14766,7 +15224,7 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       var ts;
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.n) {
@@ -14781,7 +15239,7 @@ function App() {
       }, _callee63);
     }));
     return function dismissMeasurementNudge() {
-      return _ref140.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
 
@@ -14927,7 +15385,7 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64(next) {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64(next) {
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.n) {
           case 0:
@@ -14942,7 +15400,7 @@ function App() {
       }, _callee64);
     }));
     return function saveCutBlock(_x70) {
-      return _ref141.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -14965,7 +15423,7 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
       return _regenerator().w(function (_context65) {
         while (1) switch (_context65.n) {
           case 0:
@@ -14985,7 +15443,7 @@ function App() {
       }, _callee65);
     }));
     return function startDietBreak() {
-      return _ref142.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -15047,10 +15505,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref143) {
-    var _ref144 = _slicedToArray(_ref143, 2),
-      lbl = _ref144[0],
-      fn = _ref144[1];
+  }]].map(function (_ref146) {
+    var _ref147 = _slicedToArray(_ref146, 2),
+      lbl = _ref147[0],
+      fn = _ref147[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -15223,6 +15681,7 @@ function App() {
     onUpdateDay: updateDay,
     weighIns: weighIns,
     bodyMeasurements: bodyMeasurements,
+    sex: p.sex,
     meals: meals,
     setMeals: saveMeals,
     onForget: forgetMeal,

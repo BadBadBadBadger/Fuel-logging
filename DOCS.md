@@ -192,6 +192,17 @@ cumulativeAdj  = cumulativeAdj + adj, held within -600…+600       // lifetime 
 - Lifetime cap of ±600 kcal (prevents runaway drift)
 - Adjustments rounded to nearest 50 kcal (avoids false precision)
 
+**Added in v79 (`energy-safety/09` + `/10`), all on the RAISING direction** — the caps above proved
+insufficient against a real noisy scale, which reached the +600 lifetime ceiling in five days:
+- `RAISE_MIN_INTERVAL_DAYS = 7` — a raise can't fire again inside a week, so the same short-lived
+  swing can't be credited repeatedly as fresh weigh-ins arrive against overlapping 7-day windows
+- `RAISE_REVERSAL_WINDOW_DAYS = 21` — a recent raise *can* be walked back down while cutting, which
+  file 04's cutting-aware refusal otherwise prevented. Outside that window 04's refusal is untouched:
+  it still won't let a disappointing scale grind the target down
+- **Training is credited, not counted as metabolism.** Each day's earn-to-eat bonus is stored on the
+  snapshot (`workout_bonus`) and subtracted before the loop reads a deficit — otherwise every trained
+  week reads "ate more, still lost weight" as a higher burn. Deterministic, not noise-driven; see §37
+
 ### Confidence levels
 | Weigh-ins | Label | Meaning |
 |---|---|---|
@@ -1066,6 +1077,7 @@ actually been run live:
 | 2026-08-16 | `ALTER TABLE food_logs ADD COLUMN ... conf, elements` | Confidence model |
 | 2026-09-09 | `ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS` × 5: `target_kcal, target_protein, target_fat, target_fat_floor, floored` | Intake scoring (§37) |
 | 2026-09-10 | `CREATE TABLE IF NOT EXISTS body_measurements (...)` + `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY "own body_measurements"` + `CREATE INDEX ... body_measurements_user_date` | Body-measurement tracking (§12, §37) |
+| 2026-09-11 | `ALTER TABLE history_snapshots ADD COLUMN IF NOT EXISTS workout_bonus NUMERIC` | Workout-burn calibration credit (`energy-safety/10`, §37) — ⚠️ **run after v79 had already deployed**, so for that window the missing column 400'd the whole `history_snapshots` upsert and no daily history synced at all. Column first, wiring second — always. |
 
 1. Go to https://supabase.com → **New Project**
 2. Name: "fuel-log", region: closest to your users (Europe West for UK)
@@ -1472,6 +1484,47 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### The adaptive engine stops talking itself into a bigger appetite (Sep 2026)
+Two separate confirmed defects in `runCalibration`'s **raising** direction, both found from the
+founder's own live data rather than from a test. File 04 made lowering cautious while cutting and
+left raising deliberately fast — *"good news should arrive as fast as the evidence does"* — which
+assumed the evidence behind a raise is real. Against a real, noisy scale it isn't. Specs:
+`energy-safety/09-adaptive-tdee-raise-safeguards.feature` and
+`/10-workout-burn-calibration-credit.feature`; the diagnosis is in
+`09-tdee-raise-runaway-bug-swarm-review.md`. Jest **329/329**, Playwright **92/92**, sw `v78→v79`.
+- **DB change — one column.** `history_snapshots.workout_bonus NUMERIC`, recording the exact
+  earn-to-eat bonus that day's target carried. **Run against the live database on 2026-09-11** —
+  see §31. ⚠️ It was run *after* v79 deployed rather than before, and for that window the missing
+  column **400'd the entire `history_snapshots` upsert**, so no daily history synced at all — not
+  just `workout_bonus`. That is the failure mode the column-before-wiring rule exists to prevent,
+  and it is the second time this exact shape of outage has happened. The build must not ship ahead
+  of the column.
+- **Runaway.** Nothing stopped the *same* short-lived weight swing being credited more than once as
+  fresh weigh-ins arrived against overlapping 7-day windows. Two days of mostly-water drop, on a
+  still-short weigh-in history, drove the adjustment to its hard **+600 ceiling in five days** —
+  reproduced against real Supabase data, to the exact kcal. `inFlightAdj` corrected the *size* of
+  the measured error but never stopped a new step firing days later off substantially the same data.
+- **Sticky.** Once a bad raise landed, file 04's cutting-aware refusal — built correctly, to stop a
+  disappointing scale walking the target *down* — also blocked the app from walking a **wrong raise**
+  back down while cutting. The rule couldn't tell genuine new lowering evidence from undoing its own
+  recent mistake; it was never designed to have to.
+- **The training double-count** (file 10, a different failure class — deterministic, not noise).
+  `runCalibration` compared logged food against `baseTDEE`, which excludes a workout's burn, while
+  the target the user actually eats to already has that burn credited back as an earn-to-eat bonus.
+  So on any trained week where they ate up to that correctly-raised target, the loop read *"ate more,
+  still lost weight"* as *"you burn more than we thought"* — a false raise roughly the size of the
+  average workout bonus, **every week trained, with no noise required**. It would fire against a
+  perfectly smooth weight trend, and neither of 09's fixes catches it: Fix A only throttles how often
+  a raise lands, Fix B only reverses a raise that later evidence contradicts, and this bias never
+  contradicts itself. Hence its own file, on the critical-thinking hat's recommendation.
+- **Also fixed:** the dashboard weight-trend badge compared two raw points, so one noisy day could
+  read as a gain during a real loss. Now the same 7-day rolling-average comparison `runCalibration`
+  trusts internally.
+- **Founder's own intuition was half right.** He suspected *"the activity multiplier plus submitting
+  gym sessions"*. Activity-tier self-selection — picking "Active" because you train rather than for
+  your non-exercise movement — is real but not code-fixable, and `runCalibration` never reads the
+  `training` flag at all. The structural gap in the loop itself was the part that was actionable.
 
 ### Body-measurement tracking — a tape measure instead of a guess (Sep 2026)
 A weekly neck/waist (+hip for women) entry now computes body-fat % by the **US Navy method** and

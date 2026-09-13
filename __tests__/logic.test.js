@@ -334,6 +334,97 @@ const syncedBodyFat = ({ currentBodyFat, measurements, sex, beforeDate, cutting 
   return Math.round(Math.min(target, current + BF_SYNC_STEP_CAP) * 10) / 10;
 };
 
+// Mirror of app.jsx body-measurement presentation (features/body/02). Presentation and
+// feedback only — none of these read or write a stored field; they are joins by date over
+// weighIns[] and bodyMeasurements[].
+const MEASUREMENT_SITES = ["neck", "waist", "hip"];
+const measurementSiteChanges = (prev, next) => {
+  if (!prev || !next) return null;
+  const out = [];
+  for (const site of MEASUREMENT_SITES) {
+    const a = prev[site], b = next[site];
+    if (a == null || b == null || !isFinite(Number(a)) || !isFinite(Number(b))) continue;
+    out.push({ site, change: Math.round((Number(b) - Number(a)) * 10) / 10 });
+  }
+  return out.length ? out : null;
+};
+// Neck is deliberately absent: a bigger neck computes a LEANER body fat under the Navy
+// formula, so the waist rule applied to neck would colour a shrinking neck as the bad result.
+const fatDirectionSites = formula => (formula === "female" ? ["waist", "hip"] : ["waist"]);
+const formatSiteChange = v => (v === 0 ? "no change" : (v > 0 ? "+" : "") + v + "cm");
+const siteChangeColor = (site, change, formula) =>
+  change === 0 || !fatDirectionSites(formula).includes(site) ? "var(--text-hi)"
+  : change < 0 ? "var(--accent)" : "var(--bulk)";
+
+const BF_WINDOW_DAYS = 30;
+const bodyFatWindowChange = (measurements, sex, asOfMs = Date.now(), days = BF_WINDOW_DAYS) => {
+  const formula = bodyMeasurementFormula(sex);
+  const rows = (measurements || []).filter(m => m.formula === formula && m.computed_bf != null);
+  if (rows.length < 2) return null;
+  const startKey = dateKey(new Date(asOfMs - days * 86400000));
+  const last = rows[rows.length - 1];
+  if (last.date <= startKey) return null;
+  const before = rows.filter(m => m.date <= startKey);
+  if (!before.length) return null;
+  return Math.round((last.computed_bf - before[before.length - 1].computed_bf) * 10) / 10;
+};
+
+const fmtShort = d => { const p = d.split("-"); return p[2] + "/" + p[1]; };
+const formatTapeSites = m => {
+  if (!m) return "";
+  const parts = [];
+  if (m.waist != null) parts.push("waist " + m.waist);
+  if (m.neck  != null) parts.push("neck " + m.neck);
+  if (m.hip   != null) parts.push("hip " + m.hip);
+  return parts.join(" · ");
+};
+const readingIntervalDays = (prevDate, date) => {
+  if (!prevDate || !date) return null;
+  const ms = new Date(date + "T00:00:00").getTime() - new Date(prevDate + "T00:00:00").getTime();
+  return ms > 0 ? Math.round(ms / 86400000) : null;
+};
+// One row per reading, feeding BOTH body charts and the body-fat tooltip. The rolling average
+// uses TREND_MIN_POINTS exactly as the body-fat chart already did — no second smoothing rule.
+const measurementChartRows = (measurements, n = TREND_MIN_POINTS) =>
+  (measurements || []).map((m, i, arr) => {
+    const win = arr.slice(Math.max(0, i - (n - 1)), i + 1);
+    const enough = win.length >= n;
+    const avgOf = pick => {
+      const vals = win.map(pick).filter(v => v != null && isFinite(Number(v))).map(Number);
+      return enough && vals.length === win.length
+        ? Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10) / 10 : null;
+    };
+    return {
+      date: fmtShort(m.date), rawDate: m.date,
+      BODYFAT: m.computed_bf, ROLLING: avgOf(x => x.computed_bf),
+      avgN: enough ? win.length : null,
+      NECK: m.neck ?? null, WAIST: m.waist ?? null, HIP: m.hip ?? null,
+      NECK_AVG: avgOf(x => x.neck), WAIST_AVG: avgOf(x => x.waist), HIP_AVG: avgOf(x => x.hip),
+      sites: formatTapeSites(m),
+      sinceDays: readingIntervalDays(i > 0 ? arr[i - 1].date : null, m.date),
+    };
+  });
+
+const CSV_HEADER = ["Date", "Mode", "Calories", "Protein(g)", "Carbs(g)", "Fat(g)", "Water",
+  "Training", "Weight(kg)", "Neck(cm)", "Waist(cm)", "Hip(cm)", "BodyFat(%)"];
+const csvRows = (history, weighIns, bodyMeasurements) => {
+  const byDate = arr => Object.fromEntries((arr || []).map(x => [x.date, x]));
+  const days = byDate(history), wIn = byDate(weighIns), tape = byDate(bodyMeasurements);
+  const dates = [...new Set([...Object.keys(days), ...Object.keys(wIn), ...Object.keys(tape)])].sort();
+  const num = v => (v == null || v === "" || !isFinite(Number(v)) ? "" : Number(v));
+  return [CSV_HEADER, ...dates.map(date => {
+    const d = days[date], w = wIn[date], m = tape[date];
+    return [date,
+      d ? (d.mode || "") : "",
+      d ? Math.round(d.kcal || 0) : "", d ? Math.round(d.protein || 0) : "",
+      d ? Math.round(d.carbs || 0) : "", d ? Math.round(d.fat || 0) : "",
+      d ? num(d.water) : "", d ? (d.training ? "Yes" : "No") : "",
+      w ? Math.round((Number(w.weight) || 0) * 100) / 100 : "",
+      m ? num(m.neck) : "", m ? num(m.waist) : "", m ? num(m.hip) : "",
+      m ? num(m.computed_bf) : ""];
+  })];
+};
+
 // Mirror of app.jsx runCalibration (energy Step 2): dead-time-compensated, damped,
 // confidence-scaled convergence. inFlightAdj = adjustments applied in the last 7 days
 // (the weight window hasn't reflected them yet) — subtracted to prevent overshoot.
@@ -1180,6 +1271,274 @@ describe("syncedBodyFat — the asymmetric sync cap", () => {
     const next = syncedBodyFat({ currentBodyFat: 20, measurements: m, sex: "male",
       beforeDate: "2026-05-01", cutting: true });
     expect(next).toBe(21);
+  });
+});
+
+// ── features/body/02 — what a save reports, and the History join ──
+
+const tape = (date, { neck = 40, waist = 95, hip = null, formula = "male", bf = 22 } = {}) =>
+  ({ date, neck, waist, hip, formula, computed_bf: bf });
+const dayKeyAgo = n => dateKey(new Date(Date.now() - n * 86400000));
+
+describe("measurementSiteChanges", () => {
+  test("reports the signed change at every site both readings have", () => {
+    const prev = { neck: 40, waist: 95, hip: null };
+    const next = { neck: 40.2, waist: 94.5, hip: null };
+    expect(measurementSiteChanges(prev, next)).toEqual([
+      { site: "neck", change: 0.2 }, { site: "waist", change: -0.5 },
+    ]);
+  });
+
+  test("rounds away the floating-point dust of subtracting two one-decimal numbers", () => {
+    // 95.3 − 94.8 is 0.5000000000000071 in binary floating point.
+    const [waist] = measurementSiteChanges({ waist: 95.3 }, { waist: 94.8 });
+    expect(waist.change).toBe(-0.5);
+  });
+
+  test("returns null when there is no earlier reading to compare against", () => {
+    expect(measurementSiteChanges(null, { neck: 40, waist: 95 })).toBeNull();
+  });
+
+  test("skips hip when only one of the two readings has one (a male row stores null)", () => {
+    const changes = measurementSiteChanges(
+      { neck: 32, waist: 70, hip: null }, { neck: 32, waist: 70, hip: 95 });
+    expect(changes.map(c => c.site)).toEqual(["neck", "waist"]);
+  });
+
+  test("still reports neck and waist across a formula change — a neck is a neck either way", () => {
+    const changes = measurementSiteChanges(
+      { neck: 40, waist: 95, hip: null, formula: "male" },
+      { neck: 39.5, waist: 94, hip: 102, formula: "female" });
+    expect(changes).toEqual([{ site: "neck", change: -0.5 }, { site: "waist", change: -1 }]);
+  });
+
+  test("a site that did not move reports a change of exactly zero, not a rounding artefact", () => {
+    const [neck] = measurementSiteChanges({ neck: 40.1 }, { neck: 40.1 });
+    expect(neck.change).toBe(0);
+  });
+});
+
+describe("formatSiteChange — no size below which a change is hidden (founder, 2026-09-11)", () => {
+  test("shows a sub-centimetre change at full size, signed", () => {
+    expect(formatSiteChange(-0.2)).toBe("-0.2cm");
+    expect(formatSiteChange(0.2)).toBe("+0.2cm");
+  });
+
+  test("shows a large change the same way, with no different treatment", () => {
+    expect(formatSiteChange(-3)).toBe("-3cm");
+    expect(formatSiteChange(3)).toBe("+3cm");
+  });
+
+  test("states no change in words rather than rendering a signed zero", () => {
+    expect(formatSiteChange(0)).toBe("no change");
+  });
+});
+
+describe("siteChangeColor", () => {
+  test("a smaller waist takes the same accent colour a falling weight takes", () => {
+    expect(siteChangeColor("waist", -0.5, "male")).toBe("var(--accent)");
+    expect(siteChangeColor("waist", 0.5, "male")).toBe("var(--bulk)");
+  });
+
+  test("neck carries no direction colour in either direction", () => {
+    expect(siteChangeColor("neck", -0.5, "male")).toBe("var(--text-hi)");
+    expect(siteChangeColor("neck", 0.5, "male")).toBe("var(--text-hi)");
+  });
+
+  test("hip is coloured by direction only under the female formula", () => {
+    expect(siteChangeColor("hip", -0.5, "female")).toBe("var(--accent)");
+    expect(siteChangeColor("hip", -0.5, "male")).toBe("var(--text-hi)");
+  });
+
+  test("a change of zero has no direction, so no colour", () => {
+    expect(siteChangeColor("waist", 0, "male")).toBe("var(--text-hi)");
+  });
+});
+
+describe("bodyFatWindowChange", () => {
+  test("reports the change across the 30-day window", () => {
+    const ms = [tape(dayKeyAgo(35), { bf: 23 }), tape(dayKeyAgo(14), { bf: 22.4 }),
+      tape(dayKeyAgo(0), { bf: 22 })];
+    expect(bodyFatWindowChange(ms, "male")).toBe(-1);
+  });
+
+  test("returns null when no reading is old enough to fill the window", () => {
+    const ms = [tape(dayKeyAgo(14), { bf: 23 }), tape(dayKeyAgo(0), { bf: 22 })];
+    expect(bodyFatWindowChange(ms, "male")).toBeNull();
+  });
+
+  test("returns null for a single reading — there is nothing to compare", () => {
+    expect(bodyFatWindowChange([tape(dayKeyAgo(40), { bf: 22 })], "male")).toBeNull();
+  });
+
+  test("returns null when every reading is older than the window, instead of reporting zero", () => {
+    // The newest reading would otherwise be compared against itself: a change of 0 reads as
+    // "your body fat has not moved in a month" when nothing has been measured in a month.
+    const ms = [tape(dayKeyAgo(90), { bf: 24 }), tape(dayKeyAgo(45), { bf: 23 })];
+    expect(bodyFatWindowChange(ms, "male")).toBeNull();
+  });
+
+  test("counts only readings computed under the current formula", () => {
+    const ms = [tape(dayKeyAgo(60), { formula: "male", bf: 24 }),
+      tape(dayKeyAgo(40), { formula: "female", hip: 102, bf: 30 }),
+      tape(dayKeyAgo(1),  { formula: "female", hip: 101, bf: 29 })];
+    expect(bodyFatWindowChange(ms, "female")).toBe(-1);
+    expect(bodyFatWindowChange(ms, "male")).toBeNull(); // one male reading left in the window
+  });
+
+  test("the window is 30 days, the span that clears the +/-0.67pt tape-noise band", () => {
+    expect(BF_WINDOW_DAYS).toBe(30);
+  });
+});
+
+describe("csvRows", () => {
+  const hist = [{ date: "2026-09-01", mode: "cut", kcal: 2100, protein: 180, carbs: 200,
+    fat: 70, water: 6, training: true }];
+
+  test("carries weight and the tape reading alongside the food columns", () => {
+    const rows = csvRows(hist, [{ date: "2026-09-01", weight: 98.5 }],
+      [tape("2026-09-01", { bf: 22.2 })]);
+    expect(rows[0]).toEqual(CSV_HEADER);
+    expect(rows[1]).toEqual(["2026-09-01", "cut", 2100, 180, 200, 70, 6, "Yes",
+      98.5, 40, 95, "", 22.2]);
+  });
+
+  test("leaves body cells empty rather than zero on a day with no body data", () => {
+    const rows = csvRows(hist, [], []);
+    expect(rows[1].slice(8)).toEqual(["", "", "", "", ""]);
+  });
+
+  test("includes a date that has body data but no history snapshot", () => {
+    const rows = csvRows(hist, [{ date: "2026-09-02", weight: 98.2 }], []);
+    expect(rows.length).toBe(3);
+    expect(rows[2][0]).toBe("2026-09-02");
+    expect(rows[2].slice(1, 8)).toEqual(["", "", "", "", "", "", ""]); // no food columns invented
+    expect(rows[2][8]).toBe(98.2);
+  });
+
+  test("rows come out in date order whichever array the date came from", () => {
+    const rows = csvRows(hist, [{ date: "2026-08-30", weight: 99 }], [tape("2026-09-05")]);
+    expect(rows.slice(1).map(r => r[0])).toEqual(["2026-08-30", "2026-09-01", "2026-09-05"]);
+  });
+
+  test("exports weight in kilograms and the tape in centimetres, named in the heading", () => {
+    expect(CSV_HEADER).toContain("Weight(kg)");
+    expect(CSV_HEADER).toContain("Waist(cm)");
+    expect(CSV_HEADER).toContain("BodyFat(%)");
+  });
+
+  test("a female row carries its hip measurement", () => {
+    const rows = csvRows(hist, [], [tape("2026-09-01", { formula: "female", hip: 102 })]);
+    expect(rows[1][11]).toBe(102);
+  });
+
+  test("nothing in the export reads a field the history snapshot does not store", () => {
+    // The join is by date over weighIns[] and bodyMeasurements[] — the snapshot itself
+    // carries no body data, and adding a column to it would fail the whole upsert.
+    const rows = csvRows([{ date: "2026-09-01", mode: "cut", kcal: 2100, protein: 180,
+      carbs: 200, fat: 70, water: 6, training: false }], [], []);
+    expect(rows[1]).toEqual(["2026-09-01", "cut", 2100, 180, 200, 70, 6, "No",
+      "", "", "", "", ""]);
+  });
+});
+
+describe("formatTapeSites — the tooltip's raw-sites line", () => {
+  test("waist leads, neck follows — waist is the dominant term and the bigger mover", () => {
+    expect(formatTapeSites({ neck: 39.5, waist: 95.5, hip: null }))
+      .toBe("waist 95.5 · neck 39.5");
+  });
+
+  test("hip is appended when the reading has one", () => {
+    expect(formatTapeSites({ neck: 32, waist: 70, hip: 95 }))
+      .toBe("waist 70 · neck 32 · hip 95");
+  });
+
+  test("a site the reading does not have is left out, not shown as a dash", () => {
+    expect(formatTapeSites({ neck: 39.5, waist: 95.5, hip: null })).not.toContain("hip");
+    expect(formatTapeSites({ neck: 39.5, waist: 95.5, hip: null })).not.toContain("-");
+  });
+});
+
+describe("readingIntervalDays", () => {
+  test("counts whole days between two readings", () => {
+    expect(readingIntervalDays("2026-09-03", "2026-09-09")).toBe(6);
+  });
+
+  test("returns null with no earlier reading, so the first one shows no interval", () => {
+    expect(readingIntervalDays(null, "2026-09-09")).toBeNull();
+  });
+
+  test("returns null for the same day rather than claiming '0 days later'", () => {
+    expect(readingIntervalDays("2026-09-09", "2026-09-09")).toBeNull();
+  });
+
+  test("survives a British Summer Time boundary without an off-by-one", () => {
+    // 25 Oct 2026 is the BST→GMT change; a naive ms division gives 7.04 days here.
+    expect(readingIntervalDays("2026-10-21", "2026-10-28")).toBe(7);
+  });
+});
+
+describe("measurementChartRows — one row set, both body charts", () => {
+  const series = n => Array.from({ length: n }, (_, i) => ({
+    date: "2026-09-0" + (i + 1), neck: 40, waist: 96 - i, hip: null,
+    formula: "male", computed_bf: 23 - i * 0.5,
+  }));
+
+  test("carries the raw sites for every reading, for the tape chart's lines", () => {
+    const rows = measurementChartRows(series(2));
+    expect(rows.map(r => r.WAIST)).toEqual([96, 95]);
+    expect(rows.map(r => r.NECK)).toEqual([40, 40]);
+  });
+
+  test("hip stays null on male readings instead of becoming 0", () => {
+    expect(measurementChartRows(series(2)).every(r => r.HIP === null)).toBe(true);
+  });
+
+  test("no average until TREND_MIN_POINTS readings exist — the same rule the body-fat chart had", () => {
+    const rows = measurementChartRows(series(TREND_MIN_POINTS));
+    expect(rows[TREND_MIN_POINTS - 2].ROLLING).toBeNull();
+    expect(rows[TREND_MIN_POINTS - 2].WAIST_AVG).toBeNull();
+    expect(rows[TREND_MIN_POINTS - 1].ROLLING).not.toBeNull();
+    expect(rows[TREND_MIN_POINTS - 1].WAIST_AVG).toBe(94.5); // (96+95+94+93)/4
+  });
+
+  test("every row says how many readings its average is built from", () => {
+    const rows = measurementChartRows(series(TREND_MIN_POINTS + 1));
+    expect(rows[TREND_MIN_POINTS - 2].avgN).toBeNull();
+    expect(rows[TREND_MIN_POINTS - 1].avgN).toBe(TREND_MIN_POINTS);
+    expect(rows[TREND_MIN_POINTS].avgN).toBe(TREND_MIN_POINTS);
+  });
+
+  test("the first row has no interval; later rows carry the days since the previous reading", () => {
+    const rows = measurementChartRows([
+      { date: "2026-09-01", neck: 40, waist: 96, hip: null, computed_bf: 23 },
+      { date: "2026-09-08", neck: 40, waist: 95, hip: null, computed_bf: 22.5 },
+    ]);
+    expect(rows[0].sinceDays).toBeNull();
+    expect(rows[1].sinceDays).toBe(7);
+  });
+
+  test("a site's average is withheld while any reading in the window lacks that site", () => {
+    // A sex change mid-window: the hip average must not be computed from a partial window.
+    const mixed = [
+      { date: "2026-09-01", neck: 32, waist: 70, hip: null, computed_bf: 28 },
+      { date: "2026-09-08", neck: 32, waist: 70, hip: 95, computed_bf: 28 },
+      { date: "2026-09-15", neck: 32, waist: 70, hip: 95, computed_bf: 28 },
+      { date: "2026-09-22", neck: 32, waist: 70, hip: 95, computed_bf: 28 },
+    ];
+    expect(measurementChartRows(mixed)[3].HIP_AVG).toBeNull();
+    expect(measurementChartRows(mixed)[3].WAIST_AVG).toBe(70);
+  });
+
+  test("the body-fat series is unchanged by the tape columns sitting beside it", () => {
+    const rows = measurementChartRows(series(TREND_MIN_POINTS));
+    expect(rows.map(r => r.BODYFAT)).toEqual([23, 22.5, 22, 21.5]);
+    expect(rows[TREND_MIN_POINTS - 1].ROLLING).toBe(22.3); // (23+22.5+22+21.5)/4 = 22.25
+  });
+
+  test("an empty measurement list produces no rows", () => {
+    expect(measurementChartRows([])).toEqual([]);
+    expect(measurementChartRows(null)).toEqual([]);
   });
 });
 

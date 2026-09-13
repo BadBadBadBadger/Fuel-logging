@@ -414,8 +414,13 @@ that §4 warns against leaning on.
   transaction**, that abort **rolls back every `ALTER TABLE` above it**, so columns you believe you added
   silently don't exist. Run only the `ALTER TABLE` lines, then confirm via `information_schema.columns`.
   Nothing in the file deletes data. (The file's own header now says this.)
-- **⚠️ Adding a column to the upsert before it exists in Postgres 400s the whole profile sync**, silently.
-  Column first, wiring second. Always.
+- **⚠️ Adding a field to an upsert before its column exists 400s the WHOLE table's sync**, silently —
+  not just that field. Column first, wiring second. Always. **This has now bitten twice**, most
+  recently on 2026-09-11: v79 shipped writing `history_snapshots.workout_bonus` before the column was
+  run, so *no daily history synced at all* until it was — every field, every day, failing quietly
+  inside `syncUpsert`'s `try/catch`. The schema file's own comment said to run it first. If a build
+  adds a sync field, the `ALTER TABLE` goes in **before** the deploy, and gets confirmed via
+  `information_schema.columns` — see `DOCS.md` §31 for the log of what has actually been run live.
 - **⚠️ PWA cache:** an installed PWA serves the **old bundle** until a full SW cycle — backgrounding isn't
   enough. Fully close & reopen, or hard-reload. (Bit us mid-test with a stale "0.72%".)
 - **⚠️ Launch blocker (not code):** the worker's `RATE_LIMIT` KV namespace is **unbound**, so the daily AI

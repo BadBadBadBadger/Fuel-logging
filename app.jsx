@@ -860,6 +860,155 @@ const syncedBodyFat = ({ currentBodyFat, measurements, sex, beforeDate, cutting 
   return Math.round(Math.min(target, current + BF_SYNC_STEP_CAP) * 10) / 10;
 };
 
+// ── Body measurements: what a save reports, and History (features/body/02) ──
+// 02 is presentation and feedback only. Every value below is a JOIN BY DATE over what 01
+// already stores — weighIns[] and bodyMeasurements[], both keyed by `date`. Nothing here
+// adds a stored field and nothing here goes into a sync payload: a column that does not
+// exist in Postgres makes the whole upsert fail with no visible error, which is what cost
+// this repo its history sync on 2026-09-11. The history snapshot carries no body data.
+
+const MEASUREMENT_SITES = ["neck", "waist", "hip"];
+
+// The signed change at each tape site between two readings, rounded to 0.1cm — subtracting
+// two one-decimal numbers in binary floating point does not give a one-decimal number
+// (95.3 − 94.8 = 0.5000000000000071), so the rounding is load-bearing. `hip` is explicitly
+// null on every male-formula row, so a site is reported only when BOTH readings have it —
+// which also means a reading taken under the other formula still reports neck and waist,
+// because a neck is a neck under either. Returns null when there is no earlier reading:
+// the first one ever has nothing to say here.
+const measurementSiteChanges = (prev, next) => {
+  if (!prev || !next) return null;
+  const out = [];
+  for (const site of MEASUREMENT_SITES) {
+    const a = prev[site], b = next[site];
+    if (a == null || b == null || !isFinite(Number(a)) || !isFinite(Number(b))) continue;
+    out.push({ site, change: Math.round((Number(b) - Number(a)) * 10) / 10 });
+  }
+  return out.length ? out : null;
+};
+
+// Which sites have a direction that means something. Waist (both formulas) and hip (female
+// formula) are fat-storage sites: a smaller number is the direction this app exists to help
+// with, so they take the same accent colour the weight trend already uses for a falling
+// weight. NECK IS DELIBERATELY ABSENT. Under the Navy formula a BIGGER neck computes a
+// LEANER body-fat %, so applying the waist rule to neck would show a shrinking neck as the
+// bad result and a growing one as the good one — during a deficit a shrinking neck is most
+// likely lost muscle or a tape sitting differently, and neither is something to colour.
+// Neck's change is still shown at any size; it just carries no valence.
+// (features/body/02, nutrition-coach veto.)
+const fatDirectionSites = formula => (formula === "female" ? ["waist", "hip"] : ["waist"]);
+
+// "+0.5cm" / "-0.5cm" / "no change". Same sign formatting the weight trend badge uses, per
+// the founder's "keep ui consistent with weight graph". There is no size below which a
+// change is hidden or shown differently (DECIDED, founder, 2026-09-11).
+const formatSiteChange = v => (v === 0 ? "no change" : (v > 0 ? "+" : "") + v + "cm");
+
+const siteChangeColor = (site, change, formula) =>
+  change === 0 || !fatDirectionSites(formula).includes(site) ? "var(--text-hi)"
+  : change < 0 ? "var(--accent)" : "var(--bulk)";
+
+// The body-fat change across a stated window, in percentage points, filtered to one formula
+// the same way bodyFatRollingAvg is — a sex change switches regressions and the two numbers
+// are not comparable. Null unless a reading exists at or before the window start AND the
+// newest reading is inside the window: with every reading older than 30 days the newest one
+// would be compared against itself and report 0, which reads as "your body fat has not moved
+// in a month" when nothing has been measured in a month.
+//
+// 30 days, not a reading-to-reading difference, because half a centimetre of tape slip at two
+// sites moves this estimate ±0.67 points while a full week of real fat loss moves it 0.40. A
+// month of real change is 1.61 points, which clears that band (features/body/02 header).
+const BF_WINDOW_DAYS = 30;
+const bodyFatWindowChange = (measurements, sex, asOfMs = Date.now(), days = BF_WINDOW_DAYS) => {
+  const formula = bodyMeasurementFormula(sex);
+  const rows = (measurements || []).filter(m => m.formula === formula && m.computed_bf != null);
+  if (rows.length < 2) return null;
+  const startKey = dateKey(new Date(asOfMs - days * 86400000));
+  const last = rows[rows.length - 1];
+  if (last.date <= startKey) return null;
+  const before = rows.filter(m => m.date <= startKey);
+  if (!before.length) return null;
+  return Math.round((last.computed_bf - before[before.length - 1].computed_bf) * 10) / 10;
+};
+
+// The CSV export. Its row set is the UNION of the dates that have a history snapshot, a
+// weigh-in, or a tape reading — not just the days with food logged. A snapshot can genuinely
+// be missing for a date whose body rows exist, because the two upserts are separate calls and
+// one can fail while the other succeeds. Missing cells are left EMPTY: a 0 in a waist column
+// is a measurement of zero centimetres, which is a different claim from "not measured".
+// Values are exported as stored — kilograms and centimetres — with the unit in the heading,
+// because a column whose meaning changes with a display setting is not an archive.
+// The raw tape sites for one reading, on one line, WAIST FIRST: waist is the dominant term in
+// the Navy formula and the site that actually moves week to week, so it leads and neck follows.
+// A site the reading does not have — hip on a male-formula row — is left out entirely. No dash,
+// no placeholder: the reading is complete, that site was simply never part of it.
+const formatTapeSites = m => {
+  if (!m) return "";
+  const parts = [];
+  if (m.waist != null) parts.push("waist " + m.waist);
+  if (m.neck  != null) parts.push("neck " + m.neck);
+  if (m.hip   != null) parts.push("hip " + m.hip);
+  return parts.join(" · ");
+};
+
+// Whole days between two reading dates. Null when there is no earlier reading, which is what
+// makes the first reading's interval omitted rather than shown as 0 — and null again if the
+// dates are the same or out of order, so a corrected same-day entry says nothing instead of
+// claiming "0 days later".
+const readingIntervalDays = (prevDate, date) => {
+  if (!prevDate || !date) return null;
+  const ms = new Date(date + "T00:00:00").getTime() - new Date(prevDate + "T00:00:00").getTime();
+  return ms > 0 ? Math.round(ms / 86400000) : null;
+};
+
+// One row per reading, carrying everything BOTH body charts draw and everything the body-fat
+// tooltip reports. One builder, so the two charts can never disagree about which readings are
+// plotted or what the average is built from (features/body/02).
+//
+// The rolling average uses TREND_MIN_POINTS exactly as the body-fat chart already did — this
+// file does not invent a second smoothing rule and does not change that constant. Each row
+// also carries `avgN`, the number of readings its average is actually built from, so the
+// tooltip states what it is built from rather than implying a fixed count. When founder
+// decision 3 lands and TREND_MIN_POINTS drops, both charts follow from one edit.
+const measurementChartRows = (measurements, n = TREND_MIN_POINTS) =>
+  (measurements || []).map((m, i, arr) => {
+    const win = arr.slice(Math.max(0, i - (n - 1)), i + 1);
+    const enough = win.length >= n;
+    const avgOf = pick => {
+      const vals = win.map(pick).filter(v => v != null && isFinite(Number(v))).map(Number);
+      return enough && vals.length === win.length
+        ? Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10) / 10 : null;
+    };
+    return {
+      date: fmtShort(m.date), rawDate: m.date,
+      BODYFAT: m.computed_bf, ROLLING: avgOf(x => x.computed_bf),
+      avgN: enough ? win.length : null,
+      NECK: m.neck ?? null, WAIST: m.waist ?? null, HIP: m.hip ?? null,
+      NECK_AVG: avgOf(x => x.neck), WAIST_AVG: avgOf(x => x.waist), HIP_AVG: avgOf(x => x.hip),
+      sites: formatTapeSites(m),
+      sinceDays: readingIntervalDays(i > 0 ? arr[i - 1].date : null, m.date),
+    };
+  });
+
+const CSV_HEADER = ["Date", "Mode", "Calories", "Protein(g)", "Carbs(g)", "Fat(g)", "Water",
+  "Training", "Weight(kg)", "Neck(cm)", "Waist(cm)", "Hip(cm)", "BodyFat(%)"];
+const csvRows = (history, weighIns, bodyMeasurements) => {
+  const byDate = arr => Object.fromEntries((arr || []).map(x => [x.date, x]));
+  const days = byDate(history), wIn = byDate(weighIns), tape = byDate(bodyMeasurements);
+  const dates = [...new Set([...Object.keys(days), ...Object.keys(wIn), ...Object.keys(tape)])].sort();
+  const num = v => (v == null || v === "" || !isFinite(Number(v)) ? "" : Number(v));
+  return [CSV_HEADER, ...dates.map(date => {
+    const d = days[date], w = wIn[date], m = tape[date];
+    return [date,
+      d ? (d.mode || "") : "",
+      d ? Math.round(d.kcal || 0) : "", d ? Math.round(d.protein || 0) : "",
+      d ? Math.round(d.carbs || 0) : "", d ? Math.round(d.fat || 0) : "",
+      d ? num(d.water) : "", d ? (d.training ? "Yes" : "No") : "",
+      w ? Math.round((Number(w.weight) || 0) * 100) / 100 : "",
+      m ? num(m.neck) : "", m ? num(m.waist) : "", m ? num(m.hip) : "",
+      m ? num(m.computed_bf) : ""];
+  })];
+};
+
 // ── Cut cycling (energy-model Step 5; features/energy-safety/02) ──────
 // Nothing in the app capped how LONG a cut ran. A deficit from January to June with
 // no structured break is the harm this whole workstream exists to prevent.
@@ -3123,11 +3272,34 @@ function MeasurementRow({ measurements, sex, note, onSave, onSaveNote, showNudge
   const domainOk = formula === "male" ? waistNum > neckNum : (waistNum + hipNum - neckNum > 0);
   const canSave  = filledIn && domainOk;
 
+  // The reading this save is measured against: the most recent one from a DIFFERENT date.
+  // Saving upserts by date, so a correction to today's entry replaces today's row —
+  // comparing against that row would report the size of the typo being corrected
+  // (features/body/02).
+  const prevReading = (() => {
+    const before = measurements.filter(m => m.date < todayKey());
+    return before.length ? before[before.length - 1] : null;
+  })();
+  const prevDaysAgo = prevReading
+    ? Math.max(0, Math.floor((Date.now() - new Date(prevReading.date + "T00:00:00").getTime()) / 86400000))
+    : null;
+
   const save = async () => {
     if (!canSave) return;
-    const bf = await onSave({ neck: neckNum, waist: waistNum, hip: formula === "female" ? hipNum : null });
+    const before = prevReading;
+    const entered = { neck: neckNum, waist: waistNum, hip: formula === "female" ? hipNum : null };
+    const bf = await onSave(entered);
     if (isFirstEver && localNote.trim()) onSaveNote(localNote.trim());
-    setJustSaved(bf);
+    if (bf != null) {
+      // The window figure is computed against the list as it will be AFTER this save — the
+      // parent's state update has not reached this component's props yet.
+      const after = [...measurements.filter(m => m.date !== todayKey()),
+        { ...entered, date: todayKey(), formula, computed_bf: bf }]
+        .sort((a, b) => a.date.localeCompare(b.date));
+      setJustSaved({ bf, daysAgo: prevDaysAgo,
+        changes: measurementSiteChanges(before, entered),
+        windowChange: bodyFatWindowChange(after, sex) });
+    }
     setNeck(""); setWaist(""); setHip(""); setLocalNote("");
   };
 
@@ -3217,9 +3389,40 @@ function MeasurementRow({ measurements, sex, note, onSave, onSaveNote, showNudge
           placeholder="Your usual conditions (e.g. mornings, fasted, before shower) — optional"
           style={{ ...INP, fontSize:11, marginBottom:8 }}/>
       )}
+      {/* What a save reports back (features/body/02). The absolute estimate, then each site's
+          signed change against the last reading — shown at whatever size it is, with no
+          threshold below which it is hidden or greyed (DECIDED, founder, 2026-09-11) — then
+          the body-fat change across the 30-day window, and only across that window. A
+          reading-to-reading body-fat change is not shown at all: half a centimetre of tape
+          slip at two sites moves this estimate by more than a week of real fat loss does. */}
       {justSaved != null && (
-        <div style={{ fontSize:11, color:"var(--text-mid)", marginBottom:8 }}>
-          Estimated body fat: <strong style={{ color:"var(--text-hi)" }}>{justSaved}%</strong>
+        <div style={{ fontSize:11, color:"var(--text-mid)", marginBottom:8, lineHeight:1.6 }}>
+          <div>Estimated body fat: <strong style={{ color:"var(--text-hi)" }}>{justSaved.bf}%</strong></div>
+          {justSaved.changes ? (
+            <div style={{ marginTop:2 }}>
+              Since your last reading, {justSaved.daysAgo === 1 ? "1 day" : justSaved.daysAgo + " days"} ago:{" "}
+              {justSaved.changes.map((c, i) => (
+                <span key={c.site}>
+                  {i > 0 && " · "}
+                  <span style={{ textTransform:"capitalize" }}>{c.site}</span>{" "}
+                  <strong data-site={c.site}
+                    style={{ color: siteChangeColor(c.site, c.change, formula) }}>
+                    {formatSiteChange(c.change)}
+                  </strong>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ marginTop:2, color:"var(--text-faint)" }}>
+              First reading — your next one will show what has changed.
+            </div>
+          )}
+          {justSaved.windowChange != null && (
+            <div style={{ marginTop:2 }}>
+              {justSaved.windowChange < 0 ? "▼" : justSaved.windowChange > 0 ? "▲" : "="}
+              {Math.abs(justSaved.windowChange)} pts of body fat since last month
+            </div>
+          )}
         </div>
       )}
       <div style={{ display:"flex", gap:8 }}>
@@ -5337,7 +5540,47 @@ function FoodSearch({ onAdd, onBack }) {
 
 const chartsAvailable = typeof ResponsiveContainer !== "undefined";
 
-function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
+// The tape chart's series (features/body/02). Waist leads because it is the dominant term in
+// the Navy formula and the site that actually moves; hip is drawn only when the readings in
+// view have one. These colours identify a series — they are NOT direction colours, and in
+// particular neck is never coloured by whether it went up or down (nutrition-coach veto: a
+// bigger neck computes a leaner body fat, so a direction colour on neck would show a
+// shrinking neck as the bad result).
+const TAPE_SERIES = [
+  { key:"WAIST", avg:"WAIST_AVG", label:"Waist", color:"var(--accent)"   },
+  { key:"NECK",  avg:"NECK_AVG",  label:"Neck",  color:"var(--text-mid)" },
+  { key:"HIP",   avg:"HIP_AVG",   label:"Hip",   color:"var(--cut)"      },
+];
+
+// The body-fat chart's tooltip is a diagnostic, not a value readout (features/body/02): the
+// reading, the raw sites that produced it, what the average is actually built from, and how
+// long since the previous reading — because a change reads identically whether it happened
+// over a week or over a season. Every row is left out when it has nothing to say: no average
+// until TREND_MIN_POINTS readings exist, no hip on a male-formula reading, no interval on the
+// first reading. None of them renders a dash or a blank in place of a value.
+//
+// At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
+// can land under the thumb, so a taller card would cover the point being inspected.
+function BodyFatTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+  const r = payload[0].payload || {};
+  return (
+    <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:10, padding:"8px 10px",
+      fontSize:11, lineHeight:1.5, color:"var(--text-mid)", maxWidth:210 }}>
+      <div style={{ color:"var(--text-label)", fontSize:10, letterSpacing:"0.06em" }}>{r.date}</div>
+      <div style={{ color:"var(--text-hi)", fontWeight:700 }}>Body fat {r.BODYFAT}%</div>
+      {r.sites && <div>{r.sites}</div>}
+      {r.ROLLING != null && <div>avg of last {r.avgN}: {r.ROLLING}%</div>}
+      {r.sinceDays != null && (
+        <div style={{ color:"var(--text-faint)" }}>
+          {r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], sex = null, meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -5351,6 +5594,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
   const [metrics,    setMetrics]    = useState(["KCAL"]);
   const [showWeight, setShowWeight] = useState(false);
   const [showBodyFat, setShowBodyFat] = useState(false);
+  const [showTape,   setShowTape]   = useState(false);
   const [chartType,  setChartType]  = useState("line");
   const [dayIdx,     setDayIdx]     = useState(Math.max(0, history.length - 1));
   const [addCtx,     setAddCtx]     = useState(null);
@@ -5405,23 +5649,28 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
     const cutoff = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
     return bodyMeasurements.filter(m => m.date >= cutoff);
   })();
-  const bodyFatChartData = filteredBodyMeasurements.map((m, i, arr) => {
-    const win = arr.slice(Math.max(0, i - (TREND_MIN_POINTS - 1)), i + 1);
-    const avg = win.reduce((s, x) => s + x.computed_bf, 0) / win.length;
-    return {
-      date: fmtShort(m.date), BODYFAT: m.computed_bf,
-      ROLLING: win.length >= TREND_MIN_POINTS ? Math.round(avg * 10) / 10 : null,
-    };
-  });
-  const bodyFatChangeSinceLastMonth = (() => {
-    if (filteredBodyMeasurements.length < 2) return null;
-    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
-    const before = filteredBodyMeasurements.filter(m => m.date <= monthAgo);
-    if (!before.length) return null;
-    const first = before[before.length - 1].computed_bf;
-    const last  = filteredBodyMeasurements[filteredBodyMeasurements.length - 1].computed_bf;
-    return Math.round((last - first) * 10) / 10;
-  })();
+  // One row set, both body charts (features/body/02). The body-fat chart and the tape chart
+  // draw different series out of the same rows, so they cannot disagree about which readings
+  // are plotted or what an average is built from.
+  const bodyFatChartData = measurementChartRows(filteredBodyMeasurements);
+  // Hip is drawn when the readings in view actually HAVE a hip, not when the profile currently
+  // says female — so a sex change never hides readings that really do carry one.
+  const tapeHasHip = filteredBodyMeasurements.some(m => m.hip != null);
+  // One definition of the 30-day window, used here and by the save feedback in
+  // MeasurementRow (features/body/02). Reads the FULL measurement list rather than the
+  // range-filtered one: the card names its own window ("since last month"), so the figure
+  // should not change meaning because the chart above it is set to 7 days. This also stops
+  // it reporting a change of 0 when every reading is older than a month — the old inline
+  // version compared the newest reading against itself in that case.
+  const bodyFatChangeSinceLastMonth = bodyFatWindowChange(bodyMeasurements, sex);
+
+  // features/body/02 — the join by date, built from the FULL arrays rather than the
+  // range-filtered ones. A row only ever exists for a date already in `filtered`, so an
+  // unfiltered lookup cannot add rows; what it does avoid is the two range cutoffs above
+  // disagreeing with the day keys, since those cutoffs come from a UTC date string while
+  // the day keys are local (they differ for an hour a day under British Summer Time).
+  const weightOnDate      = Object.fromEntries(weighIns.map(w => [w.date, w.weight]));
+  const measurementOnDate = Object.fromEntries(bodyMeasurements.map(m => [m.date, m]));
 
   const day     = history[dayIdx] || null;
   const dayTots = day ? sumLogs(day.logs || []) : null;
@@ -5442,11 +5691,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
   };
 
   const exportCSV = () => {
-    const rows = [["Date","Mode","Calories","Protein(g)","Carbs(g)","Fat(g)","Water","Training"]];
-    history.forEach(d => rows.push([
-      d.date, d.mode || "", Math.round(d.kcal), Math.round(d.protein),
-      Math.round(d.carbs), Math.round(d.fat), d.water, d.training ? "Yes" : "No",
-    ]));
+    // Row building is a pure function (app.jsx, features/body/02) so the shape of the
+    // export is owned by __tests__/logic.test.js rather than by a click no test can open.
+    const rows = csvRows(history, weighIns, bodyMeasurements);
     const a = document.createElement("a");
     a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows.map(r => r.join(",")).join("\n"));
     a.download = "fuel-log-" + todayKey() + ".csv";
@@ -5589,6 +5836,38 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                     </div>
                   </div>
 
+                  {/* features/body/02 — the body card for THIS date, rendered only when this
+                      date actually has body data. No card at all on a day with none: a weekly
+                      measurement means six days in seven have nothing, and an "unmeasured"
+                      card on all of them would be noise. Nothing is ever carried forward from
+                      a nearby day — a Tuesday must not claim Sunday's tape reading. */}
+                  {(weightOnDate[day.date] != null || measurementOnDate[day.date]) && (() => {
+                    const m = measurementOnDate[day.date] || {};
+                    const bodyRows = [
+                      weightOnDate[day.date] != null &&
+                        ["Weight", `${wConv(weightOnDate[day.date])} ${wUnit}`, "var(--cut)"],
+                      m.neck        != null && ["Neck",  `${m.neck} cm`],
+                      m.waist       != null && ["Waist", `${m.waist} cm`],
+                      m.hip         != null && ["Hip",   `${m.hip} cm`],
+                      m.computed_bf != null && ["Estimated body fat", `${m.computed_bf}%`],
+                    ].filter(Boolean);
+                    return (
+                      <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18,
+                        padding:"14px 18px", marginBottom:14 }}>
+                        <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em",
+                          fontWeight:800, marginBottom:4 }}>BODY</div>
+                        {bodyRows.map(([label, value, color], i) => (
+                          <div key={label} style={{ display:"flex", justifyContent:"space-between",
+                            padding:"7px 0",
+                            borderBottom: i < bodyRows.length - 1 ? `1px solid ${BD}` : "none" }}>
+                            <span style={{ fontSize:12, color:"var(--text-mid)" }}>{label}</span>
+                            <span style={{ fontSize:13, fontWeight:700, color: color || "var(--text-hi)" }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:18, overflow:"hidden", marginBottom:12 }}>
                     <div style={{ padding:"12px 18px 10px", fontSize:11, color:"var(--text-label)",
                       letterSpacing:"0.12em", fontWeight:800, borderBottom:`1px solid ${BD}`,
@@ -5653,17 +5932,17 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
             <>
               <div style={{ display:"flex", gap:7, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
                 {Object.entries(MM).map(([k, m]) => (
-                  <button key={k} onClick={() => { setShowWeight(false); toggleM(k); }}
+                  <button key={k} onClick={() => { setShowWeight(false); setShowBodyFat(false); setShowTape(false); toggleM(k); }}
                     style={{ padding:"6px 13px",
-                      background: !showWeight && metrics.includes(k) ? mix(m.color, "22") : "var(--surface-2)",
-                      color:      !showWeight && metrics.includes(k) ? m.color       : "var(--text-label)",
-                      border: `1px solid ${!showWeight && metrics.includes(k) ? mix(m.color, "55") : BD}`,
+                      background: !showWeight && !showBodyFat && !showTape && metrics.includes(k) ? mix(m.color, "22") : "var(--surface-2)",
+                      color:      !showWeight && !showBodyFat && !showTape && metrics.includes(k) ? m.color       : "var(--text-label)",
+                      border: `1px solid ${!showWeight && !showBodyFat && !showTape && metrics.includes(k) ? mix(m.color, "55") : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     {m.label}
                   </button>
                 ))}
                 {filteredWeighIns.length > 0 && (
-                  <button onClick={() => { setShowWeight(w => !w); setShowBodyFat(false); }}
+                  <button onClick={() => { setShowWeight(w => !w); setShowBodyFat(false); setShowTape(false); }}
                     style={{ padding:"6px 13px",
                       background: showWeight ? "color-mix(in srgb, var(--cut) 13%, transparent)" : "var(--surface-2)",
                       color:      showWeight ? "var(--cut)"   : "var(--text-label)",
@@ -5673,13 +5952,30 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                   </button>
                 )}
                 {bodyMeasurements.length > 0 && (
-                  <button onClick={() => { setShowBodyFat(v => !v); setShowWeight(false); }}
+                  <button onClick={() => { setShowBodyFat(v => !v); setShowWeight(false); setShowTape(false); }}
                     style={{ padding:"6px 13px",
                       background: showBodyFat ? "var(--border)" : "var(--surface-2)",
                       color:      showBodyFat ? "var(--text-hi)" : "var(--text-label)",
                       border: `1px solid ${showBodyFat ? "var(--raised-2)" : BD}`,
                       borderRadius:99, fontSize:11, fontWeight:900 }}>
                     📏 Body Fat %
+                  </button>
+                )}
+                {/* ONE chip for every tape site, not one per site (features/body/02). The Navy
+                    formula reads waist MINUS neck, so the distance between those two lines is
+                    the formula's own input: seeing them together is what says whether a
+                    body-fat move came from the waist dropping or the neck creeping up. Two
+                    separate charts would hide exactly that. They share one axis because they
+                    are all centimetres — no normalising, no second axis, because either would
+                    make the gap between the lines mean nothing. */}
+                {bodyMeasurements.length > 0 && (
+                  <button onClick={() => { setShowTape(v => !v); setShowWeight(false); setShowBodyFat(false); }}
+                    style={{ padding:"6px 13px",
+                      background: showTape ? "var(--border)" : "var(--surface-2)",
+                      color:      showTape ? "var(--text-hi)" : "var(--text-label)",
+                      border: `1px solid ${showTape ? "var(--raised-2)" : BD}`,
+                      borderRadius:99, fontSize:11, fontWeight:900 }}>
+                    📐 Tape
                   </button>
                 )}
                 <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
@@ -5698,14 +5994,35 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
               <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"16px 8px 8px", marginBottom:16 }}>
                 {chartsAvailable ? (
                   <ResponsiveContainer width="100%" height={200}>
-                    {showBodyFat ? (
+                    {showTape ? (
+                      /* Neck and waist (and hip when the readings have one) on ONE shared
+                         centimetre axis — the gap between the lines is what the Navy formula
+                         reads. Each site's raw readings are the thin line with dots and its
+                         rolling average is the dashed line in the same colour, the same
+                         raw-plus-average shape the weight and body-fat charts already use, over
+                         the same TREND_MIN_POINTS window. */
+                      <LineChart data={bodyFatChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                        <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
+                        <Tooltip formatter={(v, n) => [v + " cm", n]}/>
+                        {TAPE_SERIES.filter(s => s.key !== "HIP" || tapeHasHip).map(s => (
+                          <Line key={s.key} type="monotone" dataKey={s.key} stroke={rc(s.color)}
+                            strokeWidth={1.5} dot={{ r:2.5, fill:rc(s.color) }} name={s.label} connectNulls={false}/>
+                        ))}
+                        {TAPE_SERIES.filter(s => s.key !== "HIP" || tapeHasHip).map(s => (
+                          <Line key={s.avg} type="monotone" dataKey={s.avg} stroke={rc(s.color)}
+                            strokeWidth={2.5} strokeDasharray="4 3" dot={false}
+                            name={s.label + " avg"} connectNulls={true}/>
+                        ))}
+                      </LineChart>
+                    ) : showBodyFat ? (
                       <LineChart data={bodyFatChartData} margin={{ top:5, right:10, left:-20, bottom:0 }}>
                         <XAxis dataKey="date" tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false}/>
                         <YAxis tick={{ fill:rc("var(--text-lo)"), fontSize:10 }} axisLine={false} tickLine={false} domain={["auto","auto"]}/>
                         {/* Deliberately no colour-coding (features/body/01) — a single neutral
                             line for both the raw points and the rolling average, unlike weight's
                             cut/accent split above. */}
-                        <Tooltip formatter={(v, n) => [v + "%", n === "ROLLING" ? `${TREND_MIN_POINTS}-reading avg` : "Body fat %"]}/>
+                        <Tooltip content={<BodyFatTooltip/>}/>
                         <Line type="monotone" dataKey="BODYFAT" stroke={rc("var(--text-mid)")} strokeWidth={1.5} dot={{ r:2.5, fill:rc("var(--text-mid)") }} name="Body fat %" connectNulls={false}/>
                         <Line type="monotone" dataKey="ROLLING" stroke={rc(A)} strokeWidth={2.5} dot={false} name="ROLLING" connectNulls={true}/>
                       </LineChart>
@@ -5798,8 +6115,21 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                         {d.mode && <span style={{ fontSize:10, fontWeight:900, color: MODES[d.mode]?.color || A, marginLeft:8 }}>{MODES[d.mode]?.label}</span>}
                         {d.training && <span style={{ fontSize:10, color:A, marginLeft:6 }}>⚡</span>}
                       </div>
+                      {/* features/body/02 — weight and the day's tape reading join onto the
+                          EXISTING sub-line by date. Six days in seven have no reading, so an
+                          absent value renders as nothing at all: no dash, no separator, no
+                          greyed placeholder, because on most rows that would read as missing
+                          data rather than as a day nobody measured. Colours match the two
+                          History chart series (weight = --cut, body fat = neutral), which is
+                          identification, not valence — neither number is a change. */}
                       <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:2 }}>
                         P:{Math.round(d.protein)}g · C:{Math.round(d.carbs)}g · F:{Math.round(d.fat)}g · 💧{d.water}
+                        {weightOnDate[d.date] != null && (
+                          <span style={{ color:"var(--cut)" }}> · ⚖️{wConv(weightOnDate[d.date])}{wUnit}</span>
+                        )}
+                        {measurementOnDate[d.date] && (
+                          <span style={{ color:"var(--text-mid)" }}> · 📏{measurementOnDate[d.date].computed_bf}%</span>
+                        )}
                       </div>
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -6851,7 +7181,7 @@ function App() {
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}

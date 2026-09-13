@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-11. **37 files · 347 scenarios.** Replaces the single
+**Updated:** 2026-09-11. **38 files · 384 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -36,8 +36,53 @@
 | File | Feature | Scen | Tag |
 |---|---|---|---|
 | [01-measurement-tracking](body/01-measurement-tracking.feature) | Weekly body measurements and Navy-method body-fat % tracking | 33 | `@wip` |
+| [02-measurement-feedback-and-history](body/02-measurement-feedback-and-history.feature) | Body measurements in History, and what a save reports back | 37 | `@wip` |
 
-> New 2026-09-09, through three rounds: (1) a design-lead + nutrition-coach shaping pass, each
+> **`02` is new, 2026-09-11 — presentation and feedback only**, the same logic-vs-presentation
+> split `dashboard/04` and `05` already established. `01` stores weekly tape readings and charts
+> them; nothing else in the app knew they existed. `02` puts the weight and the day's reading on
+> the History day rows and in the day detail, reports what moved when a measurement is saved, and
+> carries body data into the CSV export. **Every value is a lookup by date over `weighIns[]` and
+> `bodyMeasurements[]` — no new database column and no new sync-payload field**, because a column
+> that does not exist in Postgres makes the whole upsert fail with no visible error, which is what
+> cost this repo its own history sync the same morning.
+>
+> It carries **founder decision 4 of four taken on 2026-09-11**
+> ([`02-founder-decisions.md`](body/02-founder-decisions.md), which also holds the arithmetic
+> behind all four): every site change is shown immediately, at any size, coloured, with the weight
+> graph's own visual language — a proposed 1cm noise threshold was overruled outright, because the
+> raw number should be reported honestly and the average line over several readings is the thing
+> that says whether it is real. **Decisions 1–3 change `01`'s engine and its stored shape and are
+> NOT in `02`'s scope** — `SYNC_GATE`, `TREND_MIN_POINTS`, `BF_SYNC_STEP_CAP` and the conditions
+> note are untouched; decision 2 needs a database column run before any code writes it.
+>
+> A six-persona swarm (design-lead → nutrition-coach → engineering → qa-automation →
+> critical-thinking → anti-metaphor, each answering every earlier report) made two calls the
+> founder did not, both named in the feature's own header so he can reverse them in one line:
+> **neck's change is shown at full size but carries no direction colour** (under the Navy formula
+> a bigger neck computes a *leaner* result, so the waist rule applied to neck would paint a
+> shrinking neck as the bad news — for a lifter in a deficit, backwards); and **the body-fat
+> figure gets no reading-to-reading change, only the 30-day one**, which is what `01` had already
+> decided and what the founder's own arithmetic argues for (±0.67 points of tape slip against 0.40
+> points for a real week). The review also found a **live defect in shipped code**: History's
+> "since last month" body-fat card compared the newest reading against itself when every reading
+> was older than a month, reporting a change of 0 — "your body fat has not moved in a month" when
+> nothing had been measured in a month. Fixed, with a test naming the case.
+>
+> **A design-lead follow-up the same day added two more surfaces**, both inside the same
+> boundary: a **`📐 Tape` chip** drawing neck and waist (and hip when the readings have one) as
+> separate lines on one shared centimetre axis — one chip and one chart, because the Navy
+> formula reads waist *minus* neck, so the distance between those lines is the formula's own
+> input and two separate charts would hide it; and the **body fat % tooltip becomes a
+> diagnostic**, carrying the raw tape sites behind that point (waist first) and how long since
+> the previous reading. Every row that has nothing to say is omitted outright — no average
+> before one exists, no hip on a male reading, no interval on the first reading, and never a
+> dash in their place. The per-reading conditions note would be the strongest line in that
+> tooltip and is deliberately **not** built: it needs decision 2's `note TEXT` column first,
+> and the feature file names it as the next step so it isn't lost. Full transcript:
+> [`02-swarm-review.md`](body/02-swarm-review.md). Jest 370/370, Playwright 113/113, sw v81.
+
+> **`01`** was new 2026-09-09, through three rounds: (1) a design-lead + nutrition-coach shaping pass, each
 > reviewing the founder's handover cold and blind to the other; (2) a solo Critical-Thinking pass
 > on the resulting spec, finding real gaps beyond the two items already flagged; (3) a QA +
 > Engineering (`personas/engineering.md`, new — created for this round) + Design-Lead debate,
