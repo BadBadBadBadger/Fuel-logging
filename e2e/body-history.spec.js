@@ -206,7 +206,7 @@ test.describe("What a save reports back", () => {
     await page.getByRole("button", { name: "Log measurement" }).click();
 
     await expect(page.getByText("Estimated body fat:")).toBeVisible();
-    await expect(page.getByText(/pts of body fat/)).toHaveCount(0);
+    await expect(page.getByText(/points of body fat/)).toHaveCount(0);
   });
 
   test("a body-fat change IS reported once a reading a month old exists", async ({ page }) => {
@@ -218,7 +218,9 @@ test.describe("What a save reports back", () => {
     await page.getByPlaceholder("waist cm").fill("94");
     await page.getByRole("button", { name: "Log measurement" }).click();
 
-    await expect(page.getByText(/pts of body fat since last month/)).toBeVisible();
+    // Names the comparison date rather than claiming "last month" — the old copy subtracted a
+    // reading with no upper age limit, so a six-month-old reading was reported as last month's.
+    await expect(page.getByText(/points of body fat vs \d+ [A-Z][a-z]{2}/)).toBeVisible();
     await shot(page, "measurement-save-window-change");
   });
 });

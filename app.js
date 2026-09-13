@@ -7335,7 +7335,7 @@ function MeasurementRow(_ref82) {
   var prevDaysAgo = prevReading ? Math.max(0, Math.floor((Date.now() - new Date(prevReading.date + "T00:00:00").getTime()) / 86400000)) : null;
   var save = /*#__PURE__*/function () {
     var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
-      var before, entered, bf, after;
+      var before, entered, bf, _bodyFatWindowRows, after;
       return _regenerator().w(function (_context30) {
         while (1) switch (_context30.n) {
           case 0:
@@ -7372,7 +7372,10 @@ function MeasurementRow(_ref82) {
                 bf: bf,
                 daysAgo: prevDaysAgo,
                 changes: measurementSiteChanges(before, entered),
-                windowChange: bodyFatWindowChange(after, sex)
+                windowChange: bodyFatWindowChange(after, sex),
+                // The date the change is measured FROM, so the line can name it instead of claiming
+                // "last month" — the same fix the History card got, from the same window definition.
+                windowFrom: (_bodyFatWindowRows = bodyFatWindowRows(after, sex)) === null || _bodyFatWindowRows === void 0 ? void 0 : _bodyFatWindowRows.before.date
               });
             }
             setNeck("");
@@ -7630,7 +7633,7 @@ function MeasurementRow(_ref82) {
     style: {
       marginTop: 2
     }
-  }, justSaved.windowChange < 0 ? "▼" : justSaved.windowChange > 0 ? "▲" : "=", Math.abs(justSaved.windowChange), " pts of body fat since last month")), /*#__PURE__*/React.createElement("div", {
+  }, justSaved.windowChange < 0 ? "▼" : justSaved.windowChange > 0 ? "▲" : "=", Math.abs(justSaved.windowChange), " points of body fat vs ", fmtDay(justSaved.windowFrom))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8
@@ -12254,7 +12257,7 @@ function BodyFatTooltip(_ref103) {
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
 function History(_ref104) {
-  var _bodyFatWindowRows, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
+  var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
   var history = _ref104.history,
     onBack = _ref104.onBack,
     onUpdateDay = _ref104.onUpdateDay,
@@ -12474,7 +12477,7 @@ function History(_ref104) {
   // version compared the newest reading against itself in that case.
   var bodyFatChangeSinceLastMonth = bodyFatWindowChange(bodyMeasurements, sex);
   // The date the change is measured FROM, so the card can name it instead of claiming a month.
-  var bodyFatWindowStartKey = (_bodyFatWindowRows = bodyFatWindowRows(bodyMeasurements, sex)) === null || _bodyFatWindowRows === void 0 ? void 0 : _bodyFatWindowRows.before.date;
+  var bodyFatWindowStartKey = (_bodyFatWindowRows2 = bodyFatWindowRows(bodyMeasurements, sex)) === null || _bodyFatWindowRows2 === void 0 ? void 0 : _bodyFatWindowRows2.before.date;
 
   // features/body/02 — the join by date, built from the FULL arrays rather than the
   // range-filtered ones. A row only ever exists for a date already in `filtered`, so an

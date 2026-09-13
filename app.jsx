@@ -3454,7 +3454,10 @@ function MeasurementRow({ measurements, sex, note, onSave, onSaveNote, showNudge
         .sort((a, b) => a.date.localeCompare(b.date));
       setJustSaved({ bf, daysAgo: prevDaysAgo,
         changes: measurementSiteChanges(before, entered),
-        windowChange: bodyFatWindowChange(after, sex) });
+        windowChange: bodyFatWindowChange(after, sex),
+        // The date the change is measured FROM, so the line can name it instead of claiming
+        // "last month" — the same fix the History card got, from the same window definition.
+        windowFrom: bodyFatWindowRows(after, sex)?.before.date });
     }
     setNeck(""); setWaist(""); setHip(""); setLocalNote("");
   };
@@ -3576,7 +3579,7 @@ function MeasurementRow({ measurements, sex, note, onSave, onSaveNote, showNudge
           {justSaved.windowChange != null && (
             <div style={{ marginTop:2 }}>
               {justSaved.windowChange < 0 ? "▼" : justSaved.windowChange > 0 ? "▲" : "="}
-              {Math.abs(justSaved.windowChange)} pts of body fat since last month
+              {Math.abs(justSaved.windowChange)} points of body fat vs {fmtDay(justSaved.windowFrom)}
             </div>
           )}
         </div>

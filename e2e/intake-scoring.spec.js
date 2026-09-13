@@ -234,4 +234,19 @@ test.describe("The two cards together (05)", () => {
     expect(segs.every(s => s !== track)).toBe(true);
     await expect(card(page, "THIS WEEK")).toContainText("7 of 7 days logged");
   });
+
+  // dashboard/06 — "every segment is drawn at full strength". The old 0.55 softening existed only
+  // to make today's live segment stand out; with today gone there is nothing to contrast against,
+  // and dimming six of seven finished days would emphasise the last one for no reason. Pinned so
+  // the dimming cannot quietly come back.
+  test("no segment in the week ring is dimmed relative to another", async ({ page }) => {
+    await open(page, { extra: { dev_time_hour: "11" },
+      history: resolveHistory([1, 2, 3, 4, 5, 6, 7].map(d => snap(d, { kcal: 2200 }))) });
+
+    const opacities = await card(page, "THIS WEEK").locator("path").evaluateAll(paths =>
+      paths.filter(p => p.getAttribute("d")?.startsWith("M "))
+        .map(p => p.getAttribute("opacity") ?? "1"));
+    expect(opacities).toHaveLength(7);
+    expect(new Set(opacities)).toEqual(new Set(["1"]));
+  });
 });
