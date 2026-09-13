@@ -1291,6 +1291,44 @@ var avgRowsOf = function avgRowsOf(rows, todayK) {
   });
 };
 
+// Every day in a window, oldest first (FL-009). Charts are plotted against this rather than
+// against their own readings, so one step across a chart is always one day: a two-day gap takes
+// twice the width of a one-day step instead of looking like a single stride. The kcal chart
+// already behaved this way, because history has a row per day; weight and body fat did not,
+// because they have a row per READING — that inconsistency is the actual defect.
+//
+// Gaps are bridged rather than broken (the lines keep connectNulls), so a missing day costs no
+// visual noise; it just stops a slow change from reading as a fast one.
+var daySpine = function daySpine(fromKey, toKey) {
+  if (!fromKey || !toKey || fromKey > toKey) return [];
+  var out = [],
+    d = new Date(fromKey + "T12:00:00");
+  for (var i = 0; i < 4000; i++) {
+    var k = dateKey(d);
+    if (k > toKey) break;
+    out.push(k);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+};
+
+// Place already-computed rows onto a day spine by date. The rows keep whatever their own
+// engine worked out — this only decides WHERE each one sits on the axis.
+var onDaySpine = function onDaySpine(spine, rows, keyOf) {
+  var by = Object.fromEntries((rows || []).map(function (r) {
+    return [keyOf(r), r];
+  }));
+  return spine.map(function (k) {
+    return by[k] ? _objectSpread(_objectSpread({}, by[k]), {}, {
+      date: fmtShort(k),
+      rawDate: k
+    }) : {
+      date: fmtShort(k),
+      rawDate: k
+    };
+  });
+};
+
 // One formatter for every window label, so Jest owns the format and no two labels can
 // disagree. Both keys come from the same window that filtered the rows — never re-derived.
 // An explicit month list, not toLocaleDateString({month:"short"}) — that renders September as
@@ -12358,20 +12396,31 @@ function History(_ref104) {
   // How many complete days the window COULD hold, so the sub-line can say "7 of 7".
   var completeDaysInWin = RANGE_DAYS[range] || avgRows.length;
 
+  // One axis for every chart on this screen (FL-009): a row per calendar day in the window, so
+  // one step is always one day whichever series is drawn. For ALL, the window has no lower bound,
+  // so it starts at the oldest thing there is to plot.
+  var chartSpine = function (_filtered$, _filteredWeighIns$, _bodyMeasurements$fil) {
+    if (range === "DAY") return []; // the day view draws a pie, not a series
+    var earliest = [(_filtered$ = filtered[0]) === null || _filtered$ === void 0 ? void 0 : _filtered$.date, (_filteredWeighIns$ = filteredWeighIns[0]) === null || _filteredWeighIns$ === void 0 ? void 0 : _filteredWeighIns$.date, (_bodyMeasurements$fil = bodyMeasurements.filter(inWin)[0]) === null || _bodyMeasurements$fil === void 0 ? void 0 : _bodyMeasurements$fil.date].filter(Boolean).sort()[0];
+    return daySpine(win.from || earliest, win.to);
+  }();
+
   // Merge weight into chart data by date
   var weightByDate = Object.fromEntries(filteredWeighIns.map(function (w) {
     return [w.date, w.weight];
   }));
-  var chartData = filtered.map(function (d) {
+  var chartData = onDaySpine(chartSpine, filtered.map(function (d) {
     var _weightByDate$d$date;
     return {
-      date: fmtShort(d.date),
+      rawDate: d.date,
       KCAL: d.kcal,
       PROTEIN: Math.round(d.protein),
       CARBS: Math.round(d.carbs),
       FAT: Math.round(d.fat),
       WEIGHT: (_weightByDate$d$date = weightByDate[d.date]) !== null && _weightByDate$d$date !== void 0 ? _weightByDate$d$date : null
     };
+  }), function (r) {
+    return r.rawDate;
   });
 
   // Weight-only chart data with a true 7-calendar-day rolling average (FL-013).
@@ -12380,13 +12429,18 @@ function History(_ref104) {
   // COUNT — so at the left edge the window expanded from 3 readings to 7 and invented slope: a
   // perfectly flat week with one low first reading drew +0.30 kg, and the 7-day chip starved the
   // line so the same labelled quantity changed meaning when the chip changed.
-  var weightChartData = filteredWeighIns.map(function (w) {
+  //
+  // Plotted against the day spine (FL-009), not against the readings, so a week with a missing
+  // weigh-in no longer draws the jump across it as a single one-day step.
+  var weightChartData = onDaySpine(chartSpine, filteredWeighIns.map(function (w) {
     var m = rollingWeightMean(weighIns, w.date);
     return {
-      date: fmtShort(w.date),
+      rawDate: w.date,
       WEIGHT: wConv(w.weight),
       ROLLING: m ? Math.round(wConv(m.kg) * 10) / 10 : null
     };
+  }), function (r) {
+    return r.rawDate;
   });
 
   // Body-fat % chart data (features/body/01) — points always shown; a rolling trend line
@@ -12399,7 +12453,14 @@ function History(_ref104) {
   // One row set, both body charts (features/body/02). The body-fat chart and the tape chart
   // draw different series out of the same rows, so they cannot disagree about which readings
   // are plotted or what an average is built from.
-  var bodyFatChartData = measurementChartRows(filteredBodyMeasurements);
+  // Placed on the same day spine as every other chart here (FL-009). The rolling window inside
+  // measurementChartRows is still by READING count — that is decided behaviour from body/01,
+  // matching SYNC_GATE's gap-tolerant shape — so this only changes where each reading sits on
+  // the axis, never what it says. Before this, three weekly readings with a fortnight between
+  // two of them drew as equal thirds, which reads as a continuous slide.
+  var bodyFatChartData = onDaySpine(chartSpine, measurementChartRows(filteredBodyMeasurements), function (r) {
+    return r.rawDate;
+  });
   // Hip is drawn when the readings in view actually HAVE a hip, not when the profile currently
   // says female — so a sex change never hides readings that really do carry one.
   var tapeHasHip = filteredBodyMeasurements.some(function (m) {
@@ -13391,7 +13452,7 @@ function History(_ref104) {
         fill: rc(s.color)
       },
       name: s.label,
-      connectNulls: false
+      connectNulls: true
     });
   }), TAPE_SERIES.filter(function (s) {
     return s.key !== "HIP" || tapeHasHip;
@@ -13443,7 +13504,7 @@ function History(_ref104) {
       fill: rc("var(--text-mid)")
     },
     name: "Body fat %",
-    connectNulls: false
+    connectNulls: true
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
     dataKey: "ROLLING",
@@ -13490,7 +13551,7 @@ function History(_ref104) {
       fill: rc("var(--cut)")
     },
     name: "Weight",
-    connectNulls: false
+    connectNulls: true
   }), /*#__PURE__*/React.createElement(Line, {
     type: "monotone",
     dataKey: "ROLLING",

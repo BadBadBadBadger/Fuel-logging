@@ -193,6 +193,32 @@ test.describe("The weight figure", () => {
     await expect(page.getByText(/Averages, not single days/)).toBeVisible();
   });
 
+  // FL-009 — one step across a chart is one day, whichever series is drawn. Weight and body fat
+  // used to have a row per READING, so a two-day gap took the same width as a one-day step and a
+  // slow change read as a fast one. The kcal chart never had the problem, because history has a
+  // row per day; that inconsistency was the actual defect.
+  test("a missing weigh-in takes up its own space instead of collapsing", async ({ page }) => {
+    // Seven consecutive days, then no weigh-in on the second-to-last. The step across that gap
+    // must be about twice a normal one-day step.
+    const w = [7, 6, 5, 4, 3, 1].map(n => ({ date: key(n), weight: 98.5 - n * 0.1 }));
+    await open(page, { history: reportedHistory(), weighIns: w });
+    await openHistory(page);
+    await sevenDays(page);
+    await page.getByRole("button", { name: "⚖️ Weight" }).click();
+
+    await expect(page.locator("svg circle").first()).toBeVisible({ timeout: 10_000 });
+    const xs = await page.locator("svg circle").evaluateAll(
+      els => els.map(e => Number(e.getAttribute("cx")))
+        .filter(n => Number.isFinite(n)).sort((a, b) => a - b));
+    expect(xs.length).toBeGreaterThanOrEqual(6);
+
+    const steps = xs.slice(1).map((x, i) => x - xs[i]);
+    const oneDay = Math.min(...steps);
+    // The last gap spans two days (3 days ago → 1 day ago) and must read as two.
+    expect(Math.max(...steps)).toBeGreaterThan(oneDay * 1.6);
+    await shot(page, "history-weight-chart-date-spacing");
+  });
+
   test("too few weigh-ins says so instead of guessing a direction", async ({ page }) => {
     await open(page, {
       history: reportedHistory(),
