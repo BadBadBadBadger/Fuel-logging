@@ -5699,7 +5699,7 @@ function BodyFatTooltip({ active, payload }) {
   );
 }
 
-function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], sex = null, meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
+function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements = [], sex = null, profile = {}, meals = DEF_MEALS, setMeals = () => {}, onForget = () => {}, isPremium = false, onPremiumGate = () => {} }) {
   const RANGES = ["DAY","W","30D","3M","1Y","ALL"];
   const RLBL   = { DAY:"Day", W:"7 Days", "30D":"30 Days", "3M":"3 Months", "1Y":"Year", ALL:"All Time" };
   const MM = {
@@ -5718,6 +5718,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
   const [dayIdx,     setDayIdx]     = useState(Math.max(0, history.length - 1));
   const [addCtx,     setAddCtx]     = useState(null);
   const [editId,     setEditId]     = useState(null);
+  const [tgtDraft,   setTgtDraft]   = useState(null);   // past-day target being typed, or null
   const wPref = getWUnit();                    // kg · st · lb
   const wUnit = wChartUnit(wPref);             // chart axis label: kg, else lb (st plots in lb)
   const wConv = kg => wChartNum(kg, wPref);    // stored kg → chart number
@@ -5824,6 +5825,46 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
     onUpdateDay(u);
   };
 
+  // ── Correcting a past day (FL-010, founder decision 2026-09-13) ──────────────────────────
+  // A past day is editable the same way today is: pick the mode, and set the calorie target
+  // yourself. The app does NOT try to work out what the target "would have been" — that needs
+  // the day's TDEE adjustment and whether a custom target was applied, neither of which was
+  // ever saved, so any reconstruction would be a guess dressed as a record. A typed number is
+  // deterministic: whatever is stored is what the day is graded against, and the screen says so.
+  //
+  // TODAY is deliberately excluded. The daily snapshot effect rewrites today's row from live
+  // state, so a mode or target written here would silently revert; today's own controls are one
+  // tap away on the dashboard anyway.
+  const isPastDay = !!day && day.date < todayK;
+
+  // That day's own body, where it was recorded: weigh-ins and tape readings are already stored
+  // per date, so the macro split for a corrected day uses the body that actually had it rather
+  // than today's. Falls back to the current profile when the day was never measured.
+  const bodyOn = date => ({
+    ...profile,
+    weight:  weightOnDate[date] ?? profile.weight,
+    bodyFat: measurementOnDate[date]?.computed_bf ?? profile.bodyFat,
+  });
+
+  // Changing the mode changes ONLY the mode. The stored target stays put until it is edited on
+  // purpose — a label must never move a number behind the user's back.
+  const setDayMode = m => patch({ mode: m });
+
+  // Setting the target re-derives the macro split from it, the same way today's typed target
+  // does (app.jsx targets): the safety floor holds, protein and fat keep their floors, and
+  // carbs absorb the change. Never proportionally scaled — that dragged fat under its hormonal
+  // floor on a deep custom cut.
+  const setDayTarget = kcal => {
+    const b = bodyOn(day.date);
+    const safeKcal = Math.max(SAFE_MIN[b.sex === "female" ? "female" : "male"] || 1400, kcal);
+    const m = computeMacros(b, day.mode || "maintain", safeKcal);
+    patch({
+      targetKcal: safeKcal, targetProtein: m.protein, targetFat: m.fat,
+      targetFatFloor: Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG),
+      floored: safeKcal > kcal,
+    });
+  };
+
   const exportCSV = () => {
     // Row building is a pure function (app.jsx, features/body/02) so the shape of the
     // export is owned by __tests__/logic.test.js rather than by a click no test can open.
@@ -5881,14 +5922,29 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
             <>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 marginBottom:18, background:CARD, border:`1px solid ${BD}`, borderRadius:16, padding:"12px 16px" }}>
-                <button onClick={() => setDayIdx(i => Math.max(0, i - 1))} disabled={dayIdx === 0}
+                <button onClick={() => { setTgtDraft(null); setDayIdx(i => Math.max(0, i - 1)); }} disabled={dayIdx === 0}
                   style={{ background:"none", border:"none",
                     color: dayIdx === 0 ? "var(--text-disabled)" : "var(--text-mid-2)", fontSize:24, padding:"0 6px", lineHeight:1 }}>‹</button>
                 <div style={{ textAlign:"center" }}>
                   <div style={{ fontSize:13, fontWeight:800, color:"var(--text-hi)" }}>{day ? fmtFull(day.date) : "—"}</div>
                   {day && (
-                    <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:5 }}>
-                      {day.mode && (
+                    <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:5, flexWrap:"wrap" }}>
+                      {/* A past day's mode is three chips, the sibling of the TRAINING button
+                          beside it — one tap, no confirm, no dialog. Today stays a read-only
+                          chip: its snapshot is rewritten from live state, so an edit here would
+                          revert, and its own control is one tap away on the dashboard. */}
+                      {isPastDay ? ["cut","maintain","bulk"].map(m => {
+                        const on = day.mode === m;
+                        return (
+                          <button key={m} onClick={() => setDayMode(m)}
+                            style={{ fontSize:10, fontWeight:900, padding:"2px 8px", borderRadius:99,
+                              background: on ? mix(MODES[m].color, "22") : "var(--surface-2)",
+                              color: on ? MODES[m].color : "var(--text-label)",
+                              border: `1px solid ${on ? mix(MODES[m].color, "55") : BD}` }}>
+                            {MODES[m].label}
+                          </button>
+                        );
+                      }) : day.mode && (
                         <span style={{ fontSize:10, fontWeight:900, color: MODES[day.mode]?.color || A,
                           background: mix(MODES[day.mode]?.color || A, "22"), padding:"2px 8px", borderRadius:99 }}>
                           {MODES[day.mode]?.label}
@@ -5904,7 +5960,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                     </div>
                   )}
                 </div>
-                <button onClick={() => setDayIdx(i => Math.min(history.length - 1, i + 1))}
+                <button onClick={() => { setTgtDraft(null); setDayIdx(i => Math.min(history.length - 1, i + 1)); }}
                   disabled={dayIdx === history.length - 1}
                   style={{ background:"none", border:"none",
                     color: dayIdx === history.length - 1 ? "var(--text-disabled)" : "var(--text-mid-2)",
@@ -5922,6 +5978,56 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                       P:{Math.round(dayTots.protein)}g · C:{Math.round(dayTots.carbs)}g · F:{Math.round(dayTots.fat)}g
                     </div>
                   </div>
+
+                  {/* What this day was actually graded against (FL-010). Without it the screen
+                      can say CUT while the number it compared against was a maintenance target,
+                      which is how a correctly-scored day reads as a scoring bug. */}
+                  {isPastDay && (() => {
+                    const tgt = day.targetKcal;
+                    if (tgt == null) return (
+                      <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14,
+                        padding:"12px 16px", marginBottom:14, fontSize:12, color:"var(--text-lo)", lineHeight:1.5 }}>
+                        No target was saved for this day, so it is graded against today&rsquo;s.
+                        Set one to grade it against what you were aiming for.
+                        <button onClick={() => setTgtDraft(String(Math.round(dayTots.kcal) || 2000))}
+                          style={{ marginLeft:8, fontSize:11, fontWeight:800, color:A, background:"none",
+                            border:"none", textDecoration:"underline" }}>Set target</button>
+                      </div>
+                    );
+                    const delta = Math.round(dayTots.kcal) - tgt;
+                    const sc = calorieDayScore({ mode: day.mode || "maintain", dayClosed:true, kcalDelta: delta });
+                    return (
+                      <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14,
+                        padding:"12px 16px", marginBottom:14 }}>
+                        <div style={{ fontSize:12, color:"var(--text-mid)", display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
+                          <span style={{ width:9, height:9, borderRadius:99, background:SCORE_COLOUR[sc.colour], flexShrink:0 }}/>
+                          <span>
+                            Scored against {MODES[day.mode]?.label || "MAINTAIN"} · target {tgt.toLocaleString()} kcal
+                            {" · "}{Math.abs(delta).toLocaleString()} {delta > 0 ? "over" : "under"}
+                          </span>
+                          <button onClick={() => setTgtDraft(String(tgt))}
+                            style={{ fontSize:11, color:A, background:"none", border:"none", padding:0 }}>✎</button>
+                        </div>
+                        {tgtDraft != null && (
+                          <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:10 }}>
+                            <input type="number" inputMode="numeric" value={tgtDraft} autoFocus
+                              onChange={e => setTgtDraft(e.target.value)}
+                              style={{ width:96, fontSize:14, fontWeight:800, padding:"7px 10px",
+                                background:"var(--bg)", color:"var(--text-hi)",
+                                border:`1px solid ${BD}`, borderRadius:10 }}/>
+                            <button onClick={() => {
+                              const n = parseInt(tgtDraft, 10);
+                              if (n > 0) setDayTarget(n);
+                              setTgtDraft(null);
+                            }} style={{ fontSize:12, fontWeight:800, padding:"7px 14px", borderRadius:10,
+                              background:A, color:"var(--bg)", border:"none" }}>Save</button>
+                            <button onClick={() => setTgtDraft(null)}
+                              style={{ fontSize:12, color:"var(--text-lo)", background:"none", border:"none" }}>Cancel</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:20, padding:"20px", marginBottom:14 }}>
                     <div style={{ fontSize:11, color:"var(--text-label)", letterSpacing:"0.12em", fontWeight:800, marginBottom:14 }}>
@@ -7365,7 +7471,7 @@ function App() {
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}

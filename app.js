@@ -12214,6 +12214,8 @@ function History(_ref104) {
     bodyMeasurements = _ref104$bodyMeasureme === void 0 ? [] : _ref104$bodyMeasureme,
     _ref104$sex = _ref104.sex,
     sex = _ref104$sex === void 0 ? null : _ref104$sex,
+    _ref104$profile = _ref104.profile,
+    profile = _ref104$profile === void 0 ? {} : _ref104$profile,
     _ref104$meals = _ref104.meals,
     meals = _ref104$meals === void 0 ? DEF_MEALS : _ref104$meals,
     _ref104$setMeals = _ref104.setMeals,
@@ -12295,6 +12297,10 @@ function History(_ref104) {
     _useState172 = _slicedToArray(_useState171, 2),
     editId = _useState172[0],
     setEditId = _useState172[1];
+  var _useState173 = useState(null),
+    _useState174 = _slicedToArray(_useState173, 2),
+    tgtDraft = _useState174[0],
+    setTgtDraft = _useState174[1]; // past-day target being typed, or null
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -12432,6 +12438,54 @@ function History(_ref104) {
     }
     onUpdateDay(u);
   };
+
+  // ── Correcting a past day (FL-010, founder decision 2026-09-13) ──────────────────────────
+  // A past day is editable the same way today is: pick the mode, and set the calorie target
+  // yourself. The app does NOT try to work out what the target "would have been" — that needs
+  // the day's TDEE adjustment and whether a custom target was applied, neither of which was
+  // ever saved, so any reconstruction would be a guess dressed as a record. A typed number is
+  // deterministic: whatever is stored is what the day is graded against, and the screen says so.
+  //
+  // TODAY is deliberately excluded. The daily snapshot effect rewrites today's row from live
+  // state, so a mode or target written here would silently revert; today's own controls are one
+  // tap away on the dashboard anyway.
+  var isPastDay = !!day && day.date < todayK;
+
+  // That day's own body, where it was recorded: weigh-ins and tape readings are already stored
+  // per date, so the macro split for a corrected day uses the body that actually had it rather
+  // than today's. Falls back to the current profile when the day was never measured.
+  var bodyOn = function bodyOn(date) {
+    var _weightOnDate$date, _measurementOnDate$da, _measurementOnDate$da2;
+    return _objectSpread(_objectSpread({}, profile), {}, {
+      weight: (_weightOnDate$date = weightOnDate[date]) !== null && _weightOnDate$date !== void 0 ? _weightOnDate$date : profile.weight,
+      bodyFat: (_measurementOnDate$da = (_measurementOnDate$da2 = measurementOnDate[date]) === null || _measurementOnDate$da2 === void 0 ? void 0 : _measurementOnDate$da2.computed_bf) !== null && _measurementOnDate$da !== void 0 ? _measurementOnDate$da : profile.bodyFat
+    });
+  };
+
+  // Changing the mode changes ONLY the mode. The stored target stays put until it is edited on
+  // purpose — a label must never move a number behind the user's back.
+  var setDayMode = function setDayMode(m) {
+    return patch({
+      mode: m
+    });
+  };
+
+  // Setting the target re-derives the macro split from it, the same way today's typed target
+  // does (app.jsx targets): the safety floor holds, protein and fat keep their floors, and
+  // carbs absorb the change. Never proportionally scaled — that dragged fat under its hormonal
+  // floor on a deep custom cut.
+  var setDayTarget = function setDayTarget(kcal) {
+    var b = bodyOn(day.date);
+    var safeKcal = Math.max(SAFE_MIN[b.sex === "female" ? "female" : "male"] || 1400, kcal);
+    var m = computeMacros(b, day.mode || "maintain", safeKcal);
+    patch({
+      targetKcal: safeKcal,
+      targetProtein: m.protein,
+      targetFat: m.fat,
+      targetFatFloor: Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG),
+      floored: safeKcal > kcal
+    });
+  };
   var exportCSV = function exportCSV() {
     // Row building is a pure function (app.jsx, features/body/02) so the shape of the
     // export is owned by __tests__/logic.test.js rather than by a click no test can open.
@@ -12556,7 +12610,8 @@ function History(_ref104) {
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
-      return setDayIdx(function (i) {
+      setTgtDraft(null);
+      setDayIdx(function (i) {
         return Math.max(0, i - 1);
       });
     },
@@ -12584,9 +12639,27 @@ function History(_ref104) {
       display: "flex",
       gap: 6,
       justifyContent: "center",
-      marginTop: 5
+      marginTop: 5,
+      flexWrap: "wrap"
     }
-  }, day.mode && /*#__PURE__*/React.createElement("span", {
+  }, isPastDay ? ["cut", "maintain", "bulk"].map(function (m) {
+    var on = day.mode === m;
+    return /*#__PURE__*/React.createElement("button", {
+      key: m,
+      onClick: function onClick() {
+        return setDayMode(m);
+      },
+      style: {
+        fontSize: 10,
+        fontWeight: 900,
+        padding: "2px 8px",
+        borderRadius: 99,
+        background: on ? mix(MODES[m].color, "22") : "var(--surface-2)",
+        color: on ? MODES[m].color : "var(--text-label)",
+        border: "1px solid ".concat(on ? mix(MODES[m].color, "55") : BD)
+      }
+    }, MODES[m].label);
+  }) : day.mode && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
       fontWeight: 900,
@@ -12612,7 +12685,8 @@ function History(_ref104) {
     }
   }, day.training ? "⚡ TRAINING" : "💤 REST"))), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
-      return setDayIdx(function (i) {
+      setTgtDraft(null);
+      setDayIdx(function (i) {
         return Math.min(history.length - 1, i + 1);
       });
     },
@@ -12651,7 +12725,127 @@ function History(_ref104) {
       marginTop: 6,
       color: "var(--text-label)"
     }
-  }, "P:", Math.round(dayTots.protein), "g \xB7 C:", Math.round(dayTots.carbs), "g \xB7 F:", Math.round(dayTots.fat), "g")), /*#__PURE__*/React.createElement("div", {
+  }, "P:", Math.round(dayTots.protein), "g \xB7 C:", Math.round(dayTots.carbs), "g \xB7 F:", Math.round(dayTots.fat), "g")), isPastDay && function (_MODES$day$mode4) {
+    var tgt = day.targetKcal;
+    if (tgt == null) return /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: CARD,
+        border: "1px solid ".concat(BD),
+        borderRadius: 14,
+        padding: "12px 16px",
+        marginBottom: 14,
+        fontSize: 12,
+        color: "var(--text-lo)",
+        lineHeight: 1.5
+      }
+    }, "No target was saved for this day, so it is graded against today\u2019s. Set one to grade it against what you were aiming for.", /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() {
+        return setTgtDraft(String(Math.round(dayTots.kcal) || 2000));
+      },
+      style: {
+        marginLeft: 8,
+        fontSize: 11,
+        fontWeight: 800,
+        color: A,
+        background: "none",
+        border: "none",
+        textDecoration: "underline"
+      }
+    }, "Set target"));
+    var delta = Math.round(dayTots.kcal) - tgt;
+    var sc = calorieDayScore({
+      mode: day.mode || "maintain",
+      dayClosed: true,
+      kcalDelta: delta
+    });
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: CARD,
+        border: "1px solid ".concat(BD),
+        borderRadius: 14,
+        padding: "12px 16px",
+        marginBottom: 14
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: "var(--text-mid)",
+        display: "flex",
+        alignItems: "center",
+        gap: 7,
+        flexWrap: "wrap"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 9,
+        height: 9,
+        borderRadius: 99,
+        background: SCORE_COLOUR[sc.colour],
+        flexShrink: 0
+      }
+    }), /*#__PURE__*/React.createElement("span", null, "Scored against ", ((_MODES$day$mode4 = MODES[day.mode]) === null || _MODES$day$mode4 === void 0 ? void 0 : _MODES$day$mode4.label) || "MAINTAIN", " \xB7 target ", tgt.toLocaleString(), " kcal", " · ", Math.abs(delta).toLocaleString(), " ", delta > 0 ? "over" : "under"), /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() {
+        return setTgtDraft(String(tgt));
+      },
+      style: {
+        fontSize: 11,
+        color: A,
+        background: "none",
+        border: "none",
+        padding: 0
+      }
+    }, "\u270E")), tgtDraft != null && /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        marginTop: 10
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      inputMode: "numeric",
+      value: tgtDraft,
+      autoFocus: true,
+      onChange: function onChange(e) {
+        return setTgtDraft(e.target.value);
+      },
+      style: {
+        width: 96,
+        fontSize: 14,
+        fontWeight: 800,
+        padding: "7px 10px",
+        background: "var(--bg)",
+        color: "var(--text-hi)",
+        border: "1px solid ".concat(BD),
+        borderRadius: 10
+      }
+    }), /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() {
+        var n = parseInt(tgtDraft, 10);
+        if (n > 0) setDayTarget(n);
+        setTgtDraft(null);
+      },
+      style: {
+        fontSize: 12,
+        fontWeight: 800,
+        padding: "7px 14px",
+        borderRadius: 10,
+        background: A,
+        color: "var(--bg)",
+        border: "none"
+      }
+    }, "Save"), /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() {
+        return setTgtDraft(null);
+      },
+      style: {
+        fontSize: 12,
+        color: "var(--text-lo)",
+        background: "none",
+        border: "none"
+      }
+    }, "Cancel")));
+  }(), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       border: "1px solid ".concat(BD),
@@ -13686,11 +13880,11 @@ function BadgeFanfare(_ref114) {
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState173 = useState(0),
-    _useState174 = _slicedToArray(_useState173, 2),
-    count = _useState174[0],
-    setCount = _useState174[1];
-  var _useState175 = useState(function () {
+  var _useState175 = useState(0),
+    _useState176 = _slicedToArray(_useState175, 2),
+    count = _useState176[0],
+    setCount = _useState176[1];
+  var _useState177 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -13704,8 +13898,8 @@ function BadgeFanfare(_ref114) {
         };
       });
     }),
-    _useState176 = _slicedToArray(_useState175, 1),
-    floaters = _useState176[0];
+    _useState178 = _slicedToArray(_useState177, 1),
+    floaters = _useState178[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -13963,125 +14157,125 @@ function NoteToast(_ref117) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState177 = useState("dashboard"),
-    _useState178 = _slicedToArray(_useState177, 2),
-    view = _useState178[0],
-    setView = _useState178[1];
-  var _useState179 = useState([]),
+  var _useState179 = useState("dashboard"),
     _useState180 = _slicedToArray(_useState179, 2),
-    logs = _useState180[0],
-    setLogs = _useState180[1];
-  var _useState181 = useState(0),
+    view = _useState180[0],
+    setView = _useState180[1];
+  var _useState181 = useState([]),
     _useState182 = _slicedToArray(_useState181, 2),
-    water = _useState182[0],
-    setWater = _useState182[1];
-  var _useState183 = useState("cut"),
+    logs = _useState182[0],
+    setLogs = _useState182[1];
+  var _useState183 = useState(0),
     _useState184 = _slicedToArray(_useState183, 2),
-    mode = _useState184[0],
-    setMode = _useState184[1];
-  var _useState185 = useState(null),
+    water = _useState184[0],
+    setWater = _useState184[1];
+  var _useState185 = useState("cut"),
     _useState186 = _slicedToArray(_useState185, 2),
-    prof = _useState186[0],
-    setProf = _useState186[1];
-  var _useState187 = useState([]),
+    mode = _useState186[0],
+    setMode = _useState186[1];
+  var _useState187 = useState(null),
     _useState188 = _slicedToArray(_useState187, 2),
-    hist = _useState188[0],
-    setHist = _useState188[1];
-  var _useState189 = useState([].concat(DEF_MEALS)),
+    prof = _useState188[0],
+    setProf = _useState188[1];
+  var _useState189 = useState([]),
     _useState190 = _slicedToArray(_useState189, 2),
-    meals = _useState190[0],
-    setMeals = _useState190[1];
-  var _useState191 = useState([]),
+    hist = _useState190[0],
+    setHist = _useState190[1];
+  var _useState191 = useState([].concat(DEF_MEALS)),
     _useState192 = _slicedToArray(_useState191, 2),
-    workouts = _useState192[0],
-    setWorkouts = _useState192[1];
+    meals = _useState192[0],
+    setMeals = _useState192[1];
+  var _useState193 = useState([]),
+    _useState194 = _slicedToArray(_useState193, 2),
+    workouts = _useState194[0],
+    setWorkouts = _useState194[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState193 = useState([0, 0]),
-    _useState194 = _slicedToArray(_useState193, 2),
-    priorWorkoutKcal = _useState194[0],
-    setPriorWorkoutKcal = _useState194[1];
-  var _useState195 = useState([]),
+  var _useState195 = useState([0, 0]),
     _useState196 = _slicedToArray(_useState195, 2),
-    earnedBdgs = _useState196[0],
-    setEarnedBdgs = _useState196[1];
-  var _useState197 = useState(null),
+    priorWorkoutKcal = _useState196[0],
+    setPriorWorkoutKcal = _useState196[1];
+  var _useState197 = useState([]),
     _useState198 = _slicedToArray(_useState197, 2),
-    newBadge = _useState198[0],
-    setNewBadge = _useState198[1];
-  var _useState199 = useState(false),
+    earnedBdgs = _useState198[0],
+    setEarnedBdgs = _useState198[1];
+  var _useState199 = useState(null),
     _useState200 = _slicedToArray(_useState199, 2),
-    ready = _useState200[0],
-    setReady = _useState200[1];
-  var _useState201 = useState([]),
+    newBadge = _useState200[0],
+    setNewBadge = _useState200[1];
+  var _useState201 = useState(false),
     _useState202 = _slicedToArray(_useState201, 2),
-    weighIns = _useState202[0],
-    setWeighIns = _useState202[1];
-  var _useState203 = useState(0),
+    ready = _useState202[0],
+    setReady = _useState202[1];
+  var _useState203 = useState([]),
     _useState204 = _slicedToArray(_useState203, 2),
-    tdeeAdj = _useState204[0],
-    setTdeeAdj = _useState204[1];
-  var _useState205 = useState([]),
+    weighIns = _useState204[0],
+    setWeighIns = _useState204[1];
+  var _useState205 = useState(0),
     _useState206 = _slicedToArray(_useState205, 2),
-    adjLog = _useState206[0],
-    setAdjLog = _useState206[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState207 = useState(null),
+    tdeeAdj = _useState206[0],
+    setTdeeAdj = _useState206[1];
+  var _useState207 = useState([]),
     _useState208 = _slicedToArray(_useState207, 2),
-    weighNudgeAt = _useState208[0],
-    setWeighNudgeAt = _useState208[1]; // last weigh-in-nudge dismissal (ms; local-only)
+    adjLog = _useState208[0],
+    setAdjLog = _useState208[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState209 = useState(null),
+    _useState210 = _slicedToArray(_useState209, 2),
+    weighNudgeAt = _useState210[0],
+    setWeighNudgeAt = _useState210[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState209 = useState([]),
-    _useState210 = _slicedToArray(_useState209, 2),
-    bodyMeasurements = _useState210[0],
-    setBodyMeasurements = _useState210[1];
-  var _useState211 = useState(false),
+  var _useState211 = useState([]),
     _useState212 = _slicedToArray(_useState211, 2),
-    muteMeasurements = _useState212[0],
-    setMuteMeasurements = _useState212[1];
-  var _useState213 = useState(""),
+    bodyMeasurements = _useState212[0],
+    setBodyMeasurements = _useState212[1];
+  var _useState213 = useState(false),
     _useState214 = _slicedToArray(_useState213, 2),
-    measurementNote = _useState214[0],
-    setMeasurementNote = _useState214[1];
-  var _useState215 = useState(null),
+    muteMeasurements = _useState214[0],
+    setMuteMeasurements = _useState214[1];
+  var _useState215 = useState(""),
     _useState216 = _slicedToArray(_useState215, 2),
-    measurementNudgeAt = _useState216[0],
-    setMeasurementNudgeAt = _useState216[1];
-  var _useState217 = useState(EMPTY_CUT_BLOCK),
+    measurementNote = _useState216[0],
+    setMeasurementNote = _useState216[1];
+  var _useState217 = useState(null),
     _useState218 = _slicedToArray(_useState217, 2),
-    cutBlock = _useState218[0],
-    setCutBlock = _useState218[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState219 = useState(0),
+    measurementNudgeAt = _useState218[0],
+    setMeasurementNudgeAt = _useState218[1];
+  var _useState219 = useState(EMPTY_CUT_BLOCK),
     _useState220 = _slicedToArray(_useState219, 2),
-    coachKey = _useState220[0],
-    setCoachKey = _useState220[1];
-  var _useState221 = useState(null),
+    cutBlock = _useState220[0],
+    setCutBlock = _useState220[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState221 = useState(0),
     _useState222 = _slicedToArray(_useState221, 2),
-    streakPop = _useState222[0],
-    setStreakPop = _useState222[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState222[0],
+    setCoachKey = _useState222[1];
   var _useState223 = useState(null),
     _useState224 = _slicedToArray(_useState223, 2),
-    badgeToast = _useState224[0],
-    setBadgeToast = _useState224[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState224[0],
+    setStreakPop = _useState224[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState225 = useState(null),
     _useState226 = _slicedToArray(_useState225, 2),
-    noteToast = _useState226[0],
-    setNoteToast = _useState226[1]; // plain one-line confirmations
-  var _useState227 = useState(false),
+    badgeToast = _useState226[0],
+    setBadgeToast = _useState226[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState227 = useState(null),
     _useState228 = _slicedToArray(_useState227, 2),
-    badgeGlow = _useState228[0],
-    setBadgeGlow = _useState228[1]; // the 🏆 glow paired with the toast
-  var _useState229 = useState(null),
+    noteToast = _useState228[0],
+    setNoteToast = _useState228[1]; // plain one-line confirmations
+  var _useState229 = useState(false),
     _useState230 = _slicedToArray(_useState229, 2),
-    customKcal = _useState230[0],
-    setCustomKcal = _useState230[1];
-  var _useState231 = useState(false),
+    badgeGlow = _useState230[0],
+    setBadgeGlow = _useState230[1]; // the 🏆 glow paired with the toast
+  var _useState231 = useState(null),
     _useState232 = _slicedToArray(_useState231, 2),
-    aggressiveCutAcked = _useState232[0],
-    setAggressiveCutAcked = _useState232[1];
-  var _useState233 = useState(0),
+    customKcal = _useState232[0],
+    setCustomKcal = _useState232[1];
+  var _useState233 = useState(false),
     _useState234 = _slicedToArray(_useState233, 2),
-    setThemeTick = _useState234[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState234[0],
+    setAggressiveCutAcked = _useState234[1];
+  var _useState235 = useState(0),
+    _useState236 = _slicedToArray(_useState235, 2),
+    setThemeTick = _useState236[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -14107,46 +14301,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState235 = useState("anonymous"),
-    _useState236 = _slicedToArray(_useState235, 2),
-    authState = _useState236[0],
-    setAuthState = _useState236[1];
-  var _useState237 = useState(null),
+  var _useState237 = useState("anonymous"),
     _useState238 = _slicedToArray(_useState237, 2),
-    authUser = _useState238[0],
-    setAuthUser = _useState238[1];
+    authState = _useState238[0],
+    setAuthState = _useState238[1];
   var _useState239 = useState(null),
     _useState240 = _slicedToArray(_useState239, 2),
-    premiumGate = _useState240[0],
-    setPremiumGate = _useState240[1]; // {emoji, name} | null
-  var _useState241 = useState(false),
+    authUser = _useState240[0],
+    setAuthUser = _useState240[1];
+  var _useState241 = useState(null),
     _useState242 = _slicedToArray(_useState241, 2),
-    showSignIn = _useState242[0],
-    setShowSignIn = _useState242[1];
+    premiumGate = _useState242[0],
+    setPremiumGate = _useState242[1]; // {emoji, name} | null
   var _useState243 = useState(false),
     _useState244 = _slicedToArray(_useState243, 2),
-    showSignOut = _useState244[0],
-    setShowSignOut = _useState244[1];
+    showSignIn = _useState244[0],
+    setShowSignIn = _useState244[1];
   var _useState245 = useState(false),
     _useState246 = _slicedToArray(_useState245, 2),
-    showLapsed = _useState246[0],
-    setShowLapsed = _useState246[1];
+    showSignOut = _useState246[0],
+    setShowSignOut = _useState246[1];
   var _useState247 = useState(false),
     _useState248 = _slicedToArray(_useState247, 2),
-    needsConsent = _useState248[0],
-    setNeedsConsent = _useState248[1]; // retroactive Art. 9 consent (R2)
-  var _useState249 = useState(null),
+    showLapsed = _useState248[0],
+    setShowLapsed = _useState248[1];
+  var _useState249 = useState(false),
     _useState250 = _slicedToArray(_useState249, 2),
-    consentInfo = _useState250[0],
-    setConsentInfo = _useState250[1]; // parsed local health_consent for display
-  var _useState251 = useState(navigator.onLine),
+    needsConsent = _useState250[0],
+    setNeedsConsent = _useState250[1]; // retroactive Art. 9 consent (R2)
+  var _useState251 = useState(null),
     _useState252 = _slicedToArray(_useState251, 2),
-    isOnline = _useState252[0],
-    setIsOnline = _useState252[1];
-  var _useState253 = useState(""),
+    consentInfo = _useState252[0],
+    setConsentInfo = _useState252[1]; // parsed local health_consent for display
+  var _useState253 = useState(navigator.onLine),
     _useState254 = _slicedToArray(_useState253, 2),
-    syncMsg = _useState254[0],
-    setSyncMsg = _useState254[1];
+    isOnline = _useState254[0],
+    setIsOnline = _useState254[1];
+  var _useState255 = useState(""),
+    _useState256 = _slicedToArray(_useState255, 2),
+    syncMsg = _useState256[0],
+    setSyncMsg = _useState256[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -15888,6 +16082,7 @@ function App() {
     weighIns: weighIns,
     bodyMeasurements: bodyMeasurements,
     sex: p.sex,
+    profile: p,
     meals: meals,
     setMeals: saveMeals,
     onForget: forgetMeal,
