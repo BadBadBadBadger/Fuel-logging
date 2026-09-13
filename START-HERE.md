@@ -1,6 +1,37 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-10 (session 21). **Jest 323/323 · Playwright 89/89 · sw v78 · `main` — pushed.**
+**Updated:** 2026-09-13 (session 22). **Jest 400/400 · Playwright 139/139 · sw v86 · `main` — pushed.**
+
+> **v86 fixed the weekly average, which was dividing by eight.** The founder found ten bugs by eye
+> on his own phone in one session (`features/history/00-bug-report.md`, kept verbatim). The headline
+> one: History's seven-day average divided by the row count, which included a part-finished today,
+> so 17,569 kcal over seven logged days read as **2,196 instead of 2,510** — and climbed through the
+> day as he logged. Fixed at the *denominator* (complete days **with intake**), leaving the rows
+> alone. The screen's three windows — rows, average, label — are now separate and named, because
+> FL-001 happened when one expression tried to be all three.
+>
+> **A six-persona swarm reviewed the report and its three biggest findings were not in it.** The
+> smoothed weight line the report asked the headline to agree with was *itself* wrong (**FL-013**,
+> Critical: an expanding reading-count window drew +0.30 kg on a perfectly flat week — exactly the
+> "honest 0.3" the report cited as trustworthy). The dashboard's weekly ring counted today as a
+> whole day, so **one logged breakfast flipped the week to a green "keep going"** and dinner flipped
+> it back (**FL-011**). And the same off-by-one sat in `runCalibration`, where it moves the **calorie
+> target** rather than a label (**FL-012**/**FL-014**). Two of the founder's own diagnoses were
+> disproved and are recorded as WON'T FIX with the reasoning; his arithmetic verified exactly, all
+> of it. Specs: `features/history/01`+`02`, `dashboard/06`, `energy-safety/11`. Rollback tag:
+> **`pre-history-bugfix`**.
+>
+> **A past day's mode and calorie target are now editable** (`features/history/02`) — and this one
+> was built *against* the swarm's advice. The review refused it, because a recomputed past target
+> needs inputs that were never stored. The founder's answer dissolved that: compute the target once
+> when the mode is tapped and **store** it, with a manual override. Deterministic because it is never
+> re-derived on read. It needed **no migration** — checked, not assumed: every field it writes was
+> already in the `history_snapshots` upsert.
+>
+> **Founder decision Q3 closed a real hazard before that shipped.** "Was I cutting" now reads what
+> was *eaten*, not the day's declared mode — otherwise correcting a past label could lift
+> `runCalibration`'s refusal to *lower* your calorie target, which writes `tdee_adj` at the next
+> weigh-in and does **not** come back when you put the label back.
 
 > **v77 replaced the flat MACROS bars with the intake-scoring engine.** New TODAY/THIS WEEK cards on
 > the dashboard, each a segmented ring — TODAY by macro (protein/carbs/fat), THIS WEEK by day. Colour
@@ -23,16 +54,30 @@
 
 > ## ▶ START HERE
 >
-> **Two dashboard features shipped back-to-back and both are live on Pages: intake scoring (v77) and
-> body-measurement tracking (v78).** Their DB work is done — `history_snapshots` gained 5 columns on
-> 2026-09-09, the `body_measurements` table was created on 2026-09-10, both confirmed via
-> `information_schema`. **What's still open:**
-> - **Phone-verify both** on a real device — fully close and reopen the installed PWA first. For
->   intake scoring, watch for the three things the swarm review fixed once (v77 note above), not just
->   "looks fine". For body measurements, log one and confirm it syncs and the History body-fat chart
->   draws.
+> **Everything through v86 is pushed and live on Pages. There is no code work queued.** The one job
+> left is to check it on a real phone — fully close and reopen the installed PWA first, or you are
+> still on an old bundle. **What's still open:**
+> - **Phone-verify the v81–v86 batch.** Open History on "7 Days" and confirm the average reads
+>   **2,510** with `DAILY AVERAGE · 6–12 SEP` above it and `DAY BY DAY · 6–13 SEP` below, today's row
+>   marked TODAY. Then correct a past day's mode and watch the "Scored against …" line move.
+>   **Expect correcting 12 Sep to read amber "JUST OVER", not green** — against a recomputed cut
+>   target 2,331 is ~122 over, and the green band stops at 100. That is the honest grade; the ✎
+>   override is there if you disagree. **The weekly sentence will not change**, because no day's mode
+>   feeds it — that is not the fix failing.
+> - **Phone-verify intake scoring (v77) and body measurements (v78)**, still outstanding from session
+>   21. For intake scoring, watch for the three things that swarm review fixed once (v77 note above),
+>   not just "looks fine". For body measurements, log one and confirm it syncs and the History
+>   body-fat chart draws.
 > - **`features/body/01` is still tagged `@wip`** though the code is built and deployed — clear it on
 >   device-verify, same as 06/07 below.
+> - **Standing engineering item, not this batch: `__tests__/logic.test.js` has zero `require` of
+>   `app.jsx`.** It is a hand-retyped mirror, so logic never copied across cannot be tested and
+>   nothing reports the omission — that is how 370 green tests missed a divide-by-8 on the app's
+>   headline number, and it bit again mid-session when a dropped `const` crashed the app to a blank
+>   screen while Jest stayed 400/400. Only the browser suite caught it. The real fix is extracting
+>   the pure layer into a `logic.js` both `app.jsx` and Jest load; it touches `build.sh`. Until then,
+>   **a change to pure logic is not covered until it is mirrored**, and `__tests__/datekeys.test.js`
+>   is the cheap pattern for catching a whole class statically.
 > - **Two `@superseded` spec files** (`dashboard/01-calorie-tolerance.feature`,
 >   `02-macro-tolerance.feature`) — delete-or-keep is the founder's call, still open.
 > - **`SAFE_MIN`'s flat 1400/1200 floor** was reopened then re-parked — tracked in
@@ -82,6 +127,8 @@ the repo for orientation. Open further docs only when the task actually needs th
 | Anything touching calorie targets | `ENERGY_MODEL.md` §5, §5.1, §5.2, §5.3 — **mandatory, it owns the model** |
 | Building an energy-safety feature | that one `.feature` file + `ENERGY_MODEL.md` §5 |
 | Product behaviour / changelog | `DOCS.md` §37 |
+| Anything on the History screen, or a date window | `features/history/01` — it owns the rows-vs-average-vs-label split, and the traps |
+| Adding a test for pure logic | read the ⚠️ note in `features/history/01`'s header FIRST — `logic.test.js` does not load `app.jsx` |
 | Legal, privacy, deploy checklist | `LEGAL_ROADMAP.md` |
 | Known bugs & severities | `ARCHITECTURE_REVIEW.md` |
 | Writing or running UI tests | `PLAYWRIGHT-PLAN.md` — coverage, status, and the traps |
@@ -89,7 +136,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
 - **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v78**.
-- Run `npx jest` before claiming anything works. Currently **323/323**. `npm run test:ui` is **89/89**.
+- Run `npx jest` before claiming anything works. Currently **400/400**. `npm run test:ui` is **139/139**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -401,11 +448,17 @@ that §4 warns against leaning on.
 ## Reference — operational facts (don't lose these)
 
 **Git**
-- `main` @ `bde4098` = body-measurement tracking, **live on Pages** (sw v78). No rollback tag was
-  cut for it (another session's commit); `ce341ce` / `pre-intake-scoring` is the nearest clean point.
+- `main` @ `241bcd6` = the History/dashboard bug batch, **live on Pages** (sw v86). Rollback tag
+  **`pre-history-bugfix`** = `2a9de4c`, the last commit before any of it.
+- `2a9de4c` = body measurements in History + CSV export (`features/body/02`, sw v81). It was sitting
+  **uncommitted** at the start of session 22 and was committed as a baseline before the bug batch
+  touched the same lines; no separate tag was cut for it.
+- `bde4098` = body-measurement tracking (`features/body/01`, sw v78). No rollback tag was cut for it
+  (another session's commit); `ce341ce` / `pre-intake-scoring` is the nearest clean point before it.
 - `energy-safety-bmr-floor` carries Steps 1–5a committed (`2209548` = file 02, `d509d86` = its docs).
-- Rollback tags: `pre-intake-scoring` (pre-v77 `main`, sw v76) · `pre-energy-safety` ·
-  `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` · Phase B → `8622d24`.
+- Rollback tags: **`pre-history-bugfix`** (pre-v82 `main`, sw v81) · `pre-intake-scoring` (pre-v77
+  `main`, sw v76) · `pre-energy-safety` · `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` ·
+  Phase B → `8622d24`.
 - Parked branch `targets-bmr-floor-wip` was **deleted** — superseded, don't resurrect it.
 
 **Gotchas that have already cost time**

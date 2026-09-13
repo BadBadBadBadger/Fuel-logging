@@ -189,7 +189,11 @@ Feature: Daily and weekly intake scoring (red / amber / green)
       flex remainder (no bound of their own — defined in full in their own sections below)
     And the fat floor is 0.6 g per kg bodyweight — the same hormonal floor computeMacros
       already enforces, never a new number
-    And "this week" means the last 7 days ending today, not the calendar week since Monday
+    And "this week" means the last 7 COMPLETE days, ending YESTERDAY — not the calendar week
+      since Monday, and no longer "the last 7 days ending today", which this file said until
+      2026-09-13. Today was being counted as a whole day, so one logged breakfast could flip the
+      week to green and dinner could flip it back. The window now lives in
+      `dashboard/06-weekly-window.feature` (FL-011); this file still owns the grading
     And "the hero" means the card's single headline word plus one action line — the one thing
       it says when several macros need attention at once, defined in full below
     And every banded range in this file is inclusive of its lower value and exclusive of its

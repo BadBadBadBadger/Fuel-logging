@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-11. **38 files · 384 scenarios.** Replaces the single
+**Updated:** 2026-09-13. **42 files · 434 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -132,6 +132,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [08-maintenance-bmr-floor](energy-safety/08-maintenance-bmr-floor.feature) | Maintenance never floored below sedentary TDEE (BMR × 1.2) | 5 | built |
 | [09-adaptive-tdee-raise-safeguards](energy-safety/09-adaptive-tdee-raise-safeguards.feature) | A raise needs fresh evidence, and can undo its own recent mistake while cutting | 9 | built |
 | [10-workout-burn-calibration-credit](energy-safety/10-workout-burn-calibration-credit.feature) | Calibration credits real training burn instead of reading it as a higher metabolism | 5 | built |
+| [11-intake-window-and-cut-evidence](energy-safety/11-intake-window-and-cut-evidence.feature) | The calibration intake window, and the evidence that gates a lowering | 8 | built |
 
 > **`09` and `10` are new, 2026-09-11**, both written from a live bug report rather than a planning
 > pass: the founder's own adaptive adjustment hit its +600 cap in five days off two days of mostly-
@@ -151,6 +152,71 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 > the Critical Thinker's own recommendation because it's a different failure class than `09`'s noise
 > bug, is `10`. Both built same-day: Jest 329/329, Playwright 92/92, sw v79.
 
+> **`11` is new, 2026-09-13.** Three changes to `runCalibration`, all found while reviewing a
+> History bug report and none of them in it. Two are the same off-by-one as FL-001, sitting where
+> it moves the **calorie target** rather than a label: the intake window spanned eight keys, so a
+> week with four CUT days read as *not* cutting and unlocked a lowering; and a part-finished today
+> entered the intake average, more than doubling the apparent estimate error in the lowering
+> direction. The third is founder decision **Q3**: "was I cutting" is now measured from what was
+> **eaten** (`avgDeficit`, already computed three lines above the refusal) rather than from the
+> day's declared mode. The prose above that refusal always said the rule was about *"eating below
+> maintenance"* — it just read labels instead. It had to change before
+> `history/02` shipped, because a label is now editable and a CUT→MAINTAIN edit could otherwise
+> lift the refusal and let a target lowering through at the next weigh-in, fired later and not
+> undone by putting the label back. File `04`'s asymmetry itself is untouched.
+
+## history/ — reading back what happened
+
+| File | Feature | Scen | Tag |
+|---|---|---|---|
+| [01-range-windows-and-averages](history/01-range-windows-and-averages.feature) | History range windows, averages and the labels that name them | 21 | built |
+| [02-correcting-a-past-day](history/02-correcting-a-past-day.feature) | Correcting a past day's mode and calorie target | 11 | built |
+
+> **Both are new, 2026-09-13**, written from a ten-item bug report the founder found by eye on his
+> own phone — kept verbatim as [`history/00-bug-report.md`](history/00-bug-report.md). A six-persona
+> swarm (QA, engineering, nutrition-coach, design-lead, critical-thinking, anti-metaphor) reviewed
+> it independently, then a critical-thinking-chaired debate ruled on every conflict; all eight
+> reports are in [`history/swarm/`](history/swarm/), and `07-debate.md` is the decisive one.
+>
+> **His arithmetic verified exactly, all of it** — 17,569/7 = 2,510 against the 2,196 on screen.
+> **Two of his diagnoses did not**, and both are recorded as WON'T FIX in `01`'s header with the
+> reasoning: no day's mode reaches `weeklyIntakeScore`, so the amber week he reported was correct
+> arithmetic rather than a scoring bug (FL-003), and an abandoned log cannot be detected from
+> stored data without being wrong on exactly the days `02` now encourages (FL-007).
+>
+> **The load-bearing idea in `01` is that the screen has three windows, not one** — the rows, the
+> average, and the label that names them — and FL-001 happened because one expression tried to be
+> all three. Three findings outranked the report itself: the smoothed weight line it asked the
+> headline to agree with was *itself* wrong (**FL-013**, Critical — an expanding reading-count
+> window drew +0.30 kg on a perfectly flat week); the dashboard's weekly ring counted today as a
+> whole day (**FL-011**, now `dashboard/06`); and the same off-by-one sat on the calorie-target
+> path (**FL-012**/**FL-014**, now `energy-safety/11`).
+>
+> **`02` overrides the swarm.** The review refused FL-010 as specified, because recomputing a past
+> target needs inputs that were never stored and because a mode edit could unlock a target
+> lowering. The founder's answer dissolved both: compute the target once when the mode is tapped
+> and **store** it, with a manual override — deterministic because it is never re-derived on read.
+> It also needed **no migration**, which was checked rather than assumed: every field it writes is
+> already in the `history_snapshots` upsert.
+>
+> **A note on the swarm reports:** they are frozen at the moment they were written and are not
+> maintained. Several of them, and `07-debate.md`, refer to a `history/RESUME.md` — that was a
+> mid-session handover written when the usage allowance was about to run out, and it has been
+> deleted now the work is done. Its content is superseded by these two spec files, which are the
+> canonical home for the decisions. Where a report and a spec disagree, the spec is current. Two
+> figures in the reports are also *contingent* and should not be quoted: the report's own
+> `+0.87`/`−0.08 kg/week` slopes and the design pass's `+0.4 kg` both depend on five weigh-ins
+> nobody has, which the debate flagged.
+>
+> ⚠️ **The test-suite finding recorded in `01`'s header is the one to carry forward.**
+> `__tests__/logic.test.js` has **zero `require` of `app.jsx`** — it is a hand-retyped mirror, so
+> logic never copied across cannot be tested and nothing reports the omission. That is how 370
+> passing tests said nothing about a divide-by-8 on the app's headline number, and it was
+> demonstrated again mid-build when a dropped `const` crashed the app to a blank screen while Jest
+> stayed green. `__tests__/datekeys.test.js` now fails the build on the UTC day-key idiom
+> statically. Extracting the pure layer into a `logic.js` both `app.jsx` and Jest load is the real
+> fix; it touches `build.sh` and is a standing engineering item.
+
 ## dashboard/ — how the day reads at a glance
 
 | File | Feature | Scen | Tag |
@@ -160,6 +226,19 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [03-budget-confidence](dashboard/03-budget-confidence.feature) | Calorie-budget confidence (Separated model) | 4 | |
 | [04-intake-scoring](dashboard/04-intake-scoring.feature) | Daily and weekly intake scoring (red / amber / green) | 38 | `@draft` |
 | [05-intake-score-card-layout](dashboard/05-intake-score-card-layout.feature) | Intake score card layout — both timeframes visible, no swipe | 2 | `@draft` |
+| [06-weekly-window](dashboard/06-weekly-window.feature) | "This week" means the last seven completed days | 8 | built |
+
+> **`06` is new, 2026-09-13, and it AMENDS `04`.** `04`'s Background said *"this week means the
+> last 7 days ending today"*; that line is now corrected and points here. Today was counted as a
+> whole day against a whole day's target, so with nothing logged the week read amber (2,484 vs
+> 2,709), one 400 kcal breakfast flipped it to a green *"keep going"* (2,186), and dinner flipped
+> it back (2,486) — a false all-clear, in the morning, with an instruction in it. The founder's
+> reason for the call was better than the bug: today's progress is already the hero ring on the
+> left, so a segment for it on the right said the same thing twice and disagreed with itself while
+> the day was open. The two cards now cover different days, and this is the same window
+> `history/01`'s average uses, so the two screens can no longer report different weekly numbers.
+> `04` still owns the grading. **Not `isDayClosed`** — it reads as "the day has finished" but means
+> "14 hours after the first meal, or 22:00", which would let a part-finished day back in at 20:00.
 
 > **`04` supersedes `02`.** `02`'s flat "any macro, 5g/15g over = amber/red, under is always
 > fine" model treated protein/carbs/fat as interchangeable and is what gave the dashboard its

@@ -1,8 +1,20 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.8 (the dashboard rebuild — intake scoring + body composition) — **live**, sw v78
-**Last Updated:** 10 September 2026
+**Version:** 6.9 (reading back what happened — History windows, past-day correction) — **live**, sw v86
+**Last Updated:** 13 September 2026
 
-> **What's new** — the dashboard's macro readout was rebuilt twice over.
+> **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
+> seven-day average divided by eight, because a part-finished today was counted as a whole day:
+> 17,569 kcal over seven logged days read as 2,196 instead of 2,510, and it climbed through the
+> day as meals were logged. Fixed at the denominator — complete days *with intake* — so the rows,
+> the average and the label are now three separate, named things instead of one expression trying
+> to be all three. Every card states its window in dates, and no header states a day count.
+> The dashboard's weekly ring stopped counting today for the same reason: one logged breakfast
+> could flip the week to a green *"keep going"* and dinner could flip it back. A **past day's mode
+> and calorie target are now editable** from History, the target computed once and stored so it
+> never drifts. Found by eye, on a phone, by the founder; reviewed by a six-persona swarm whose
+> three biggest findings were not in the report at all. See §8, §13 and §37.
+>
+> Before this, the dashboard's macro readout was rebuilt twice over.
 > **Intake scoring** (sw v77) replaced the flat MACROS bars with a role-based engine: a
 > macro's colour now depends on what it *is* — protein and the fat floor are floors (under
 > is the penalty), fat also has a ceiling, calories is the master constraint per mode, carbs
@@ -1484,6 +1496,98 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### The weekly average was dividing by the wrong number (Sep 2026)
+Ten bugs the founder found by eye in a live session on his own phone, kept verbatim as
+`features/history/00-bug-report.md`. A six-persona swarm (QA, engineering, nutrition-coach,
+design-lead, critical-thinking, anti-metaphor) reviewed the report independently, then a
+critical-thinking-chaired debate ruled on every conflict — all eight reports are in
+`features/history/swarm/`. Specs: `history/01-range-windows-and-averages.feature`,
+`history/02-correcting-a-past-day.feature`, `dashboard/06-weekly-window.feature`,
+`energy-safety/11-intake-window-and-cut-evidence.feature`. Jest **400/400**, Playwright
+**139/139**, sw `v81→v86`. **No DB change** — checked, not assumed; every field the past-day
+editor writes was already in the `history_snapshots` upsert.
+- **His arithmetic verified exactly, all of it.** 2665+2580+2334+2228+2504+2927+2331 = 17,569;
+  ÷8 = 2,196 (what shipped), ÷7 = 2,510 (the truth). Fat 544g ÷8 = exactly 68g, ÷7 = 78g. The
+  "maybe it was an eighth day with real data" alternative was tested and ruled out.
+- **FL-001, the headline defect.** The average divided by the row count, which included a
+  part-finished today. Fixed at the *denominator* — complete days that have intake — leaving the
+  rows alone. **Two clauses, not one:** "complete days" by itself still counts every past day the
+  app was merely *opened* as a favourable zero, because the snapshot effect writes a row either
+  way. Narrowing the rows instead, which the report implied, would have emptied both body charts
+  on day one and made today untappable — QA rated that the riskiest item in the batch, and fixing
+  the denominator makes it disappear rather than needing to be handled. The off-by-one hit every
+  range, not just the week: 30 Days read "31 DAYS" and averaged 2,323 against a true 2,400.
+- **FL-013 — the reference line was itself wrong. Critical, and not in the report.** The report
+  asked the weight headline to agree with the smoothed line on the chart. That line sliced by
+  *reading count* over the range-filtered array, so at the left edge its window expanded from 3
+  readings to 7 and manufactured slope: a perfectly flat 98.5 kg week with one low first reading
+  drew **+0.30 kg** — exactly the "honest 0.3" the report cited as trustworthy — and a genuine slow
+  loss drew +0.2 against a real +0.6, understating in the direction a dieter wants to hear. Now a
+  true calendar-day window over the full weigh-in list, so the range chip cannot starve it.
+- **FL-002 / Q4 — the weight figure.** Was the last reading minus the first, in colour, contradicting
+  the chart beneath it. Four defensible readings of one week span 1.8 kg *and both signs*, so seven
+  days cannot support a direction however computed. Founder's call: compare this week's 7-day
+  average against the **previous** 7-day average — two non-overlapping windows, so the figure rests
+  on fourteen days and no average is differenced against itself. Colour removed here and on the
+  dashboard badge: the old rule rewarded a lower number on a scale and painted a gain orange during
+  a bulk, with the day's mode sitting right there unconsulted.
+- **FL-011 — the weekly ring counted today.** Not in the report. With nothing logged the week read
+  2,484 against 2,709 and showed amber; one 400 kcal breakfast made it 2,186 and flipped it to a
+  green *"keep going"*; dinner flipped it back at 2,486. The founder's reason for the fix was better
+  than the bug: today is already the hero ring on the left, so a segment for it on the right said
+  the same thing twice and disagreed with itself while the day was open. The ring now covers the
+  seven **completed** days — the same window History averages, so the two screens can no longer
+  report different weekly numbers. Deliberately **not** gated on `isDayClosed`, which reads as "the
+  day has finished" but means "14 hours after the first meal, or 22:00".
+- **FL-012 / FL-014 — the same off-by-one, where it moves the calorie target.** `runCalibration`'s
+  intake window spanned eight keys, so "was I cutting" needed 5 of 8 rather than 4 of 7 — a week
+  with four CUT days read as *not* cutting and unlocked a lowering. A part-finished today also
+  entered the intake average, taking the apparent estimate error from −199 to −463 kcal/day in the
+  lowering direction. Both closed by one window: seven complete days ending yesterday.
+- **Q3 — a label can no longer move your target.** "Was I cutting" is now measured from what was
+  *eaten* (`avgDeficit`) instead of the day's declared mode. The prose above that refusal always
+  said the rule was about "eating below maintenance"; it just read labels. This had to change
+  before past-day editing shipped, or a CUT→MAINTAIN correction could lift the refusal and let a
+  lowering through at the next weigh-in — written to `tdee_adj`, fired later, and not undone by
+  putting the label back.
+- **FL-010 — correcting a past day, built against the swarm's advice.** The review refused it: a
+  recomputed target needs that day's TDEE adjustment and custom-target flag, neither stored. The
+  founder's answer dissolved the problem — compute the target once when the mode is tapped, **store**
+  it, and allow a manual override. Deterministic because it is never re-derived on read. Picking a
+  mode re-targets the day; a typed number wins until the mode changes again; `SAFE_MIN` still holds;
+  the macro split follows the same floors-hold, carbs-absorb rule as a live typed target; and that
+  day's own weight and body fat come from `weighIns`/`bodyMeasurements` by date. Today stays
+  read-only there, because its snapshot is rewritten from live state and an edit would revert.
+- **FL-005 / FL-007 / FL-008 — what the screen says.** Dates identify a window, counts only qualify
+  it: `DAILY AVERAGE · 6–12 SEP` over `DAY BY DAY · 6–13 SEP`, with the one excluded row marked
+  TODAY. Day one said a confident **"0 KCAL"** — worse than the NaN the report feared, because a
+  wrong number gets acted on — and now says the average starts once today has finished. "points"
+  not "pts", and the body-fat card names its real comparison date instead of claiming "last month".
+- **FL-009 — one step is one day.** The kcal charts already had a row per calendar day; weight and
+  body fat had a row per *reading*. That inconsistency was the defect. All charts now share a day
+  axis; per the founder, gaps are **bridged, not broken** — hiding gap noise is fine, making a slow
+  change read as a fast one is not.
+- **Two of his diagnoses were wrong, and both are recorded as WON'T FIX.** No day's mode is an input
+  to `weeklyIntakeScore`, so the amber week he reported was *correct* arithmetic — six logged days
+  averaging 2,484, 225 under a 2,709 estimate, inside the ±250 band — not a scoring bug (FL-003).
+  And an abandoned log cannot be told from a genuinely low day using stored data: entry ids are
+  `Date.now()` stamps taken at *edit* time, so the derivable version would be silently wrong on
+  exactly the days retrospective editing now creates (FL-007). Dropping low days would also delete
+  the evidence of under-eating the app exists to catch, and a written founder decision forbids it.
+- **⚠️ The test suite could not see any of this, and that is the finding to carry forward.**
+  `__tests__/logic.test.js` has **zero `require` of `app.jsx`** — it is a 3,525-line hand-retyped
+  mirror, so logic never copied across cannot be tested and nothing reports the omission. That is
+  how 370 passing tests said nothing about a divide-by-8 on the app's headline number. The cruelty:
+  `weeklyIntakeScore` divides by *logged* days correctly, and `logic.test.js` contains a test named
+  *"an unlogged day is excluded from the average"* — the right rule, tested, on the other engine
+  5,000 lines from the number the founder reads. It bit again mid-build: a dropped `const` in
+  `runCalibration` crashed the app to a blank screen while Jest stayed 400/400, and only the browser
+  suite caught it. New `__tests__/datekeys.test.js` now fails the build on the UTC day-key idiom
+  statically (it caught all three shipped call sites on its first run); `__tests__/history.test.js`
+  owns the arithmetic; `e2e/history-averages.spec.js` and `e2e/history-day-edit.spec.js` own what the
+  screen says. Extracting the pure layer into a `logic.js` that both `app.jsx` and Jest load is the
+  real fix — it touches `build.sh` and is a standing engineering item, not part of this batch.
 
 ### The adaptive engine stops talking itself into a bigger appetite (Sep 2026)
 Two separate confirmed defects in `runCalibration`'s **raising** direction, both found from the

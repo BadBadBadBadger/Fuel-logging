@@ -283,6 +283,62 @@ correction lands in all three places — the row, the day's totals, and `logs__<
 > the session-15 failure, where every `var()` resolved to nothing and the UI flattened while every
 > DOM assertion still passed.
 
+### Suite: `history-averages.spec.js` — the History screen (session 22)
+
+| # | Scenario | Status |
+|---|---|---|
+| 35a | Seven complete days average 2,510 kcal, not 2,196 | ✅ |
+| 35b | Fat averages 78g, not 68g | ✅ |
+| 35c | The average holds still once today is logged | ✅ |
+| 35d | A past day the app was only opened is not averaged in as a zero | ✅ |
+| 36a | No header states a day count, so there is nothing to reconcile | ✅ |
+| 36b | The card says what it is built from, and that today is not in it | ✅ |
+| 36c | The one row the average excludes is marked TODAY | ✅ |
+| 36d | The day list still runs to today — the fix narrows the average, not the rows | ✅ |
+| 37a | A brand-new account says the average starts once today has finished | ✅ |
+| 37b | A 30-day window with no complete day does not report 0 KCAL | ✅ |
+| 38a | A flat fortnight is not reported as a gain | ✅ |
+| 38b | The card says these are averages and can still swing | ✅ |
+| 38c | A missing weigh-in takes up its own space instead of collapsing | ✅ |
+| 38d | Too few weigh-ins says so instead of guessing a direction | ✅ |
+
+> **This suite exists because Jest could not have caught any of it.** `__tests__/logic.test.js` has
+> **zero `require` of `app.jsx`** — it is a hand-retyped mirror — so the History cutoffs were never
+> covered and 370 green tests said nothing about a divide-by-8 on the app's headline number. The
+> arithmetic now lives in `__tests__/history.test.js` and the UTC day-key idiom is guarded
+> statically by `__tests__/datekeys.test.js`; this file owns what the *screen* says.
+>
+> **It proved its worth immediately.** Mid-build, an edit dropped one `const` inside
+> `runCalibration` and the app crashed to a blank screen on load. Jest stayed 400/400, because the
+> mirror still had the line. Only the browser suite failed. Diagnosing it needed the console error
+> from *inside* the harness iframe — `page.on("pageerror")` on the main frame reports nothing, and
+> the first diagnostic run was a false negative because the fixture shape had been guessed rather
+> than copied from the real spec.
+>
+> **Two traps worth knowing before adding to this file.** Selecting a day row by its kcal is unsafe
+> when the seeded days share a value — the averages card carries that number too, so a text match
+> hits the chip, not a row; select by the mode chip inside the row instead. And `page.evaluate` does
+> not auto-wait, so measuring chart geometry needs an explicit wait for a dot to be visible first.
+> Both cost a debugging cycle here.
+
+### Suite: `history-day-edit.spec.js` — correcting a past day (session 22)
+
+| # | Scenario | Status |
+|---|---|---|
+| 39a | A past day's mode is three chips, and one tap changes it — no confirm | ✅ |
+| 39b | Changing the mode re-targets the day for that mode | ✅ |
+| 39c | The re-targeting is stored, so going back and forth lands on the same number | ✅ |
+| 39d | A typed target survives until the mode is changed again | ✅ |
+| 39e | Today is not editable here — its own control is on the dashboard | ✅ |
+| 40a | The target can be set by hand, and the day is regraded against it | ✅ |
+| 40b | The safety floor still holds on a typed number | ✅ |
+| 40c | Cancelling leaves the stored target alone | ✅ |
+| 40d | A day saved before targets were stored says so, rather than pretending | ✅ |
+
+> **39c is the load-bearing one.** The target is computed once when the mode is tapped and stored;
+> it is never re-derived on read, so it cannot drift as the adaptive TDEE moves on. Tapping
+> CUT → BULK → CUT must land on the same number it did the first time.
+
 ---
 
 ## Planned
