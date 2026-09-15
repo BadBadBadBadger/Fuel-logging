@@ -1,6 +1,6 @@
 # ============================================================================
-# BUILT 2026-09-15 (session 23), from features/logging/00-bug-report.md Bug 2. @wip until seen
-# on the phone.
+# BUILT 2026-09-15 (session 23), from features/logging/00-bug-report.md Bug 2. VERIFIED on the
+# phone the same day — the crumpets line, one row, 539 logged.
 #
 # THE BUG. The founder typed a description that ended in the meal's totals —
 #   "3 Warburtons crumpets, 30g butter total (10g each), 10.5g jam total (3.5g each)
@@ -49,7 +49,6 @@
 # The screen behaviour is in e2e/stated-totals.spec.js — with the worker route asserted to be
 # NEVER called.
 # ============================================================================
-@wip
 Feature: Totals typed by the user are the meal, not another row
 
   Background:

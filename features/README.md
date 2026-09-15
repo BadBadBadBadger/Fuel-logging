@@ -283,8 +283,8 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [03-repeat-add-feedback](logging/03-repeat-add-feedback.feature) | Repeat-add feedback — re-blink and count | 6 | |
 | [04-meal-data-integrity](logging/04-meal-data-integrity.feature) | Structured elements are the source of truth | 4 | `@wip` |
 | [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 23 | `@wip` |
-| [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 10 | `@wip` |
-| [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | `@wip` |
+| [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 10 | |
+| [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | |
 
 > **`06` and `07` are the 2026-09-15 bug batch** — the founder's second by-eye report, kept
 > verbatim as [`logging/00-bug-report.md`](logging/00-bug-report.md) (its Bug 3 is a dashboard
@@ -294,7 +294,8 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 > a peanut-butter biscuit, live, during triage. No spec had ever described that step; it is removed
 > from the AI Log, the meal form and the entry editor (the Food Search screen, where the user picks
 > a product from a list, keeps it). `06` makes a full typed totals line the meal outright: one row,
-> no model call, no follow-ups, logged exactly as typed.
+> no model call, no follow-ups, logged exactly as typed. **Both verified on the founder's phone the
+> same day** — the only test the model's answers get.
 
 > `05` was promoted from the old `features/ai-capture.feature` on 2026-08-16. That file held the
 > richer spec (and the 4-hat design rationale) while calling itself non-authoritative; the condensed

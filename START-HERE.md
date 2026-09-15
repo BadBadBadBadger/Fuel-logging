@@ -75,13 +75,12 @@
 
 > ## ▶ START HERE
 >
-> **Everything through v88 is pushed and live on Pages. There is no code work queued.** Fully close
-> and reopen the installed PWA first, or you are still on an old bundle. **What's still open:**
-> - **Phone-verify the 15 Sep batch** — the checklist is `DEVICE-TEST.md` → *New in
->   v88*. The three chicken inputs are the **only** check the model's answers get: type them exactly.
->   Then the crumpets line (one row, instantly, 539 not 942) and the 47-over card (OVER BY, still
->   blue). If one of the bad 15 Sep chicken entries shows **98%** confidence when you edit it, that
->   was the OFF swap — correct it by hand. On green: clear `@wip` from `logging/06` and `07`.
+> **Everything through v88 is pushed and live on Pages, and the AI Log fixes are phone-verified
+> (2026-09-15, same day) — `logging/06` and `07` are untagged.** There is no code work queued.
+> **What's still open:**
+> - **Two small phone checks left from v88** (`DEVICE-TEST.md` → *New in v88*, the two unticked
+>   boxes): the 47-over card reading **OVER BY** in blue, and the diagnosis check — edit one of the
+>   bad 15 Sep chicken entries; **98%** confidence means it was the OFF swap. Correct it by hand.
 > - **Parked, from the report's nice-to-have:** "if the AI's own estimate disagrees with my typed
 >   totals by >10%, tell me". Needs the model call `logging/06` deliberately removes — decide whether
 >   you want it before it becomes a feature. Recorded in `06`'s header.
@@ -449,9 +448,10 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
-0. **◀ Phone-verify the 15 Sep batch** — `DEVICE-TEST.md` → *New in v88*. The three
-   chicken inputs, the crumpets line, the 47-over card. Clear `@wip` on `logging/06`+`07` when green.
-   Then decide the parked nice-to-have (flag a >10% disagreement between the AI and typed totals).
+0. **◀ Finish the v88 phone check** — the two unticked boxes in `DEVICE-TEST.md` → *New in v88*
+   (the 47-over card; the 98% diagnosis check). The AI Log fixes are verified. The parked
+   nice-to-have (flag a >10% disagreement between the AI and typed totals) is the founder's —
+   "I will think about that again", 2026-09-15 — not a to-do.
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
    earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
    ✅5c the auto-lowering fix (04). **Step 6 (file 05, the symptom check) is SHELVED** — the founder

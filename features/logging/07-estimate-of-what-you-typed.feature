@@ -1,6 +1,6 @@
 # ============================================================================
-# BUILT 2026-09-15 (session 23), from features/logging/00-bug-report.md Bug 1. @wip until the
-# three inputs in the report have been typed into the real app on the phone.
+# BUILT 2026-09-15 (session 23), from features/logging/00-bug-report.md Bug 1. VERIFIED on the
+# phone the same day — the three inputs in the report, typed into the real app, came back right.
 #
 # THE BUG AS REPORTED. Dry, air-fried chicken breast came back with far too much fat (26 g on a
 # medium breast; 10 g on 150 g), the words "dry" and "zero added fat" changed nothing, and 150 g
@@ -63,7 +63,6 @@
 # reference Open Food Facts; only FoodSearch may) and the prompt's rules by text. The three
 # inputs below are the phone check — DEVICE-TEST.md.
 # ============================================================================
-@wip
 Feature: The numbers on screen are the AI's estimate of what you typed
 
   Background:
