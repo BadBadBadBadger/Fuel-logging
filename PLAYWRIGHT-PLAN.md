@@ -233,9 +233,10 @@ the original harm: a long deficit walking the target down.
 > (`callAI` refuses without one, `app.jsx:1269`) and the worker response itself. **This is not a
 > sign-in** — no real account, no request leaves the machine, and the no-cloud rule holds.
 >
-> Open Food Facts must be aborted in these tests. It runs in parallel and replaces an item when it
-> returns more confident, clearing `ask` as it does (`app.jsx:4062`) — left live it silently deletes
-> the follow-up under test.
+> Open Food Facts used to have to be aborted here: it ran in parallel and replaced an item when it
+> returned more confident, clearing `ask` as it did — left live it silently deleted the follow-up
+> under test. That cross-check is gone (2026-09-15, `features/logging/07`); the route now stays as a
+> tripwire, counting requests, and an `afterEach` fails any test that made one.
 
 ### Suite: `entry-editor.spec.js` — correcting an entry after the fact
 
@@ -464,8 +465,9 @@ already had. The seventh test exists: *"premium: an empty AI response is refused
 silent zero"* in `entry-editor.spec.js`, whose load-bearing assertion is the stored record, not the
 message. Suite is **68**.
 
-`searchOFT` was checked and deliberately left unguarded: it coerces every field with `|| 0`
-(`app.jsx:3915`), so the Open Food Facts path cannot produce a `NaN` and needs no equivalent.
+`searchOFT` was checked and deliberately left unguarded: it coerced every field with `|| 0`,
+so the Open Food Facts path could not produce a `NaN` and needed no equivalent. (Moot since
+2026-09-15 — `searchOFT` no longer exists; see suite 32e above and `features/logging/07`.)
 
 ---
 

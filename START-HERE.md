@@ -163,7 +163,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
 - **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v78**.
-- Run `npx jest` before claiming anything works. Currently **400/400**. `npm run test:ui` is **139/139**.
+- Run `npx jest` before claiming anything works. Currently **430/430**. `npm run test:ui` is **147/147**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -364,7 +364,8 @@ so the specs were right to state what a reader sees.
 
 **Session 17 covered "edit a logged entry" and found a real bug.** Six new Playwright tests take the
 five scenarios of *Feature: Edit a logged entry in place* (`features/logging/01-edit-entry.feature`) —
-including the premium AI re-estimate and its Open Food Facts cross-check. Suite is **63/63**.
+including the premium AI re-estimate and its Open Food Facts cross-check (the cross-check was
+removed on 2026-09-15 — `features/logging/07`). Suite was **63/63** then.
 
 Writing them surfaced **F4**: `EntryEditor` fills the macro fields straight from the AI with no
 validity check, so a parsed-but-empty response shows `NaN`, still claims *"✓ Updated"*, and saves the

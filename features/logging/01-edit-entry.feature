@@ -28,8 +28,11 @@ Feature: Edit a logged entry in place
     And I have corrected the entry's name
     When I tap "AI re-estimate from name"
     Then the kcal and macros are re-estimated from the corrected name
-    And an Open Food Facts match overrides the AI figure when its confidence is higher
+    And the AI's figures are the figures — nothing overwrites them afterwards
     And I can still review the values before saving
+    # Until 2026-09-15 this read "an Open Food Facts match overrides the AI figure when its
+    # confidence is higher". That step swapped in a random product's label at a fixed 98% and is
+    # gone — features/logging/07. e2e/entry-editor.spec.js 32e now asserts OFF is never asked.
 
   # F4, fixed in v73. The editor filled the fields straight from the AI with no validity
   # check, so a parsed-but-empty response wrote NaN, still said "✓ Updated", and saved the

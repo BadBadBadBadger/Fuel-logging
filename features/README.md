@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-15. **44 files · 457 scenarios.** Replaces the single
+**Updated:** 2026-09-15. **44 files · 455 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner

@@ -1,6 +1,7 @@
 # ── AI estimate when creating a Quick Add meal (DOCS.md §23 backlog).
-# Mirrors EntryEditor's re-estimate exactly: same AI_REESTIMATE_PROMPT + Open Food
-# Facts cross-check (AI shown first, OFF a bounded background refinement), premium-gated.
+# Mirrors EntryEditor's re-estimate exactly: same AI_REESTIMATE_PROMPT, premium-gated.
+# (The Open Food Facts cross-check that used to follow the AI answer was removed on
+# 2026-09-15 — features/logging/07 — after it was found swapping in unrelated products.)
 # Lives in MealForm (app.jsx ~L1411), so it also covers the History manual one-off
 # entry, which uses the same component. Built + verified on device 2026-06-12 (sw v36
 # fixed the vegan-keto "milk" false-fill; estimate now fills or says "Couldn't estimate that").
@@ -19,9 +20,10 @@ Feature: AI estimate when creating a Quick Add meal
     And I have typed a meal name
     When I tap "✨ AI estimate from name"
     Then the kcal and macros are estimated from the name and fill the fields
-    And the AI figure is shown immediately without waiting on Open Food Facts
-    And an Open Food Facts match overrides the AI figure when its confidence is higher
+    And the AI's figures are the figures — nothing overwrites them afterwards
     And I can still review and adjust every value before saving
+    # Two lines about Open Food Facts — "shown immediately without waiting on" it, and "a match
+    # overrides the AI figure" — were removed 2026-09-15 with the cross-check itself (logging/07).
 
   Scenario: Estimating is blocked until a name is entered
     Given the meal name field is empty

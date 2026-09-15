@@ -578,9 +578,25 @@ Run with:
 npm test
 ```
 
-Tests live in `__tests__/logic.test.js`. No browser required — Jest runs them in Node.
+Five files under `__tests__/`, no browser required — Jest runs them in Node. **430 tests, current as
+of 2026-09-15.** The browser-level suite is separate (`npm run test:ui`, 147 tests) and
+`PLAYWRIGHT-PLAN.md` is its live status doc.
 
-Current as of 2026-08-07 (`npx jest`).
+| File | What it owns |
+|---|---|
+| `logic.test.js` | Hand-mirrored pure functions from `app.jsx` — targets, floors, calibration, scoring, the calorie-card caption (`kcalCardLabel`) |
+| `history.test.js` | History range windows, averages, the weight trend (session 22) |
+| `ai-log.test.js` | The stated-totals recogniser, **lifted out of `app.jsx` and run for real**; static guards that the Open Food Facts cross-check stays gone and the prompt keeps its rules (session 23) |
+| `datekeys.test.js` | Static guard: day keys are local, never UTC |
+| `styles.test.js` | Static guard: no hex alpha on a CSS variable |
+
+> **The mirror problem.** `logic.test.js` and `history.test.js` re-type the functions they test, so
+> logic never copied across is never tested and nothing reports the omission — that is how 370 green
+> tests missed a divide-by-8 (FL-001). `ai-log.test.js` is the first file to slice the real source
+> out of `app.jsx` instead; the durable fix is extracting the pure layer into a module both load.
+
+The group table below is the **2026-08-07 snapshot of `logic.test.js`** (142 tests then); it has not
+been re-tallied since — the changelog carries the running totals.
 
 | Group | Tests | What's covered |
 |---|---|---|
