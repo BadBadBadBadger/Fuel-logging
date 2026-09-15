@@ -6,8 +6,8 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 63 tests · 63 passing · runtime ~36s · last updated 2026-08-16
-**Plan items 15–32 are all complete.** Jest 236/236 alongside, unchanged.
+**Current:** 147 tests · 147 passing · runtime ~80s · last updated 2026-09-15 (session 23)
+**Plan items 15–42 are all complete.** Jest 430/430 alongside.
 
 > ### 🔖 Shelved — one open item, needing a decision rather than more investigation
 >
@@ -249,15 +249,15 @@ correction lands in all three places — the row, the day's totals, and `logs__<
 | 32b | Saving updates the row, the totals, and the stored record — and survives a reload | ✅ |
 | 32c | Cancel discards, in the row and in the totals alike | ✅ |
 | 32d | Premium: re-estimate refills the macros and keeps the corrected name | ✅ |
-| 32e | Open Food Facts overrides the AI when it is more confident | ✅ |
+| 32e | Premium: a low-confidence AI answer is still the answer — Open Food Facts is never asked | ✅ |
 | 32f | Anonymous: the gate is raised, and manual editing still works after dismissal | ✅ |
 
-> **32d and 32e are a matched pair, and the fixture is what makes them one.** Open Food Facts
-> answers in BOTH, with the same product; only the AI's confidence differs (99 → the AI's 815
-> stands, 60 → OFF's 415 wins). Aborting OFF in one of them would have proved only that a silent
-> third party changes nothing, which is not the claim being made. 32d also waits before asserting
-> the AI figure held — OFF refines in the background (`app.jsx:2845`), so an immediate assertion
-> would pass merely because the response had not arrived yet.
+> **32e was inverted on 2026-09-15.** It used to assert that OFF's 415-kcal lasagne *won* over a
+> 60-confidence AI answer — i.e. it pinned the behaviour that `features/logging/07` removed after it
+> was found swapping "Butter, 30g" for a peanut-butter biscuit. Both re-estimate tests now serve
+> OFF the same bait product, count every request to it, and assert the count is **0** and the AI's
+> 815 stands after a one-second grace. `ai-followups.spec.js` carries the same tripwire in an
+> `afterEach`.
 >
 > **The row is REPLACED by the editor while editing** (`app.jsx:3605`), so "not saved yet" cannot
 > be asserted against the row — it isn't on screen. 32d checks the day's total and reads
@@ -338,6 +338,36 @@ correction lands in all three places — the row, the day's totals, and `logs__<
 > **39c is the load-bearing one.** The target is computed once when the mode is tapped and stored;
 > it is never re-derived on read, so it cannot drift as the adaptive TDEE moves on. Tapping
 > CUT → BULK → CUT must land on the same number it did the first time.
+
+### Suite: `stated-totals.spec.js` — typed totals are the meal (session 23)
+
+Contract: `features/logging/06-stated-totals.feature`. The recogniser's edge cases are Jest's
+(`__tests__/ai-log.test.js` lifts the real regexes out of `app.jsx`); this suite asks what the
+screen shows and what gets stored.
+
+| # | Scenario | Status |
+|---|---|---|
+| 41a | The founder's crumpets line → one row, at once, exact figures, 100%, no questions, **0 worker calls** | ✅ |
+| 41b | `LOG ALL AS ONE ENTRY` stores 539 / 9.2 / 66.5 / 25.8 at conf 100, named after the food — not 942 | ✅ |
+| 41c | A description without a totals line still goes to the model (1 worker call) | ✅ |
+
+> **The stub is the tell.** The worker fixture answers with 942 kcal — the wrong number from the
+> bug report — so if the model were asked after all, the wrong figure would be on screen and the
+> test would say so. 41b counts worker calls *before* leaving the AI Log: the dashboard has worker
+> calls of its own (the coach) that are not what the test is about.
+
+### Suite: `calorie-card-label.spec.js` — the card says over when you are over (session 23)
+
+Contract: `features/dashboard/01-calorie-tolerance.feature`, the three scenarios added 2026-09-15.
+The target is pinned by seeding `target_kcal` (the ✎ pill's key), so the cases are the report's
+exact numbers.
+
+| # | Scenario | Status |
+|---|---|---|
+| 42a | 2,366 against 2,319 reads **OVER BY 47**, still blue — the founder's case | ✅ |
+| 42b | 2,272 reads REMAINING 47 | ✅ |
+| 42c | 2,319 reads REMAINING 0 | ✅ |
+| 42d | 150 over is amber and reads OVER BY — no "JUST OVER" anywhere on the dashboard | ✅ |
 
 ---
 

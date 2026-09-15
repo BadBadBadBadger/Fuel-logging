@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-13. **42 files · 434 scenarios.** Replaces the single
+**Updated:** 2026-09-15. **44 files · 457 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -221,7 +221,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 
 | File | Feature | Scen | Tag |
 |---|---|---|---|
-| [01-calorie-tolerance](dashboard/01-calorie-tolerance.feature) | Calorie tolerance — forgiving colour logic | 5 | |
+| [01-calorie-tolerance](dashboard/01-calorie-tolerance.feature) | Calorie tolerance — forgiving colour logic; the caption states the fact | 8 | |
 | [02-macro-tolerance](dashboard/02-macro-tolerance.feature) | Macro tolerance — forgiving colour logic | 4 | **superseded** |
 | [03-budget-confidence](dashboard/03-budget-confidence.feature) | Calorie-budget confidence (Separated model) | 4 | |
 | [04-intake-scoring](dashboard/04-intake-scoring.feature) | Daily and weekly intake scoring (red / amber / green) | 38 | `@draft` |
@@ -283,6 +283,18 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [03-repeat-add-feedback](logging/03-repeat-add-feedback.feature) | Repeat-add feedback — re-blink and count | 6 | |
 | [04-meal-data-integrity](logging/04-meal-data-integrity.feature) | Structured elements are the source of truth | 4 | `@wip` |
 | [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 23 | `@wip` |
+| [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 10 | `@wip` |
+| [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | `@wip` |
+
+> **`06` and `07` are the 2026-09-15 bug batch** — the founder's second by-eye report, kept
+> verbatim as [`logging/00-bug-report.md`](logging/00-bug-report.md) (its Bug 3 is a dashboard
+> fix, in `dashboard/01`). `07` records a finding the report could not have made: the AI's numbers
+> were being silently **replaced** by an Open Food Facts free-text hit — a random product's label,
+> per that product's serving, at a fixed 98% — whenever OFF happened to answer. "Butter, 30g" became
+> a peanut-butter biscuit, live, during triage. No spec had ever described that step; it is removed
+> from the AI Log, the meal form and the entry editor (the Food Search screen, where the user picks
+> a product from a list, keeps it). `06` makes a full typed totals line the meal outright: one row,
+> no model call, no follow-ups, logged exactly as typed.
 
 > `05` was promoted from the old `features/ai-capture.feature` on 2026-08-16. That file held the
 > richer spec (and the 4-hat design rationale) while calling itself non-authoritative; the condensed

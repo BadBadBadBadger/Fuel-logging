@@ -1,6 +1,27 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-13 (session 22). **Jest 400/400 · Playwright 139/139 · sw v86 · `main` — pushed.**
+**Updated:** 2026-09-15 (session 23). **Jest 430/430 · Playwright 147/147 · sw v88 · `main` — committed, NOT yet pushed.**
+
+> **v88: the AI's numbers were being silently swapped for a random supermarket product's.** The
+> founder sent a second by-eye bug report from his phone through Remote Control (`/rc` in VS Code —
+> it works; the report arrived as a file), kept verbatim as `features/logging/00-bug-report.md`.
+> Bug 1 as reported: dry air-fried chicken breast came back with 26 g fat and 150 g did not scale
+> from 250 g. What was actually happening was not in the report and could not have been: after
+> every model reply the AI Log searched **Open Food Facts by item name** and, if anything came
+> back, **replaced the AI's numbers with that product's label at a fixed 98% confidence** — per the
+> product's serving, under the AI's item name. Proved live: `"Butter, 30g"` → a peanut-butter
+> biscuit → 150 kcal · 21 g carbs. OFF was also 503-ing that afternoon, so the *same* input got a
+> different answer depending on whether OFF replied. No spec had ever described the step; the UI
+> suite had been aborting it to stay deterministic. **Removed** from the AI Log, meal form and
+> entry editor (Food Search, where you pick a product from a list, keeps it) — `logging/07`. The
+> prompt gained the four rules the report asked for. **Bug 2** (`logging/06`): a typed totals line
+> `P: 9.2g C: 66.5g F: 25.8g 539 kcal` became a fourth row and LOG ALL wrote 942; now a full totals
+> line is the meal — one row, instantly, no model call, logged as typed. **Bug 3** (`dashboard/01`
+> amended): "REMAINING 47" at 47 over — the word came from the colour bands, the number was the
+> gap with its sign dropped; now over → OVER BY, otherwise REMAINING. Two of the three founder
+> diagnoses were right in effect; the third (Bug 1) was a different mechanism entirely.
+> New `__tests__/ai-log.test.js` **lifts the real recogniser out of `app.jsx`** rather than
+> mirroring it — the first test in the repo to do so.
 
 > **v86 fixed the weekly average, which was dividing by eight.** The founder found ten bugs by eye
 > on his own phone in one session (`features/history/00-bug-report.md`, kept verbatim). The headline
@@ -54,9 +75,17 @@
 
 > ## ▶ START HERE
 >
-> **Everything through v86 is pushed and live on Pages. There is no code work queued.** The one job
-> left is to check it on a real phone — fully close and reopen the installed PWA first, or you are
-> still on an old bundle. **What's still open:**
+> **v88 is committed on `main` and NOT pushed — push it, then phone-check.** Everything through v87
+> is live on Pages. Fully close and reopen the installed PWA first, or you are still on an old
+> bundle. **What's still open:**
+> - **Push v88, then phone-verify the 15 Sep batch** — the checklist is `DEVICE-TEST.md` → *New in
+>   v88*. The three chicken inputs are the **only** check the model's answers get: type them exactly.
+>   Then the crumpets line (one row, instantly, 539 not 942) and the 47-over card (OVER BY, still
+>   blue). If one of the bad 15 Sep chicken entries shows **98%** confidence when you edit it, that
+>   was the OFF swap — correct it by hand. On green: clear `@wip` from `logging/06` and `07`.
+> - **Parked, from the report's nice-to-have:** "if the AI's own estimate disagrees with my typed
+>   totals by >10%, tell me". Needs the model call `logging/06` deliberately removes — decide whether
+>   you want it before it becomes a feature. Recorded in `06`'s header.
 > - **Phone-verify the v81–v86 batch.** Open History on "7 Days" and confirm the average reads
 >   **2,510** with `DAILY AVERAGE · 6–12 SEP` above it and `DAY BY DAY · 6–13 SEP` below, today's row
 >   marked TODAY. Then correct a past day's mode and watch the "Scored against …" line move.
@@ -231,6 +260,25 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 
 ## Right now
 
+**Session 23 — the 15 Sep bug batch, v88 (`features/logging/00-bug-report.md`), sent from the phone
+through Remote Control.** Three bugs; the headline finding was not in the report. `searchOFT` ran
+after every AI reply and replaced any row Open Food Facts returned a product for — a free-text
+search, first hit, that product's serving, fixed confidence 98, the AI's name kept — in three
+places (`AILog`, `MealForm` re-estimate, `EntryEditor` re-estimate). Removed; `FoodSearch` keeps
+its own OFF lookup (user picks from a list). `AI_PROMPT` gained: no-added-fat words → no cooking
+fat; scale to stated weight; kcal ≈ 4P+4C+9F (alcohol the exception, and the check is the model's,
+not the client's — beer); a typed number is a fact about its item; don't ask what the text answers.
+`parseStatedTotals` / `statedTotalsItem` (app.jsx, next to the prompts): a full typed totals line
+(kcal + P/C/F; single letters need a colon) short-circuits `estimate()` — one row at 100%, no
+worker call, no follow-ups; `logAll` names the entry after the food via an in-memory `stated`
+flag. `kcalCardLabel` (next to `cutCalorieScore`): over → OVER BY, else REMAINING; "JUST OVER" is
+gone from the CONSUMED card only. Specs `logging/06`, `logging/07`, `dashboard/01` (amended, 5→8
+scenarios). Tests: `__tests__/ai-log.test.js` (lifts the real regexes + static guards on the
+removal and the prompt), `kcalCardLabel` mirror in `logic.test.js`, `e2e/stated-totals.spec.js`,
+`e2e/calorie-card-label.spec.js`; `entry-editor.spec.js` 32e inverted (OFF baited, never called),
+`ai-followups.spec.js` tripwire. Docs: `DOCS.md` (header 6.9.1, §AI Meal Log, §37 changelog),
+`features/README.md`, `DEVICE-TEST.md`, `PLAYWRIGHT-PLAN.md`. **No DB change.** sw v87→v88.
+
 **Session 21 — body-measurement tracking (v78, `bde4098`, another session) and the docs to match.**
 A weekly neck/waist (+hip for women) tape entry computes body-fat % by the US Navy method
 (`navyBodyFat`) and feeds the profile's `bodyFat` field via `syncedBodyFat()`, off a rolling average
@@ -402,6 +450,9 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
+0. **◀ Push v88 and phone-verify the 15 Sep batch** — `DEVICE-TEST.md` → *New in v88*. The three
+   chicken inputs, the crumpets line, the 47-over card. Clear `@wip` on `logging/06`+`07` when green.
+   Then decide the parked nice-to-have (flag a >10% disagreement between the AI and typed totals).
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
    earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
    ✅5c the auto-lowering fix (04). **Step 6 (file 05, the symptom check) is SHELVED** — the founder

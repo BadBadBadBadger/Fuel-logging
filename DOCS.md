@@ -1,5 +1,5 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.9 (reading back what happened — History windows, past-day correction) — **live**, sw v86
+**Version:** 6.9.1 (the numbers on screen are the AI's; typed totals are the meal; the card says over when over) — sw v88, **committed, not yet pushed**
 **Last Updated:** 13 September 2026
 
 > **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
@@ -56,7 +56,7 @@ Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalis
 | Charts | Recharts 2.12.7 (vendored) |
 | Styling | Inline React styles only |
 | Storage | `localStorage` via `window.storage` bridge in `index.html` |
-| Food API | Open Food Facts (free, no key required) |
+| Food API | Open Food Facts (free, no key required) — **Food Search only** (§16); no longer consulted by the AI Log or re-estimates since 2026-09-15 |
 | AI API | Anthropic `claude-sonnet-4-6` via Cloudflare Worker proxy |
 | Hosting | GitHub Pages |
 | Android | PWABuilder.com → APK |
@@ -503,7 +503,8 @@ Describes a meal in plain English. AI breaks it into individual components with:
 - Exact kcal/protein/carbs/fat per item
 - Confidence score (0–100): 90+ = exact label data, 60–89 = good knowledge, <60 = estimate
 - Reasoning explaining the source of data
-- Open Food Facts cross-reference (uses label data if higher confidence than AI estimate)
+- **The model's numbers are the numbers.** Until 2026-09-15 an Open Food Facts free-text search ran after every reply and replaced any row it found a product for (see the changelog). Removed — `features/logging/07`.
+- **A full typed totals line is the meal** — all four of kcal, `P:`/protein, `C:`/carbs, `F:`/fat present → one row, at once, exactly those figures at 100%, no model call, no follow-ups; `LOG ALL AS ONE ENTRY` logs it named after the food. `parseStatedTotals` / `statedTotalsItem` in `app.jsx`; `features/logging/06`.
 - Individual item or all-at-once logging
 - Re-estimate any item by tapping ✏️ and correcting the name
 
@@ -1497,6 +1498,46 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### The AI's numbers were being swapped for a random product's (Sep 2026, v6.9.1)
+Three bugs the founder found by eye on his phone, kept verbatim as `features/logging/00-bug-report.md`
+and sent from the phone through Remote Control. Specs: `logging/06-stated-totals.feature`,
+`logging/07-estimate-of-what-you-typed.feature`, `dashboard/01-calorie-tolerance.feature` (amended).
+Jest **430/430** (new `__tests__/ai-log.test.js`, which lifts the real recogniser out of `app.jsx`
+rather than mirroring it), Playwright **147/147** (new `e2e/stated-totals.spec.js`,
+`e2e/calorie-card-label.spec.js`), sw `v87→v88`. **No DB change.**
+- **Bug 1 as reported: dry air-fried chicken breast came back with 26 g fat; "dry" and "zero added
+  fat" changed nothing; 150 g did not scale from 250 g.** What was actually happening was not in the
+  report and could not have been: after every model reply the AI Log searched Open Food Facts by
+  each item's *name* and, if anything came back, **replaced the AI's numbers with that product's
+  label figures at a fixed confidence of 98** — per the product's own serving size, not the weight
+  typed, under the AI's item name. Proved live during triage: `"Butter, 30g"` → OFF's first hit
+  `"presto (g) peanut butter 30g"` (a biscuit) → 150 kcal · C 21 · F 6 would have been logged as
+  butter. OFF was also returning 503s that afternoon, so the *same* input gave a different answer
+  depending on whether OFF replied — the 250 g entry in the report is USDA chicken breast to the
+  gram (the AI, unswapped); the 150 g one was not. Removed from all three places it ran (AI Log,
+  meal form re-estimate, entry editor re-estimate); the **Food Search** screen, where the user picks
+  a product from a list, keeps its OFF lookup. The prompt gains the four rules the report asked
+  for (no-added-fat words, scale to stated weight, kcal ≈ 4P+4C+9F with alcohol as the exception,
+  a typed number is a fact about its item) plus "don't ask a question the text already answers".
+  The kcal-vs-macros check is the **model's, not the client's** — a pint of beer at 4×15 g carbs
+  would be under-counted by two thirds; silent under-counting is the harm the energy-safety work
+  exists to prevent. The model's answers are a phone check (`DEVICE-TEST.md`); the removal and the
+  prompt rules are guarded statically in Jest, and both UI suites that stub the model now bait OFF
+  and assert it is never called.
+- **Bug 2: typed totals were summed on top of the AI's components.** The founder's crumpets line
+  ended `P: 9.2g C: 66.5g F: 25.8g 539 kcal`; the model made a fourth row out of it and
+  `LOG ALL AS ONE ENTRY` wrote 942 kcal (fat exactly doubled), and the day read "Over by 448" on a
+  day ~45 over. Now a **full** totals line (all four figures; single letters need a colon, words do
+  not) is the meal: one row, shown at once, 100% confidence, **no model call**, no follow-ups, named
+  after the food. A partial statement (a kcal figure alone) still goes to the model with the new
+  prompt rule. His nice-to-have — flag if the AI's own estimate disagrees by >10% — needs the call
+  this removes; parked in `logging/06`'s header.
+- **Bug 3: "REMAINING 47" when 47 over.** The card's caption came from the colour bands (inside
+  100 kcal = fine = REMAINING) while the number was `|target − consumed|`. Now `kcalCardLabel`:
+  over → OVER BY, otherwise REMAINING, exactly on target → REMAINING 0. The bands keep their
+  colours; "JUST OVER" is gone from this card (the intake-score card keeps its own). The Today
+  ring's ON TRACK inside 100 kcal is untouched — the founder logged it as a question, not a bug.
+
 ### The weekly average was dividing by the wrong number (Sep 2026)
 Ten bugs the founder found by eye in a live session on his own phone, kept verbatim as
 `features/history/00-bug-report.md`. A six-persona swarm (QA, engineering, nutrition-coach,
@@ -1972,8 +2013,8 @@ Jest **239/239**, Playwright **68/68**, sw `v72→v73`.
 - **Why it mattered beyond the one meal.** A silent zero does not stop at the entry. It flows into the
   day's totals and on into `runCalibration`, so a day that reads artificially low teaches the app you
   burn less than you do — the same class of harm the energy-safety workstream exists to prevent.
-- **Not guarded, deliberately:** the Open Food Facts path needs no equivalent. `searchOFT` coerces
-  every field with `|| 0`, so it cannot produce a `NaN`.
+- **Not guarded, deliberately:** the Open Food Facts path needed no equivalent — `searchOFT` coerced
+  every field with `|| 0`. (Moot since 2026-09-15: that path is gone from the editor.)
 - Regression test: *"premium: an empty AI response is refused, not saved as a silent zero"*. Its
   load-bearing assertion is the **stored record**, not the message — the message could regress to
   something wrong and still be honest, but a zeroed record is the actual harm.

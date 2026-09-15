@@ -66,6 +66,26 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v88 — the 15 Sep bug batch (`features/logging/00-bug-report.md`)
+
+Fully close and reopen the installed PWA first. The first three are the ONLY check the model's
+answers get — the suites cannot reach it. Type each into AI Log exactly as written:
+
+- [ ] **`Dry airfried chicken zero added fat 150g`** → fat **≤ 6 g**, protein **43–49 g**, and no
+      "Any oil or butter on the chicken?" question. The reasoning line should name the model's
+      source, never a product you didn't type.
+- [ ] **`Dry airfried chicken breast 250g`** then **`Dry airfried chicken breast 150g`** → every
+      macro of the 150 g one is ~60% of the 250 g one (±10%). Fat must not go *up*.
+- [ ] Any estimate → kcal within ±5% of P×4 + C×4 + F×9 (skip this for anything with alcohol).
+- [ ] **`3 Warburtons crumpets, 30g butter total (10g each), 10.5g jam total (3.5g each) — P: 9.2g C: 66.5g F: 25.8g 539 kcal`**
+      → ONE row appears **instantly** (no spinner), named without the figures, 539 / 9.2 / 66.5 /
+      25.8 at **100%**, no questions. `+ LOG ALL AS ONE ENTRY` → today rises by **539**, not 942.
+- [ ] Log enough to sit 1–100 kcal over target → the card reads **OVER BY** with the gap, still in
+      the blue; the Today ring may still say ON TRACK (that is the deliberate 100 kcal tolerance,
+      your open question). Exactly on target reads **REMAINING 0**.
+- [ ] Open one of the bad chicken entries from 15 Sep (edit it): if its confidence reads **98%**,
+      that entry was the Open Food Facts swap, which confirms the diagnosis. Correct it by hand.
+
 ### New in v71–v72
 
 - [x] **Profile → change your sex.** The confirmation reads **✓ TARGETS UPDATED**, not ✓ SAVED —
