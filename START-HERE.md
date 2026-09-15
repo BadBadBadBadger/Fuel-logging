@@ -21,7 +21,7 @@
 > gap with its sign dropped; now over → OVER BY, otherwise REMAINING. Two of the three founder
 > diagnoses were right in effect; the third (Bug 1) was a different mechanism entirely.
 > New `__tests__/ai-log.test.js` **lifts the real recogniser out of `app.jsx`** rather than
-> mirroring it — the first test in the repo to do so.
+> mirroring it — the first test in the repo to do so. Rollback tag: **`pre-ai-log-bugfix`**.
 
 > **v86 fixed the weekly average, which was dividing by eight.** The founder found ten bugs by eye
 > on his own phone in one session (`features/history/00-bug-report.md`, kept verbatim). The headline
