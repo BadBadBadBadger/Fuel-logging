@@ -4,11 +4,16 @@
 // wrong number can be corrected after the fact, so what matters is that the correction actually
 // lands — in the row, in the day's totals, and on disk — and that Cancel truly discards.
 //
-// WHAT THIS DOES NOT TEST. The two AI scenarios stub the model: the worker response is fulfilled
+// WHAT THIS DOES NOT TEST. The AI scenarios stub the model: the worker response is fulfilled
 // locally by Playwright and the session token is faked, exactly as ai-followups.spec.js does. That
-// exercises everything after a response arrives — filling the fields, the Open Food Facts
-// cross-check, the premium gate — and says nothing about whether the real model returns sensible
-// numbers. No real account, no request leaves the machine; the no-cloud rule holds.
+// exercises everything after a response arrives — filling the fields, the premium gate — and says
+// nothing about whether the real model returns sensible numbers. No real account, no request
+// leaves the machine; the no-cloud rule holds.
+//
+// Until 2026-09-15 an Open Food Facts free-text search ran after the AI answer and overwrote the
+// fields with its first hit whenever its fixed confidence of 98 beat the AI's. That step is gone
+// (features/logging/07): one test below now serves OFF a tempting product and asserts the editor
+// never asks for it and the AI's figures stand.
 
 const { test, expect } = require("@playwright/test");
 const { open, shot, TODAY_KEY_EXPR } = require("./harness");
@@ -20,9 +25,8 @@ const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 const ENTRY = { id: 1755000000000, name: "Chicken and rice", time: "12:30",
   kcal: 620, protein: 45, carbs: 70, fat: 14 };
 
-// One Open Food Facts product, shared by the two re-estimate tests so they differ in nothing else.
-// serving_size 100 g makes the per-serving factor exactly 1 (app.jsx:3903), so the numbers that
-// land are the label's own — no arithmetic of mine sits between the fixture and the assertion.
+// One Open Food Facts product. Served to the page in the two re-estimate tests as bait: if the
+// removed cross-check ever came back, these are the numbers that would land in the fields.
 const OFT_FIXTURE = { product_name: "Beef Lasagne", serving_size: "100 g",
   nutriments: { "energy-kcal_100g": 415, proteins_100g: 21, carbohydrates_100g: 39, fat_100g: 19 } };
 
@@ -52,18 +56,19 @@ const openEditor = async page => {
   await expect(field(page, "KCAL")).toBeVisible();
 };
 
-/** Premium AI, stubbed. `oft` null aborts Open Food Facts; an object is returned as a product. */
+/** Premium AI, stubbed. `oft` null aborts Open Food Facts; an object is returned as a product.
+ *  Either way every OFF request is counted — the editor must make none (logging/07). */
 async function stubAI(page, ai, oft = null) {
+  page.offRequests = 0;
   await page.route(AI_ENDPOINT, route => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({ content: [{ text: JSON.stringify(ai) }] }),
   }));
 
-  // OFF runs after the AI answer and overwrites it whenever it is more confident — its confidence
-  // is hardcoded 98 (app.jsx:3910), so it beats anything the AI claims below that. Left live it
-  // would reach the real network and make the result depend on a third party's uptime.
-  await page.route("**world.openfoodfacts.org/**", route => oft
+  // Bait. The editor no longer asks OFF anything; if it did, this route would answer with a
+  // product that beats any AI confidence under 98 — and the count below would say so.
+  await page.route("**world.openfoodfacts.org/**", route => (page.offRequests++, oft)
     ? route.fulfill({ status: 200, contentType: "application/json",
         body: JSON.stringify({ products: [oft] }) })
     : route.abort());
@@ -154,7 +159,6 @@ test.describe("Edit a logged entry in place", () => {
   // silent third party changes nothing, which is not the claim.
   test("premium: AI re-estimate refills the macros from the corrected name", async ({ page }) => {
     await open(page, { premium: true, logs: [ENTRY] });
-    // Confidence 99 outranks Open Food Facts' fixed 98, so the AI figure is the one that stands.
     await stubAI(page,
       { name: "Chicken thigh and rice", kcal: 815, protein: 52, carbs: 71, fat: 33,
         confidence: 99, reasoning: "e2e fixture" },
@@ -169,9 +173,6 @@ test.describe("Edit a logged entry in place", () => {
     await expect(field(page, "KCAL")).toHaveValue("815");
     await expect(field(page, "P (g)")).toHaveValue("52");
     await expect(field(page, "F (g)")).toHaveValue("33");
-    // OFF answered and was refused. Give it room to arrive late — asserting an absence
-    // immediately would pass simply because the response had not landed yet.
-    await page.waitForTimeout(1000);
     await expect(field(page, "KCAL")).toHaveValue("815");
     // The correction is kept — re-estimating must not overwrite the name it was asked about.
     await expect(field(page, "NAME")).toHaveValue("Chicken thigh and rice");
@@ -189,9 +190,10 @@ test.describe("Edit a logged entry in place", () => {
     await expect(consumed(page)).toContainText("815");
   });
 
-  test("premium: an Open Food Facts match overrides the AI when it is more confident", async ({ page }) => {
+  test("premium: a low-confidence AI answer is still the answer — Open Food Facts is never asked", async ({ page }) => {
     await open(page, { premium: true, logs: [ENTRY] });
-    // Same OFF fixture as above; only the AI's confidence has moved, from 99 to 60.
+    // The exact case the removed cross-check used to seize: AI at 60, a 415-kcal lasagne on offer
+    // at OFF's fixed 98. Until 2026-09-15 this test asserted 415 landed. features/logging/07.
     await stubAI(page,
       { name: "Beef lasagne", kcal: 815, protein: 52, carbs: 71, fat: 33, confidence: 60,
         reasoning: "e2e fixture" },
@@ -201,12 +203,16 @@ test.describe("Edit a logged entry in place", () => {
     await field(page, "NAME").fill("Beef lasagne");
     await page.getByRole("button", { name: /AI re-estimate from name/ }).click();
 
-    // The AI answer is shown first and OFF refines it in the background, so wait for the
-    // override rather than asserting on whatever happens to be on screen at this instant.
-    await expect(field(page, "KCAL")).toHaveValue("415", { timeout: 15_000 });
-    await expect(field(page, "P (g)")).toHaveValue("21");
-    await expect(field(page, "C (g)")).toHaveValue("39");
-    await expect(field(page, "F (g)")).toHaveValue("19");
+    await expect(page.getByRole("button", { name: /Updated — re-estimate again/ }))
+      .toBeVisible({ timeout: 15_000 });
+    await expect(field(page, "KCAL")).toHaveValue("815");
+    // Give a late override every chance to land before asserting it did not.
+    await page.waitForTimeout(1000);
+    await expect(field(page, "KCAL")).toHaveValue("815");
+    await expect(field(page, "P (g)")).toHaveValue("52");
+    await expect(field(page, "C (g)")).toHaveValue("71");
+    await expect(field(page, "F (g)")).toHaveValue("33");
+    expect(page.offRequests).toBe(0);
   });
 
   // F4 regression. The editor used to fill straight from the AI with no validity check, so a

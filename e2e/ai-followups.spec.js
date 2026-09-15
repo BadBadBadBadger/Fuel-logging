@@ -29,10 +29,12 @@ async function analyseWith(page, items) {
     body: JSON.stringify({ content: [{ text: JSON.stringify({ items }) }] }),
   }));
 
-  // Open Food Facts runs in parallel and REPLACES an item when it comes back more confident,
-  // clearing `ask` as it does (app.jsx:4062). Left live, it would silently delete the very
-  // follow-up under test. Aborting makes searchOFT return null, which is its offline path.
-  await page.route("**world.openfoodfacts.org/**", route => route.abort());
+  // Until 2026-09-15 Open Food Facts ran in parallel and REPLACED an item when it came back
+  // more confident, clearing `ask` as it did — which would have deleted the very follow-up
+  // under test, so this route aborted it. The cross-check is gone (features/logging/07); the
+  // route stays as a tripwire: any request here fails the test (see afterEach).
+  page.offRequests = 0;
+  await page.route("**world.openfoodfacts.org/**", route => { page.offRequests++; route.abort(); });
 
   // getAccessToken reads sb().auth.getSession(). preview.html deliberately creates no client, so
   // supply one that returns a token and nothing else — enough to get past the sign-in check.
@@ -46,6 +48,10 @@ async function analyseWith(page, items) {
   await page.getByPlaceholder(/GDK large mixed meat meal/).fill("test meal");
   await page.getByRole("button", { name: /ANALYSE MEAL/ }).click();
 }
+
+test.afterEach(async ({ page }) => {
+  expect(page.offRequests || 0, "AI Log asked Open Food Facts — the removed cross-check is back").toBe(0);
+});
 
 const item = (name, kcal, ask, confidence = 40) =>
   ({ name, kcal, protein: 5, carbs: 10, fat: 5, confidence, ask, reasoning: "e2e fixture" });

@@ -1,5 +1,3 @@
-"use strict";
-
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
 function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = r[t]; o.enumerable = o.enumerable || !1, o.configurable = !0, "value" in o && (o.writable = !0), Object.defineProperty(e, _toPropertyKey(o.key), o); } }
@@ -36,7 +34,7 @@ function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length)
 // Build: npx babel src/app.jsx --presets @babel/preset-react -o app.js
 // ─────────────────────────────────────────────────────────────
 
-var _exports = window.exports || {};
+var exports = window.exports || {};
 // ── Constants ─────────────────────────────────────────────────
 
 var A = "var(--accent)",
@@ -929,6 +927,15 @@ var bulkCalorieScore = function bulkCalorieScore(underAmt) {
     label: "MISSING THE BULK",
     heroAction: say
   };
+};
+
+// The CONSUMED / REMAINING card's caption (dashboard/01, 2026-09-15). The label states the
+// FACT — over or not — and the colour bands above pass the judgement. Until 2026-09-15 this
+// was read off the bands too, so 47 over printed "REMAINING 47": the number was the gap with
+// its sign dropped, the word came from "inside 100 = fine". The founder read it as 47 left.
+// Exactly on target is REMAINING 0. Pure; mirrored in Jest.
+var kcalCardLabel = function kcalCardLabel(overAmt) {
+  return overAmt > 0 ? "OVER BY" : "REMAINING";
 };
 
 // kcalDelta = logged − target (positive = over, negative = under).
@@ -7034,11 +7041,12 @@ function MealForm(_ref80) {
   };
   var ok = f.name.trim() && Number(f.kcal) > 0;
 
-  // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
-  // Open Food Facts a bounded background refinement that only wins on confidence.
+  // Mirrors EntryEditor's re-estimate exactly: premium-gated, the AI's answer is the answer.
+  // (Until 2026-09-15 an Open Food Facts free-text search ran afterwards and overwrote these
+  // fields with whatever product it hit first — see features/logging/07.)
   var estimate = /*#__PURE__*/function () {
     var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
-      var fill, upd, oft, _t30, _t31;
+      var fill, upd, _t30;
       return _regenerator().w(function (_context29) {
         while (1) switch (_context29.p = _context29.n) {
           case 0:
@@ -7095,21 +7103,10 @@ function MealForm(_ref80) {
             fill(upd);
             setReestMsg("done");
             setReest(false);
-            _context29.p = 8;
-            _context29.n = 9;
-            return searchOFT(f.name.trim());
-          case 9:
-            oft = _context29.v;
-            if (oft && oft.confidence > upd.confidence) fill(oft);
-            _context29.n = 11;
-            break;
-          case 10:
-            _context29.p = 10;
-            _t31 = _context29.v;
-          case 11:
+          case 8:
             return _context29.a(2);
         }
-      }, _callee29, null, [[8, 10], [3, 5]]);
+      }, _callee29, null, [[3, 5]]);
     }));
     return function estimate() {
       return _ref81.apply(this, arguments);
@@ -7988,7 +7985,7 @@ function WorkoutLogger(_ref85) {
   };
   var parseWorkout = /*#__PURE__*/function () {
     var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
-      var prompt, _t32, _t33;
+      var prompt, _t31, _t32;
       return _regenerator().w(function (_context31) {
         while (1) switch (_context31.p = _context31.n) {
           case 0:
@@ -8002,16 +7999,16 @@ function WorkoutLogger(_ref85) {
             setHevyResult(null);
             _context31.p = 2;
             prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
-            _t32 = setHevyResult;
+            _t31 = setHevyResult;
             _context31.n = 3;
             return callAIJson(prompt, 200);
           case 3:
-            _t32(_context31.v);
+            _t31(_context31.v);
             _context31.n = 5;
             break;
           case 4:
             _context31.p = 4;
-            _t33 = _context31.v;
+            _t32 = _context31.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
@@ -8417,7 +8414,7 @@ function EntryEditor(_ref88) {
   };
   var reestimate = /*#__PURE__*/function () {
     var _ref89 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
-      var fill, upd, oft, _t34, _t35;
+      var fill, upd, _t33;
       return _regenerator().w(function (_context32) {
         while (1) switch (_context32.p = _context32.n) {
           case 0:
@@ -8458,7 +8455,7 @@ function EntryEditor(_ref88) {
             break;
           case 5:
             _context32.p = 5;
-            _t34 = _context32.v;
+            _t33 = _context32.v;
             setReestMsg("Couldn't reach the AI — check your connection and try again.");
             setReest(false);
             return _context32.a(2);
@@ -8471,27 +8468,16 @@ function EntryEditor(_ref88) {
             setReest(false);
             return _context32.a(2);
           case 7:
-            // Show the AI answer immediately — the user never waits on Open Food Facts.
+            // The AI's answer is the answer. Until 2026-09-15 an Open Food Facts free-text search
+            // ran after this and overwrote the fields with its first hit's label figures at a fixed
+            // confidence of 98 — "Butter, 30g" became a peanut-butter biscuit. features/logging/07.
             fill(upd);
             setReestMsg("done");
             setReest(false);
-            // OFF is a best-effort background refinement: bounded (6s) and may not return
-            // at all on a poor connection. Only upgrades the figures if it beats the AI.
-            _context32.p = 8;
-            _context32.n = 9;
-            return searchOFT(f.name.trim());
-          case 9:
-            oft = _context32.v;
-            if (oft && oft.confidence > upd.confidence) fill(oft);
-            _context32.n = 11;
-            break;
-          case 10:
-            _context32.p = 10;
-            _t35 = _context32.v;
-          case 11:
+          case 8:
             return _context32.a(2);
         }
-      }, _callee32, null, [[8, 10], [3, 5]]);
+      }, _callee32, null, [[3, 5]]);
     }));
     return function reestimate() {
       return _ref89.apply(this, arguments);
@@ -8759,7 +8745,7 @@ function Dashboard(_ref90) {
   var AMBER = "var(--warn)";
   var RED = "var(--over)";
   var kcalAccent = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
-  var kcalLabel = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
+  var kcalLabel = kcalCardLabel(overAmt);
   // Confidence model (Separated): headline = ESTIMATED energy-budget maturity; intake stays exact.
   var tdeeConf = tdeeConfidence((weighIns || []).length);
   var intakeConf = intakeConfidence(logs);
@@ -10458,7 +10444,7 @@ function Dashboard(_ref90) {
 // ── AI Log ────────────────────────────────────────────────────
 
 var AI_PROMPT = function AI_PROMPT(desc) {
-  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.\n\nRules:\n- For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data \u2014 never substitute a generic equivalent.\n- Break the meal into individual components. Each component gets its own nutrition estimate and confidence score.\n- Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.\n- If a component is ambiguous (e.g. \"large meal\" at a restaurant that only does regular), state the ambiguity in the reasoning field.\n- Be conservative \u2014 if unsure between two estimates, explain both.\n- For ANY component whose confidence is below 80, set \"ask\" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: \"fat\" (hidden cooking fat \u2014 oil/butter vs dry/grilled), \"portion\" (ambiguous amount/size), or \"version\" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set \"ask\" to null.\n\nMeal to analyse: \"".concat(desc, "\"\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    {\n      \"name\": \"specific item name with quantity/size\",\n      \"kcal\": number,\n      \"protein\": number,\n      \"carbs\": number,\n      \"fat\": number,\n      \"confidence\": number,\n      \"ask\": \"fat\" | \"portion\" | \"version\" | null,\n      \"reasoning\": \"one sentence explaining source of data or uncertainty\"\n    }\n  ]\n}");
+  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.\n\nRules:\n- For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data \u2014 never substitute a generic equivalent.\n- Break the meal into individual components. Each component gets its own nutrition estimate and confidence score.\n- Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.\n- If a component is ambiguous (e.g. \"large meal\" at a restaurant that only does regular), state the ambiguity in the reasoning field.\n- Be conservative \u2014 if unsure between two estimates, explain both.\n- Cooking fat: \"dry\", \"no oil\", \"zero added fat\", \"no butter\", \"air-fried without oil\", \"grilled\", \"boiled\", \"poached\", \"steamed\" mean NO cooking fat was added. Estimate the food's own fat only \u2014 cooked skinless chicken breast is about 3\u20134 g fat per 100 g, not more.\n- Portion: a stated weight or count IS the portion. Scale every figure in proportion to it (150 g is 60% of 250 g, in every macro).\n- Arithmetic: check kcal against the macros \u2014 kcal \u2248 4\xD7protein + 4\xD7carbs + 9\xD7fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.\n- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.\n- For ANY component whose confidence is below 80, set \"ask\" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: \"fat\" (hidden cooking fat \u2014 oil/butter vs dry/grilled), \"portion\" (ambiguous amount/size), or \"version\" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set \"ask\" to null. If the description already answers a question \u2014 it says dry, or gives a weight \u2014 do not ask it.\n\nMeal to analyse: \"".concat(desc, "\"\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    {\n      \"name\": \"specific item name with quantity/size\",\n      \"kcal\": number,\n      \"protein\": number,\n      \"carbs\": number,\n      \"fat\": number,\n      \"confidence\": number,\n      \"ask\": \"fat\" | \"portion\" | \"version\" | null,\n      \"reasoning\": \"one sentence explaining source of data or uncertainty\"\n    }\n  ]\n}");
 };
 
 // Vision variant — same contract, but the meal is in the attached photo. Any
@@ -10468,6 +10454,61 @@ var AI_PHOTO_PROMPT = function AI_PHOTO_PROMPT(desc) {
 };
 var AI_REESTIMATE_PROMPT = function AI_REESTIMATE_PROMPT(item) {
   return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
+};
+
+// ── Stated totals (features/logging/06) ──────────────────────────
+// If the description carries a FULL totals line — kcal, protein, carbs AND fat — those four
+// numbers are the meal and the AI is not asked. The recogniser is deliberately small: the
+// single letters need a colon or equals ("P: 9.2g"), the words do not ("protein 9.2"), so a
+// weight ("150g chicken") or a brand ("Pret") can never trip it. Pure; Jest lifts it out of
+// this file and runs the real thing (__tests__/ai-log.test.js).
+var STATED_RE = {
+  kcal: /(\d+(?:\.\d+)?)\s*(?:kcals?|cals?|calories)\b|\b(?:kcals?|calories)\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
+  protein: /(?:\bP\s*[:=]|\bprotein\b\s*[:=]?)\s*(\d+(?:\.\d+)?)(?:\s*g\b)?/i,
+  carbs: /(?:\bC\s*[:=]|\b(?:carbs?|carbohydrates?)\b\s*[:=]?)\s*(\d+(?:\.\d+)?)(?:\s*g\b)?/i,
+  fat: /(?:\bF\s*[:=]|\bfat\b\s*[:=]?)\s*(\d+(?:\.\d+)?)(?:\s*g\b)?/i
+};
+var parseStatedTotals = function parseStatedTotals(text) {
+  var t = String(text || "");
+  var found = {};
+  var first = Infinity,
+    last = -1;
+  for (var _i3 = 0, _arr = ["kcal", "protein", "carbs", "fat"]; _i3 < _arr.length; _i3++) {
+    var k = _arr[_i3];
+    var m = STATED_RE[k].exec(t);
+    if (!m) return null; // all four or nothing
+    found[k] = parseFloat(m[1] != null ? m[1] : m[2]);
+    first = Math.min(first, m.index);
+    last = Math.max(last, m.index + m[0].length);
+  }
+  // The name is what the user typed around the figures: before the first of them, or — if
+  // the figures came first — after the last. Stray separators at the edges are dropped.
+  var tidy = function tidy(s) {
+    return s.replace(/^[\s—–\-,;:|·]+|[\s—–\-,;:|·]+$/g, "").trim();
+  };
+  var name = tidy(t.slice(0, first)) || tidy(t.slice(last)) || "Meal";
+  return {
+    name: name,
+    kcal: found.kcal,
+    protein: found.protein,
+    carbs: found.carbs,
+    fat: found.fat
+  };
+};
+// The one row a stated total becomes. Confidence 100: the user's own figures are the best
+// data the app will hold, and must not drag the day's intake-confidence % down.
+var statedTotalsItem = function statedTotalsItem(st) {
+  return {
+    name: st.name,
+    kcal: st.kcal,
+    protein: st.protein,
+    carbs: st.carbs,
+    fat: st.fat,
+    confidence: 100,
+    ask: null,
+    reasoning: "Totals as you typed them.",
+    stated: true // in-memory only: logAll names the entry after the food, not the whole line
+  };
 };
 var confColor = function confColor(c) {
   return c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
@@ -10776,68 +10817,6 @@ var reportEstimate = function reportEstimate(desc, items, totals) {
   var body = "I think this AI estimate is wrong.\n\nMy description:\n" + (desc ? desc : "(photo only)") + "\n\nEstimate:\n" + lines + "\n\nTotal: " + Math.round(totals && totals.kcal || 0) + " kcal" + "\n\nWhat was off:\n";
   window.location.href = "mailto:fuellogadmin@gmail.com?subject=" + encodeURIComponent("Fuel Log — inaccurate AI estimate") + "&body=" + encodeURIComponent(body);
 };
-function searchOFT(_x47) {
-  return _searchOFT.apply(this, arguments);
-}
-function _searchOFT() {
-  _searchOFT = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(query) {
-    var _p$product_name2, ctrl, timer, res, data, p, sg2, f, n, _t45;
-    return _regenerator().w(function (_context66) {
-      while (1) switch (_context66.p = _context66.n) {
-        case 0:
-          _context66.p = 0;
-          // Bound this optional cross-check — OFF is flaky; never let it add a long
-          // tail to an AI result. Abort after 6s and fall back to the AI estimate.
-          ctrl = new AbortController();
-          timer = setTimeout(function () {
-            return ctrl.abort();
-          }, 6000);
-          _context66.p = 1;
-          _context66.n = 2;
-          return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(query), "&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size"), {
-            signal: ctrl.signal
-          });
-        case 2:
-          res = _context66.v;
-        case 3:
-          _context66.p = 3;
-          clearTimeout(timer);
-          return _context66.f(3);
-        case 4:
-          _context66.n = 5;
-          return res.json();
-        case 5:
-          data = _context66.v;
-          p = (data.products || []).find(function (p) {
-            var _p$nutriments;
-            return ((_p$nutriments = p.nutriments) === null || _p$nutriments === void 0 ? void 0 : _p$nutriments["energy-kcal_100g"]) != null;
-          });
-          if (p) {
-            _context66.n = 6;
-            break;
-          }
-          return _context66.a(2, null);
-        case 6:
-          sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-          return _context66.a(2, {
-            name: (_p$product_name2 = p.product_name) === null || _p$product_name2 === void 0 ? void 0 : _p$product_name2.trim(),
-            kcal: Math.round((n["energy-kcal_100g"] || 0) * f),
-            protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
-            carbs: Math.round((n["carbohydrates_100g"] || 0) * f * 10) / 10,
-            fat: Math.round((n["fat_100g"] || 0) * f * 10) / 10,
-            confidence: 98,
-            reasoning: "Open Food Facts label data \u2014 ".concat(p.product_name, " per serving (~").concat(Math.round(sg2), "g)"),
-            source: "oft"
-          });
-        case 7:
-          _context66.p = 7;
-          _t45 = _context66.v;
-          return _context66.a(2, null);
-      }
-    }, _callee66, null, [[1,, 3, 4], [0, 7]]);
-  }));
-  return _searchOFT.apply(this, arguments);
-}
 function ItemRow(_ref94) {
   var item = _ref94.item,
     onReestimate = _ref94.onReestimate,
@@ -10923,14 +10902,7 @@ function ItemRow(_ref94) {
       fontSize: 11,
       color: "var(--text-lo-2)"
     }
-  }, "\u270F\uFE0F")), item.source === "oft" && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 10,
-      color: "var(--cut)",
-      marginTop: 2,
-      letterSpacing: "0.06em"
-    }
-  }, "\uD83D\uDCE6 LABEL DATA")), /*#__PURE__*/React.createElement("div", {
+  }, "\u270F\uFE0F"))), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "right",
       flexShrink: 0
@@ -11116,7 +11088,7 @@ function AILog(_ref95) {
   };
   var onPickPhoto = /*#__PURE__*/function () {
     var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(e) {
-      var file, _t36, _t37;
+      var file, _t34, _t35;
       return _regenerator().w(function (_context34) {
         while (1) switch (_context34.p = _context34.n) {
           case 0:
@@ -11129,30 +11101,30 @@ function AILog(_ref95) {
             return _context34.a(2);
           case 1:
             _context34.p = 1;
-            _t36 = setPhoto;
+            _t34 = setPhoto;
             _context34.n = 2;
             return fileToImage(file);
           case 2:
-            _t36(_context34.v);
+            _t34(_context34.v);
             setError("");
             _context34.n = 4;
             break;
           case 3:
             _context34.p = 3;
-            _t37 = _context34.v;
+            _t35 = _context34.v;
             setError("Couldn't read that image — try another photo.");
           case 4:
             return _context34.a(2);
         }
       }, _callee34, null, [[1, 3]]);
     }));
-    return function onPickPhoto(_x48) {
+    return function onPickPhoto(_x47) {
       return _ref96.apply(this, arguments);
     };
   }();
   var estimate = /*#__PURE__*/function () {
     var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35() {
-      var parsed, aiItems, oftResults, merged, k, wConf, _t38, _t39;
+      var stated, parsed, aiItems, merged, k, wConf, _t36, _t37;
       return _regenerator().w(function (_context35) {
         while (1) switch (_context35.p = _context35.n) {
           case 0:
@@ -11170,6 +11142,17 @@ function AILog(_ref95) {
             setFollowups([]);
             setFuDone({});
             setFuLog([]);
+            // A full totals line typed by the user IS the meal — one row, at once, no model call, no
+            // questions (features/logging/06). Only for typed text: a photo is always estimated.
+            stated = photo ? null : parseStatedTotals(desc);
+            if (!stated) {
+              _context35.n = 2;
+              break;
+            }
+            setItems([statedTotalsItem(stated)]);
+            setLoading(false);
+            return _context35.a(2);
+          case 2:
             _context35.p = 2;
             if (!photo) {
               _context35.n = 4;
@@ -11188,36 +11171,24 @@ function AILog(_ref95) {
               text: AI_PHOTO_PROMPT(desc)
             }], 2000);
           case 3:
-            _t38 = _context35.v;
+            _t36 = _context35.v;
             _context35.n = 6;
             break;
           case 4:
             _context35.n = 5;
             return callAIJson(AI_PROMPT(desc), 2000);
           case 5:
-            _t38 = _context35.v;
+            _t36 = _context35.v;
           case 6:
-            parsed = _t38;
-            aiItems = parsed.items || []; // OFT parallel lookup for each item
-            _context35.n = 7;
-            return Promise.all(aiItems.map(function (it) {
-              return searchOFT(it.name);
-            }));
-          case 7:
-            oftResults = _context35.v;
-            merged = aiItems.map(function (it, i) {
-              var oft = oftResults[i];
-              // Normalise the AI confidence (vision models may return a 0–1 fraction).
-              var ai = _objectSpread(_objectSpread({}, it), {}, {
+            parsed = _t36;
+            aiItems = parsed.items || []; // The model's rows are the rows. Normalise confidence only (vision models may return a
+            // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
+            // parallel and REPLACED any row it found a product for — at a fixed confidence of 98,
+            // per that product's serving, under the AI's item name. features/logging/07.
+            merged = aiItems.map(function (it) {
+              return _objectSpread(_objectSpread({}, it), {}, {
                 confidence: normConf(it.confidence)
               });
-              // Use OFT data if found AND it has higher confidence than AI estimate.
-              // Carry the AI's `ask` reason across (OFT doesn't set it).
-              if (oft && oft.confidence > ai.confidence) return _objectSpread(_objectSpread({}, oft), {}, {
-                name: it.name,
-                ask: null
-              });
-              return ai;
             });
             setItems(merged);
             // Confidence-gated: only ask when the kcal-weighted estimate is below the
@@ -11229,18 +11200,18 @@ function AILog(_ref95) {
               return a + it.confidence * (it.kcal || 0);
             }, 0) / k) : 100;
             setFollowups(wConf < FOLLOWUP_BELOW ? pickFollowups(merged) : []);
-            _context35.n = 9;
+            _context35.n = 8;
             break;
+          case 7:
+            _context35.p = 7;
+            _t37 = _context35.v;
+            setError("Estimation failed: " + _t37.message);
           case 8:
-            _context35.p = 8;
-            _t39 = _context35.v;
-            setError("Estimation failed: " + _t39.message);
-          case 9:
             setLoading(false);
-          case 10:
+          case 9:
             return _context35.a(2);
         }
-      }, _callee35, null, [[2, 8]]);
+      }, _callee35, null, [[2, 7]]);
     }));
     return function estimate() {
       return _ref97.apply(this, arguments);
@@ -11275,7 +11246,7 @@ function AILog(_ref95) {
   };
   var reestimate = /*#__PURE__*/function () {
     var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(idx, newName) {
-      var updated, oft, u, _final, _t40;
+      var updated, _final, _t38;
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.p = _context36.n) {
           case 0:
@@ -11285,16 +11256,8 @@ function AILog(_ref95) {
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
             updated = _context36.v;
-            _context36.n = 3;
-            return searchOFT(newName);
-          case 3:
-            oft = _context36.v;
-            u = _objectSpread(_objectSpread({}, updated), {}, {
-              confidence: normConf(updated.confidence)
-            });
-            _final = oft && oft.confidence > u.confidence ? _objectSpread(_objectSpread({}, oft), {}, {
-              name: newName
-            }) : _objectSpread(_objectSpread({}, u), {}, {
+            _final = _objectSpread(_objectSpread({}, updated), {}, {
+              confidence: normConf(updated.confidence),
               name: newName
             });
             setItems(function (prev) {
@@ -11302,19 +11265,19 @@ function AILog(_ref95) {
                 return i === idx ? _final : it;
               });
             });
-            _context36.n = 5;
+            _context36.n = 4;
             break;
+          case 3:
+            _context36.p = 3;
+            _t38 = _context36.v;
           case 4:
-            _context36.p = 4;
-            _t40 = _context36.v;
-          case 5:
             setReestIdx(null);
-          case 6:
+          case 5:
             return _context36.a(2);
         }
-      }, _callee36, null, [[1, 4]]);
+      }, _callee36, null, [[1, 3]]);
     }));
-    return function reestimate(_x49, _x50) {
+    return function reestimate(_x48, _x49) {
       return _ref98.apply(this, arguments);
     };
   }();
@@ -11323,6 +11286,9 @@ function AILog(_ref95) {
     // Preserve the structured meal ELEMENTS as the source of truth, plus an
     // impact-weighted estimation confidence. The display name keeps the FULL
     // description — truncation is presentation-only (CSS), never in the data.
+    // The one exception is a stated total (logging/06): the figures the user typed are not
+    // part of the food's name, so the entry is called what the recogniser kept.
+    var stated = items.length === 1 && items[0].stated;
     var elements = items.map(function (it) {
       return {
         name: it.name,
@@ -11339,7 +11305,7 @@ function AILog(_ref95) {
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
     var source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
     onAdd({
-      name: desc.trim() || "Photo meal",
+      name: stated ? items[0].name : desc.trim() || "Photo meal",
       kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs: Math.round(totals.carbs * 10) / 10,
@@ -11786,7 +11752,7 @@ function QuickAdd(_ref99) {
         }
       }, _callee37);
     }));
-    return function save(_x51) {
+    return function save(_x50) {
       return _ref100.apply(this, arguments);
     };
   }();
@@ -11978,7 +11944,7 @@ function FoodSearch(_ref101) {
     setDone = _useState154[1];
   var search = /*#__PURE__*/function () {
     var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38() {
-      var res, data, parseServing, parseKcal, valid, _t41;
+      var res, data, parseServing, parseKcal, valid, _t39;
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.p = _context38.n) {
           case 0:
@@ -12049,7 +12015,7 @@ function FoodSearch(_ref101) {
             break;
           case 7:
             _context38.p = 7;
-            _t41 = _context38.v;
+            _t39 = _context38.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
@@ -14481,7 +14447,7 @@ function App() {
   useEffect(function () {
     var load = /*#__PURE__*/function () {
       var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39() {
-        var k, lv, wv, mv, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t42;
+        var k, lv, wv, mv, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t40;
         return _regenerator().w(function (_context39) {
           while (1) switch (_context39.p = _context39.n) {
             case 0:
@@ -14723,7 +14689,7 @@ function App() {
               break;
             case 32:
               _context39.p = 32;
-              _t42 = _context39.v;
+              _t40 = _context39.v;
             case 33:
               setReady(true);
             case 34:
@@ -14800,7 +14766,7 @@ function App() {
         }
       }, _callee40);
     }));
-    return function saveLogs(_x52) {
+    return function saveLogs(_x51) {
       return _ref119.apply(this, arguments);
     };
   }();
@@ -14819,7 +14785,7 @@ function App() {
         }
       }, _callee41);
     }));
-    return function saveWater(_x53) {
+    return function saveWater(_x52) {
       return _ref120.apply(this, arguments);
     };
   }();
@@ -14838,7 +14804,7 @@ function App() {
         }
       }, _callee42);
     }));
-    return function saveMode(_x54) {
+    return function saveMode(_x53) {
       return _ref121.apply(this, arguments);
     };
   }();
@@ -14858,7 +14824,7 @@ function App() {
         }
       }, _callee43);
     }));
-    return function saveProf(_x55) {
+    return function saveProf(_x54) {
       return _ref122.apply(this, arguments);
     };
   }();
@@ -14877,7 +14843,7 @@ function App() {
         }
       }, _callee44);
     }));
-    return function saveWorkouts(_x56) {
+    return function saveWorkouts(_x55) {
       return _ref123.apply(this, arguments);
     };
   }();
@@ -14931,7 +14897,7 @@ function App() {
         }
       }, _callee45);
     }));
-    return function addLog(_x57) {
+    return function addLog(_x56) {
       return _ref124.apply(this, arguments);
     };
   }();
@@ -14982,7 +14948,7 @@ function App() {
         }
       }, _callee46);
     }));
-    return function saveCustomKcal(_x58) {
+    return function saveCustomKcal(_x57) {
       return _ref125.apply(this, arguments);
     };
   }();
@@ -15004,7 +14970,7 @@ function App() {
         }
       }, _callee47);
     }));
-    return function handleSetMode(_x59) {
+    return function handleSetMode(_x58) {
       return _ref126.apply(this, arguments);
     };
   }();
@@ -15042,7 +15008,7 @@ function App() {
         }
       }, _callee49);
     }));
-    return function saveMeals(_x60) {
+    return function saveMeals(_x59) {
       return _ref128.apply(this, arguments);
     };
   }();
@@ -15082,7 +15048,7 @@ function App() {
         }
       }, _callee50);
     }));
-    return function addToQA(_x61) {
+    return function addToQA(_x60) {
       return _ref129.apply(this, arguments);
     };
   }();
@@ -15091,7 +15057,7 @@ function App() {
 
   var handleSignInSuccess = /*#__PURE__*/function () {
     var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t43;
+      var user, rec, pulled, tod, snap, _t41;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.p = _context51.n) {
           case 0:
@@ -15181,7 +15147,7 @@ function App() {
             break;
           case 9:
             _context51.p = 9;
-            _t43 = _context51.v;
+            _t41 = _context51.v;
           case 10:
             setSyncMsg("");
           case 11:
@@ -15189,7 +15155,7 @@ function App() {
         }
       }, _callee51, null, [[5, 9]]);
     }));
-    return function handleSignInSuccess(_x62, _x63, _x64) {
+    return function handleSignInSuccess(_x61, _x62, _x63) {
       return _ref130.apply(this, arguments);
     };
   }();
@@ -15232,7 +15198,7 @@ function App() {
   }();
   var handleSignOut = /*#__PURE__*/function () {
     var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
-      var clearKeys, _i3, _clearKeys, k, i, key, _t44;
+      var clearKeys, _i4, _clearKeys, k, i, key, _t42;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
@@ -15248,20 +15214,20 @@ function App() {
             break;
           case 3:
             _context53.p = 3;
-            _t44 = _context53.v;
+            _t42 = _context53.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "tdee_adj_log", "weigh_nudge_dismissed", "cut_block", "target_kcal", "aggressive_cut_acked", "health_consent"];
-            _i3 = 0, _clearKeys = clearKeys;
+            _i4 = 0, _clearKeys = clearKeys;
           case 5:
-            if (!(_i3 < _clearKeys.length)) {
+            if (!(_i4 < _clearKeys.length)) {
               _context53.n = 7;
               break;
             }
-            k = _clearKeys[_i3];
+            k = _clearKeys[_i4];
             _context53.n = 6;
             return ss(k, "");
           case 6:
-            _i3++;
+            _i4++;
             _context53.n = 5;
             break;
           case 7:
@@ -15430,7 +15396,7 @@ function App() {
         }
       }, _callee56);
     }));
-    return function updateDay(_x65) {
+    return function updateDay(_x64) {
       return _ref135.apply(this, arguments);
     };
   }();
@@ -15515,7 +15481,7 @@ function App() {
         }
       }, _callee57);
     }));
-    return function onWeighIn(_x66) {
+    return function onWeighIn(_x65) {
       return _ref136.apply(this, arguments);
     };
   }();
@@ -15591,7 +15557,7 @@ function App() {
         }
       }, _callee58);
     }));
-    return function onMeasurement(_x67) {
+    return function onMeasurement(_x66) {
       return _ref138.apply(this, arguments);
     };
   }();
@@ -15608,7 +15574,7 @@ function App() {
         }
       }, _callee59);
     }));
-    return function toggleMuteMeasurements(_x68) {
+    return function toggleMuteMeasurements(_x67) {
       return _ref139.apply(this, arguments);
     };
   }();
@@ -15625,7 +15591,7 @@ function App() {
         }
       }, _callee60);
     }));
-    return function saveMeasurementNote(_x69) {
+    return function saveMeasurementNote(_x68) {
       return _ref140.apply(this, arguments);
     };
   }();
@@ -15899,7 +15865,7 @@ function App() {
         }
       }, _callee64);
     }));
-    return function saveCutBlock(_x70) {
+    return function saveCutBlock(_x69) {
       return _ref144.apply(this, arguments);
     };
   }();

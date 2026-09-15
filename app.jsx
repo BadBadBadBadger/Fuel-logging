@@ -491,6 +491,13 @@ const bulkCalorieScore = underAmt => {
   return { colour:"red", label:"MISSING THE BULK", heroAction: say };
 };
 
+// The CONSUMED / REMAINING card's caption (dashboard/01, 2026-09-15). The label states the
+// FACT — over or not — and the colour bands above pass the judgement. Until 2026-09-15 this
+// was read off the bands too, so 47 over printed "REMAINING 47": the number was the gap with
+// its sign dropped, the word came from "inside 100 = fine". The founder read it as 47 left.
+// Exactly on target is REMAINING 0. Pure; mirrored in Jest.
+const kcalCardLabel = overAmt => overAmt > 0 ? "OVER BY" : "REMAINING";
+
 // kcalDelta = logged − target (positive = over, negative = under).
 const calorieDayScore = ({ mode, dayClosed, kcalDelta }) => {
   if (mode === "cut") {
@@ -3315,8 +3322,9 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
   const set = (k, v) => { setF(p => ({ ...p, [k]:v })); setReestMsg(""); };
   const ok  = f.name.trim() && Number(f.kcal) > 0;
 
-  // Mirrors EntryEditor's re-estimate exactly: premium-gated, AI shown first,
-  // Open Food Facts a bounded background refinement that only wins on confidence.
+  // Mirrors EntryEditor's re-estimate exactly: premium-gated, the AI's answer is the answer.
+  // (Until 2026-09-15 an Open Food Facts free-text search ran afterwards and overwrote these
+  // fields with whatever product it hit first — see features/logging/07.)
   const estimate = async () => {
     if (!isPremium) { onPremiumGate({ emoji:"✨", name:"AI estimate" }); return; }
     if (!f.name.trim() || reest) return;
@@ -3345,10 +3353,6 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
     fill(upd);
     setReestMsg("done");
     setReest(false);
-    try {
-      const oft = await searchOFT(f.name.trim());
-      if (oft && oft.confidence > upd.confidence) fill(oft);
-    } catch (e) {}
   };
 
   return (
@@ -3933,22 +3937,17 @@ function EntryEditor({ entry, onSave, onCancel, isPremium, onPremiumGate }) {
     // (Number(NaN) || 0). A silent zero does not only lose the meal: it flows into the
     // day's totals and on into runCalibration, teaching the app you burn less than you
     // do — the exact class of harm the energy-safety work exists to prevent.
-    // searchOFT below needs no equivalent guard: it coerces every field with `|| 0`.
     if (!upd || !isFinite(Number(upd.kcal))) {
       setReestMsg("Couldn't estimate that — try rephrasing the name.");
       setReest(false);
       return;
     }
-    // Show the AI answer immediately — the user never waits on Open Food Facts.
+    // The AI's answer is the answer. Until 2026-09-15 an Open Food Facts free-text search
+    // ran after this and overwrote the fields with its first hit's label figures at a fixed
+    // confidence of 98 — "Butter, 30g" became a peanut-butter biscuit. features/logging/07.
     fill(upd);
     setReestMsg("done");
     setReest(false);
-    // OFF is a best-effort background refinement: bounded (6s) and may not return
-    // at all on a poor connection. Only upgrades the figures if it beats the AI.
-    try {
-      const oft = await searchOFT(f.name.trim());
-      if (oft && oft.confidence > upd.confidence) fill(oft);
-    } catch (e) {}
   };
 
   const save = () => onSave({
@@ -4027,7 +4026,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
   const AMBER = "var(--warn)";
   const RED   = "var(--over)";
   const kcalAccent  = overAmt > 500 ? RED : overAmt > 100 ? AMBER : mc;
-  const kcalLabel   = overAmt > 200 ? "OVER BY" : overAmt > 100 ? "JUST OVER" : "REMAINING";
+  const kcalLabel   = kcalCardLabel(overAmt);
   // Confidence model (Separated): headline = ESTIMATED energy-budget maturity; intake stays exact.
   const tdeeConf    = tdeeConfidence((weighIns || []).length);
   const intakeConf  = intakeConfidence(logs);
@@ -4869,7 +4868,11 @@ Rules:
 - Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.
 - If a component is ambiguous (e.g. "large meal" at a restaurant that only does regular), state the ambiguity in the reasoning field.
 - Be conservative — if unsure between two estimates, explain both.
-- For ANY component whose confidence is below 80, set "ask" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: "fat" (hidden cooking fat — oil/butter vs dry/grilled), "portion" (ambiguous amount/size), or "version" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set "ask" to null.
+- Cooking fat: "dry", "no oil", "zero added fat", "no butter", "air-fried without oil", "grilled", "boiled", "poached", "steamed" mean NO cooking fat was added. Estimate the food's own fat only — cooked skinless chicken breast is about 3–4 g fat per 100 g, not more.
+- Portion: a stated weight or count IS the portion. Scale every figure in proportion to it (150 g is 60% of 250 g, in every macro).
+- Arithmetic: check kcal against the macros — kcal ≈ 4×protein + 4×carbs + 9×fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.
+- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.
+- For ANY component whose confidence is below 80, set "ask" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: "fat" (hidden cooking fat — oil/butter vs dry/grilled), "portion" (ambiguous amount/size), or "version" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set "ask" to null. If the description already answers a question — it says dry, or gives a weight — do not ask it.
 
 Meal to analyse: "${desc}"
 
@@ -4926,6 +4929,43 @@ Return ONLY valid JSON (no markdown):
   "confidence": number,
   "reasoning": "one sentence explaining source"
 }`;
+
+// ── Stated totals (features/logging/06) ──────────────────────────
+// If the description carries a FULL totals line — kcal, protein, carbs AND fat — those four
+// numbers are the meal and the AI is not asked. The recogniser is deliberately small: the
+// single letters need a colon or equals ("P: 9.2g"), the words do not ("protein 9.2"), so a
+// weight ("150g chicken") or a brand ("Pret") can never trip it. Pure; Jest lifts it out of
+// this file and runs the real thing (__tests__/ai-log.test.js).
+const STATED_RE = {
+  kcal:    /(\d+(?:\.\d+)?)\s*(?:kcals?|cals?|calories)\b|\b(?:kcals?|calories)\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
+  protein: /(?:\bP\s*[:=]|\bprotein\b\s*[:=]?)\s*(\d+(?:\.\d+)?)(?:\s*g\b)?/i,
+  carbs:   /(?:\bC\s*[:=]|\b(?:carbs?|carbohydrates?)\b\s*[:=]?)\s*(\d+(?:\.\d+)?)(?:\s*g\b)?/i,
+  fat:     /(?:\bF\s*[:=]|\bfat\b\s*[:=]?)\s*(\d+(?:\.\d+)?)(?:\s*g\b)?/i,
+};
+const parseStatedTotals = text => {
+  const t = String(text || "");
+  const found = {};
+  let first = Infinity, last = -1;
+  for (const k of ["kcal", "protein", "carbs", "fat"]) {
+    const m = STATED_RE[k].exec(t);
+    if (!m) return null;                       // all four or nothing
+    found[k] = parseFloat(m[1] != null ? m[1] : m[2]);
+    first = Math.min(first, m.index);
+    last  = Math.max(last, m.index + m[0].length);
+  }
+  // The name is what the user typed around the figures: before the first of them, or — if
+  // the figures came first — after the last. Stray separators at the edges are dropped.
+  const tidy = s => s.replace(/^[\s—–\-,;:|·]+|[\s—–\-,;:|·]+$/g, "").trim();
+  const name = tidy(t.slice(0, first)) || tidy(t.slice(last)) || "Meal";
+  return { name, kcal: found.kcal, protein: found.protein, carbs: found.carbs, fat: found.fat };
+};
+// The one row a stated total becomes. Confidence 100: the user's own figures are the best
+// data the app will hold, and must not drag the day's intake-confidence % down.
+const statedTotalsItem = st => ({
+  name: st.name, kcal: st.kcal, protein: st.protein, carbs: st.carbs, fat: st.fat,
+  confidence: 100, ask: null, reasoning: "Totals as you typed them.",
+  stated: true, // in-memory only: logAll names the entry after the food, not the whole line
+});
 
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
@@ -5100,36 +5140,6 @@ const reportEstimate = (desc, items, totals) => {
     + "&body=" + encodeURIComponent(body);
 };
 
-async function searchOFT(query) {
-  try {
-    // Bound this optional cross-check — OFF is flaky; never let it add a long
-    // tail to an AI result. Abort after 6s and fall back to the AI estimate.
-    const ctrl  = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
-    let res;
-    try {
-      res = await fetch(
-        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,serving_size`,
-        { signal: ctrl.signal }
-      );
-    } finally { clearTimeout(timer); }
-    const data = await res.json();
-    const p = (data.products || []).find(p => p.nutriments?.["energy-kcal_100g"] != null);
-    if (!p) return null;
-    const sg2 = parseFloat(p.serving_size) || 100, f = sg2 / 100, n = p.nutriments;
-    return {
-      name:    p.product_name?.trim(),
-      kcal:    Math.round((n["energy-kcal_100g"]  || 0) * f),
-      protein: Math.round((n["proteins_100g"]      || 0) * f * 10) / 10,
-      carbs:   Math.round((n["carbohydrates_100g"] || 0) * f * 10) / 10,
-      fat:     Math.round((n["fat_100g"]           || 0) * f * 10) / 10,
-      confidence: 98,
-      reasoning: `Open Food Facts label data — ${p.product_name} per serving (~${Math.round(sg2)}g)`,
-      source: "oft",
-    };
-  } catch(e) { return null; }
-}
-
 function ItemRow({ item, onReestimate, reestimating }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(item.name);
@@ -5159,9 +5169,6 @@ function ItemRow({ item, onReestimate, reestimating }) {
               onClick={() => setEditing(true)}>
               {item.name} <span style={{ fontSize:11, color:"var(--text-lo-2)" }}>✏️</span>
             </div>
-          )}
-          {item.source === "oft" && (
-            <div style={{ fontSize:10, color:"var(--cut)", marginTop:2, letterSpacing:"0.06em" }}>📦 LABEL DATA</div>
           )}
         </div>
         <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -5259,6 +5266,10 @@ function AILog({ onAdd, onBack }) {
     if (!desc.trim() && !photo) return;
     setLoading(true); setError(""); setItems(null); setLoggedAll(false); setLoggedCount({});
     setFollowups([]); setFuDone({}); setFuLog([]);
+    // A full totals line typed by the user IS the meal — one row, at once, no model call, no
+    // questions (features/logging/06). Only for typed text: a photo is always estimated.
+    const stated = photo ? null : parseStatedTotals(desc);
+    if (stated) { setItems([statedTotalsItem(stated)]); setLoading(false); return; }
     try {
       const parsed = photo
         ? await callAIJson([
@@ -5266,19 +5277,13 @@ function AILog({ onAdd, onBack }) {
             { type:"text",  text: AI_PHOTO_PROMPT(desc) },
           ], 2000)
         : await callAIJson(AI_PROMPT(desc), 2000);
-      let aiItems  = parsed.items || [];
+      const aiItems = parsed.items || [];
 
-      // OFT parallel lookup for each item
-      const oftResults = await Promise.all(aiItems.map(it => searchOFT(it.name)));
-      const merged = aiItems.map((it, i) => {
-        const oft = oftResults[i];
-        // Normalise the AI confidence (vision models may return a 0–1 fraction).
-        const ai  = { ...it, confidence: normConf(it.confidence) };
-        // Use OFT data if found AND it has higher confidence than AI estimate.
-        // Carry the AI's `ask` reason across (OFT doesn't set it).
-        if (oft && oft.confidence > ai.confidence) return { ...oft, name: it.name, ask: null };
-        return ai;
-      });
+      // The model's rows are the rows. Normalise confidence only (vision models may return a
+      // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
+      // parallel and REPLACED any row it found a product for — at a fixed confidence of 98,
+      // per that product's serving, under the AI's item name. features/logging/07.
+      const merged = aiItems.map(it => ({ ...it, confidence: normConf(it.confidence) }));
 
       setItems(merged);
       // Confidence-gated: only ask when the kcal-weighted estimate is below the
@@ -5314,14 +5319,7 @@ function AILog({ onAdd, onBack }) {
     setReestIdx(idx);
     try {
       const updated = await callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
-
-      // Try OFT for the new name too
-      const oft = await searchOFT(newName);
-      const u   = { ...updated, confidence: normConf(updated.confidence) };
-      const final = (oft && oft.confidence > u.confidence)
-        ? { ...oft, name: newName }
-        : { ...u, name: newName };
-
+      const final   = { ...updated, confidence: normConf(updated.confidence), name: newName };
       setItems(prev => prev.map((it, i) => i === idx ? final : it));
     } catch(e) {}
     setReestIdx(null);
@@ -5332,6 +5330,9 @@ function AILog({ onAdd, onBack }) {
     // Preserve the structured meal ELEMENTS as the source of truth, plus an
     // impact-weighted estimation confidence. The display name keeps the FULL
     // description — truncation is presentation-only (CSS), never in the data.
+    // The one exception is a stated total (logging/06): the figures the user typed are not
+    // part of the food's name, so the entry is called what the recogniser kept.
+    const stated = items.length === 1 && items[0].stated;
     const elements = items.map(it => ({
       name: it.name, kcal: Math.round(it.kcal),
       protein: Math.round(it.protein * 10) / 10,
@@ -5344,7 +5345,7 @@ function AILog({ onAdd, onBack }) {
       : avgConf;
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
     const source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
-    onAdd({ name: desc.trim() || "Photo meal", kcal: Math.round(totals.kcal),
+    onAdd({ name: stated ? items[0].name : (desc.trim() || "Photo meal"), kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs:   Math.round(totals.carbs   * 10) / 10,
       fat:     Math.round(totals.fat     * 10) / 10,

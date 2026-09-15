@@ -3556,3 +3556,33 @@ describe("weeklyIntakeScore — the rolling read, and the two founder-decided fi
     expect(r.colour).not.toBe("red"); // six on-plan days keep the week close to its usual colour
   });
 });
+
+// ── The CONSUMED / REMAINING card's caption (dashboard/01, 2026-09-15) ──────────────────
+// Mirror of app.jsx kcalCardLabel. The founder's Bug 3 (features/logging/00-bug-report.md):
+// 2,366 consumed against 2,319 printed "REMAINING 47" because the word was read off the colour
+// bands (inside 100 kcal = "fine" = REMAINING) while the number was |target − consumed|.
+const kcalCardLabel = overAmt => overAmt > 0 ? "OVER BY" : "REMAINING";
+
+describe("Calorie card caption states the fact, the colour passes judgement", () => {
+  test("47 over reads OVER BY — the founder's case", () => {
+    expect(kcalCardLabel(2366 - 2319)).toBe("OVER BY");
+  });
+  test("47 under reads REMAINING", () => {
+    expect(kcalCardLabel(2272 - 2319)).toBe("REMAINING");
+  });
+  test("exactly on target reads REMAINING (0)", () => {
+    expect(kcalCardLabel(0)).toBe("REMAINING");
+  });
+  test("1 over is already OVER BY — the inside-100 colour band does not soften the word", () => {
+    expect(kcalCardLabel(1)).toBe("OVER BY");
+  });
+  test("the amber 100–200 band no longer says JUST OVER on this card", () => {
+    expect(kcalCardLabel(150)).toBe("OVER BY");
+    // The intake-score card (dashboard/04) keeps its own JUST OVER — different card, untouched.
+    expect(cutCalorieScore(150).label).toBe("JUST OVER");
+  });
+  test("the label never disagrees with the sign of the gap", () => {
+    for (let over = -600; over <= 600; over += 7)
+      expect(kcalCardLabel(over)).toBe(over > 0 ? "OVER BY" : "REMAINING");
+  });
+});
