@@ -1,6 +1,6 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-15 (session 23). **Jest 430/430 · Playwright 147/147 · sw v88 · `main` — committed, NOT yet pushed.**
+**Updated:** 2026-09-15 (session 23). **Jest 430/430 · Playwright 147/147 · sw v88 · `main` — pushed.**
 
 > **v88: the AI's numbers were being silently swapped for a random supermarket product's.** The
 > founder sent a second by-eye bug report from his phone through Remote Control (`/rc` in VS Code —
@@ -75,10 +75,9 @@
 
 > ## ▶ START HERE
 >
-> **v88 is committed on `main` and NOT pushed — push it, then phone-check.** Everything through v87
-> is live on Pages. Fully close and reopen the installed PWA first, or you are still on an old
-> bundle. **What's still open:**
-> - **Push v88, then phone-verify the 15 Sep batch** — the checklist is `DEVICE-TEST.md` → *New in
+> **Everything through v88 is pushed and live on Pages. There is no code work queued.** Fully close
+> and reopen the installed PWA first, or you are still on an old bundle. **What's still open:**
+> - **Phone-verify the 15 Sep batch** — the checklist is `DEVICE-TEST.md` → *New in
 >   v88*. The three chicken inputs are the **only** check the model's answers get: type them exactly.
 >   Then the crumpets line (one row, instantly, 539 not 942) and the 47-over card (OVER BY, still
 >   blue). If one of the bad 15 Sep chicken entries shows **98%** confidence when you edit it, that
@@ -450,7 +449,7 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
-0. **◀ Push v88 and phone-verify the 15 Sep batch** — `DEVICE-TEST.md` → *New in v88*. The three
+0. **◀ Phone-verify the 15 Sep batch** — `DEVICE-TEST.md` → *New in v88*. The three
    chicken inputs, the crumpets line, the 47-over card. Clear `@wip` on `logging/06`+`07` when green.
    Then decide the parked nice-to-have (flag a >10% disagreement between the AI and typed totals).
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth

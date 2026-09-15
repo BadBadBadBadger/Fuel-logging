@@ -1,5 +1,5 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.9.1 (the numbers on screen are the AI's; typed totals are the meal; the card says over when over) — sw v88, **committed, not yet pushed**
+**Version:** 6.9.1 (the numbers on screen are the AI's; typed totals are the meal; the card says over when over) — **live**, sw v88
 **Last Updated:** 13 September 2026
 
 > **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
