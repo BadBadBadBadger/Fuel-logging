@@ -5799,8 +5799,6 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
     return dateKey(d);
   })();
   const avgWin = win.from ? { from: win.from, to: yesterdayK } : null;
-  // How many complete days the window COULD hold, so the sub-line can say "7 of 7".
-  const completeDaysInWin = RANGE_DAYS[range] || avgRows.length;
 
   // One axis for every chart on this screen (FL-009): a row per calendar day in the window, so
   // one step is always one day whichever series is drawn. For ALL, the window has no lower bound,
@@ -6419,16 +6417,16 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                     No complete days yet. Your average starts once today has finished.
                   </div>
                 )}
-                {/* FL-007 — the card says what it is built from and what the number is a record
-                    of. No detector, no exclusion: a day where logging was abandoned still counts
-                    in full, because dropping low days would delete the evidence of under-eating
-                    this app exists to catch. */}
-                {avgRows.length > 0 && (
-                  <div style={{ fontSize:10, color:"var(--text-lo)", marginTop:8, lineHeight:1.5 }}>
-                    {avgRows.length} of {completeDaysInWin} days logged · today not counted yet<br/>
-                    What you logged. Today isn&rsquo;t counted until it&rsquo;s done.
-                  </div>
-                )}
+                {/* No footnote under the tiles. The two lines that were here said the same thing
+                    twice ("· today not counted yet", then "Today isn't counted until it's done"),
+                    and "7 of 7 days logged" only informs in the "5 of 7" case while the header
+                    above already names the dates. "What you logged." was FL-007's residue: it was
+                    meant to admit that a day where logging was abandoned still counts in full, and
+                    three words never said it. That remains true of this card — no detector, no
+                    exclusion, because dropping low days would delete the evidence of under-eating
+                    this app exists to catch — it is just not reprinted under the numbers daily.
+                    Today's exclusion stays visible: its row is below in DAY BY DAY tagged TODAY,
+                    and the two headers carry two different end dates. */}
                 {/* The weight figure (FL-002, founder decision Q4): this week's 7-day average
                     against the PREVIOUS 7-day average. Two non-overlapping windows, so it rests
                     on 14 days of data, and no average is ever differenced against itself — that
@@ -6452,11 +6450,12 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                       background:"var(--bg)", borderRadius:10, padding:"10px 14px", alignItems:"center" }}>
                       <div>
                         <div style={{ fontSize:10, color:"var(--text-label)", letterSpacing:"0.08em", fontWeight:800 }}>⚖️ WEIGHT, WEEK ON WEEK</div>
+                        {/* No caption. "Averages, not single days — water and food still swing
+                            this." repeated the line above (which already ends "· 7-day averages"),
+                            then hedged the figure without saying what to do, with "this" naming
+                            nothing. Seven-day averaging is what removes most of that swing. */}
                         <div style={{ fontSize:12, color:"var(--text-lo)", marginTop:2 }}>
                           {wConv(t.prior.kg).toFixed(1)}{wUnit} → {wConv(t.recent.kg).toFixed(1)}{wUnit} · 7-day averages
-                        </div>
-                        <div style={{ fontSize:10, color:"var(--text-lo)", marginTop:2 }}>
-                          Averages, not single days — water and food still swing this.
                         </div>
                       </div>
                       <div style={{ fontSize:15, fontWeight:900, color:"var(--text-hi)" }}>

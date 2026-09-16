@@ -12362,8 +12362,6 @@ function History(_ref104) {
     from: win.from,
     to: yesterdayK
   } : null;
-  // How many complete days the window COULD hold, so the sub-line can say "7 of 7".
-  var completeDaysInWin = RANGE_DAYS[range] || avgRows.length;
 
   // One axis for every chart on this screen (FL-009): a row per calendar day in the window, so
   // one step is always one day whichever series is drawn. For ALL, the window has no lower bound,
@@ -13659,14 +13657,7 @@ function History(_ref104) {
       color: "var(--text-lo)",
       lineHeight: 1.5
     }
-  }, "No complete days yet. Your average starts once today has finished."), avgRows.length > 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 10,
-      color: "var(--text-lo)",
-      marginTop: 8,
-      lineHeight: 1.5
-    }
-  }, avgRows.length, " of ", completeDaysInWin, " days logged \xB7 today not counted yet", /*#__PURE__*/React.createElement("br", null), "What you logged. Today isn\u2019t counted until it\u2019s done."), function () {
+  }, "No complete days yet. Your average starts once today has finished."), function () {
     var t = weightTrendKg(weighIns, todayK);
     if (!t) return filteredWeighIns.length > 0 ? /*#__PURE__*/React.createElement("div", {
       style: {
@@ -13713,13 +13704,7 @@ function History(_ref104) {
         color: "var(--text-lo)",
         marginTop: 2
       }
-    }, wConv(t.prior.kg).toFixed(1), wUnit, " \u2192 ", wConv(t.recent.kg).toFixed(1), wUnit, " \xB7 7-day averages"), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 10,
-        color: "var(--text-lo)",
-        marginTop: 2
-      }
-    }, "Averages, not single days \u2014 water and food still swing this.")), /*#__PURE__*/React.createElement("div", {
+    }, wConv(t.prior.kg).toFixed(1), wUnit, " \u2192 ", wConv(t.recent.kg).toFixed(1), wUnit, " \xB7 7-day averages")), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 15,
         fontWeight: 900,

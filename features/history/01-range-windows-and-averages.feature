@@ -146,10 +146,17 @@ Feature: History range windows, averages and the labels that name them
 
   Scenario: the averages card names its dates and never a day count
     Then its header reads "DAILY AVERAGE · 6–12 SEP"
-    And beneath the numbers it reads "7 of 7 days logged · today not counted yet"
-    And then "What you logged. Today isn't counted until it's done."
-    # That last line is the whole of FL-007 that survives review: the card says what the number is
-    # a record of, and claims nothing it cannot know.
+    And nothing is written beneath the four numbers
+    # The card carried two footnote lines and they said the same thing twice — "· today not
+    # counted yet" followed by "Today isn't counted until it's done." The first half of the first
+    # line, "7 of 7 days logged", only carries information in the "5 of 7" case, and the header
+    # above it already names the dates. The second line, "What you logged.", was the residue of
+    # FL-007 — it was meant to admit that a day where logging was abandoned still counts in full,
+    # and three words never said that, so it read as filler while failing its own scenario.
+    # FL-007's honesty is a standing property of the card, not a fact about today's numbers, and
+    # it is recorded in the code and here rather than reprinted under the tiles every day.
+    # Today's exclusion stays legible without a caption: the row is directly below in DAY BY DAY,
+    # tagged TODAY, and the two headers name two different end dates.
 
   Scenario: the day list names its own, wider window
     Then its header reads "DAY BY DAY · 6–13 SEP"
@@ -192,8 +199,14 @@ Feature: History range windows, averages and the labels that name them
 
   Scenario: the figure compares two whole weeks, not two readings
     Then it reads "WEIGHT, WEEK ON WEEK", with both 7-day averages and the change between them
-    And beneath it, "Averages, not single days — water and food still swing this."
+    And nothing is written beneath it
     And the two windows do not overlap
+    # The caption used to read "Averages, not single days — water and food still swing this." Its
+    # first half repeated the line directly above it, which already ends "· 7-day averages". Its
+    # second half hedged the number without saying what to do about it, and "this" named nothing.
+    # Averaging over seven days is what removes most of the water and food swing, so a caption
+    # warning about that swing undercut the figure immediately after it had been computed
+    # properly. The two averages and the change between them stand on their own.
 
   Scenario: a genuinely flat fortnight reports no change
     Given fourteen days of weigh-ins at the same weight, with one low reading at the start

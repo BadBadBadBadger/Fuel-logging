@@ -102,12 +102,22 @@ test.describe("What the labels say", () => {
     await expect(page.getByText(/DAY BY DAY ·/)).toBeVisible();
   });
 
-  test("the card says what it is built from, and that today is not in it", async ({ page }) => {
+  test("no footnote under the numbers — the dates carry it", async ({ page }) => {
+    // The card used to explain itself twice over: "7 of 7 days logged · today not counted yet",
+    // then "What you logged. Today isn't counted until it's done." Both lines are gone. Today's
+    // exclusion is still legible from the two headers ending on two different dates, and from the
+    // TODAY row below (asserted in the next test).
     await open(page, { history: reportedHistory() });
     await openHistory(page);
     await sevenDays(page);
 
-    await expect(page.getByText("7 of 7 days logged · today not counted yet")).toBeVisible();
+    await expect(page.getByText(/days logged/)).toHaveCount(0);
+    await expect(page.getByText(/not counted|isn.t counted/)).toHaveCount(0);
+    await expect(page.getByText(/What you logged/)).toHaveCount(0);
+
+    const avgHeader = await page.getByText(/DAILY AVERAGE ·/).innerText();
+    const listHeader = await page.getByText(/DAY BY DAY ·/).innerText();
+    expect(avgHeader.replace("DAILY AVERAGE", "")).not.toBe(listHeader.replace("DAY BY DAY", ""));
   });
 
   test("the one row the average excludes is marked TODAY", async ({ page }) => {
@@ -185,12 +195,17 @@ test.describe("The weight figure", () => {
     await shot(page, "history-weight-week-on-week");
   });
 
-  test("it says these are averages and can still swing", async ({ page }) => {
+  test("the figure carries no caption", async ({ page }) => {
+    // "Averages, not single days — water and food still swing this." repeated the "· 7-day
+    // averages" line above it and then hedged the figure. The two averages and the change stand
+    // on their own.
     await open(page, { history: reportedHistory(), weighIns: weighIns(0) });
     await openHistory(page);
     await sevenDays(page);
 
-    await expect(page.getByText(/Averages, not single days/)).toBeVisible();
+    await expect(page.getByText(/7-day averages/)).toBeVisible();
+    await expect(page.getByText(/not single days/)).toHaveCount(0);
+    await expect(page.getByText(/still swing/)).toHaveCount(0);
   });
 
   // FL-009 — one step across a chart is one day, whichever series is drawn. Weight and body fat
