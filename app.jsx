@@ -4967,6 +4967,24 @@ const statedTotalsItem = st => ({
   stated: true, // in-memory only: logAll names the entry after the food, not the whole line
 });
 
+// Guard against a hallucinated "meal total" row. The prompt tells the model never to turn a
+// typed totals/estimate block into a separate item (logging/07), but that instruction is soft
+// and recurred 2026-09-16: a trailing "Lunch estimate ≈700 kcal / Protein ~71g / Carbs ~76g /
+// Fat ~16g" block came back as a 7th row whose macros were the sum of the real six, doubling
+// the TOTAL card and everything LOG ALL writes. This checks arithmetic, not the item's name:
+// a row whose kcal AND protein AND carbs AND fat each equal the sum of every OTHER row is a
+// duplicate of the meal, not a food — no real dish coincides on all four at once. Requires at
+// least two other rows, so a two-item meal with two similarly-sized items can't trip it.
+const dropDuplicateTotalRow = items => items.filter((it, i) => {
+  const rest = items.filter((_, j) => j !== i);
+  if (rest.length < 2) return true;
+  const sum  = k => rest.reduce((a, o) => a + (o[k] || 0), 0);
+  const near = (v, t) => Math.abs((v || 0) - t) <= Math.max(1, t * 0.05);
+  const sk = sum("kcal");
+  return !(sk > 0 && near(it.kcal, sk) && near(it.protein, sum("protein"))
+    && near(it.carbs, sum("carbs")) && near(it.fat, sum("fat")));
+});
+
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
@@ -5283,7 +5301,9 @@ function AILog({ onAdd, onBack }) {
       // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
       // parallel and REPLACED any row it found a product for — at a fixed confidence of 98,
       // per that product's serving, under the AI's item name. features/logging/07.
-      const merged = aiItems.map(it => ({ ...it, confidence: normConf(it.confidence) }));
+      // dropDuplicateTotalRow then strips a hallucinated meal-total row, if the model added
+      // one despite the prompt telling it not to (recurred 2026-09-16).
+      const merged = dropDuplicateTotalRow(aiItems.map(it => ({ ...it, confidence: normConf(it.confidence) })));
 
       setItems(merged);
       // Confidence-gated: only ask when the kcal-weighted estimate is below the
