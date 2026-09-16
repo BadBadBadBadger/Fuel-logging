@@ -10,12 +10,12 @@
 > now runs on every model reply in the AI Log and drops a row only when **all four** of its
 > figures match the sum of every other row (no real dish does that by coincidence; needs at least
 > two other rows). Jest + a new `e2e/duplicate-total-row.spec.js` reproduce the exact lunch.
-> It shipped with no `.feature` scenario; on the founder's instruction that afternoon, nine were
+> It shipped with no `.feature` scenario; on the founder's instruction that afternoon, ten were
 > written into `logging/06` **after the code**, and the header says so. Writing them turned up
-> *why* the recogniser let the line through — the `~` in *"Protein ~71g"* — and one open question
-> for the founder (*Next up* 0). **v90** (this laptop, `131f0ad`): the founder sent a History
-> screenshot through Remote Control and called the text under the numbers slop. He was right —
-> the Daily Average card said
+> *why* the recogniser let the line through — the `~` in *"Protein ~71g"* — and one question for
+> the founder, since decided: roughly-marks stay a guess, nothing changes (*Next up* 0).
+> **v90** (this laptop, `131f0ad`): the founder sent a History screenshot through Remote Control
+> and called the text under the numbers slop. He was right — the Daily Average card said
 > *"today not counted yet"* and then *"Today isn't counted until it's done"* back to back, and
 > *"What you logged."* was three words that were meant to carry FL-007's honesty note and never
 > did; the week-on-week weight figure's caption repeated the *"· 7-day averages"* line above it
@@ -296,8 +296,8 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
   3 in `e2e/duplicate-total-row.spec.js` (stubs the worker with the exact 7-row lunch; asserts six
   rows, TOTAL 744 not 1488, and the logged record). The commit went straight to code + tests —
   no spec, no doc. **Spec written after the fact on instruction**: `logging/06` +9 scenarios
-  (10→19; index 455→464), header records the order of events and the recogniser finding.
-  **No DB change.**
+  (10→20; index 455→465), header records the order of events, the recogniser finding and the
+  founder's decision on it (roughly-marks = a guess; ignored). **No DB change.**
 - **Laptop, `131f0ad`:** History → Daily Average lost its two-line footnote; the week-on-week
   weight figure lost its caption. `completeDaysInWin` removed with it (its only job was "7 of 7").
   `features/history/01` FL-005 and FL-002 scenarios rewritten first, each with the reason the
@@ -507,12 +507,11 @@ that §4 warns against leaning on.
    *New in v88* (the 47-over card; the 98% diagnosis check). The parked nice-to-have (flag a >10%
    disagreement between the AI and typed totals) is the founder's — "I will think about that
    again", 2026-09-15 — not a to-do.
-   **Open founder question from the `06` spec work (not a to-do until he answers):** should the
-   totals recogniser accept `~` and `≈`? His lunch line — *"≈700 kcal / Protein ~71g …"* — was a
-   full totals line in every respect but those marks. Accepting them would have made the whole
-   lunch ONE row at 700 kcal named "Lunch estimate", at 100% confidence, and the six foods would
-   never have been rows. But "≈700" is a guess, not his scales, and 100% is for stated facts. The
-   marks may be a real signal. Recorded in `06`'s header; decide there.
+   **Decided 2026-09-16, nothing to build:** a total typed with "roughly" marks (`≈700 kcal`,
+   `~71g`) is a guess, not a stated fact — the app ignores that line and the AI works out each
+   food, which is what it does today. Plain numbers (`700 kcal, protein 71g`) are still taken as
+   the meal. Recorded in `06`'s header. (First asked in code terms and he had no idea what it
+   meant; re-asked as two mock-ups of the AI Log screen — that is the form a decision has to take.)
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
    earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
    ✅5c the auto-lowering fix (04). **Step 6 (file 05, the symptom check) is SHELVED** — the founder

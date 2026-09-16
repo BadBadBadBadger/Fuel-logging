@@ -1528,11 +1528,12 @@ either v89 refetches). **No DB change.**
   arithmetic, not the row's name, and no real dish coincides on all four. It needs at least two
   other rows, so a lone stated-totals row (v6.9.1, Bug 2) and a two-item meal are never touched.
   Guarded by Jest against the real function and by `e2e/duplicate-total-row.spec.js` against the
-  exact seven-row reply. Shipped without a `.feature` scenario; **nine were written into
+  exact seven-row reply. Shipped without a `.feature` scenario; **ten were written into
   `logging/06` the same afternoon on the founder's instruction, after the code**, and the header
   says so. Writing them showed why `06`'s own recogniser had let the line through — the `~` in
-  *"Protein ~71g"*; the same line without `~`/`≈` parses as a full totals line — and left one
-  question with the founder: whether approximate marks should count (`START-HERE.md`, *Next up* 0).
+  *"Protein ~71g"*; the same line without `~`/`≈` parses as a full totals line. **Founder's
+  decision, same day: they don't count.** A figure written as "roughly" is a guess, not a stated
+  fact; the app ignores that line and the AI works out each food. Plain numbers are still the meal.
 - **History's Daily Average card explained itself twice, and the weight figure hedged itself.** The
   founder sent a screenshot of History → 7 Days through Remote Control and called the text under
   the numbers slop. Under the four tiles the card read *"7 of 7 days logged · today not counted

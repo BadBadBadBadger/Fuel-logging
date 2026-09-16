@@ -71,12 +71,13 @@
 # number, and the word forms accept only an optional colon or equals there. The same line with
 # the ~ and ≈ removed parses as a full totals line named "Lunch estimate". So this was a
 # partial statement in this file's terms, went to the model, and the model broke 07's rule.
-#   Open question, NOT decided here: should ~ and ≈ be accepted? If they were, the founder's
-#   lunch would have become ONE row at 700 kcal named "Lunch estimate", at 100% confidence, and
-#   the six foods would not have been rows at all — that is what this file does with a full
-#   totals line. But "≈700" is the founder's own guess, not his scales; the 100% reasoning above
-#   ("the person's own scales or recipe calculator") does not hold for a guessed figure. The
-#   approximate marks may be a real signal that the line is not a stated fact. Founder's call.
+#   FOUNDER DECISION, 2026-09-16: ~ and ≈ are NOT accepted. A figure written as "roughly" is a
+#   guess, not a stated fact, and the app ignores that line — the AI works out each food. Had
+#   they been accepted, the lunch would have become ONE row at 700 kcal named "Lunch estimate" at
+#   100% confidence, and the six foods would not have been rows at all; the 100% reasoning above
+#   ("the person's own scales or recipe calculator") does not hold for a guessed figure. If he
+#   wants his own numbers used, he types them plain: "700 kcal, protein 71g". Nothing to build.
+#   (Asked and answered in screen terms — two mock-ups of the AI Log, he picked "leave it".)
 #
 # THE DECISION (cloud session, engineering; confirmed by the founder's instruction to spec it):
 #   • After every model reply in the AI Log — typed text or photo — a row is dropped when its
@@ -163,6 +164,14 @@ Feature: Totals typed by the user are the meal, not another row
 
   # ── 2026-09-16 · a row that is the other rows added up ────────────────────
   # Written after the code, on the founder's instruction — see the header.
+
+  Scenario: A total written as "roughly" is a guess, not the meal
+    Given I type six foods and then "Lunch estimate ≈700 kcal / Protein ~71g / Carbs ~76g / Fat ~16g"
+    When I tap ANALYSE MEAL
+    Then the AI is asked as normal, because the ≈ and ~ marks mean the figures are a guess
+    And the six foods are the rows, with the AI's numbers for each
+    And no row is made from the estimate line
+    # Founder's decision, 2026-09-16. Plain numbers — "700 kcal, protein 71g" — are still the meal.
 
   Scenario: A row that is every other row added up is dropped before it is shown
     Given I type six foods and then "Lunch estimate ≈700 kcal / Protein ~71g / Carbs ~76g / Fat ~16g"
