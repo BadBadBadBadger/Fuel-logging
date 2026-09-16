@@ -1,5 +1,5 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.9.1 (the numbers on screen are the AI's; typed totals are the meal; the card says over when over) — **live**, sw v88
+**Version:** 6.9.2 (a hallucinated meal-total row is dropped; History's two explaining-captions removed) — **live**, sw v90
 **Last Updated:** 13 September 2026
 
 > **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
@@ -1513,6 +1513,42 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### A seventh row that was the other six added up; and two captions that said it twice (Sep 2026, v6.9.2)
+Two fixes from two sessions on the same day, merged into one build. Jest **437/437**, Playwright
+**150/150**, sw `v88→v90` (both sides had bumped to v89; the merge bumped once more so a phone on
+either v89 refetches). **No DB change.**
+- **A hallucinated meal-total row doubled LOG ALL — cloud session, `a178e03`.** v6.9.1's prompt rule
+  *"never turn a typed totals line into a separate item"* is a soft instruction, and the model broke
+  it the next day: six real foods plus a trailing *"Lunch estimate ≈700 kcal / Protein ~71g / Carbs
+  ~76g / Fat ~16g"* block came back as a seventh row whose four figures were exactly the sum of the
+  other six, so the TOTAL card and `LOG ALL AS ONE ENTRY` read 1488 for a 744 kcal lunch. Now
+  `dropDuplicateTotalRow` runs on every AI Log reply and removes a row only when its kcal **and**
+  protein **and** carbs **and** fat each match the sum of every other row (within 5%, minimum 1) —
+  arithmetic, not the row's name, and no real dish coincides on all four. It needs at least two
+  other rows, so a lone stated-totals row (v6.9.1, Bug 2) and a two-item meal are never touched.
+  Guarded by Jest against the real function and by `e2e/duplicate-total-row.spec.js` against the
+  exact seven-row reply. Shipped without a `.feature` scenario; **nine were written into
+  `logging/06` the same afternoon on the founder's instruction, after the code**, and the header
+  says so. Writing them showed why `06`'s own recogniser had let the line through — the `~` in
+  *"Protein ~71g"*; the same line without `~`/`≈` parses as a full totals line — and left one
+  question with the founder: whether approximate marks should count (`START-HERE.md`, *Next up* 0).
+- **History's Daily Average card explained itself twice, and the weight figure hedged itself.** The
+  founder sent a screenshot of History → 7 Days through Remote Control and called the text under
+  the numbers slop. Under the four tiles the card read *"7 of 7 days logged · today not counted
+  yet"* and then *"What you logged. Today isn't counted until it's done."* — one sentence twice; a
+  count that only carries information in the *"5 of 7"* case under a header that already names the
+  dates; and *"What you logged."*, which was the v6.9 FL-007 line meant to admit that a day where
+  logging was abandoned still counts in full, and never said it in three words. Under the
+  week-on-week weight figure, *"Averages, not single days — water and food still swing this."*
+  repeated the *"· 7-day averages"* line directly above and then undercut the number the
+  seven-day average had just cleaned up — with *"this"* naming nothing. **Both captions removed.**
+  Today's exclusion from the average stays readable without a sentence: the two headers end on
+  different dates (`DAILY AVERAGE · 9–15 SEP` over `DAY BY DAY · 9–16 SEP`) and the row it leaves
+  out is directly below, tagged TODAY. FL-007's rule — no detector, no exclusion — is unchanged
+  and now lives in the spec and the code comment rather than being reprinted under the numbers
+  every day. Spec first: `history/01` FL-005 and FL-002 scenarios rewritten, each recording why
+  the line went. `history-averages.spec.js` 36b and 38b now assert the absence.
 
 ### The AI's numbers were being swapped for a random product's (Sep 2026, v6.9.1)
 Three bugs the founder found by eye on his phone, kept verbatim as `features/logging/00-bug-report.md`

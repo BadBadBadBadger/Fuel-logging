@@ -6,8 +6,8 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 147 tests · 147 passing · runtime ~80s · last updated 2026-09-15 (session 23)
-**Plan items 15–42 are all complete.** Jest 430/430 alongside.
+**Current:** 150 tests · 150 passing · runtime ~90s · last updated 2026-09-16 (session 24)
+**Plan items 15–43 are all complete.** Jest 437/437 alongside.
 
 > ### 🔖 Shelved — one open item, needing a decision rather than more investigation
 >
@@ -293,13 +293,13 @@ correction lands in all three places — the row, the day's totals, and `logs__<
 | 35c | The average holds still once today is logged | ✅ |
 | 35d | A past day the app was only opened is not averaged in as a zero | ✅ |
 | 36a | No header states a day count, so there is nothing to reconcile | ✅ |
-| 36b | The card says what it is built from, and that today is not in it | ✅ |
+| 36b | No footnote under the numbers — the dates carry it *(inverted 2026-09-16: was "the card says what it is built from"; the two lines it asserted are gone, see DOCS §37 v6.9.2)* | ✅ |
 | 36c | The one row the average excludes is marked TODAY | ✅ |
 | 36d | The day list still runs to today — the fix narrows the average, not the rows | ✅ |
 | 37a | A brand-new account says the average starts once today has finished | ✅ |
 | 37b | A 30-day window with no complete day does not report 0 KCAL | ✅ |
 | 38a | A flat fortnight is not reported as a gain | ✅ |
-| 38b | The card says these are averages and can still swing | ✅ |
+| 38b | The figure carries no caption *(inverted 2026-09-16: was "says these are averages and can still swing")* | ✅ |
 | 38c | A missing weigh-in takes up its own space instead of collapsing | ✅ |
 | 38d | Too few weigh-ins says so instead of guessing a direction | ✅ |
 
@@ -369,6 +369,24 @@ exact numbers.
 | 42b | 2,272 reads REMAINING 47 | ✅ |
 | 42c | 2,319 reads REMAINING 0 | ✅ |
 | 42d | 150 over is amber and reads OVER BY — no "JUST OVER" anywhere on the dashboard | ✅ |
+
+### Suite: `duplicate-total-row.spec.js` — a hallucinated meal-total row is dropped (session 24, cloud)
+
+Written in a cloud session (`a178e03`, PR #2) against the founder's 16 Sep lunch: six real foods
+plus a trailing estimate block that the model returned as a seventh row equal to the sum of the
+other six. Contract: `features/logging/06-stated-totals.feature`, the 2026-09-16 block — written
+after this suite, on the founder's instruction, and its header says so. The function's edge cases
+(a lone stated-totals row, two equal items, a kcal-only coincidence) are Jest's, in
+`__tests__/ai-log.test.js`.
+
+| # | Scenario | Status |
+|---|---|---|
+| 43a | Only the six real items are shown — the summary row never renders | ✅ |
+| 43b | The TOTAL card sums the six real items only — not double | ✅ |
+| 43c | `LOG ALL AS ONE ENTRY` writes the true total, not double | ✅ |
+
+> The worker stub returns the exact seven-row reply from the bug, so the assertion is on the
+> screen after the guard, not on the guard in isolation — 744 on the card, not 1488.
 
 ---
 

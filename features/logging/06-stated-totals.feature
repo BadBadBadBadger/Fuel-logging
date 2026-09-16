@@ -48,6 +48,53 @@
 # The recogniser and the name rule are pure functions, mirrored in __tests__/logic.test.js.
 # The screen behaviour is in e2e/stated-totals.spec.js — with the worker route asserted to be
 # NEVER called.
+#
+# ----------------------------------------------------------------------------
+# AMENDED 2026-09-16 — a row that is the other rows added up (the last block of scenarios).
+#
+# ORDER OF EVENTS, recorded honestly: the code came first. A cloud session (commit a178e03,
+# PR #2) built and tested `dropDuplicateTotalRow` the same morning the founder hit the bug, and
+# wrote no scenario. The founder asked for one that afternoon; these were written against the
+# shipped code and its tests, not before them. The house rule is spec first — this is the
+# exception, on instruction, and it is named here so it is not mistaken for the norm.
+#
+# THE RECURRENCE. The day after 07's prompt rule ("a number the user typed is a fact about the
+# item it belongs to, never a separate item") the founder typed six foods and then
+#   "Lunch estimate ≈700 kcal / Protein ~71g / Carbs ~76g / Fat ~16g"
+# and the AI returned SEVEN rows — the sixth real food and then a seventh whose kcal, protein,
+# carbs and fat were exactly the first six added up. The TOTAL card read 1488 for a 744 kcal
+# lunch, and LOG ALL AS ONE ENTRY would have written 1488. A prompt rule is a request; the
+# model can and did ignore it.
+#
+# WHY THE RECOGNISER ABOVE DID NOT CATCH IT — checked against the real function, 2026-09-16:
+# the line has all four figures, but "Protein ~71g" puts a tilde between the word and the
+# number, and the word forms accept only an optional colon or equals there. The same line with
+# the ~ and ≈ removed parses as a full totals line named "Lunch estimate". So this was a
+# partial statement in this file's terms, went to the model, and the model broke 07's rule.
+#   Open question, NOT decided here: should ~ and ≈ be accepted? If they were, the founder's
+#   lunch would have become ONE row at 700 kcal named "Lunch estimate", at 100% confidence, and
+#   the six foods would not have been rows at all — that is what this file does with a full
+#   totals line. But "≈700" is the founder's own guess, not his scales; the 100% reasoning above
+#   ("the person's own scales or recipe calculator") does not hold for a guessed figure. The
+#   approximate marks may be a real signal that the line is not a stated fact. Founder's call.
+#
+# THE DECISION (cloud session, engineering; confirmed by the founder's instruction to spec it):
+#   • After every model reply in the AI Log — typed text or photo — a row is dropped when its
+#     kcal AND protein AND carbs AND fat EACH equal the sum of every other row. Arithmetic, not
+#     the row's name: no real dish coincides with the rest of the meal on all four figures.
+#       "Equal" allows for the model's rounding: within 5% of the sum, or within 1, whichever
+#       is the wider margin. The other rows' calories must add to more than zero.
+#   • It needs at least two other rows to compare against. A meal of one row (a stated-totals
+#     row, or a single food) and a meal of two rows are never touched — a row can only be "the
+#     others added up" when there are others to add.
+#   • It runs only where the model's rows land as a set. The re-estimate of a single row (a
+#     name edit here, the meal form, the entry editor) replaces one row and has nothing to sum
+#     against, so it is not run there — by design, not omission.
+#   • The prompt rule in 07 stays. The guard is what happens when the model ignores it.
+#
+# The function is lifted out of app.jsx by __tests__/ai-log.test.js (the reported lunch plus
+# the edge cases below). The screen and the record are in e2e/duplicate-total-row.spec.js, whose
+# worker stub returns the founder's exact seven-row reply.
 # ============================================================================
 Feature: Totals typed by the user are the meal, not another row
 
@@ -113,3 +160,53 @@ Feature: Totals typed by the user are the meal, not another row
     When I tap the row's name and change it
     Then it is re-estimated by the AI like any other row
     # Editing the name is the one way to say "actually, estimate this for me".
+
+  # ── 2026-09-16 · a row that is the other rows added up ────────────────────
+  # Written after the code, on the founder's instruction — see the header.
+
+  Scenario: A row that is every other row added up is dropped before it is shown
+    Given I type six foods and then "Lunch estimate ≈700 kcal / Protein ~71g / Carbs ~76g / Fat ~16g"
+    And the ~ marks stop that line being read as a totals line, so the AI is asked
+    When the AI returns seven rows, the seventh being the other six added up on all four figures
+    Then six rows are shown and the seventh never appears
+    And the TOTAL card is the six added up — 744, not 1488
+    And LOG ALL AS ONE ENTRY writes 744
+
+  Scenario: The added-up row is caught wherever the AI puts it
+    Given the AI returns the added-up row first, or in the middle of the list
+    Then it is still the one dropped, and the real foods all stay
+
+  Scenario: All four figures must match — a coincidence on calories alone is a food
+    Given the AI returns a row whose kcal equals the other rows' sum
+    But whose protein, carbs or fat does not
+    Then that row is kept
+    # No real dish coincides with the rest of the meal on all four at once. One figure can.
+
+  Scenario: The model's rounding does not save the duplicate
+    Given the added-up row is within 5% of the sum on each figure, or within 1 of it
+    Then it is still dropped
+
+  Scenario: A meal of two rows is never touched
+    Given the AI returns exactly two rows, even two of the same size
+    Then both are kept
+    # A row can only be "the others added up" when there are at least two others.
+
+  Scenario: A single row is never touched
+    Given the AI returns one row, or my text was a full totals line and no model was called
+    Then that row is shown as it is
+    # Nothing to add up against.
+
+  Scenario: Six genuine foods with no coincidence all survive
+    Given the AI returns six rows and none is the other five added up
+    Then all six are shown
+
+  Scenario: A photo's rows go through the same check
+    Given I sent a photo and the AI returned rows for it
+    When one of them is the others added up
+    Then it is dropped the same way as for typed text
+
+  Scenario: The prompt rule still stands — the guard is what happens when it is ignored
+    Given the AI is still told that a number I typed is a fact about its item, never a row
+    When it makes a row of it anyway
+    Then the arithmetic check removes it
+    And nothing in the app relies on the model having obeyed

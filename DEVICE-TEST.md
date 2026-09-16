@@ -66,6 +66,21 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v89–v90 — the seventh row, and History's captions (2026-09-16)
+
+Fully close and reopen the installed PWA first — you must be on **v90** (a phone that took the
+cloud's v89 mid-afternoon still needs the cycle).
+
+- [ ] **AI Log → paste a multi-item meal with a trailing estimate block**, e.g. six foods then a
+      line like *"Lunch estimate ≈700 kcal / Protein ~71g / Carbs ~76g / Fat ~16g"* → **six rows,
+      not seven**; the TOTAL card is the six added up, not double; `+ LOG ALL AS ONE ENTRY` writes
+      that same total. (The model may or may not send the seventh row — if it doesn't, the check
+      passes vacuously; try once more with the block worded differently.)
+- [ ] **History → 7 Days.** Under the four Daily Average tiles: **no text at all**. Under
+      *WEIGHT, WEEK ON WEEK*: the `→` line ending *"· 7-day averages"* and the figure, **nothing
+      beneath**. Today's row in DAY BY DAY still carries TODAY and the two headers still end on
+      different dates.
+
 ### New in v88 — the 15 Sep bug batch (`features/logging/00-bug-report.md`) — ✅ AI Log verified on device 2026-09-15
 
 Fully close and reopen the installed PWA first. The first three are the ONLY check the model's

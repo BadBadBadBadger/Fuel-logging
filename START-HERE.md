@@ -1,6 +1,29 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-15 (session 23). **Jest 430/430 · Playwright 147/147 · sw v88 · `main` — pushed.**
+**Updated:** 2026-09-16 (session 24). **Jest 437/437 · Playwright 150/150 · sw v90 · `main` @ `1d6a7ae` — pushed, live on Pages.**
+
+> **v89–v90: two small fixes from two sessions, merged into one build.** **v89** came from a cloud
+> session (`a178e03`, PR #2): the v88 prompt rule *"never turn a typed totals line into a row"* is
+> a soft instruction, and it failed the next day — six real foods plus a trailing *"Lunch estimate
+> ≈700 kcal / Protein ~71g …"* block came back as a **seventh row equal to the sum of the other
+> six**, so the TOTAL card and LOG ALL read 1488 for a 744 kcal lunch. `dropDuplicateTotalRow`
+> now runs on every model reply in the AI Log and drops a row only when **all four** of its
+> figures match the sum of every other row (no real dish does that by coincidence; needs at least
+> two other rows). Jest + a new `e2e/duplicate-total-row.spec.js` reproduce the exact lunch.
+> It shipped with no `.feature` scenario; on the founder's instruction that afternoon, nine were
+> written into `logging/06` **after the code**, and the header says so. Writing them turned up
+> *why* the recogniser let the line through — the `~` in *"Protein ~71g"* — and one open question
+> for the founder (*Next up* 0). **v90** (this laptop, `131f0ad`): the founder sent a History
+> screenshot through Remote Control and called the text under the numbers slop. He was right —
+> the Daily Average card said
+> *"today not counted yet"* and then *"Today isn't counted until it's done"* back to back, and
+> *"What you logged."* was three words that were meant to carry FL-007's honesty note and never
+> did; the week-on-week weight figure's caption repeated the *"· 7-day averages"* line above it
+> and then hedged the number it had just computed properly. **Both captions removed** — the two
+> headers' different end dates and the TODAY row below carry today's exclusion. Spec rewritten
+> first (`history/01`, FL-005 and FL-002 scenarios). The merge rebuilt `app.js` from the merged
+> source and went v89→**v90** so a phone already on the cloud's v89 refetches. No rollback tag
+> was cut for either; `pre-ai-log-bugfix` (pre-v88) is the nearest clean point.
 
 > **v88: the AI's numbers were being silently swapped for a random supermarket product's.** The
 > founder sent a second by-eye bug report from his phone through Remote Control (`/rc` in VS Code —
@@ -162,8 +185,10 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v78**.
-- Run `npx jest` before claiming anything works. Currently **430/430**. `npm run test:ui` is **147/147**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v90**.
+  If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
+  that is what v90 is.
+- Run `npx jest` before claiming anything works. Currently **437/437**. `npm run test:ui` is **150/150**.
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -194,11 +219,14 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `bde4098` is what is **live on GitHub Pages** (sw **v78**) — body-measurement tracking
-(another session's commit; no rollback tag was cut for it). Verify any time by reading the deployed
-worker: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
+`main` @ `1d6a7ae` is what is **live on GitHub Pages** (sw **v90**, confirmed by curl 2026-09-16) —
+the merge of the cloud session's v89 (`a178e03`, duplicate meal-total row) and this laptop's History
+caption removal (`131f0ad`). Verify any time by reading the deployed worker:
+`curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 
-Before it: `ce341ce` (sw **v77**, the intake-scoring feature) — rollback tag **`pre-intake-scoring`**
+Before it: `241bcd6`-onwards is the v86→v88 run (see the Git reference block below), then `bde4098`
+(sw **v78**, body-measurement tracking, another session's commit, no rollback tag), then
+`ce341ce` (sw **v77**, the intake-scoring feature) — rollback tag **`pre-intake-scoring`**
 is the state right before that (`52452a9`, sw v76). Then `7fb31f8` (sw **v74**, removed the "Below your resting metabolism" card);
 `d01fe5f` (sw **v73**, the F4 data-loss fix); `d21d7d6` (sw **v72**, the spec split, the scenario
 audit and the profile confirmation fix); and `efad462` (sw **v70**), deployed 2026-08-11, which
@@ -257,6 +285,30 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 ---
 
 ## Right now
+
+**Session 24 — v89 (cloud) merged with v90 (laptop); both live.** Two threads met on `main`:
+- **Cloud, `a178e03` (PR #2, Sonnet 5 session):** `dropDuplicateTotalRow` (app.jsx, next to
+  `statedTotalsItem`) filters every AI Log model reply. A row goes only when its kcal, protein,
+  carbs **and** fat each match the sum of every other row within 5% (min 1), and only when there
+  are at least two other rows — so a lone stated-totals row and a two-item meal can't trip it.
+  Applied at the one merge point in `AILog` (the re-estimate paths return a single item, so there
+  is nothing to sum against). Tests: 7 in `__tests__/ai-log.test.js` (lifts the real function),
+  3 in `e2e/duplicate-total-row.spec.js` (stubs the worker with the exact 7-row lunch; asserts six
+  rows, TOTAL 744 not 1488, and the logged record). The commit went straight to code + tests —
+  no spec, no doc. **Spec written after the fact on instruction**: `logging/06` +9 scenarios
+  (10→19; index 455→464), header records the order of events and the recogniser finding.
+  **No DB change.**
+- **Laptop, `131f0ad`:** History → Daily Average lost its two-line footnote; the week-on-week
+  weight figure lost its caption. `completeDaysInWin` removed with it (its only job was "7 of 7").
+  `features/history/01` FL-005 and FL-002 scenarios rewritten first, each with the reason the
+  line went. `e2e/history-averages.spec.js` 36b and 38b now assert the absence. **No DB change.**
+- **Merge `1d6a7ae`:** no conflicts (the cloud touched app.jsx ~4967/~5301, this ~5800/~6420), but
+  both had bumped sw to v89 and both had rebuilt `app.js`, and the text-merged `app.js` was three
+  lines off a real build — so: rebuild from merged `app.jsx`, sw → **v90**, Jest 437/437,
+  Playwright 150/150 on the merged tree, push. Pages picked it up; curl reads v90.
+- **Docs brought current this session:** this file, `DOCS.md` (header 6.9.2, §37 changelog),
+  `DEVICE-TEST.md` (a *New in v89–v90* block), `PLAYWRIGHT-PLAN.md` (150, the two renamed rows,
+  the new suite).
 
 **Session 23 — the 15 Sep bug batch, v88 (`features/logging/00-bug-report.md`), sent from the phone
 through Remote Control.** Three bugs; the headline finding was not in the report. `searchOFT` ran
@@ -449,10 +501,18 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
-0. **◀ Finish the v88 phone check** — the two unticked boxes in `DEVICE-TEST.md` → *New in v88*
-   (the 47-over card; the 98% diagnosis check). The AI Log fixes are verified. The parked
-   nice-to-have (flag a >10% disagreement between the AI and typed totals) is the founder's —
-   "I will think about that again", 2026-09-15 — not a to-do.
+0. **◀ Phone-check v89–v90, and finish v88's** — `DEVICE-TEST.md` → *New in v89–v90* (the
+   six-item lunch with a trailing estimate block → six rows, not seven; History 7 Days → nothing
+   under the four tiles, nothing under the weight figure) plus the two boxes still open under
+   *New in v88* (the 47-over card; the 98% diagnosis check). The parked nice-to-have (flag a >10%
+   disagreement between the AI and typed totals) is the founder's — "I will think about that
+   again", 2026-09-15 — not a to-do.
+   **Open founder question from the `06` spec work (not a to-do until he answers):** should the
+   totals recogniser accept `~` and `≈`? His lunch line — *"≈700 kcal / Protein ~71g …"* — was a
+   full totals line in every respect but those marks. Accepting them would have made the whole
+   lunch ONE row at 700 kcal named "Lunch estimate", at 100% confidence, and the six foods would
+   never have been rows. But "≈700" is a guess, not his scales, and 100% is for stated facts. The
+   marks may be a real signal. Recorded in `06`'s header; decide there.
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
    earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
    ✅5c the auto-lowering fix (04). **Step 6 (file 05, the symptom check) is SHELVED** — the founder
@@ -499,7 +559,12 @@ that §4 warns against leaning on.
 ## Reference — operational facts (don't lose these)
 
 **Git**
-- `main` @ `241bcd6` = the History/dashboard bug batch, **live on Pages** (sw v86). Rollback tag
+- `main` @ `1d6a7ae` = **live on Pages** (sw v90). It merges `a178e03` (cloud, v89: duplicate
+  meal-total row dropped, PR #2 from `claude/online-status-check-x8cni3`) with `131f0ad` (laptop:
+  History captions removed). No rollback tag was cut for v89 or v90.
+- The v88 run sits directly under it — rollback tag **`pre-ai-log-bugfix`** is the last commit
+  before the 15 Sep AI Log batch.
+- `241bcd6` = the History/dashboard bug batch (sw v86). Rollback tag
   **`pre-history-bugfix`** = `2a9de4c`, the last commit before any of it.
 - `2a9de4c` = body measurements in History + CSV export (`features/body/02`, sw v81). It was sitting
   **uncommitted** at the start of session 22 and was committed as a baseline before the bug batch
@@ -507,7 +572,7 @@ that §4 warns against leaning on.
 - `bde4098` = body-measurement tracking (`features/body/01`, sw v78). No rollback tag was cut for it
   (another session's commit); `ce341ce` / `pre-intake-scoring` is the nearest clean point before it.
 - `energy-safety-bmr-floor` carries Steps 1–5a committed (`2209548` = file 02, `d509d86` = its docs).
-- Rollback tags: **`pre-history-bugfix`** (pre-v82 `main`, sw v81) · `pre-intake-scoring` (pre-v77
+- Rollback tags: **`pre-ai-log-bugfix`** (pre-v88 `main`, sw v87) · **`pre-history-bugfix`** (pre-v82 `main`, sw v81) · `pre-intake-scoring` (pre-v77
   `main`, sw v76) · `pre-energy-safety` · `pre-bmr-floor` (pre-fix `main`) · `pre-ai-capture-v67` ·
   Phase B → `8622d24`.
 - Parked branch `targets-bmr-floor-wip` was **deleted** — superseded, don't resurrect it.

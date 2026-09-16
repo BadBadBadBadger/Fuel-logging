@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-15. **44 files · 455 scenarios.** Replaces the single
+**Updated:** 2026-09-16. **44 files · 464 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -283,7 +283,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [03-repeat-add-feedback](logging/03-repeat-add-feedback.feature) | Repeat-add feedback — re-blink and count | 6 | |
 | [04-meal-data-integrity](logging/04-meal-data-integrity.feature) | Structured elements are the source of truth | 4 | `@wip` |
 | [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 23 | `@wip` |
-| [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 10 | |
+| [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 19 | |
 | [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | |
 
 > **`06` and `07` are the 2026-09-15 bug batch** — the founder's second by-eye report, kept
@@ -296,6 +296,16 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 > a product from a list, keeps it). `06` makes a full typed totals line the meal outright: one row,
 > no model call, no follow-ups, logged exactly as typed. **Both verified on the founder's phone the
 > same day** — the only test the model's answers get.
+
+> **`06` grew nine scenarios on 2026-09-16 — written AFTER the code, on the founder's instruction,
+> and its header says so.** A cloud session (`a178e03`, v89) built `dropDuplicateTotalRow` the
+> morning `07`'s prompt rule failed: the founder typed six foods and then *"Lunch estimate ≈700
+> kcal / Protein ~71g / Carbs ~76g / Fat ~16g"*, and the model returned a seventh row that was the
+> six added up — 1488 on the card for a 744 kcal lunch. The guard drops a row when all four of its
+> figures equal the sum of every other row; needs at least two other rows; runs on every model
+> reply, text or photo. The header also records **why `06`'s own recogniser let the line through**
+> (the `~` between "Protein" and the number — the same line without `~`/`≈` parses as a full
+> totals line) and leaves as an **open founder question** whether approximate marks should count.
 
 > `05` was promoted from the old `features/ai-capture.feature` on 2026-08-16. That file held the
 > richer spec (and the 4-hat design rationale) while calling itself non-authoritative; the condensed
