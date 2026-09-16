@@ -23,9 +23,9 @@ const lifted = (() => {
   const end   = src.indexOf("const confColor", start);
   if (start < 0 || end < 0) throw new Error("stated-totals block not found in app.jsx");
   const block = src.slice(start, end);
-  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem };")();
+  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow };")();
 })();
-const { parseStatedTotals, statedTotalsItem } = lifted;
+const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow } = lifted;
 
 describe("A full totals line typed by the user is the meal (logging/06)", () => {
   test("the founder's crumpets: name before the figures, all four numbers exact", () => {
@@ -126,6 +126,50 @@ describe("The model's numbers are the numbers (logging/07)", () => {
     const body = fnBody("function AILog(");
     expect(body).toMatch(/const stated = photo \? null : parseStatedTotals\(desc\)/);
     expect(body).toMatch(/if \(stated\) \{ setItems\(\[statedTotalsItem\(stated\)\]\);.*return; \}/);
+  });
+  test("estimate() runs the model's rows through dropDuplicateTotalRow", () => {
+    expect(fnBody("function AILog(")).toMatch(/dropDuplicateTotalRow\(aiItems\.map/);
+  });
+});
+
+describe("A hallucinated meal-total row is dropped even though the prompt asked the model not to send one (2026-09-16 recurrence)", () => {
+  const rice    = { name: "Rice",    kcal: 325, protein: 6.5,  carbs: 71.5, fat: 1.3 };
+  const chicken = { name: "Chicken", kcal: 220, protein: 46,   carbs: 0,    fat: 4.8 };
+  const sauce   = { name: "Sauce",   kcal: 57,  protein: 0.3,  carbs: 13.5, fat: 0.1 };
+  const mayo    = { name: "Mayo",    kcal: 101, protein: 0.2,  carbs: 0.3,  fat: 11 };
+  const toms    = { name: "Tomatoes",kcal: 18,  protein: 0.9,  carbs: 3.5,  fat: 0.2 };
+  const spinach = { name: "Spinach", kcal: 23,  protein: 2.8,  carbs: 1.4,  fat: 0.4 };
+  const real = [rice, chicken, sauce, mayo, toms, spinach];
+
+  test("the founder's lunch: a 7th row equal to the sum of the other six is stripped", () => {
+    const summaryRow = { name: "Lunch estimate", kcal: 744, protein: 56.7, carbs: 90.2, fat: 17.8 };
+    const out = dropDuplicateTotalRow([...real, summaryRow]);
+    expect(out).toEqual(real);
+    expect(out.reduce((a, it) => a + it.kcal, 0)).toBe(744);
+  });
+  test("the duplicate is caught wherever the model places it in the list", () => {
+    const summaryRow = { name: "Total", kcal: 744, protein: 56.7, carbs: 90.2, fat: 17.8 };
+    const out = dropDuplicateTotalRow([summaryRow, ...real]);
+    expect(out).toEqual(real);
+  });
+  test("six genuine items with no coincidental match all survive", () => {
+    expect(dropDuplicateTotalRow(real)).toEqual(real);
+  });
+  test("a single stated-totals row (logging/06) is untouched — nothing to compare it against", () => {
+    const only = [{ name: "Chilli", kcal: 450, protein: 38, carbs: 40, fat: 14 }];
+    expect(dropDuplicateTotalRow(only)).toEqual(only);
+  });
+  test("two items — even equal-sized ones — are never both dropped", () => {
+    const a = { name: "Half A", kcal: 200, protein: 10, carbs: 20, fat: 5 };
+    const b = { name: "Half B", kcal: 200, protein: 10, carbs: 20, fat: 5 };
+    expect(dropDuplicateTotalRow([a, b])).toEqual([a, b]);
+  });
+  test("a genuine item that only coincidentally matches on kcal survives — protein/carbs/fat must ALL match too", () => {
+    // Same kcal as the sum of the rest, but its own macros — not the arithmetic sum.
+    const oddOneOut = { name: "Protein bar", kcal: 744, protein: 20, carbs: 25, fat: 8 };
+    const out = dropDuplicateTotalRow([...real, oddOneOut]);
+    expect(out).toContainEqual(oddOneOut);
+    expect(out).toHaveLength(7);
   });
 });
 
