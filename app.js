@@ -8971,7 +8971,7 @@ function Dashboard(_ref90) {
     // the floor we'd set for this body earns the same plain-English explanation.
     if (targets.deficitFloor && customKcal < targets.deficitFloor) return {
       level: "amber",
-      text: "That's below the ".concat(targets.deficitFloor.toLocaleString(), " kcal we'd set as your steady-loss floor \u2014 losing faster than that mostly costs muscle and is harder to stick to.")
+      text: "That's below the ".concat(targets.deficitFloor.toLocaleString(), " kcal we'd set as the lowest safe target for your body \u2014 losing faster than that mostly costs muscle and is harder to stick to.")
     };
     if (diff >= -150 && diff < 0) return {
       level: "info",
@@ -9450,7 +9450,7 @@ function Dashboard(_ref90) {
       marginTop: 4,
       color: "var(--text-mid)"
     }
-  }, "Your floor is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
+  }, "That lowest safe target is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--warn-tint-2)",
       border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
@@ -9848,13 +9848,13 @@ function Dashboard(_ref90) {
       letterSpacing: "0.06em",
       marginBottom: 2
     }
-  }, "FLOORS KEPT"), /*#__PURE__*/React.createElement("div", {
+  }, "PROTEIN AND FAT KEPT"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--gold-dim)",
       lineHeight: 1.5
     }
-  }, "This target's too low to hit your protein and fat floors. We've kept your floors, so your macros add up to a bit more than this number."))), /*#__PURE__*/React.createElement("div", {
+  }, "This target's too low to fit the minimum protein and fat your body needs. We've kept those minimums, so your macros add up to a bit more than this number."))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       borderRadius: 22,

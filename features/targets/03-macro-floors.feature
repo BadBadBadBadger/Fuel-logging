@@ -12,6 +12,9 @@
 # threshold) are owned by __tests__/logic.test.js — these scenarios assert the
 # user-visible BEHAVIOUR only, so they survive a coefficient tweak.
 # Built + verified on device 2026-06-12 (low custom target → "FLOORS KEPT" warning shown).
+# 2026-09-26 (sw v93): the on-screen copy no longer says "floor" — the founder banned it from
+# anything the user reads (START-HERE house rules). The card is now "PROTEIN AND FAT KEPT". The
+# word stays in this spec as the name of the rule, never on the screen.
 Feature: Macro targets hold their floors instead of scaling
 
   Background:
@@ -54,7 +57,8 @@ Feature: Macro targets hold their floors instead of scaling
     Given a calorie target too low to fit the protein floor, fat floor and minimum carbs
     When the targets are calculated
     Then no floor is silently broken
-    And a warning explains the target is too low to hit my protein and fat floors
-    # DRAFT copy — confirm wording against the SAFE_MIN banner voice:
-    # "This target's too low to hit your protein and fat floors. We've kept your floors,
-    #  so your macros add up to a bit more than this number."
+    And a warning explains the target is too low to fit the minimum protein and fat my body needs
+    And the warning never uses the word "floor"
+    # Copy (v93): heading "PROTEIN AND FAT KEPT";
+    # "This target's too low to fit the minimum protein and fat your body needs. We've kept those
+    #  minimums, so your macros add up to a bit more than this number."

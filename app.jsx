@@ -4171,7 +4171,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
     // Steady-loss floor (Step 4). A typed target isn't overridden — but a number below
     // the floor we'd set for this body earns the same plain-English explanation.
     if (targets.deficitFloor && customKcal < targets.deficitFloor) return { level:"amber",
-      text:`That's below the ${targets.deficitFloor.toLocaleString()} kcal we'd set as your steady-loss floor — losing faster than that mostly costs muscle and is harder to stick to.` };
+      text:`That's below the ${targets.deficitFloor.toLocaleString()} kcal we'd set as the lowest safe target for your body — losing faster than that mostly costs muscle and is harder to stick to.` };
     if (diff >= -150 && diff < 0) return { level:"info",
       text:"Deficit is small — progress will be slow but sustainable 👍" };
     if (diff > 0 && diff <= 150) return { level:"info",
@@ -4379,7 +4379,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
               <details style={{ marginTop:4 }}>
                 <summary style={{ cursor:"pointer", color:AMBER, fontWeight:700, fontSize:11 }}>Why?</summary>
                 <div style={{ marginTop:4, color:"var(--text-mid)" }}>
-                  Your floor is worked out from your own body — it's a quarter below what we think you
+                  That lowest safe target is worked out from your own body — it's a quarter below what we think you
                   burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle,
                   sleep and training quality, and it's much harder to stick to.
                 </div>
@@ -4628,10 +4628,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
           <div style={{ fontSize:15, marginTop:1 }}>⚠️</div>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:11, color:AMBER, fontWeight:800, letterSpacing:"0.06em", marginBottom:2 }}>
-              FLOORS KEPT
+              PROTEIN AND FAT KEPT
             </div>
             <div style={{ fontSize:11, color:"var(--gold-dim)", lineHeight:1.5 }}>
-              This target's too low to hit your protein and fat floors. We've kept your floors,
+              This target's too low to fit the minimum protein and fat your body needs. We've kept those minimums,
               so your macros add up to a bit more than this number.
             </div>
           </div>
