@@ -4907,8 +4907,11 @@ Rules:
 ${desc && desc.trim() ? `\nThe user added this context: "${desc.trim()}" — use it to disambiguate.\n` : ""}
 "ask" meanings: "fat" = hidden cooking fat (oil/butter vs dry/grilled); "portion" = ambiguous amount/size; "version" = animal-vs-plant or major recipe variant.
 
+"meal" is a short, natural name for the whole photo, 2–6 words, the way a person would write it in a food diary — e.g. "Chicken Caesar salad", "Full English breakfast", "Pret tuna baguette". If a brand or product name is visible on packaging, use it (e.g. "Müller Corner strawberry yogurt"). No portions, weights or numbers in it.
+
 Return ONLY valid JSON (no markdown, no preamble):
 {
+  "meal": "short name for the whole meal",
   "items": [
     { "name": "specific food with estimated portion", "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": number, "ask": "fat" | "portion" | "version" | null, "reasoning": "one sentence" }
   ]
@@ -4985,6 +4988,17 @@ const dropDuplicateTotalRow = items => items.filter((it, i) => {
   return !(sk > 0 && near(it.kcal, sk) && near(it.protein, sum("protein"))
     && near(it.carbs, sum("carbs")) && near(it.fat, sum("fat")));
 });
+
+// What a photo meal is called when it is logged as one entry. The model's own short name for
+// the photo comes first (it has seen the plate or the packaging); then whatever the user typed;
+// then the single item's name; never the old catch-all "Photo meal" unless there is nothing at all.
+const photoMealName = (meal, desc, items) => {
+  const m = typeof meal === "string" ? meal.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+  if (m) return m;
+  if (desc && desc.trim()) return desc.trim();
+  if (items && items.length === 1 && items[0].name) return items[0].name;
+  return "Photo meal";
+};
 
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
@@ -5218,6 +5232,7 @@ function AILog({ onAdd, onBack }) {
   const [desc,         setDesc]         = useState("");
   const [loading,      setLoading]      = useState(false);
   const [items,        setItems]        = useState(null);
+  const [mealName,     setMealName]     = useState(""); // model's short name for a photo meal
   const [reestIdx,     setReestIdx]     = useState(null);
   const [error,        setError]        = useState("");
   const [loggedAll,    setLoggedAll]    = useState(false);
@@ -5283,7 +5298,7 @@ function AILog({ onAdd, onBack }) {
 
   const estimate = async () => {
     if (!desc.trim() && !photo) return;
-    setLoading(true); setError(""); setItems(null); setLoggedAll(false); setLoggedCount({});
+    setLoading(true); setError(""); setItems(null); setMealName(""); setLoggedAll(false); setLoggedCount({});
     setFollowups([]); setFuDone({}); setFuLog([]);
     // A full totals line typed by the user IS the meal — one row, at once, no model call, no
     // questions (features/logging/06). Only for typed text: a photo is always estimated.
@@ -5297,6 +5312,7 @@ function AILog({ onAdd, onBack }) {
           ], 2000)
         : await callAIJson(AI_PROMPT(desc), 2000);
       const aiItems = parsed.items || [];
+      if (photo) setMealName(parsed.meal || "");
 
       // The model's rows are the rows. Normalise confidence only (vision models may return a
       // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
@@ -5353,6 +5369,7 @@ function AILog({ onAdd, onBack }) {
     // description — truncation is presentation-only (CSS), never in the data.
     // The one exception is a stated total (logging/06): the figures the user typed are not
     // part of the food's name, so the entry is called what the recogniser kept.
+    // A photo meal is called what the model saw (photoMealName), not "Photo meal".
     const stated = items.length === 1 && items[0].stated;
     const elements = items.map(it => ({
       name: it.name, kcal: Math.round(it.kcal),
@@ -5366,7 +5383,8 @@ function AILog({ onAdd, onBack }) {
       : avgConf;
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
     const source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
-    onAdd({ name: stated ? items[0].name : (desc.trim() || "Photo meal"), kcal: Math.round(totals.kcal),
+    const name = stated ? items[0].name : photo ? photoMealName(mealName, desc, items) : desc.trim();
+    onAdd({ name, kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs:   Math.round(totals.carbs   * 10) / 10,
       fat:     Math.round(totals.fat     * 10) / 10,

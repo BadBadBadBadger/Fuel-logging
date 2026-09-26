@@ -10450,7 +10450,7 @@ var AI_PROMPT = function AI_PROMPT(desc) {
 // Vision variant — same contract, but the meal is in the attached photo. Any
 // typed text is optional extra context (brand, restaurant, portion the user knows).
 var AI_PHOTO_PROMPT = function AI_PHOTO_PROMPT(desc) {
-  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL.\n\nA photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.\n\nRules:\n- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).\n- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.\n- Hidden cooking fat and exact portion are the usual photo blind spots \u2014 reflect that in confidence and in \"ask\".\n- For ANY component with confidence below 80, set \"ask\" to the single highest-leverage unknown: \"fat\", \"portion\", or \"version\" (see below). Otherwise null.\n".concat(desc && desc.trim() ? "\nThe user added this context: \"".concat(desc.trim(), "\" \u2014 use it to disambiguate.\n") : "", "\n\"ask\" meanings: \"fat\" = hidden cooking fat (oil/butter vs dry/grilled); \"portion\" = ambiguous amount/size; \"version\" = animal-vs-plant or major recipe variant.\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    { \"name\": \"specific food with estimated portion\", \"kcal\": number, \"protein\": number, \"carbs\": number, \"fat\": number, \"confidence\": number, \"ask\": \"fat\" | \"portion\" | \"version\" | null, \"reasoning\": \"one sentence\" }\n  ]\n}");
+  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL.\n\nA photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.\n\nRules:\n- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).\n- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.\n- Hidden cooking fat and exact portion are the usual photo blind spots \u2014 reflect that in confidence and in \"ask\".\n- For ANY component with confidence below 80, set \"ask\" to the single highest-leverage unknown: \"fat\", \"portion\", or \"version\" (see below). Otherwise null.\n".concat(desc && desc.trim() ? "\nThe user added this context: \"".concat(desc.trim(), "\" \u2014 use it to disambiguate.\n") : "", "\n\"ask\" meanings: \"fat\" = hidden cooking fat (oil/butter vs dry/grilled); \"portion\" = ambiguous amount/size; \"version\" = animal-vs-plant or major recipe variant.\n\n\"meal\" is a short, natural name for the whole photo, 2\u20136 words, the way a person would write it in a food diary \u2014 e.g. \"Chicken Caesar salad\", \"Full English breakfast\", \"Pret tuna baguette\". If a brand or product name is visible on packaging, use it (e.g. \"M\xFCller Corner strawberry yogurt\"). No portions, weights or numbers in it.\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"meal\": \"short name for the whole meal\",\n  \"items\": [\n    { \"name\": \"specific food with estimated portion\", \"kcal\": number, \"protein\": number, \"carbs\": number, \"fat\": number, \"confidence\": number, \"ask\": \"fat\" | \"portion\" | \"version\" | null, \"reasoning\": \"one sentence\" }\n  ]\n}");
 };
 var AI_REESTIMATE_PROMPT = function AI_REESTIMATE_PROMPT(item) {
   return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
@@ -10536,6 +10536,17 @@ var dropDuplicateTotalRow = function dropDuplicateTotalRow(items) {
     var sk = sum("kcal");
     return !(sk > 0 && near(it.kcal, sk) && near(it.protein, sum("protein")) && near(it.carbs, sum("carbs")) && near(it.fat, sum("fat")));
   });
+};
+
+// What a photo meal is called when it is logged as one entry. The model's own short name for
+// the photo comes first (it has seen the plate or the packaging); then whatever the user typed;
+// then the single item's name; never the old catch-all "Photo meal" unless there is nothing at all.
+var photoMealName = function photoMealName(meal, desc, items) {
+  var m = typeof meal === "string" ? meal.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+  if (m) return m;
+  if (desc && desc.trim()) return desc.trim();
+  if (items && items.length === 1 && items[0].name) return items[0].name;
+  return "Photo meal";
 };
 var confColor = function confColor(c) {
   return c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
@@ -10985,54 +10996,58 @@ function AILog(_ref95) {
     _useState118 = _slicedToArray(_useState117, 2),
     items = _useState118[0],
     setItems = _useState118[1];
-  var _useState119 = useState(null),
+  var _useState119 = useState(""),
     _useState120 = _slicedToArray(_useState119, 2),
-    reestIdx = _useState120[0],
-    setReestIdx = _useState120[1];
-  var _useState121 = useState(""),
+    mealName = _useState120[0],
+    setMealName = _useState120[1]; // model's short name for a photo meal
+  var _useState121 = useState(null),
     _useState122 = _slicedToArray(_useState121, 2),
-    error = _useState122[0],
-    setError = _useState122[1];
-  var _useState123 = useState(false),
+    reestIdx = _useState122[0],
+    setReestIdx = _useState122[1];
+  var _useState123 = useState(""),
     _useState124 = _slicedToArray(_useState123, 2),
-    loggedAll = _useState124[0],
-    setLoggedAll = _useState124[1];
-  var _useState125 = useState({}),
+    error = _useState124[0],
+    setError = _useState124[1];
+  var _useState125 = useState(false),
     _useState126 = _slicedToArray(_useState125, 2),
-    loggedCount = _useState126[0],
-    setLoggedCount = _useState126[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedAll = _useState126[0],
+    setLoggedAll = _useState126[1];
+  var _useState127 = useState({}),
+    _useState128 = _slicedToArray(_useState127, 2),
+    loggedCount = _useState128[0],
+    setLoggedCount = _useState128[1]; // idx -> times logged (ephemeral; resets on unmount)
   // Capture adapters — voice transcript + transient photo. The photo lives ONLY
   // here in memory ({base64, preview}); it is never written to storage and never
   // included in the saved record (see logAll). It is discarded when we unmount.
-  var _useState127 = useState(null),
-    _useState128 = _slicedToArray(_useState127, 2),
-    photo = _useState128[0],
-    setPhoto = _useState128[1];
-  var _useState129 = useState(false),
+  var _useState129 = useState(null),
     _useState130 = _slicedToArray(_useState129, 2),
-    listening = _useState130[0],
-    setListening = _useState130[1];
+    photo = _useState130[0],
+    setPhoto = _useState130[1];
   var _useState131 = useState(false),
     _useState132 = _slicedToArray(_useState131, 2),
-    micDenied = _useState132[0],
-    setMicDenied = _useState132[1];
+    listening = _useState132[0],
+    setListening = _useState132[1];
   var _useState133 = useState(false),
     _useState134 = _slicedToArray(_useState133, 2),
-    usedVoice = _useState134[0],
-    setUsedVoice = _useState134[1];
-  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
-  var _useState135 = useState([]),
+    micDenied = _useState134[0],
+    setMicDenied = _useState134[1];
+  var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
-    followups = _useState136[0],
-    setFollowups = _useState136[1]; // [{idx, ask, name}]
-  var _useState137 = useState({}),
+    usedVoice = _useState136[0],
+    setUsedVoice = _useState136[1];
+  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
+  var _useState137 = useState([]),
     _useState138 = _slicedToArray(_useState137, 2),
-    fuDone = _useState138[0],
-    setFuDone = _useState138[1]; // idx -> true once answered/skipped
-  var _useState139 = useState([]),
+    followups = _useState138[0],
+    setFollowups = _useState138[1]; // [{idx, ask, name}]
+  var _useState139 = useState({}),
     _useState140 = _slicedToArray(_useState139, 2),
-    fuLog = _useState140[0],
-    setFuLog = _useState140[1]; // [{q, a}] persisted with the meal
+    fuDone = _useState140[0],
+    setFuDone = _useState140[1]; // idx -> true once answered/skipped
+  var _useState141 = useState([]),
+    _useState142 = _slicedToArray(_useState141, 2),
+    fuLog = _useState142[0],
+    setFuLog = _useState142[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
   var fileRef = React.useRef(null);
 
@@ -11164,6 +11179,7 @@ function AILog(_ref95) {
             setLoading(true);
             setError("");
             setItems(null);
+            setMealName("");
             setLoggedAll(false);
             setLoggedCount({});
             setFollowups([]);
@@ -11208,7 +11224,10 @@ function AILog(_ref95) {
             _t36 = _context35.v;
           case 6:
             parsed = _t36;
-            aiItems = parsed.items || []; // The model's rows are the rows. Normalise confidence only (vision models may return a
+            aiItems = parsed.items || [];
+            if (photo) setMealName(parsed.meal || "");
+
+            // The model's rows are the rows. Normalise confidence only (vision models may return a
             // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
             // parallel and REPLACED any row it found a product for — at a fixed confidence of 98,
             // per that product's serving, under the AI's item name. features/logging/07.
@@ -11317,6 +11336,7 @@ function AILog(_ref95) {
     // description — truncation is presentation-only (CSS), never in the data.
     // The one exception is a stated total (logging/06): the figures the user typed are not
     // part of the food's name, so the entry is called what the recogniser kept.
+    // A photo meal is called what the model saw (photoMealName), not "Photo meal".
     var stated = items.length === 1 && items[0].stated;
     var elements = items.map(function (it) {
       return {
@@ -11333,8 +11353,9 @@ function AILog(_ref95) {
     }, 0) / totals.kcal) : avgConf;
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
     var source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    var name = stated ? items[0].name : photo ? photoMealName(mealName, desc, items) : desc.trim();
     onAdd({
-      name: stated ? items[0].name : desc.trim() || "Photo meal",
+      name: name,
       kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs: Math.round(totals.carbs * 10) / 10,
@@ -11760,14 +11781,14 @@ function QuickAdd(_ref99) {
     isPremium = _ref99$isPremium === void 0 ? false : _ref99$isPremium,
     _ref99$onPremiumGate = _ref99.onPremiumGate,
     onPremiumGate = _ref99$onPremiumGate === void 0 ? function () {} : _ref99$onPremiumGate;
-  var _useState141 = useState(""),
-    _useState142 = _slicedToArray(_useState141, 2),
-    search = _useState142[0],
-    setSearch = _useState142[1];
-  var _useState143 = useState(null),
+  var _useState143 = useState(""),
     _useState144 = _slicedToArray(_useState143, 2),
-    modal = _useState144[0],
-    setModal = _useState144[1];
+    search = _useState144[0],
+    setSearch = _useState144[1];
+  var _useState145 = useState(null),
+    _useState146 = _slicedToArray(_useState145, 2),
+    modal = _useState146[0],
+    setModal = _useState146[1];
   var save = /*#__PURE__*/function () {
     var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(m) {
       return _regenerator().w(function (_context37) {
@@ -11951,26 +11972,26 @@ function QuickAdd(_ref99) {
 function FoodSearch(_ref101) {
   var onAdd = _ref101.onAdd,
     onBack = _ref101.onBack;
-  var _useState145 = useState(""),
-    _useState146 = _slicedToArray(_useState145, 2),
-    q = _useState146[0],
-    setQ = _useState146[1];
-  var _useState147 = useState([]),
+  var _useState147 = useState(""),
     _useState148 = _slicedToArray(_useState147, 2),
-    results = _useState148[0],
-    setResults = _useState148[1];
-  var _useState149 = useState(false),
+    q = _useState148[0],
+    setQ = _useState148[1];
+  var _useState149 = useState([]),
     _useState150 = _slicedToArray(_useState149, 2),
-    loading = _useState150[0],
-    setLoading = _useState150[1];
-  var _useState151 = useState(""),
+    results = _useState150[0],
+    setResults = _useState150[1];
+  var _useState151 = useState(false),
     _useState152 = _slicedToArray(_useState151, 2),
-    error = _useState152[0],
-    setError = _useState152[1];
-  var _useState153 = useState(false),
+    loading = _useState152[0],
+    setLoading = _useState152[1];
+  var _useState153 = useState(""),
     _useState154 = _slicedToArray(_useState153, 2),
-    done = _useState154[0],
-    setDone = _useState154[1];
+    error = _useState154[0],
+    setError = _useState154[1];
+  var _useState155 = useState(false),
+    _useState156 = _slicedToArray(_useState155, 2),
+    done = _useState156[0],
+    setDone = _useState156[1];
   var search = /*#__PURE__*/function () {
     var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38() {
       var res, data, parseServing, parseKcal, valid, _t39;
@@ -12311,46 +12332,46 @@ function History(_ref104) {
       unit: "g"
     }
   };
-  var _useState155 = useState("30D"),
-    _useState156 = _slicedToArray(_useState155, 2),
-    range = _useState156[0],
-    setRange = _useState156[1];
-  var _useState157 = useState(["KCAL"]),
+  var _useState157 = useState("30D"),
     _useState158 = _slicedToArray(_useState157, 2),
-    metrics = _useState158[0],
-    setMetrics = _useState158[1];
-  var _useState159 = useState(false),
+    range = _useState158[0],
+    setRange = _useState158[1];
+  var _useState159 = useState(["KCAL"]),
     _useState160 = _slicedToArray(_useState159, 2),
-    showWeight = _useState160[0],
-    setShowWeight = _useState160[1];
+    metrics = _useState160[0],
+    setMetrics = _useState160[1];
   var _useState161 = useState(false),
     _useState162 = _slicedToArray(_useState161, 2),
-    showBodyFat = _useState162[0],
-    setShowBodyFat = _useState162[1];
+    showWeight = _useState162[0],
+    setShowWeight = _useState162[1];
   var _useState163 = useState(false),
     _useState164 = _slicedToArray(_useState163, 2),
-    showTape = _useState164[0],
-    setShowTape = _useState164[1];
-  var _useState165 = useState("line"),
+    showBodyFat = _useState164[0],
+    setShowBodyFat = _useState164[1];
+  var _useState165 = useState(false),
     _useState166 = _slicedToArray(_useState165, 2),
-    chartType = _useState166[0],
-    setChartType = _useState166[1];
-  var _useState167 = useState(Math.max(0, history.length - 1)),
+    showTape = _useState166[0],
+    setShowTape = _useState166[1];
+  var _useState167 = useState("line"),
     _useState168 = _slicedToArray(_useState167, 2),
-    dayIdx = _useState168[0],
-    setDayIdx = _useState168[1];
-  var _useState169 = useState(null),
+    chartType = _useState168[0],
+    setChartType = _useState168[1];
+  var _useState169 = useState(Math.max(0, history.length - 1)),
     _useState170 = _slicedToArray(_useState169, 2),
-    addCtx = _useState170[0],
-    setAddCtx = _useState170[1];
+    dayIdx = _useState170[0],
+    setDayIdx = _useState170[1];
   var _useState171 = useState(null),
     _useState172 = _slicedToArray(_useState171, 2),
-    editId = _useState172[0],
-    setEditId = _useState172[1];
+    addCtx = _useState172[0],
+    setAddCtx = _useState172[1];
   var _useState173 = useState(null),
     _useState174 = _slicedToArray(_useState173, 2),
-    tgtDraft = _useState174[0],
-    setTgtDraft = _useState174[1]; // past-day target being typed, or null
+    editId = _useState174[0],
+    setEditId = _useState174[1];
+  var _useState175 = useState(null),
+    _useState176 = _slicedToArray(_useState175, 2),
+    tgtDraft = _useState176[0],
+    setTgtDraft = _useState176[1]; // past-day target being typed, or null
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -13960,11 +13981,11 @@ function BadgeFanfare(_ref114) {
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState175 = useState(0),
-    _useState176 = _slicedToArray(_useState175, 2),
-    count = _useState176[0],
-    setCount = _useState176[1];
-  var _useState177 = useState(function () {
+  var _useState177 = useState(0),
+    _useState178 = _slicedToArray(_useState177, 2),
+    count = _useState178[0],
+    setCount = _useState178[1];
+  var _useState179 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -13978,8 +13999,8 @@ function BadgeFanfare(_ref114) {
         };
       });
     }),
-    _useState178 = _slicedToArray(_useState177, 1),
-    floaters = _useState178[0];
+    _useState180 = _slicedToArray(_useState179, 1),
+    floaters = _useState180[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -14237,125 +14258,125 @@ function NoteToast(_ref117) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState179 = useState("dashboard"),
-    _useState180 = _slicedToArray(_useState179, 2),
-    view = _useState180[0],
-    setView = _useState180[1];
-  var _useState181 = useState([]),
+  var _useState181 = useState("dashboard"),
     _useState182 = _slicedToArray(_useState181, 2),
-    logs = _useState182[0],
-    setLogs = _useState182[1];
-  var _useState183 = useState(0),
+    view = _useState182[0],
+    setView = _useState182[1];
+  var _useState183 = useState([]),
     _useState184 = _slicedToArray(_useState183, 2),
-    water = _useState184[0],
-    setWater = _useState184[1];
-  var _useState185 = useState("cut"),
+    logs = _useState184[0],
+    setLogs = _useState184[1];
+  var _useState185 = useState(0),
     _useState186 = _slicedToArray(_useState185, 2),
-    mode = _useState186[0],
-    setMode = _useState186[1];
-  var _useState187 = useState(null),
+    water = _useState186[0],
+    setWater = _useState186[1];
+  var _useState187 = useState("cut"),
     _useState188 = _slicedToArray(_useState187, 2),
-    prof = _useState188[0],
-    setProf = _useState188[1];
-  var _useState189 = useState([]),
+    mode = _useState188[0],
+    setMode = _useState188[1];
+  var _useState189 = useState(null),
     _useState190 = _slicedToArray(_useState189, 2),
-    hist = _useState190[0],
-    setHist = _useState190[1];
-  var _useState191 = useState([].concat(DEF_MEALS)),
+    prof = _useState190[0],
+    setProf = _useState190[1];
+  var _useState191 = useState([]),
     _useState192 = _slicedToArray(_useState191, 2),
-    meals = _useState192[0],
-    setMeals = _useState192[1];
-  var _useState193 = useState([]),
+    hist = _useState192[0],
+    setHist = _useState192[1];
+  var _useState193 = useState([].concat(DEF_MEALS)),
     _useState194 = _slicedToArray(_useState193, 2),
-    workouts = _useState194[0],
-    setWorkouts = _useState194[1];
+    meals = _useState194[0],
+    setMeals = _useState194[1];
+  var _useState195 = useState([]),
+    _useState196 = _slicedToArray(_useState195, 2),
+    workouts = _useState196[0],
+    setWorkouts = _useState196[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState195 = useState([0, 0]),
-    _useState196 = _slicedToArray(_useState195, 2),
-    priorWorkoutKcal = _useState196[0],
-    setPriorWorkoutKcal = _useState196[1];
-  var _useState197 = useState([]),
+  var _useState197 = useState([0, 0]),
     _useState198 = _slicedToArray(_useState197, 2),
-    earnedBdgs = _useState198[0],
-    setEarnedBdgs = _useState198[1];
-  var _useState199 = useState(null),
+    priorWorkoutKcal = _useState198[0],
+    setPriorWorkoutKcal = _useState198[1];
+  var _useState199 = useState([]),
     _useState200 = _slicedToArray(_useState199, 2),
-    newBadge = _useState200[0],
-    setNewBadge = _useState200[1];
-  var _useState201 = useState(false),
+    earnedBdgs = _useState200[0],
+    setEarnedBdgs = _useState200[1];
+  var _useState201 = useState(null),
     _useState202 = _slicedToArray(_useState201, 2),
-    ready = _useState202[0],
-    setReady = _useState202[1];
-  var _useState203 = useState([]),
+    newBadge = _useState202[0],
+    setNewBadge = _useState202[1];
+  var _useState203 = useState(false),
     _useState204 = _slicedToArray(_useState203, 2),
-    weighIns = _useState204[0],
-    setWeighIns = _useState204[1];
-  var _useState205 = useState(0),
+    ready = _useState204[0],
+    setReady = _useState204[1];
+  var _useState205 = useState([]),
     _useState206 = _slicedToArray(_useState205, 2),
-    tdeeAdj = _useState206[0],
-    setTdeeAdj = _useState206[1];
-  var _useState207 = useState([]),
+    weighIns = _useState206[0],
+    setWeighIns = _useState206[1];
+  var _useState207 = useState(0),
     _useState208 = _slicedToArray(_useState207, 2),
-    adjLog = _useState208[0],
-    setAdjLog = _useState208[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState209 = useState(null),
+    tdeeAdj = _useState208[0],
+    setTdeeAdj = _useState208[1];
+  var _useState209 = useState([]),
     _useState210 = _slicedToArray(_useState209, 2),
-    weighNudgeAt = _useState210[0],
-    setWeighNudgeAt = _useState210[1]; // last weigh-in-nudge dismissal (ms; local-only)
+    adjLog = _useState210[0],
+    setAdjLog = _useState210[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState211 = useState(null),
+    _useState212 = _slicedToArray(_useState211, 2),
+    weighNudgeAt = _useState212[0],
+    setWeighNudgeAt = _useState212[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState211 = useState([]),
-    _useState212 = _slicedToArray(_useState211, 2),
-    bodyMeasurements = _useState212[0],
-    setBodyMeasurements = _useState212[1];
-  var _useState213 = useState(false),
+  var _useState213 = useState([]),
     _useState214 = _slicedToArray(_useState213, 2),
-    muteMeasurements = _useState214[0],
-    setMuteMeasurements = _useState214[1];
-  var _useState215 = useState(""),
+    bodyMeasurements = _useState214[0],
+    setBodyMeasurements = _useState214[1];
+  var _useState215 = useState(false),
     _useState216 = _slicedToArray(_useState215, 2),
-    measurementNote = _useState216[0],
-    setMeasurementNote = _useState216[1];
-  var _useState217 = useState(null),
+    muteMeasurements = _useState216[0],
+    setMuteMeasurements = _useState216[1];
+  var _useState217 = useState(""),
     _useState218 = _slicedToArray(_useState217, 2),
-    measurementNudgeAt = _useState218[0],
-    setMeasurementNudgeAt = _useState218[1];
-  var _useState219 = useState(EMPTY_CUT_BLOCK),
+    measurementNote = _useState218[0],
+    setMeasurementNote = _useState218[1];
+  var _useState219 = useState(null),
     _useState220 = _slicedToArray(_useState219, 2),
-    cutBlock = _useState220[0],
-    setCutBlock = _useState220[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState221 = useState(0),
+    measurementNudgeAt = _useState220[0],
+    setMeasurementNudgeAt = _useState220[1];
+  var _useState221 = useState(EMPTY_CUT_BLOCK),
     _useState222 = _slicedToArray(_useState221, 2),
-    coachKey = _useState222[0],
-    setCoachKey = _useState222[1];
-  var _useState223 = useState(null),
+    cutBlock = _useState222[0],
+    setCutBlock = _useState222[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState223 = useState(0),
     _useState224 = _slicedToArray(_useState223, 2),
-    streakPop = _useState224[0],
-    setStreakPop = _useState224[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState224[0],
+    setCoachKey = _useState224[1];
   var _useState225 = useState(null),
     _useState226 = _slicedToArray(_useState225, 2),
-    badgeToast = _useState226[0],
-    setBadgeToast = _useState226[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState226[0],
+    setStreakPop = _useState226[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState227 = useState(null),
     _useState228 = _slicedToArray(_useState227, 2),
-    noteToast = _useState228[0],
-    setNoteToast = _useState228[1]; // plain one-line confirmations
-  var _useState229 = useState(false),
+    badgeToast = _useState228[0],
+    setBadgeToast = _useState228[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState229 = useState(null),
     _useState230 = _slicedToArray(_useState229, 2),
-    badgeGlow = _useState230[0],
-    setBadgeGlow = _useState230[1]; // the 🏆 glow paired with the toast
-  var _useState231 = useState(null),
+    noteToast = _useState230[0],
+    setNoteToast = _useState230[1]; // plain one-line confirmations
+  var _useState231 = useState(false),
     _useState232 = _slicedToArray(_useState231, 2),
-    customKcal = _useState232[0],
-    setCustomKcal = _useState232[1];
-  var _useState233 = useState(false),
+    badgeGlow = _useState232[0],
+    setBadgeGlow = _useState232[1]; // the 🏆 glow paired with the toast
+  var _useState233 = useState(null),
     _useState234 = _slicedToArray(_useState233, 2),
-    aggressiveCutAcked = _useState234[0],
-    setAggressiveCutAcked = _useState234[1];
-  var _useState235 = useState(0),
+    customKcal = _useState234[0],
+    setCustomKcal = _useState234[1];
+  var _useState235 = useState(false),
     _useState236 = _slicedToArray(_useState235, 2),
-    setThemeTick = _useState236[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState236[0],
+    setAggressiveCutAcked = _useState236[1];
+  var _useState237 = useState(0),
+    _useState238 = _slicedToArray(_useState237, 2),
+    setThemeTick = _useState238[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -14381,46 +14402,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState237 = useState("anonymous"),
-    _useState238 = _slicedToArray(_useState237, 2),
-    authState = _useState238[0],
-    setAuthState = _useState238[1];
-  var _useState239 = useState(null),
+  var _useState239 = useState("anonymous"),
     _useState240 = _slicedToArray(_useState239, 2),
-    authUser = _useState240[0],
-    setAuthUser = _useState240[1];
+    authState = _useState240[0],
+    setAuthState = _useState240[1];
   var _useState241 = useState(null),
     _useState242 = _slicedToArray(_useState241, 2),
-    premiumGate = _useState242[0],
-    setPremiumGate = _useState242[1]; // {emoji, name} | null
-  var _useState243 = useState(false),
+    authUser = _useState242[0],
+    setAuthUser = _useState242[1];
+  var _useState243 = useState(null),
     _useState244 = _slicedToArray(_useState243, 2),
-    showSignIn = _useState244[0],
-    setShowSignIn = _useState244[1];
+    premiumGate = _useState244[0],
+    setPremiumGate = _useState244[1]; // {emoji, name} | null
   var _useState245 = useState(false),
     _useState246 = _slicedToArray(_useState245, 2),
-    showSignOut = _useState246[0],
-    setShowSignOut = _useState246[1];
+    showSignIn = _useState246[0],
+    setShowSignIn = _useState246[1];
   var _useState247 = useState(false),
     _useState248 = _slicedToArray(_useState247, 2),
-    showLapsed = _useState248[0],
-    setShowLapsed = _useState248[1];
+    showSignOut = _useState248[0],
+    setShowSignOut = _useState248[1];
   var _useState249 = useState(false),
     _useState250 = _slicedToArray(_useState249, 2),
-    needsConsent = _useState250[0],
-    setNeedsConsent = _useState250[1]; // retroactive Art. 9 consent (R2)
-  var _useState251 = useState(null),
+    showLapsed = _useState250[0],
+    setShowLapsed = _useState250[1];
+  var _useState251 = useState(false),
     _useState252 = _slicedToArray(_useState251, 2),
-    consentInfo = _useState252[0],
-    setConsentInfo = _useState252[1]; // parsed local health_consent for display
-  var _useState253 = useState(navigator.onLine),
+    needsConsent = _useState252[0],
+    setNeedsConsent = _useState252[1]; // retroactive Art. 9 consent (R2)
+  var _useState253 = useState(null),
     _useState254 = _slicedToArray(_useState253, 2),
-    isOnline = _useState254[0],
-    setIsOnline = _useState254[1];
-  var _useState255 = useState(""),
+    consentInfo = _useState254[0],
+    setConsentInfo = _useState254[1]; // parsed local health_consent for display
+  var _useState255 = useState(navigator.onLine),
     _useState256 = _slicedToArray(_useState255, 2),
-    syncMsg = _useState256[0],
-    setSyncMsg = _useState256[1];
+    isOnline = _useState256[0],
+    setIsOnline = _useState256[1];
+  var _useState257 = useState(""),
+    _useState258 = _slicedToArray(_useState257, 2),
+    syncMsg = _useState258[0],
+    setSyncMsg = _useState258[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);

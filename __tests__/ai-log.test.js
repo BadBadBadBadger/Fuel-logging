@@ -23,9 +23,9 @@ const lifted = (() => {
   const end   = src.indexOf("const confColor", start);
   if (start < 0 || end < 0) throw new Error("stated-totals block not found in app.jsx");
   const block = src.slice(start, end);
-  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow };")();
+  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName };")();
 })();
-const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow } = lifted;
+const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName } = lifted;
 
 describe("A full totals line typed by the user is the meal (logging/06)", () => {
   test("the founder's crumpets: name before the figures, all four numbers exact", () => {
@@ -194,5 +194,43 @@ describe("The prompt carries the rules the bug report asked for (logging/07)", (
   });
   test("a question the text already answers is not asked", () => {
     expect(prompt).toMatch(/already answers a question.*do not ask it/s);
+  });
+});
+
+describe("A photo meal is named after what the model saw, not \"Photo meal\"", () => {
+  const items = [{ name: "150g grilled chicken" }, { name: "80g mixed leaves" }];
+
+  test("the model's short name wins", () => {
+    expect(photoMealName("Chicken Caesar salad", "", items)).toBe("Chicken Caesar salad");
+  });
+  test("it wins over typed context too — the context is a hint, not a name", () => {
+    expect(photoMealName("Pret tuna baguette", "from Pret", items)).toBe("Pret tuna baguette");
+  });
+  test("whitespace is tidied and an over-long name is cut", () => {
+    expect(photoMealName("  Müller   Corner  yogurt ", "", items)).toBe("Müller Corner yogurt");
+    expect(photoMealName("x".repeat(100), "", items)).toHaveLength(60);
+  });
+  test("no model name → what the user typed", () => {
+    expect(photoMealName("", "leftover curry", items)).toBe("leftover curry");
+    expect(photoMealName(undefined, "leftover curry", items)).toBe("leftover curry");
+  });
+  test("nothing typed and one item → that item's name", () => {
+    expect(photoMealName(null, "", [{ name: "Cadbury Dairy Milk 45g" }])).toBe("Cadbury Dairy Milk 45g");
+  });
+  test("\"Photo meal\" only when there is nothing else at all", () => {
+    expect(photoMealName("", "  ", items)).toBe("Photo meal");
+  });
+
+  const photoPrompt = (() => {
+    const start = src.indexOf("const AI_PHOTO_PROMPT");
+    return src.slice(start, src.indexOf("`;", start));
+  })();
+  test("the photo prompt asks for a short meal name, using packaging brand names", () => {
+    expect(photoPrompt).toMatch(/"meal": "short name for the whole meal"/);
+    expect(photoPrompt).toMatch(/brand or product name is visible on packaging, use it/);
+  });
+  test("logAll uses it for photo meals", () => {
+    expect(src).toMatch(/photo \? photoMealName\(mealName, desc, items\)/);
+    expect(src).not.toMatch(/\|\| "Photo meal"\), kcal/);
   });
 });
