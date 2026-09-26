@@ -24,7 +24,7 @@ post-commit world and says what changes because of that.
 | FL-007 | Medium | **Real gap. No migration needed — and "meal-slot coverage" does not exist in this data model.** Inferable from `l.id`. §3.7 | Small if inferred; a migration if stored |
 | FL-008 | Low, "will break the fix" | **Not a bug. Already guarded** at `app.jsx:5931` + `6077`. No NaN, no divide-by-zero, ever. Only the empty-state *copy* becomes wrong. | One string |
 | FL-009 | Low | **Real, and narrower than stated** — 2 charts, not 5. `measurementChartRows` already carries `rawDate` (`app.jsx:982`), so most of the fix is already paid for. | Small per chart; leave the bar chart alone |
-| FL-010 | High | **Real bug, and the specified fix is the one thing in this batch I would refuse to build as written.** It requires recomputing a *safety-floored* calorie target from inputs that were never stored. §3.10, §4.3 | UI: ~8 lines. Doing it correctly: a founder decision, possibly a migration |
+| FL-010 | High | **Real bug, and the specified fix is the one thing in this batch I would refuse to build as written.** It requires recomputing a *safety-raised* calorie target from inputs that were never stored. §3.10, §4.3 | UI: ~8 lines. Doing it correctly: a founder decision, possibly a migration |
 
 Two bugs that are **not in the report** and are higher-stakes than most that are — §4.4 and §4.5.
 
@@ -330,12 +330,12 @@ Concretely, for 12/09 (maintain → cut, est. TDEE 2709, eaten 2331):
 So the **buggy** version gives the founder the green day he expects and the **correct** version
 does not. Green needs the recomputed cut target ≥ 2231; `2709 − 500 = 2209` misses by 22 kcal.
 (I cannot confirm 12/09's actual stored `targetKcal` — it also carries that day's smoothed workout
-bonus and any floor — so treat the exact colour as unresolved, and treat "it may still be amber"
+bonus and any minimum — so treat the exact colour as unresolved, and treat "it may still be amber"
 as the thing to tell the founder before building.)
 
 And `targetFat` is mode-dependent too: `FAT_MODE_PER_KG.male` is `cut 0.8` vs `maintain 1.0`
 (`app.jsx:284-287`, applied at `297-298`). At 98.5 kg that is 79 g vs 99 g — a 20 g swing in the
-ceiling `fatDayScore` grades against (`535-547`).
+upper limit `fatDayScore` grades against (`535-547`).
 
 **Why it cannot simply be recomputed.** `calcTargets` needs that day's weight, body fat, sex,
 activity, `tdeeAdj`, smoothed workout bonus and any custom-kcal override. **None of those are
@@ -391,7 +391,7 @@ A 26 kcal disagreement between two averages on adjacent screens, against a band 
 `WEEK_BAND_KCAL = 250`. Somebody has to decide which window is canonical before FL-001 is coded,
 or FL-005 is re-raised the week after it closes.
 
-### 4.3 FL-010: stored derived state, and a floor that must not be shifted
+### 4.3 FL-010: stored derived state, and a minimum that must not be shifted
 
 **This is the biggest hidden risk in the batch.**
 
@@ -418,10 +418,10 @@ Four persisted things were computed from a day's mode:
 4. Nothing else. Confirmed: `d.training` is display-only (`app.jsx:5763-5769`, `6116`, CSV
    `1005`) — no computation reads it.
 
-**The floor problem.** A mode delta-shift (`targetKcal + MODES[new].adj − MODES[old].adj`) is
-valid only because `calcTargets` applies the mode as a flat `±500` *before* the floors
+**The minimum problem.** A mode delta-shift (`targetKcal + MODES[new].adj − MODES[old].adj`) is
+valid only because `calcTargets` applies the mode as a flat `±500` *before* the minimums
 (`app.jsx:402`, then `bmrFloorApplied` 403-404, `deficitFloorApplied` 410-411, `safeMinApplied`
-413-414). On any day where a floor held, the stored `targetKcal` **is** the floor, and shifting it
+413-414). On any day where a minimum held, the stored `targetKcal` **is** the minimum, and shifting it
 by −500 produces a historical target below the safety minimum the energy-safety workstream exists
 to enforce. `h.floored` (`3946`) already records this, so the shift can and must refuse there.
 
@@ -434,7 +434,7 @@ Recording it is a new column on `history_snapshots` → house rule 5 → a migra
 
 **Recommended shape, cheapest correct version:**
 
-- Store the corrected `mode`. Nothing else. No migration, no floor risk, no recompute.
+- Store the corrected `mode`. Nothing else. No migration, no minimum risk, no recompute.
 - Re-grade the segment with the corrected mode **against the target that actually applied**, and
   show that target on the day-detail screen so the result is explicable. This is truthful: the
   app did tell him 2709 that day. Accept that a →CUT correction reads green via "under is never a
@@ -585,7 +585,7 @@ database migration **if** FL-010 takes option (a) or the `floored`-guarded optio
 
 - **FL-010 as specified** ("changing it from MAINTAIN to CUT rescores that day", "the weekly
   result recalculates"). As written, the cheap implementation leaves `targetKcal` stale and the
-  thorough one recomputes a floored safety target from inputs that were never stored. It also
+  thorough one recomputes a safety-raised target from inputs that were never stored. It also
   promises a weekly-verdict change the engine cannot deliver (§3.3). **I would not build this as
   specified.** It needs a founder decision on the target first.
 - **FL-002's "take it from the ends of the smoothed line."** `ROLLING` is a trailing mean over a
@@ -604,7 +604,7 @@ database migration **if** FL-010 takes option (a) or the `floored`-guarded optio
 
 - **12/09's actual stored `targetKcal` and `floored`.** I used the report's "est. TDEE 2,709" and
   `MODES.cut.adj = −500`. The real snapshot also carries that day's smoothed workout bonus and any
-  floor, so the predicted segment colour in §3.10 is a band, not a fact. Read the real snapshot
+  minimum, so the predicted segment colour in §3.10 is a band, not a fact. Read the real snapshot
   before promising the founder a colour.
 - **FL-002's "the black line rises about 0.3kg".** The report gives only the first (97.1) and last
   (98.8) weigh-ins; I cannot recompute `ROLLING` from five missing values. The *structural* claim

@@ -23,9 +23,9 @@
 #     food_logs rows arrive has real kcal and an empty array). The two engines cannot drift.
 #   • `dateKey` / `todayKey` for every boundary. Never `toISOString()`, which is UTC — that was
 #     half of FL-001 and is now a build failure, see the guard note below.
-#   • `computeMacros` for any re-split of a calorie target, so protein and fat keep their floors
+#   • `computeMacros` for any re-split of a calorie target, so protein and fat keep their minimums
 #     and carbs absorb the change. Never proportionally scaled.
-#   • `SAFE_MIN` on any typed target, so a hand-set number still cannot go below the floor.
+#   • `SAFE_MIN` on any typed target, so a hand-set number still cannot go below the minimum.
 #
 # NOT in this file, on purpose:
 #   • correcting a past day's mode or target — `features/history/02-correcting-a-past-day.feature`.

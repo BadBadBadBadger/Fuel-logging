@@ -236,7 +236,7 @@ be tapped.
 ## FL-003c — "The weekly ring then reports 'This week hasn't been a cut' on the strength of that one day"
 
 **False, and the word "status" is how it got in.** `weeklyIntakeScore` (`app.jsx:614-651`) takes
-`days` (kcal, loggedAnything, floored), `selectedMode` and `tdeeBaseline`. **No day's mode is an
+`days` (`kcal`, `loggedAnything`, `floored`), `selectedMode` and `tdeeBaseline`. **No day's mode is an
 input.** The copy is chosen by `WEEK_READ_COPY[selectedMode][band]` where `selectedMode` is the
 **live app-wide** `mode` (`app.jsx:3973`), and `band` comes from the week's average kcal against raw
 TDEE.

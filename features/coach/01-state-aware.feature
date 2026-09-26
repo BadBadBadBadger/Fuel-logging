@@ -36,7 +36,7 @@ Feature: Coach is state-aware and varies its suggestions
 
   # Added 2026-09-26 (sw v91), on the founder's word: "floor" and "ceiling" are maths terms that
   # make no sense in spoken English. The model copies whatever words the prompt feeds it, so the
-  # prompt forbids both AND stopped using them itself ("protein floor" → "protein goal"). A soft
+  # prompt forbids both AND stopped using them itself ("protein minimum" → "protein goal"). A soft
   # instruction, like every prompt rule — there is no output check (compare the allergen
   # backstop in 03); add one if the word is seen in a real tip.
   Scenario: The coach talks in plain English, never "floor" or "ceiling"

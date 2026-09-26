@@ -9,7 +9,7 @@
 # This file owns ONLY how the card composes states that 04 computes — ring geometry,
 # positioning, which surface shows which timeframe. It never computes a colour, a label, or a
 # hero action itself; every state referenced here is graded in 04. No Background is needed —
-# nothing here depends on macro roles, the fat floor, or any term 04 defines, which is itself
+# nothing here depends on macro roles, the fat minimum, or any term 04 defines, which is itself
 # evidence this is a genuinely separate concern from 04's grading logic.
 #
 # The two-ring dial has no prior art elsewhere in this app (no existing ring/dial component in

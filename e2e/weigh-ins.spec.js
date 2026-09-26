@@ -163,9 +163,9 @@ test.describe("Two months of weigh-ins — the scale hasn't moved", () => {
     await expect(page.getByText(/the scale disagrees with this estimate/i)).toHaveCount(0);
   });
 
-  test("the target stays above the safe floor, not merely unchanged", async ({ page }) => {
+  test("the target stays above the safe minimum, not merely unchanged", async ({ page }) => {
     // Unchanged is not the same as safe. SAFE_MIN for a male body is 1400 kcal (app.jsx:569 area),
-    // and the steady-loss floor caps any deficit at 25% of maintenance.
+    // and the steady-loss minimum caps any deficit at 25% of maintenance.
     await open(page, { weighInsSpec: STALLED_OPEN, historySpec: DEFICIT_HISTORY,
       cutBlock: LONG_BLOCK, mode: "cut" });
     await expect(page.getByText("CONSUMED")).toBeVisible({ timeout: 15_000 });

@@ -566,17 +566,17 @@ var SAFE_MIN = {
   female: 1200
 };
 
-// ── Macro floor engine (feature #7) ──────────────────────────────
+// ── Macro minimum engine (feature #7) ──────────────────────────────
 // One source of truth for protein/fat/carbs at any calorie target, used by both
 // the preset path (calcTargets) and the custom-target path. Protein and fat are
-// FLOORS, not proportionally-scaled values — carbs absorb the whole deficit/surplus.
-//   • protein: a flat g/kg-LEAN-MASS floor, identical in every mode, so it stops
+// MINIMUMS, not proportionally-scaled values — carbs absorb the whole deficit/surplus.
+//   • protein: a flat g/kg-LEAN-MASS minimum, identical in every mode, so it stops
 //     fluctuating on a cut/maintain/bulk switch (male 2.2 / female 2.0).
 //   • fat: stays mode-varying (more to spare on a bulk) but never below a hormonal
-//     floor of 0.6 g/kg BODYWEIGHT — this is what the old proportional scaling broke.
-//   • carbs: whatever calories remain after the two floors, min 50g.
-//   • floorsExceedKcal: true when the target is too low to fit both floors + min
-//     carbs. We keep the floors (never silently break one) and let the UI warn.
+//     minimum of 0.6 g/kg BODYWEIGHT — this is what the old proportional scaling broke.
+//   • carbs: whatever calories remain after the two minimums, min 50g.
+//   • floorsExceedKcal: true when the target is too low to fit both minimums + min
+//     carbs. We keep the minimums (never silently break one) and let the UI warn.
 var PROTEIN_PER_LBM = {
   male: 2.2,
   female: 2.0
@@ -606,7 +606,7 @@ var computeMacros = function computeMacros(p, mode, kcal) {
   var fat = Math.round(w * fatPerKg);
   var floorKcal = protein * 4 + fat * 9;
   var carbs = Math.max(MIN_CARBS_G, Math.round((kcal - floorKcal) / 4));
-  // The floors alone (+ minimum carbs) already cost more than the target asks for.
+  // The minimums alone (+ minimum carbs) already cost more than the target asks for.
   var floorsExceedKcal = floorKcal + MIN_CARBS_G * 4 > kcal;
   return {
     protein: protein,
@@ -622,7 +622,7 @@ var computeMacros = function computeMacros(p, mode, kcal) {
 // These are NEAT-ONLY multipliers — deliberately below the textbook whole-day factors
 // (1.375–1.725) because logged workouts are added separately as "earn to eat"; a
 // whole-day factor would double-count training. Sedentary == 1.20 == the old flat
-// baseline, so existing/unset users and the BMR×1.2 maintenance floor are unchanged.
+// baseline, so existing/unset users and the BMR × 1.2 maintenance minimum are unchanged.
 // Values locked against the believability gate (ENERGY_MODEL.md §4); the exact numbers
 // are owned here + mirrored in __tests__/logic.test.js.
 var ACTIVITY = {
@@ -658,7 +658,7 @@ var bmrOf = function bmrOf(p) {
 var seedTDEE = function seedTDEE(p) {
   return Math.round(bmrOf(p) * activityMult(p));
 };
-// Absolute MAINTAIN floor — nobody's true maintenance sits below sedentary energy use,
+// Absolute MAINTAIN minimum — nobody's true maintenance sits below sedentary energy use,
 // so the adaptive auto-lowering can never drag maintenance there even for a user who
 // seeded a higher activity level (adaptive may calibrate that seed DOWN to sedentary,
 // never below). Stays BMR×1.2 regardless of the seed.
@@ -682,15 +682,15 @@ var smoothWorkoutKcal = function smoothWorkoutKcal(kcalByOffset) {
   }, 0));
 };
 
-// ── Energy floor + low-fuel warning (energy-model Step 4) ─────────
+// ── Energy-availability minimum + low-fuel warning (energy-model Step 4) ─────────
 // features/energy-safety/01. Two DIFFERENT protections, deliberately separated —
-// the draft spec conflated them into one EA-30 floor, which doesn't survive the
+// the draft spec conflated them into one EA-30 minimum, which doesn't survive the
 // numbers (see ENERGY_MODEL.md §5 Step 4):
 //
 //  1. MOVES THE TARGET — rate of loss. A preset target never takes more than
 //     MAX_DEFICIT_FRAC off believable maintenance (+ today's applied training
 //     bonus, so the Step-3 smoothing isn't undone). This scales with body size,
-//     which is what the flat SAFE_MIN never did: a 98.5 kg body floors ~1,673,
+//     which is what the flat SAFE_MIN never did: a 98.5 kg body bottoms out at ~1,673,
 //     a 60 kg body ~1,208. SAFE_MIN survives only as the absolute backstop.
 //  2. WARNING ONLY — energy availability. EA = (intake − today's training burn)
 //     / fat-free mass; below EA_HARD the RED-S literature (Loucks & Thuma 2003;
@@ -726,7 +726,7 @@ var isLeanBody = function isLeanBody(p) {
   return bodyFatSet(p) && Number(p.bodyFat) <= LEAN_BF[p.sex === "female" ? "female" : "male"];
 };
 
-// The steady-loss floor: 75% of the energy the day is actually built on.
+// The steady-loss minimum: 75% of the energy the day is actually built on.
 var deficitFloorOf = function deficitFloorOf(effTDEE) {
   var appliedBonus = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0;
   return Math.round((1 - MAX_DEFICIT_FRAC) * (effTDEE + (appliedBonus || 0)));
@@ -748,15 +748,15 @@ var calcTargets = function calcTargets(p, mode) {
   // auto-lowering) must never drag MAINTENANCE below sedentary (see sedentaryFloorOf),
   // which previously produced a sub-resting, physiologically-impossible maintain target.
   // A deliberate cut is a chosen deficit bounded separately (SAFE_MIN today, the
-  // energy-availability floor later), so the floor is MAINTAIN-ONLY.
+  // energy-availability minimum later), so the minimum is MAINTAIN-ONLY.
   var seed = Math.round(bmr * activityMult(p));
   var sedentaryTDEE = Math.round(bmr * 1.2);
   var tdee = seed + tdeeAdj;
   var kcal = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   var bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
-  // Steady-loss floor (Step 4). Measured against BELIEVABLE maintenance — the same
-  // floored effective TDEE the rest of the app trusts — so a negative adaptive
+  // Steady-loss minimum (Step 4). Measured against BELIEVABLE maintenance — the same
+  // effective TDEE after the minimums the rest of the app trusts — so a negative adaptive
   // adjustment can't quietly deepen the real deficit past the cap.
   var effTDEE = Math.max(sedentaryTDEE, tdee);
   var deficitFloor = deficitFloorOf(effTDEE, totalWorkoutKcal);
@@ -794,7 +794,7 @@ var calcTargets = function calcTargets(p, mode) {
 // judges "behind" itself (that misfires early in the day). Safeguards baked in:
 //   • the eating window STARTS at today's first logged meal, not a wall clock,
 //     so fasting / 16:8 / Ramadan users are never falsely told they're behind;
-//   • callers pace only FLOOR goals (protein, water) — never the calorie ceiling,
+//   • callers pace only goals to REACH (protein, water) — never the calorie limit,
 //     where being under is success, not a failure to fix;
 //   • "behind" is never used until >25% of the window has elapsed.
 var EATING_WINDOW_H = 14; // a typical waking eating span measured from the first meal
@@ -830,7 +830,7 @@ var paceVerdict = function paceVerdict(firstMealHour, nowHour, frac) {
 
 // ── Intake scoring (feature dashboard/04) ──────────────────────────
 // features/dashboard/04-intake-scoring.feature. Grades what's logged against the role each
-// macro plays — protein/fat are floors, calories is the master constraint (direction depends
+// macro plays — protein/fat are minimums, calories is the master constraint (direction depends
 // on goal), carbs is flex — instead of raw distance from a number. Band widths marked OPEN in
 // the spec ship here as its own proposed numbers, not re-derived; they're meant to be
 // feel-tested against real logged days and tuned, the same way every other threshold in this
@@ -985,23 +985,23 @@ var calorieDayScore = function calorieDayScore(_ref2) {
   };
 };
 
-// Fat — a floor AND a ceiling at once. Both bands are a percentage (of the floor, and of the
+// Fat — a minimum AND an upper limit at once. Both bands are a percentage (of the minimum, and of the
 // target) for the identical bodyweight-scaling reason as protein's bands above.
 var FAT_CEILING_AMBER_PCT = 0.10;
 var FAT_CEILING_RED_PCT = 0.25;
 var FAT_FLOOR_RED_BELOW_PCT = 0.15;
 
-// FIXED 2026-09-09 (found by driving the app, not by a test): the health floor is a CUMULATIVE
+// FIXED 2026-09-09 (found by driving the app, not by a test): the fat minimum is a CUMULATIVE
 // daily amount, and it was being judged flat from the first meal onward. At 11am, after a
-// perfectly on-plan breakfast, a 98.5 kg user was 22 g into a 59 g floor — so the card read a red
+// perfectly on-plan breakfast, a 98.5 kg user was 22 g into a 59 g minimum — so the card read a red
 // "FAT · Add some healthy fats", which outranks everything else in the hero order, and stayed
 // that way until three quarters of the day's fat was eaten. That was the dashboard's dominant
 // daytime state, and on a Cut it is the one message this app must never send by accident.
-// Fix: the FLOOR now gets exactly the treatment protein's floor already has — paced against the
+// Fix: the MINIMUM now gets exactly the treatment protein's minimum already has — paced against the
 // eating window while the day is open (paceVerdict, built for precisely this, app.jsx:427-431),
 // never red and never a hard-safety hero before the day has closed. "Add some healthy fats"
 // stays exclusive to a real breach at close, per the spec's own scenario; the mid-day nudge
-// borrows protein's "Increase" instead. The CEILING is unchanged and stays unconditional —
+// borrows protein's "Increase" instead. The UPPER LIMIT is unchanged and stays unconditional —
 // eating a whole day's fat by noon is a real "over" at any hour.
 var fatDayScore = function fatDayScore(_ref3) {
   var fatG = _ref3.fatG,
@@ -1073,17 +1073,17 @@ var isDayClosed = function isDayClosed(_ref5) {
 };
 
 // Hero priority — the card's single headline word + one action line when several macros need
-// attention at once. DECIDED order for Cut/Bulk (pairwise scenarios in the spec): fat-floor
-// breach (hard safety) > calories out of range > fat-ceiling breach > protein under target.
+// attention at once. DECIDED order for Cut/Bulk (pairwise scenarios in the spec): fat-minimum
+// breach (hard safety) > calories out of range > fat-over-limit > protein under target.
 // Maintain's own ordering is left explicitly unresolved by the spec ("mixes units with no
 // stated conversion... isn't actually computable as written") — ADOPTED the same order here as
-// the consistent default, since fat-below-floor is confirmed to win first on Maintain too and
+// the consistent default, since fat-below-minimum is confirmed to win first on Maintain too and
 // nothing argues for a different order among the rest. Flagged as adopted, not re-decided.
 var heroFor = function heroFor(_ref6) {
   var protein = _ref6.protein,
     calories = _ref6.calories,
     fat = _ref6.fat;
-  // "floor"/"ceiling" stay internal (floorBreach/ceilingBreach) — never on screen. The word
+  // The rule names stay in identifiers only (`floorBreach`/`ceilingBreach`) — never on screen. The word
   // shown for either fat case is just "FAT"; the action line is what says what's actually wrong.
   if (fat.floorBreach) return {
     colour: fat.colour,
@@ -1095,9 +1095,9 @@ var heroFor = function heroFor(_ref6) {
     word: "CALORIES",
     action: calories.heroAction || calories.label
   };
-  // Was `fat.ceilingBreach`. Widened to any non-green fat that isn't a floor breach: today that
-  // is still exactly the ceiling breach, plus the new mid-day "behind on fat" state above, which
-  // belongs at this same rank — "fat, but not the floor" — rather than needing a rank of its own.
+  // Was `fat.ceilingBreach`. Widened to any non-green fat that isn't a minimum breach: today that
+  // is still exactly going over the limit, plus the new mid-day "behind on fat" state above, which
+  // belongs at this same rank — "fat, but not the minimum" — rather than needing a rank of its own.
   if (fat.colour !== "green") return {
     colour: fat.colour,
     word: "FAT",
@@ -1171,7 +1171,7 @@ var WEEK_READ_COPY = {
   }
 };
 
-// days: up to the last 7 daily entries — { kcal, loggedAnything, floored }. tdeeBaseline: raw
+// days: up to the last 7 daily entries — `{ kcal, loggedAnything, floored }`. tdeeBaseline: raw
 // TDEE (maintenance, NOT adjusted for the selected mode — see the spec's own worked example,
 // which measures distance from raw TDEE; that's what lets "reads as" disagree with "selected").
 var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
@@ -1189,7 +1189,7 @@ var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
   });
   var daysUsed = assessable.length;
   // Nothing logged all week → there is no week to read. This check MOVED ABOVE the
-  // majority-floor override on 2026-09-09: below it, a week with nothing logged at all returned
+  // majority-held-up override on 2026-09-09: below it, a week with nothing logged at all returned
   // a green "This week's been a real cut — averaging a genuine deficit. Keep going." built from
   // zero days of evidence. Not logging must never outscore logging honestly — guardrail §6, the
   // exact inversion the founder's unlogged-day decision was made to close.
@@ -1203,18 +1203,18 @@ var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
   }, 0) / daysUsed;
   var band = weekBandFor(avgKcal - tdeeBaseline);
 
-  // The founder's majority-floor override (DECIDED 2026-09-04): a week where a safety floor held
+  // The founder's majority-held-up override (DECIDED 2026-09-04): a week where a safety minimum held
   // the daily target up on 4+ of the 7 days reads as "cut" outright, because there was never a
   // lower number on offer to compare against.
   //
   // NARROWED 2026-09-09: it no longer overrides a week whose logged average is a genuine surplus.
-  // The founder's reasoning is entirely about the TARGET having been floored — it says nothing
+  // The founder's reasoning is entirely about the TARGET having been held up by a minimum — it says nothing
   // about what was actually eaten. As first built, a 50 kg woman pinned at SAFE_MIN 1200 who
   // logged four days averaging 3,150 kcal was told "This week's been a real cut — averaging a
   // genuine deficit. Keep going." while the ring beside it showed four red days.
   //
   // STILL OPEN, founder call, deliberately not decided here: a day with NO snapshot at all still
-  // gets a vote in this majority, because Dashboard reconstructs its floored-ness from the
+  // gets a vote in this majority, because Dashboard reconstructs its held-up status from the
   // CURRENT profile. Whether a day the user never logged should count toward "a week spent mostly
   // at the safety minimum" is a product judgement, not a bug — see
   // features/dashboard/04-intake-scoring-implementation-review.md.
@@ -1396,7 +1396,7 @@ var rollingWeightMean = function rollingWeightMean(weighIns, key) {
 // PREVIOUS 7-day mean. Two non-overlapping calendar windows, so the figure rests on 14 days of
 // data even though it reads as a week, and no mean is ever differenced against itself — that last
 // part is what made the old headline overstate by roughly 3x. Two readings per window is the
-// floor; below that it returns null and the card says so instead of guessing.
+// minimum; below that it returns null and the card says so instead of guessing.
 var WEIGHT_TREND_MIN_PER_WINDOW = 2;
 var weightTrendKg = function weightTrendKg(weighIns, toKey) {
   var spanDays = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 7;
@@ -1427,7 +1427,7 @@ var weightTrendKg = function weightTrendKg(weighIns, toKey) {
 //     well-established history is allowed larger steps, so a real 500 kcal gap closes in
 //     ~3 weeks (simulated) yet never lurches.
 // The accumulated adjustment is still bounded by ADJ_CAP (±600, feature-04 policy) and the
-// maintenance BMR×1.2 floor at the target layer. Engages at 6 weigh-ins (was 8).
+// maintenance minimum (BMR × 1.2) at the target layer. Engages at 6 weigh-ins (was 8).
 var CAL_MIN_WEIGHINS = 6;
 var CAL_GAIN = 0.8; // proportional gain toward the measured error
 var CAL_STEP_CAP = {
@@ -1586,8 +1586,8 @@ var runCalibration = function runCalibration(history, weighIns, baseTDEE) {
   if (raiseHeld) {
     adj = 0;
   } else if (rawAdj < 0 && wasCutting) {
-    var floor = Math.min(settledAdj, tdeeAdj); // the floor can never sit above the current value
-    adj = Math.max(floor, tdeeAdj + rawAdj) - tdeeAdj;
+    var lowest = Math.min(settledAdj, tdeeAdj); // the lower limit can never sit above the current value
+    adj = Math.max(lowest, tdeeAdj + rawAdj) - tdeeAdj;
     refused = adj === 0;
   }
   return {
@@ -5345,7 +5345,7 @@ function IntakeScoreCard(_ref54) {
   // reader what time it was and nothing about fat, calories or protein — a red ring that wasn't
   // full read as "not done falling short" instead of "10pm"). Founder feedback, 2026-09-09: with
   // one hero word only, protein sitting quietly at 89% was invisible whenever fat's hard-safety
-  // floor outranked it for the headline. Segmenting the ring the same way the week ring already
+  // minimum outranked it for the headline. Segmenting the ring the same way the week ring already
   // does means both show at once — you can see protein's amber next to fat's red, not just infer
   // that fat won a hidden priority order.
   var TODAY_GAP_DEG = 10;
@@ -5584,7 +5584,7 @@ function CoachCard(_ref55) {
             foodsLine = eaten.length ? "Already eaten today (do NOT suggest any of these again):\n" + eaten.map(function (e) {
               return "- ".concat(e.name, " (").concat(Math.round(e.kcal || 0), " kcal, P").concat(Math.round(e.protein || 0), " C").concat(Math.round(e.carbs || 0), " F").concat(Math.round(e.fat || 0), ")");
             }).join("\n") : "Nothing logged yet today."; // (#6) Pace is COMPUTED here, never judged by the LLM. Window starts at the
-            // first logged meal; only floor goals (protein, water) are paced — never calories.
+            // first logged meal; only goals to REACH (protein, water) are paced — never calories.
             firstMealHour = logs.length ? new Date(Math.min.apply(Math, _toConsumableArray(logs.map(function (l) {
               return Number(l.id) || Date.now();
             })))).getHours() : null;
@@ -6117,7 +6117,7 @@ function ProfileScreen(_ref76) {
     _useState40 = _slicedToArray(_useState39, 2),
     saved = _useState40[0],
     setSaved = _useState40[1];
-  // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein floor, so the
+  // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein minimum, so the
   // confirmation names what actually changed instead of a generic "saved". First-time
   // setting is not a change — there were no targets to update yet.
   var _useState41 = useState("SAVED"),
@@ -6164,9 +6164,9 @@ function ProfileScreen(_ref76) {
   var bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   var prev = calcTargets(f, "cut", 0, 0);
   var formulaTDEE = prev.tdee; // seeded estimate (activity-adjusted)
-  var tdeeFloor = sedentaryFloorOf(f); // absolute floor = sedentary (BMR × 1.2)
+  var tdeeFloor = sedentaryFloorOf(f); // absolute minimum = sedentary (BMR × 1.2)
   var adjTDEE = Math.max(tdeeFloor, formulaTDEE + tdeeAdj); // never below sedentary TDEE
-  var tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor; // adaptive adj hit the floor
+  var tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor; // adaptive adj hit the minimum
   var confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 6 ? "Estimating" : null;
   useEffect(function () {
     if (!valid) return;
@@ -6866,7 +6866,7 @@ function ProfileScreen(_ref76) {
       marginTop: 6,
       lineHeight: 1.5
     }
-  }, "Held at your minimum maintenance. Your maintenance can't sit below sedentary energy use, so the adaptive adjustment is floored here \u2014 keep logging weight and it will re-converge."), !confidence && /*#__PURE__*/React.createElement("div", {
+  }, "Held at your minimum maintenance. Your maintenance can't sit below sedentary energy use, so the adaptive adjustment stops here \u2014 keep logging weight and it will re-converge."), !confidence && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--text-lo-2)",
@@ -8787,8 +8787,8 @@ function Dashboard(_ref90) {
     kcalDelta: totals.kcal - targets.kcal
   });
   var fatFloorG = Math.round((Number(prof === null || prof === void 0 ? void 0 : prof.weight) || 80) * FAT_FLOOR_PER_KG);
-  // Fat's floor is paced exactly like protein's while the day is open — same function, same
-  // reason. The fraction is measured against the FLOOR, because that is the bound being paced.
+  // Fat's minimum is paced exactly like protein's while the day is open — same function, same
+  // reason. The fraction is measured against the MINIMUM, because that is the bound being paced.
   var fatPace = paceVerdict(firstMealHour, nowHour, fatFloorG > 0 ? totals.fat / fatFloorG : 1);
   var fatScore = fatDayScore({
     fatG: totals.fat,
@@ -8951,9 +8951,9 @@ function Dashboard(_ref90) {
     setEditingTarget(false);
   };
 
-  // Warnings computed from custom target vs effective TDEE. Use the FLOORED
-  // effective TDEE (mirrors App effectiveTDEE and the maintenance floor) so a
-  // custom target isn't judged against a sub-floor baseline when a negative
+  // Warnings computed from custom target vs effective TDEE. Use the post-minimum
+  // effective TDEE (mirrors App effectiveTDEE and the maintenance minimum) so a
+  // custom target isn't judged against a below-minimum baseline when a negative
   // adaptive adjustment is active — otherwise a real deficit would read as smaller.
   var tdee = Math.max(tdeeFloor, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
   var targetWarning = function () {
@@ -8967,8 +8967,8 @@ function Dashboard(_ref90) {
       level: "amber",
       text: "This is an aggressive deficit. You may lose muscle alongside fat. Consider ".concat((tdee - 750).toLocaleString(), " kcal or above.")
     };
-    // Steady-loss floor (Step 4). A typed target isn't overridden — but a number below
-    // the floor we'd set for this body earns the same plain-English explanation.
+    // Steady-loss minimum (Step 4). A typed target isn't overridden — but a number below
+    // the minimum we'd set for this body earns the same plain-English explanation.
     if (targets.deficitFloor && customKcal < targets.deficitFloor) return {
       level: "amber",
       text: "That's below the ".concat(targets.deficitFloor.toLocaleString(), " kcal we'd set as the lowest safe target for your body \u2014 losing faster than that mostly costs muscle and is harder to stick to.")
@@ -12563,7 +12563,7 @@ function History(_ref104) {
     });
   };
 
-  // The fat floor is a function of bodyweight alone, and the dashboard grades against the value
+  // The fat minimum is a function of bodyweight alone, and the dashboard grades against the value
   // stored on the day — so it is computed from that day's weight, not today's.
   var fatFloorOn = function fatFloorOn(b) {
     return Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG);
@@ -12585,9 +12585,9 @@ function History(_ref104) {
   };
 
   // Setting the target re-derives the macro split from it, the same way today's typed target
-  // does (app.jsx targets): the safety floor holds, protein and fat keep their floors, and
+  // does (app.jsx targets): the safety minimum holds, protein and fat keep their minimums, and
   // carbs absorb the change. Never proportionally scaled — that dragged fat under its hormonal
-  // floor on a deep custom cut.
+  // minimum on a deep custom cut.
   var setDayTarget = function setDayTarget(kcal) {
     var b = bodyOn(day.date);
     var safeKcal = Math.max(SAFE_MIN[b.sex === "female" ? "female" : "male"] || 1400, kcal);
@@ -15632,9 +15632,9 @@ function App() {
   }();
   var p = prof || DEF_PROFILE;
   var baseTDEE = seedTDEE(p); // seeded estimate (activity-adjusted); may exceed sedentary
-  var tdeeFloor = sedentaryFloorOf(p); // absolute maintenance floor (BMR × 1.2)
+  var tdeeFloor = sedentaryFloorOf(p); // absolute maintenance minimum (BMR × 1.2)
   // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull it
-  // below sedentary TDEE (BMR × 1.2). The floor is sedentary, NOT the seed — so a negative
+  // below sedentary TDEE (BMR × 1.2). The minimum is sedentary, NOT the seed — so a negative
   // adjustment on a higher-activity seed still bites down to sedentary.
   var effectiveTDEE = Math.max(tdeeFloor, baseTDEE + tdeeAdj);
 
@@ -15758,8 +15758,8 @@ function App() {
     if (customKcal == null) return baseTargets;
     var safeMin = SAFE_MIN[p.sex || "male"] || 1400;
     var safeKcal = Math.max(safeMin, customKcal);
-    // Floors hold; carbs absorb the change — never proportionally scale protein/fat
-    // (the old bug dragged fat under its hormonal floor on a deep custom cut).
+    // Minimums hold; carbs absorb the change — never proportionally scale protein/fat
+    // (the old bug dragged fat under its hormonal minimum on a deep custom cut).
     var m = computeMacros(p, effectiveMode, safeKcal);
     return _objectSpread(_objectSpread({}, baseTargets), {}, {
       kcal: safeKcal,
@@ -15769,7 +15769,7 @@ function App() {
       floorsExceedKcal: m.floorsExceedKcal,
       safeMinApplied: safeKcal > customKcal,
       customKcalApplied: true,
-      // A typed target is the user's own choice: the steady-loss floor WARNS here
+      // A typed target is the user's own choice: the steady-loss minimum WARNS here
       // (see targetWarning) instead of silently overriding the number they set.
       deficitFloorApplied: false,
       ea: energyAvailability(safeKcal, todayWorkoutKcal, p),
@@ -15782,7 +15782,7 @@ function App() {
   // silently drifted from the truth the moment either changed — a real accuracy bug in anything
   // calling itself "history." Snapshots now carry the REAL target that applied that day, read
   // directly off `targets` (the same canonical value the dashboard shows right now), including the
-  // custom-kcal override and every floor. Old snapshots recorded before this field existed have no
+  // custom-kcal override and every minimum. Old snapshots recorded before this field existed have no
   // recoverable historical target — Dashboard's weekDays falls back to the old reconstruction only
   // for those, never for anything snapshotted from here on.
   useEffect(function () {

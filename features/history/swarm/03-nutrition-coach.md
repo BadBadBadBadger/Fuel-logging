@@ -80,16 +80,16 @@ not hide it.
 
 So why is it harmful rather than protectively alarmist? Because **the app has no alarm for low logged
 intake at all.** The symptom check that would have watched for it (file 05) is shelved
-(`ENERGY_MODEL.md` §5.5). The steady-loss floor and `SAFE_MIN` act on the *target*, never on what was
+(`ENERGY_MODEL.md` §5.5). The steady-loss minimum and `SAFE_MIN` act on the *target*, never on what was
 logged. So the understated number triggers no protection; it only feeds his own reasoning. And the
 reasoning it feeds is the dangerous one: *the app says I am 500 under and the scale is only moving
 0.18 kg a week, so my burn must be lower than 2,709 → eat less.* That is the same inference the
 asymmetric calibration fix (`app.jsx:751-791`) was built to stop the app itself from making. Here the
 app hands him the premises and lets him make it by hand.
 
-**Second harm, on fat.** Fat floor is `0.6 g/kg` (`FAT_FLOOR_PER_KG`, `app.jsx:283`) = **59 g** at
-98.5 kg. Shown average 68 g sits 9 g over that floor (15%); the truth, 77.7 g, sits 19 g over (32%).
-The card makes his fat intake look like it is skating near the floor when it is comfortably above it.
+**Second harm, on fat.** Fat minimum is `0.6 g/kg` (`FAT_FLOOR_PER_KG`, `app.jsx:283`) = **59 g** at
+98.5 kg. Shown average 68 g sits 9 g over that minimum (15%); the truth, 77.7 g, sits 19 g over (32%).
+The card makes his fat intake look like it is skating near the minimum when it is comfortably above it.
 On an app whose stated purpose is protecting hormonal health while cutting, a fat figure that reads
 13% low is on-mission for the wrong reason. Dietary fat does matter to sex-hormone production and
 very-low-fat diets do appear to lower testosterone modestly — but the effect sizes in that literature
@@ -134,7 +134,7 @@ it in large red type. History is the only place in the app that claims a weekly 
 |---|---|
 | 199 kcal/day (his actual) | **0.18 kg** |
 | 500 kcal/day (a full cut) | **0.45 kg** |
-| 25% of maintenance, the app's ceiling (`MAX_DEFICIT_FRAC`, `app.jsx:371`) | 677×7/7700 = **0.62 kg** |
+| 25% of maintenance, the app's upper limit (`MAX_DEFICIT_FRAC`, `app.jsx:371`) | 677×7/7700 = **0.62 kg** |
 
 Now the noise on a single morning reading, by mechanism (not a jargon noun — these are the actual
 masses moving):
@@ -361,7 +361,7 @@ I traced each protection. Answers are specific:
 
 **Not affected** (these read the *target* or the *scale*, never the History card):
 
-- **Steady-loss floor** and **`SAFE_MIN`** — act on the prescribed target (`app.jsx:371-412`).
+- **Steady-loss minimum** and **`SAFE_MIN`** — act on the prescribed target (`app.jsx:371-412`).
 - **Low-fuel EA warning** — built from the target and raw burn, and gated on `LEAN_BF` 15% male. At
   ~22% body fat **he will never see it**, bug or no bug (`ENERGY_MODEL.md` §5.1, Step 4).
 - **Stall check** — reads `trendLossFrac`, which uses rolling averages (`app.jsx:1075-1081`). Immune
@@ -370,7 +370,7 @@ I traced each protection. Answers are specific:
 - **The 30-day low-energy-availability symptom check (file 05)** — **shelved**
   (`ENERGY_MODEL.md` §5.5, §7). It cannot fire late because it does not exist. If the brief is
   working from a belief that it is live, correct that. It is also the reason FL-001's understated
-  intake triggers nothing: the one thing that would have watched logged intake against the floor was
+  intake triggers nothing: the one thing that would have watched logged intake against the minimum was
   the thing that got removed.
 
 **Can fire late:**

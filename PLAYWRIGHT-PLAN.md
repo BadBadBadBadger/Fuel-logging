@@ -212,7 +212,7 @@ the original harm: a long deficit walking the target down.
 | 28b | A fresh weigh-in is accepted and the trend takes it | ✅ |
 | 28c | Two flat months: a break is recommended, blamelessly | ✅ |
 | 28d | The target is **not** ground down by two months of disappointment | ✅ |
-| 28e | The target stays above the safe floor, not merely unchanged | ✅ |
+| 28e | The target stays above the safe minimum, not merely unchanged | ✅ |
 | 28f | At Maintain the same evidence **is** acted on — the control | ✅ |
 
 > **28f is what makes 28d mean anything.** An adjustment that never fires looks identical to one
@@ -347,7 +347,7 @@ correction lands in all three places — the row, the day's totals, and `logs__<
 | 39d | A typed target survives until the mode is changed again | ✅ |
 | 39e | Today is not editable here — its own control is on the dashboard | ✅ |
 | 40a | The target can be set by hand, and the day is regraded against it | ✅ |
-| 40b | The safety floor still holds on a typed number | ✅ |
+| 40b | The safety minimum still holds on a typed number | ✅ |
 | 40c | Cancelling leaves the stored target alone | ✅ |
 | 40d | A day saved before targets were stored says so, rather than pretending | ✅ |
 

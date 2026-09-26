@@ -26,10 +26,10 @@
 #
 # Reuses rather than re-derives:
 #   • `calcTargets` for the mode's own target, so a corrected day is built by the same engine as a
-#     live one — floors included.
+#     live one — minimums included.
 #   • `computeMacros` + `SAFE_MIN` for a typed target, exactly as today's typed target behaves:
-#     the floor holds, protein and fat keep theirs, carbs absorb the change. Never proportionally
-#     scaled — that once dragged fat under its hormonal floor on a deep custom cut.
+#     the minimum holds, protein and fat keep theirs, carbs absorb the change. Never proportionally
+#     scaled — that once dragged fat under its hormonal minimum on a deep custom cut.
 #   • that day's OWN weight and body fat, looked up by date from `weighIns` and
 #     `bodyMeasurements` — the by-date lookup pattern body/02 established. A corrected day is
 #     graded against the body that actually had it.
@@ -89,12 +89,12 @@ Feature: Correcting a past day's mode and calorie target
     Given 12 Sep is graded against 2,709 kcal and I ate 2,331
     When I set the target to 2,209
     Then the day reads 122 over
-    And its macro split is rebuilt from the new number, with the floors intact
+    And its macro split is rebuilt from the new number, with the minimums intact
 
-  Scenario: the safety floor still holds on a number I typed myself
+  Scenario: the safety minimum still holds on a number I typed myself
     When I set a past day's target to 900
     Then it is stored as 1,400, the male SAFE_MIN
-    # A typed target is the user's own choice, but not below the floor.
+    # A typed target is the user's own choice, but not below the minimum.
 
   Scenario: a typed target is the last word until the mode changes again
     Given I have set 12 Sep's target to 2,209 by hand

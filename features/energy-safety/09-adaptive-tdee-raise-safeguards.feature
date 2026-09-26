@@ -15,7 +15,7 @@
 #
 # The founder hit this directly: two days of mostly-water weight drop, on top of a
 # still-short weigh-in history, drove the adaptive adjustment straight to its own
-# hard ceiling (+600) in five days — reproduced and confirmed against his real
+# hard upper limit (+600) in five days — reproduced and confirmed against his real
 # Supabase data in the linked swarm review, arithmetic to the exact kcal. The
 # acceptance test this app already trusts (`logic.test.js:1235-1264`) only ever
 # proves this loop against a smooth, noise-free weight trajectory; it has never been
@@ -43,12 +43,12 @@
 #     • Lowering is still refused while cutting, for evidence older than the
 #       reversal window this file adds (see Fix B below) — the five-innocent-
 #       explanations reasoning in 04 stands untouched.
-#     • The floors (sedentary maintain floor, deficit floor, SAFE_MIN) are
+#     • The minimums (sedentary maintain minimum, steady-loss minimum, SAFE_MIN) are
 #       unaffected — they sit below this and don't move.
-#     • `ADJ_CAP` (600) stays the absolute ceiling either direction. This file
-#       makes it materially harder to REACH that ceiling on bad evidence, and
+#     • `ADJ_CAP` (600) stays the absolute upper limit either direction. This file
+#       makes it materially harder to REACH that upper limit on bad evidence, and
 #       easier to walk back down from it once there — it does not raise or lower
-#       the ceiling itself.
+#       the upper limit itself.
 #
 # ── THE TWO THINGS THIS FILE ADDS ─────────────────────────────
 #
@@ -60,7 +60,7 @@
 #   again until the window has genuinely rolled over. This applies to a raise in ANY
 #   mode (Cut, Maintain, Bulk) — the bug is about evidence freshness, not about
 #   cutting specifically, and 04's Maintain-mode scenarios (which are about the
-#   floor and about lowering, not about raise timing) are unaffected by this.
+#   minimum and about lowering, not about raise timing) are unaffected by this.
 #
 #   Chosen because it reuses a number the loop already trusts: `recentAvg` and
 #   `olderAvg` are both built from 7-day windows, so under 7 days apart, two
@@ -73,17 +73,17 @@
 #   storage): the portion added by raises applied within the last
 #   RAISE_REVERSAL_WINDOW_DAYS ("recent, still provisional") and everything older
 #   ("settled"). While cutting, a lowering signal is now allowed to erode the
-#   RECENT portion — down to, but never below, the settled floor — using the exact
+#   RECENT portion — down to, but never below, the settled minimum — using the exact
 #   same per-run step cap any other adjustment uses. Evidence older than the window
 #   remains exactly as protected as it is today: if nothing recent needs unwinding,
 #   this file changes nothing and 04's original refusal fires unchanged.
 #
 # ── DECIDED, DON'T RE-LITIGATE ────────────────────────────────
-#   • Neither fix touches `ADJ_CAP`, the floors, or the Maintain-mode scenarios in
+#   • Neither fix touches `ADJ_CAP`, the minimums, or the Maintain-mode scenarios in
 #     04 — only the RATE at which a raise is credited (Fix A), and what a lowering
 #     signal is allowed to erode while cutting (Fix B).
 #   • Fix B does not require inventing a "was this raise wrong" judgement — it only
-#     ever allows erosion down to the settled floor, using the ordinary calibration
+#     ever allows erosion down to the settled minimum, using the ordinary calibration
 #     step cap. A raise that was genuinely correct simply won't attract a
 #     contradicting lowering signal in the first place; nothing here punishes a
 #     raise for being recent, only for being contradicted by later evidence.
@@ -169,7 +169,7 @@ Feature: The adaptive TDEE loop can't be talked into a wrong number by noise, in
     # needed here — the mechanism is pure arithmetic on the adjustment itself,
     # independent of BMR/activity — so these rows contrast the SHAPE of the case
     # instead: an ordinary partial erosion, an erosion that would overshoot the
-    # settled floor and gets capped, and a case with no settled evidence at all
+    # settled minimum and gets capped, and a case with no settled evidence at all
     # (the founder's actual account today: everything currently in `tdeeAdj` is
     # recent).
     Examples:

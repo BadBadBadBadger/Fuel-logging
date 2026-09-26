@@ -5,12 +5,12 @@
 // 2026-09-09 implementation review found were all invisible to `npx jest` — they only appeared
 // when the app was actually opened and looked at:
 //
-//   • the fat health floor was judged flat from the first meal onward, so at 11am, after an
+//   • the fat minimum was judged flat from the first meal onward, so at 11am, after an
 //     on-plan breakfast, the card read a red "FAT · Add some healthy fats" — which outranks
 //     everything else in the hero order, and so was the dashboard's dominant daytime state;
-//   • the majority-floor override returned a green "This week's been a real cut — averaging a
+//   • the majority-held-up override returned a green "This week's been a real cut — averaging a
 //     genuine deficit. Keep going." for a week with NOTHING logged in it, and for a week of
-//     logged binges, because it read whether the TARGET was floored and never what was eaten;
+//     logged binges, because it read whether the TARGET was held up by a minimum and never what was eaten;
 //   • the TODAY card and THIS WEEK's own last segment showed different colours for the same day.
 //
 // Every test below is one of those, or a state the founder decided explicitly and which must not
@@ -29,7 +29,7 @@ const { open, PROFILE } = require("./harness");
 const mealAt = (hour, m) => ({ id: new Date().setHours(hour, 0, 0, 0),
   name: "Meal", time: `${String(hour).padStart(2, "0")}:00`, ...m });
 
-/** The seeded profile is 98.5 kg, so its fat health floor is round(98.5 × 0.6) = 59 g. */
+/** The seeded profile is 98.5 kg, so its fat minimum is round(98.5 × 0.6) = 59 g. */
 const FAT_FLOOR_G = 59;
 
 /** Text of one score card, by its printed title. */
@@ -70,7 +70,7 @@ test.describe("TODAY — the day's one action", () => {
   // for everyone — telling someone on a Cut to eat more fat while they were perfectly on plan.
   test("mid-morning, part-way to the day's fat, it does not tell you to eat more fat", async ({ page }) => {
     await open(page, { extra: { dev_time_hour: "11" },
-      logs: [mealAt(8, { kcal: 600, protein: 45, carbs: 60, fat: 22 })] }); // 22g of a 59g floor
+      logs: [mealAt(8, { kcal: 600, protein: 45, carbs: 60, fat: 22 })] }); // 22g of a 59g minimum
 
     const today = card(page, "TODAY");
     await expect(today).not.toContainText("Add some healthy fats");
@@ -159,11 +159,11 @@ test.describe("THIS WEEK — the rolling read", () => {
   });
 
   // Guardrail §6, the inversion the founder's unlogged-day decision exists to close. It came
-  // back through a different door: the majority-floor override ran before the "nothing logged"
+  // back through a different door: the majority-held-up override ran before the "nothing logged"
   // check, so a week with no data at all was congratulated on a deficit it never ran.
   test("a week with nothing logged gives no verdict, it does not congratulate a deficit", async ({ page }) => {
     await open(page, {
-      // 50 kg / 30% body fat / sedentary → target pinned at SAFE_MIN 1200, so every day is floored.
+      // 50 kg / 30% body fat / sedentary → target pinned at SAFE_MIN 1200, so every day is held up by a minimum.
       profile: { ...PROFILE, weight: 50, height: 160, bodyFat: 30, activity: "sedentary", sex: "female" },
       extra: { dev_time_hour: "11" }, logs: [],
       history: resolveHistory([1, 2, 3, 4, 5, 6, 7].map(d => snap(d, { kcal: 0, logged: false }))),
@@ -174,7 +174,7 @@ test.describe("THIS WEEK — the rolling read", () => {
     await expect(week).not.toContainText("genuine deficit");
   });
 
-  test("a floored week of logged binges reads as the surplus it was, not as a real cut", async ({ page }) => {
+  test("a held-up week of logged binges reads as the surplus it was, not as a real cut", async ({ page }) => {
     await open(page, {
       profile: { ...PROFILE, weight: 50, height: 160, bodyFat: 30, activity: "sedentary", sex: "female" },
       extra: { dev_time_hour: "11" },

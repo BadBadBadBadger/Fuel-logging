@@ -32,7 +32,7 @@ These are real strengths — worth stating so the criticism below lands in conte
 | **API key kept server-side** in the Cloudflare Worker | The right instinct — the Anthropic key never reaches the browser. |
 | **Real Supabase auth** via `signInWithIdToken` | `auth.uid()` is a true verified identity, so RLS actually enforces. Many apps get this wrong and fake it client-side. |
 | **Row-Level Security correctly scoped** to `auth.uid()` on every table | This is what makes the public anon key safe. The policies are complete and consistent. |
-| **Pure logic extracted & unit-tested** (`__tests__/logic.test.js`, 1,461 lines / 142 tests as of 2026-08-07) | TDEE / macro / streak / energy-floor math is separated from UI and tested — the highest-value thing to test. |
+| **Pure logic extracted & unit-tested** (`__tests__/logic.test.js`, 1,461 lines / 142 tests as of 2026-08-07) | TDEE / macro / streak / energy-minimum math is separated from UI and tested — the highest-value thing to test. |
 | **Offline-first**: SW + localStorage + offline queue + graceful degradation | A proper PWA. Falls back cleanly when Google/Supabase are unavailable. |
 | **Schema migration scaffold** (`SCHEMA_VERSION` / `runMigrations`) | Forward-thinking; you can evolve stored data safely. |
 | **`ErrorBoundary`** + no `dangerouslySetInnerHTML` / `eval` | React's auto-escaping plus no raw HTML injection means AI output rendering is XSS-safe. |
@@ -83,7 +83,7 @@ Combined with SEC-1, the paywall protects **zero revenue**. Even once real payme
 
 **Fix:** Treat the client flag as UI-only. The worker is the source of truth: it checks the JWT → looks up the user's entitlement (Supabase row set by your payment webhook) → allows or refuses. Move the voucher to a server-checked table, not a constant in the bundle.
 
-### 🟠 SEC-3 — No cost ceiling per user even once authenticated
+### 🟠 SEC-3 — No cost cap per user even once authenticated
 Auth alone stops *anonymous* abuse but not a single malicious/automated paid (or trial) account hammering AI. You need **per-user quotas** (e.g. N AI calls/day) plus the **global budget cap** from SEC-1. Without this, one bad actor on a 30-day free trial = a surprise bill.
 
 ### 🟠 SEC-4 — Health data handled with no privacy/consent/export/delete (compliance)
@@ -145,7 +145,7 @@ No error reporting, no AI-cost metric, no worker logs. For a paid product you're
 ### I. The flat safe minimum forbids a small body from cutting at all — 🗄️ SHELVED 2026-08-10
 **Found by the founder in testing, at 50 kg.** `SAFE_MIN` (`app.jsx:269`, 1,400 male / 1,200 female) is the
 last survivor of the flat-number model that Step 4 otherwise replaced with body-sized protections. Laid over
-a light body it **overrides** the body-sized floor and removes the deficit entirely:
+a light body it **overrides** the body-sized minimum and removes the deficit entirely:
 
 | Profile | Maintenance | Cut wants | App gives | Real deficit |
 |---|---|---|---|---|
@@ -169,15 +169,15 @@ equations that do use height (Mifflin-St Jeor, Harris-Benedict) are known to mis
 proportions, so this app is *better* placed for that population than most. The 100 cm in the founder's test
 changed nothing; the 50 kg changed everything.
 
-**The fix, when it's worth doing:** make the floor body-aware — derived from the person, with an absolute
-**nutrition** floor underneath. That last part matters and is the reason not to simply delete `SAFE_MIN`:
+**The fix, when it's worth doing:** make the minimum body-aware — derived from the person, with an absolute
+**nutrition** minimum underneath. That last part matters and is the reason not to simply delete `SAFE_MIN`:
 its honest justification was never energy, it is that below roughly 1,200 kcal of ordinary food you cannot
 reliably hit protein and micronutrients, and *that* requirement does not shrink with body size. A smaller
 person needs less energy but not proportionally less iron, calcium or B12. The number is doing a nutrition
 job under an energy name, and nobody tells the user.
 
 **Complication for whoever picks this up:** `SAFE_MIN` is the *only* protection on typed custom targets —
-the steady-loss floor is deliberately switched off for those, since a typed number is the user's own choice
+the steady-loss minimum is deliberately switched off for those, since a typed number is the user's own choice
 (`app.jsx` custom-target branch). So lowering it universally also lets a 98 kg man type 1,200 and get it.
 
 **Why shelved:** founder's call, 2026-08-10 — n=1 user at 98.5 kg, where this never binds. Revisit if the

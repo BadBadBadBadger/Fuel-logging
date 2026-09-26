@@ -7,7 +7,7 @@
 # eat", and it has three faults the user named:
 #   • it invites eating back the whole session same-day, which erodes the deficit
 #     the user is trying to run (recomp / fat-loss goal);
-#   • one day is a noisy signal — a single big session spikes the ceiling;
+#   • one day is a noisy signal — a single big session spikes the allowance;
 #   • a REST day after hard training carries zero fuel, even though recovery,
 #     glycogen resynthesis and elevated protein synthesis run 24–48h past a session.
 # So instead of unlocking a session's energy all on its own day, we SPREAD it
@@ -117,9 +117,9 @@ Feature: Spreading earned workout calories across days
     And it communicates that the session fuels today and the next couple of days
     And logging the workout never adds an extra tap or blocks my food logging
 
-  # ── Interaction with the safety floors is unchanged in shape ──
+  # ── Interaction with the safety minimums is unchanged in shape ──
   Scenario: Smoothed earned calories still sit on top of the seeded/calibrated TDEE
     Given my maintenance target is held at its sedentary minimum
     When I log a workout today
     Then the smoothed earned bonus is added on top of that target as before
-    And the earn-to-eat smoothing does not change the maintenance floor itself
+    And the earn-to-eat smoothing does not change the maintenance minimum itself

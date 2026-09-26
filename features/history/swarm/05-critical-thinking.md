@@ -174,7 +174,7 @@ week still says "hasn't been a cut".
 One narrow exception, and it does not apply here: at **3946**, when a day has *no* target snapshot
 (`h.targetKcal == null`, i.e. recorded before the 2026-09-09 fix), `dayFloored` is reconstructed via
 `calcTargets(prof, dayMode, …)`, so mode *does* move `floored` → `flooredCount` (645) → the ≥4
-floor-majority override (646) → could flip the week to "cut". For 12/09/2026 the snapshot carries a
+majority-held-up override (646) → could flip the week to "cut". For 12/09/2026 the snapshot carries a
 real `targetKcal`, so this path is closed. Worth a test, not a worry.
 
 **Consequences for the implementer:**
@@ -347,7 +347,7 @@ the app tells him he is eating *less* than he is — arguably the safer error bu
 **Attack, and it is decisive.** This app exists to detect under-eating. An average whose job is to
 catch under-eating, from which you remove the low days, cannot catch under-eating. Run it on his own
 data: 09/09 is 2228, the lowest complete day and the one the report itself names as indistinguishable
-from an abandoned log. Drop it and the average goes 2510 → **2557**, moving *away* from the floor he
+from an abandoned log. Drop it and the average goes 2510 → **2557**, moving *away* from the minimum he
 is watching. Drop the two lowest (2228, 2331) and it reads **2596**. The days that get dropped are,
 by construction, exactly the days that carry the signal.
 

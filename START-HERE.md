@@ -1,14 +1,14 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-26 (session 25, cloud). **Jest 447/447 · Playwright 152/152 · sw v93 on branch
+**Updated:** 2026-09-26 (session 25, cloud). **Jest 447/447 · Playwright 152/152 · sw v94 on branch
 `claude/ai-coach-jargon-guard-ey4ze7` (PR open, not merged) · live on Pages: `main` @ `1d6a7ae`, sw v90.**
 
-> **v91–v93 (session 25, cloud, on a branch): plain words and named photo meals.** The coach kept
-> saying *"floor"* because its own prompt did (*"protein floor"*, *"floor goal"*); the prompt now
-> uses plain words and forbids *"floor"* and *"ceiling"*, with a Jest guard. Three on-screen notes
-> that said *"floor"* were reworded (the *"FLOORS KEPT"* card is now **PROTEIN AND FAT KEPT**). A
+> **v91–v94 (session 25, cloud, on a branch): plain words and named photo meals.** The coach kept
+> using a banned maths word because its own prompt used it; the prompt now uses plain words and
+> forbids the two banned words (house rules below), with a Jest guard. Three on-screen notes that
+> used it were reworded (the minimums card is now **PROTEIN AND FAT KEPT**). A
 > photographed meal logged as one entry is now named after the food (`photoMealName`), not
-> *"Photo meal"*. Device checks: `DEVICE-TEST.md` → *New in v91–v93*. Detail: `DOCS.md` §37 v6.9.3.
+> *"Photo meal"*. Device checks: `DEVICE-TEST.md` → *New in v91–v94*. Detail: `DOCS.md` §37 v6.9.3.
 
 > **v89–v90: two small fixes from two sessions, merged into one build.** **v89** came from a cloud
 > session (`a178e03`, PR #2): the v88 prompt rule *"never turn a typed totals line into a row"* is
@@ -87,11 +87,11 @@
 
 > **v77 replaced the flat MACROS bars with the intake-scoring engine.** New TODAY/THIS WEEK cards on
 > the dashboard, each a segmented ring — TODAY by macro (protein/carbs/fat), THIS WEEK by day. Colour
-> comes from what each macro actually is (a floor, a ceiling, flex) instead of a flat 5g/15g-over
+> comes from what each macro actually is (a minimum, an upper limit, flex) instead of a flat 5g/15g-over
 > delta. A background multi-persona swarm review (QA, Critical-Thinking, Nutrition-Coach, Design-Lead,
 > Anti-Metaphor, Engineer) caught and fixed three real bugs before this reached a phone: the fat
-> health floor reading red from the first meal onward; the weekly override grading whether the
-> *target* was floored instead of what was actually eaten; and TODAY/THIS WEEK disagreeing about
+> fat minimum reading red from the first meal onward; the weekly override grading whether the
+> *target* was held up at a minimum instead of what was actually eaten; and TODAY/THIS WEEK disagreeing about
 > today's own colour. Playwright `e2e/intake-scoring.spec.js`. Rollback tag: **`pre-intake-scoring`**.
 >
 > **v78 adds weekly body-measurement tracking (`features/body/01`).** A neck/waist (+hip for women)
@@ -138,7 +138,7 @@
 >   is the cheap pattern for catching a whole class statically.
 > - **Two `@superseded` spec files** (`dashboard/01-calorie-tolerance.feature`,
 >   `02-macro-tolerance.feature`) — delete-or-keep is the founder's call, still open.
-> - **`SAFE_MIN`'s flat 1400/1200 floor** was reopened then re-parked — tracked in
+> - **`SAFE_MIN`'s flat 1400/1200 minimum** was reopened then re-parked — tracked in
 >   `dashboard/04-intake-scoring.feature`'s own header, not here.
 >
 > **The energy-safety workstream is MERGED AND DEPLOYED.** Steps 1–5 of `ENERGY_MODEL.md` are live on
@@ -161,7 +161,7 @@
 > and reopen the PWA first or you're still on an old bundle. The open question parked in that file —
 > whether *"Below your resting metabolism"* should become a one-time acknowledgement — was **answered
 > on 2026-08-26 by three weeks of real cut data: the card was removed** in v74. It only fired when no
-> floor had applied, so it warned about the band the app already considers fine, and it was training
+> minimum had applied, so it warned about the band the app already considers fine, and it was training
 > the user past the amber cards that matter.
 >
 > ⚠️ **Never sign in for real on `preview.html`.** A faked clock plus a real account wrote
@@ -193,7 +193,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v93** on the branch (v90 on `main`).
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v94** on the branch (v90 on `main`).
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
 - Run `npx jest` before claiming anything works. Currently **447/447**. `npm run test:ui` is **152/152**
@@ -205,19 +205,36 @@ the repo for orientation. Open further docs only when the task actually needs th
   chat. Both have been removed repeatedly and both crept back, because they were seeded through **code
   comments**, so each new session re-read and copied them. If you sweep one, sweep the comments too.
   Say what actually happens instead:
-  - *clamp* → a rule either **moves your target** (*"raises the target to the floor"*) or it **only
+  - *clamp* → a rule either **moves your target** (*"raises the target to the minimum"*) or it **only
     warns** (*"warns, never changes the target"*). Survives only as an identifier in `seed-data.js`.
   - *gate* → name the condition: *"the bar appears once your load reaches a week's worth"*, *"shown
     only to lean bodies"*, *"never make log/save wait on it"*. Still fine as the **name of a thing**:
     the premium gate (paywall), consent gate (sign-up), believability gate (the pre-ship check against
     MyFitnessPal, defined in full at `ENERGY_MODEL.md` §4).
 
-  - *floor* / *ceiling* → **banned from anything the user reads, including the AI coach.** They are
-    maths terms that mean nothing in spoken English. Say *"your protein goal"*, *"the minimum"*,
-    *"your calorie limit"*, *"the most you should have"*. The coach prompt (`CoachCard` in `app.jsx`)
-    forbids both words and no longer uses them itself — keep it that way, because the model copies
-    whatever words the prompt feeds it. They survive only as internal identifiers (`floorBreach`,
-    `ceilingBreach`).
+  - *floor* / *ceiling* → **banned everywhere: the screen, the AI coach, docs, specs, code comments
+    and test names** (founder, 2026-09-26). They are maths terms that mean nothing in spoken English.
+    On screen say *"your protein goal"*, *"the minimum"*, *"your calorie limit"*, *"the lowest safe
+    target"*. In docs, one plain word per rule:
+
+    | Rule | Say |
+    |---|---|
+    | protein / fat / carb lower bound | protein / fat / carb **minimum** |
+    | the 25%-below-maintenance cut limit (`deficitFloor`) | **steady-loss minimum** |
+    | BMR × 1.2 (`sedentaryFloorOf`) | **maintenance minimum** |
+    | EA-30 | **energy-availability minimum** |
+    | `SAFE_MIN` 1400/1200 | **flat safe minimum** |
+    | protein and water, paced by the coach | **goals to reach** |
+    | calorie / fat upper bound | calorie / fat **limit** (or *upper limit*) |
+    | "floored" | *held at the minimum*, *raised to the minimum* |
+
+    The coach prompt (`CoachCard`) forbids both words and must not use them itself, because the model
+    copies whatever the prompt feeds it (Jest guard in `__tests__/ai-log.test.js`). The only places
+    the words survive are **names you can't change by editing prose**: code identifiers
+    (`floorBreach`, `ceilingBreach`, `deficitFloor`, `sedentaryFloorOf`, `Math.floor`), the stored
+    value `"floor-majority"`, Supabase columns (`target_fat_floor`, `floored`) and old git branch /
+    tag names (`energy-safety-bmr-floor`, `pre-bmr-floor`). Write about them in plain words; name
+    them only in backticks.
 
   Same rule for any other jargon noun: if a plain sentence needs more words, use more words. When the
   founder says a word means nothing to him, that's the signal — fix the word everywhere, not just in
@@ -248,7 +265,7 @@ is the state right before that (`52452a9`, sw v76). Then `7fb31f8` (sw **v74**, 
 audit and the profile confirmation fix); and `efad462` (sw **v70**), deployed 2026-08-11, which
 carried the whole energy-safety workstream (Steps 1–5), the Quick Add fix, the weigh-in reporting
 fix, and the AI capture follow-up fix. Rollback tag **`pre-energy-safety`** is the state before the
-workstream (`88a283a`, sw v56, the BMR×1.2 maintenance floor alone). The branch
+workstream (`88a283a`, sw v56, the BMR × 1.2 maintenance minimum alone). The branch
 `energy-safety-bmr-floor` is merged and can be deleted once the device test passes.
 
 **Three user-visible changes went out in v69–v70 and none has been seen on a phone yet:**
@@ -267,7 +284,7 @@ suite cannot speak to iOS Safari, PWA install, service-worker cycling or haptics
 | 1 | Flat BMR×1.2 → a 4-chip lifestyle (NEAT) multiplier, 1.20–1.55, seeding a believable target | ✅ live |
 | 2 | Adaptive TDEE converges properly (no more cap-pinning) + the app *invites* weigh-ins | ✅ live |
 | 3 | A workout's calories spread forward over 3 days instead of unlocking the same day | ✅ live |
-| 4 | A body-sized **steady-loss floor** replaces the flat safe minimum; energy availability becomes a **warning**, not an override | ✅ live |
+| 4 | A body-sized **steady-loss minimum** replaces the flat safe minimum; energy availability becomes a **warning**, not an override | ✅ live |
 | 5a | A cut runs as **load-weighted blocks** that prompt a diet break (file 02) | ✅ live |
 | 5b | A break is **time not cutting** — the load bar drains while you rest; plus the **stall check**; minus the rolling-year track (file 03) | ✅ live |
 | 5c | **The auto-lowering fix** — the app only lowers its estimate of what you burn when you're *not* cutting (file 04). The original harm, closed. | ✅ live |
@@ -280,12 +297,12 @@ The `features/energy-safety/` numbering confuses everyone (it confused us). Plai
 
 | File | What it does | State |
 |---|---|---|
-| 01 energy floor | steady-loss floor + low-fuel warning | ✅ live |
+| 01 energy-availability minimum | steady-loss minimum + low-fuel warning | ✅ live |
 | 02 cut cycling | load-weighted blocks + diet-break prompts | ✅ live |
 | 03 the break bar | a break is just *not cutting*; the load bar drains pro-rata over 14 rest days, + the stall check | ✅ live |
 | 06 weigh-in engagement | invites check-ins, cadence picker | ✅ live |
 | 07 smoothed earn-to-eat | workout kcal spread over 3 days | ✅ live |
-| **08** maintenance floor (was "04 first half") | *Maintain* floored at BMR × 1.2 | ✅ live |
+| **08** maintenance minimum (was "04 first half") | *Maintain* never below BMR × 1.2 | ✅ live |
 | 04 **second half** — *"the auto-lowering fix"* | the app only lowers its estimate of what you burn when you're *not* cutting | ✅ live |
 | 05 symptom check | asks how you're feeling after a long under-eat | 🗄️ **SHELVED** (founder, 2026-08-09) |
 
@@ -302,23 +319,25 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 
 ## Right now
 
-**Session 25 (cloud, 2026-09-26) — v91–v93 on `claude/ai-coach-jargon-guard-ey4ze7`, PR open.**
-- **v91 — coach jargon.** `CoachCard`'s prompt no longer says *"floor"* (it fed *"protein floor"*,
-  *"floor goal"*, *"once the floors are met"* to the model, which echoed them) and has a rule
-  forbidding *"floor"* / *"ceiling"*. Guard: `__tests__/ai-log.test.js` scans every string the
+**Session 25 (cloud, 2026-09-26) — v91–v94 on `claude/ai-coach-jargon-guard-ey4ze7`, PR open.**
+- **v91 — coach jargon.** `CoachCard`'s prompt no longer uses the banned words (it used them to describe the protein
+  and water goals, and the model echoed them) and has a rule forbidding both. Guard: `__tests__/ai-log.test.js` scans every string the
   prompt is built from. Spec: `coach/01` +1.
 - **v92 — photo meal names.** `AI_PHOTO_PROMPT` asks for a `"meal"` name; `AILog` keeps it in
   `mealName` state; `logAll` uses `photoMealName(mealName, desc, items)` for photos (defined next to
   `dropDuplicateTotalRow`, so the Jest lift picks it up). Spec: `logging/05` +3. Suite:
   `e2e/photo-meal-name.spec.js` (44a–b).
-- **v93 — on-screen "floor".** The custom-target note, the steady-loss *Why?* and the
-  *"FLOORS KEPT"* card reworded (`targets/03` updated). No test pinned any of the three strings.
+- **v93 — the banned word, on screen.** The custom-target note, the steady-loss *Why?* and the
+  minimums card reworded (`targets/03` updated). No test pinned any of the three strings.
 - **Docs:** this file, `DOCS.md` (6.9.3, §15, §20, §5/§7 coach rows, §37), `DEVICE-TEST.md`
   (new block; the stale v72 header fixed), `PLAYWRIGHT-PLAN.md` (152, cloud how-to-run, suite 44),
   `features/README.md` (469).
-- **Not done:** no output check on coach tips for the banned words (prompt rule only), and the
-  word *"floor"* is still all through the internal docs and specs as the name of the rule — only
-  user-facing text was swept. **No DB change.**
+- **Then the internal sweep:** the banned word was replaced across every doc, spec, persona,
+  code comment and test name with the plain vocabulary in the house rules below. Three spec files
+  renamed (`energy-safety/01-energy-availability-minimum`, `energy-safety/08-maintenance-bmr-minimum`,
+  `targets/03-macro-minimums`). The sweep found one more on-screen use (Profile's *"Held at your
+  minimum maintenance"* note — now *"the adaptive adjustment stops here"*), so **v94**.
+- **Not done:** no output check on coach tips for the banned words (prompt rule only). **No DB change.**
 
 **Session 24 — v89 (cloud) merged with v90 (laptop); both live.** Two threads met on `main`:
 - **Cloud, `a178e03` (PR #2, Sonnet 5 session):** `dropDuplicateTotalRow` (app.jsx, next to
@@ -384,9 +403,9 @@ applied to the live database"** log), §37 (two changelog entries — this and i
 **Session 20 built the intake-scoring feature end to end and shipped it as v77.** New role-based
 scoring functions in `app.jsx` (`proteinDayScore`, `calorieDayScore`, `fatDayScore`, `carbsDayScore`,
 `weeklyIntakeScore`, `heroFor`) replace the old flat 5g/15g-over MACROS colouring — a macro's colour
-now depends on what it actually is: protein and fat-floor are floors (under is the penalty), fat also
-has a ceiling, calories is the master constraint per mode, carbs is pure flex. Two founder decisions
-closed the spec's `@founder-blocking` items: a week where a safety floor held the target up on 4+ of
+now depends on what it actually is: protein and fat-minimum are minimums (under is the penalty), fat also
+has an upper limit, calories is the master constraint per mode, carbs is pure flex. Two founder decisions
+closed the spec's `@founder-blocking` items: a week where a safety minimum held the target up on 4+ of
 7 days reads as "cut" outright rather than comparing against a target that was never real; unlogged
 days are excluded from the weekly average (never counted as a favourable zero), with the summary
 always stating how many of the 7 days it's built from.
@@ -395,9 +414,9 @@ always stating how many of the 7 days it's built from.
 Nutrition-Coach, Design-Lead, Anti-Metaphor and Engineer, each reading and responding to the others'
 reports (full transcript's own trail lives in `features/dashboard/04-intake-scoring-swarm-review.md`
 and the feature file's own headers). It found and fixed three real bugs no unit test could have
-caught: the fat health floor was judged flat from the first meal onward, so a perfectly on-plan
-breakfast could read a red "FAT · Add some healthy fats" all morning; the weekly majority-floor
-override graded whether the *target* had been floored rather than what was actually eaten, so a week
+caught: the fat minimum was judged flat from the first meal onward, so a perfectly on-plan
+breakfast could read a red "FAT · Add some healthy fats" all morning; the weekly majority-held-up
+override graded whether the *target* had been held up at a minimum rather than what was actually eaten, so a week
 with nothing logged, or a week of logged binges, could both read a green "real cut"; and TODAY and
 THIS WEEK's own last segment could show different colours for the same day. New Playwright file
 `e2e/intake-scoring.spec.js` (10 tests) asserts the screen, not just the arithmetic, for all three —
@@ -405,7 +424,7 @@ THIS WEEK's own last segment could show different colours for the same day. New 
 
 **The TODAY ring itself got one more fix, from the founder driving it on a live screenshot.** Its fill
 used to be `nowHour / 24` — the wall clock — so a red ring that wasn't full read as "the day isn't
-over" rather than "you're a long way short," and a fat-floor breach hid an equally real protein
+over" rather than "you're a long way short," and a fat-minimum breach hid an equally real protein
 shortfall behind one hero word. It's now three segments, protein/carbs/fat, each lit by that macro's
 own score — the same segmented-by-item idea the weekly ring already used, applied to today.
 
@@ -420,14 +439,14 @@ real target.
 Committed as `ce341ce`, pushed, deployed. Rollback tag **`pre-intake-scoring`**. Two now-stale spec
 files were marked `@superseded` rather than deleted (`dashboard/01-calorie-tolerance.feature`,
 `02-macro-tolerance.feature`) — deleting them is the founder's call, still open. **Not yet done:**
-the phone check (in progress), and a `SAFE_MIN` flat-1400/1200-floor redesign the founder reopened
+the phone check (in progress), and a `SAFE_MIN` flat-1400/1200-minimum redesign the founder reopened
 mid-session and then re-parked, tracked in `04`'s own header.
 
 **Session 18 split the feature specs into one file per feature.** `features/fuel-log.feature` was
 1,065 lines and 25 features in one file; it is now 32 files across eight topic folders, indexed by
 **`features/README.md` — start there when you want to read a spec.** `features/ai-capture.feature`
 was promoted to `features/logging/05-ai-meal-capture.feature` (it held the richer spec while calling
-itself non-authoritative), and the BMR × 1.2 maintenance floor moved to `energy-safety/08` beside the
+itself non-authoritative), and the BMR × 1.2 maintenance minimum moved to `energy-safety/08` beside the
 workstream it belongs to. Every line was verified against the originals; the only content that
 changed is four assertions carried across, each marked in place. These specs are documentation, not
 tests — the split could not affect the app.
@@ -535,8 +554,8 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
-00. **◀ Merge PR `claude/ai-coach-jargon-guard-ey4ze7`, then phone-check v91–v93** —
-   `DEVICE-TEST.md` → *New in v91–v93*: a few coach refreshes with no "floor"/"ceiling"; a photo
+00. **◀ Merge PR `claude/ai-coach-jargon-guard-ey4ze7`, then phone-check v91–v94** —
+   `DEVICE-TEST.md` → *New in v91–v94*: a few coach refreshes with no "floor"/"ceiling"; a photo
    meal logged as one entry carries a food name, not "Photo meal"; the reworded target notes.
 0. **◀ Phone-check v89–v90, and finish v88's** — `DEVICE-TEST.md` → *New in v89–v90* (the
    six-item lunch with a trailing estimate block → six rows, not seven; History 7 Days → nothing
@@ -550,7 +569,7 @@ that §4 warns against leaning on.
    the meal. Recorded in `06`'s header. (First asked in code terms and he had no idea what it
    meant; re-asked as two mock-ups of the AI Log screen — that is the form a decision has to take.)
 1. **◀ Finish the energy plan** (`ENERGY_MODEL.md` §5): ✅1 activity · ✅2 adaptive-TDEE (+06) · ✅3 smooth
-   earn-to-eat · ✅4 energy floor · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
+   earn-to-eat · ✅4 energy-availability minimum · ✅5a cut cycling (02) · ✅5b the break bar + stall check (03) ·
    ✅5c the auto-lowering fix (04). **Step 6 (file 05, the symptom check) is SHELVED** — the founder
    called it on 2026-08-09, after the structural protections that it sat on top of had all landed.
    **The energy plan is therefore done.** What remains is the `cut_break_load` SQL and the
@@ -558,8 +577,8 @@ that §4 warns against leaning on.
 
    > **Why shelving 05 is defensible, so nobody reopens it on a hunch.** 05 was the self-report layer:
    > ask the user how they're sleeping/feeling after a long under-eat, then point at a doctor. Everything
-   > underneath it now exists and works without asking anyone anything — the steady-loss floor, the
-   > low-fuel warning, the BMR×1.2 maintain floor, load-weighted cut blocks with break prompts, the
+   > underneath it now exists and works without asking anyone anything — the steady-loss minimum, the
+   > low-fuel warning, the BMR × 1.2 maintenance minimum, load-weighted cut blocks with break prompts, the
    > stall check, and the auto-lowering fix. The one line 05 uniquely owned — *"if you're feeling run
    > down with it, it's worth talking to a doctor"* — is already in the hard break prompt. What is
    > genuinely lost is the ability to catch someone whose numbers look fine but who feels awful; that
@@ -580,8 +599,8 @@ that §4 warns against leaning on.
    block state syncs to Supabase and would overwrite your real row. **Fully close and reopen the PWA
    first**, or you're testing v56. When green, clear the stale `@draft`/`@wip` tags and **bind
    `RATE_LIMIT` KV** (blocker below).
-4. **🗓️ carb floor** (deferred): hold carbs at 2 g/kg bodyweight on aggressive cuts, reducing **fat** first
-   (to its 0.6 g/kg hormonal floor). Its blocker (the energy floor) is built — but "aggressive cut" now needs
+4. **🗓️ carb minimum** (deferred): hold carbs at 2 g/kg bodyweight on aggressive cuts, reducing **fat** first
+   (to its 0.6 g/kg hormonal minimum). Its blocker (the energy-availability minimum) is built — but "aggressive cut" now needs
    redefining, since a preset can't go deeper than 25%; it really only applies to typed custom targets.
 5. **Build: more badge categories** (`DOCS §23`: Protein King, Cut Champion, Bulk Mode, Balanced) — reuses
    the v6.5 tier + celebration engine.

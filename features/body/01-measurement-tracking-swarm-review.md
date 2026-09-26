@@ -280,7 +280,7 @@ design to stay that way.**
 
 Against the persona's hard-line list (`personas/nutrition-coach.md:83-95`): not a recovery
 context, not chasing a standing sub-15%/sub-23% goal, 0.42kg/week is well inside the sustained-
-loss ceiling — none of the listed hard lines are crossed. He's also already demonstrating the
+loss upper limit — none of the listed hard lines are crossed. He's also already demonstrating the
 exact behaviour pattern (weekly-average thinking over reactive daily checking) the app's weight
 feature was built to encourage — a real, not hypothetical, protective factor.
 
@@ -528,7 +528,7 @@ as much as weight did, and the file doesn't carry the mechanism over.
 doesn't address correcting a known-rough starting value.**
 "A sync step is capped" (227-233) cites `CAL_STEP_CAP`/`ADJ_CAP` (app.jsx:679,682) as its
 precedent. But that precedent is deliberately two mechanisms: a *per-run* cap (confidence-tiered
-100-200 kcal) and a *separate* accumulated-adjustment ceiling (600 kcal) bounding total drift from
+100-200 kcal) and a *separate* accumulated-adjustment upper limit (600 kcal) bounding total drift from
 the original TDEE estimate — and critically, it corrects a baseline (seeded TDEE) that's already
 believable by construction. This spec's cap is a single undifferentiated "the update is capped,"
 applied to a starting `p.bodyFat` that is very plausibly a rough guess —
@@ -895,7 +895,7 @@ has `bmrOf`, `computeMacros`, and `isLeanBody` all reading the same capped, lagg
 value, and a *symmetric* cap makes the lag direction-blind. Traced through: if measured BF% is
 **falling** (a real recomposition — exactly what this feature exists to surface) while capped,
 `p.bodyFat` stays artificially **high** relative to the true drop, computing a **lower** BMR/
-protein floor than his real body warrants (tighter effective deficit than intended) and **delaying
+protein minimum than his real body warrants (tighter effective deficit than intended) and **delaying
 `isLeanBody` tripping at exactly the point it's supposed to fire** — for the person 15 months into
 a cutting recomp, the person most likely to be crossing that threshold *right now*. A symmetric cap
 makes the app's own safety check slower to notice, not faster, in the one direction that matters

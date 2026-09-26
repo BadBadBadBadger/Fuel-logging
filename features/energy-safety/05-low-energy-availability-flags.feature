@@ -43,12 +43,12 @@
 #       LEA_COOLDOWN_DAYS      = 14 before the offer may reappear (matches the
 #                                weigh-in nudge cooldown — one voice, one rhythm)
 #       FLAG_THRESHOLD         = 2 selected symptoms escalates to break + pro
-#   "The floor" below always means the STEADY-LOSS floor built in Step 4
+#   "The minimum" below always means the Steady-loss minimum built in Step 4
 #   (file 01): 75% of believable maintenance + the applied training bonus.
 #
 # ── THE TRIGGER — DECIDED 2026-08-07 (was left open at the Step 4 build) ─────
 #   An "under-eating week" = a week whose AVERAGE logged intake sits at or below
-#   my steady-loss floor, counted only if the week has >= LEA_MIN_LOGGED_DAYS
+#   my steady-loss minimum, counted only if the week has >= LEA_MIN_LOGGED_DAYS
 #   logged days. Unlogged days are EXCLUDED from the average, never counted as
 #   zero. LEA_WEEKS_TO_PROMPT such weeks in a row offers the check.
 #
@@ -75,22 +75,22 @@
 # ── ONE TERM, ONE MEANING (naming collision, resolved) ───────────────────────
 #   "Low on fuel today" is the app's SINGLE-DAY, lean-body-only note from file 01.
 #   This file never uses that phrase. Here the condition is "UNDER-EATING" — weeks
-#   of average intake below the floor, any body. Two different signals, two names.
+#   of average intake below the minimum, any body. Two different signals, two names.
 #   Core symptom set (sex-neutral, reviewable): low libido/sex drive, persistent
 #   low mood, poor sleep, feeling cold often, stalled/declining strength or
 #   recovery, getting ill or injured often. PLUS one profile-relevant physical
 #   sign (see the sex-relevant-sign scenario) — a physiological marker, not a
 #   bias in WHO gets flagged.
 #   FIXATION_PATTERN (observable; exact thresholds owned by logic.test.js) = any
-#   of: repeatedly setting a manual target below the steady-loss floor; logging
-#   intake below that floor for many consecutive days; weighing in many times per
+#   of: repeatedly setting a manual target below the steady-loss minimum; logging
+#   intake below that minimum for many consecutive days; weighing in many times per
 #   day; repeatedly dismissing diet-break prompts while still under-eating.
 # ─────────────────────────────────────────────────────────────
 
 Feature: Low-energy-availability symptom check and healthcare-professional signposting
 
   Scenario: A symptom check is offered after a long stretch of under-eating
-    Given my average logged intake has sat at or below my steady-loss floor for LEA_WEEKS_TO_PROMPT (3) consecutive weeks
+    Given my average logged intake has sat at or below my steady-loss minimum for LEA_WEEKS_TO_PROMPT (3) consecutive weeks
     And each of those weeks has at least LEA_MIN_LOGGED_DAYS logged days
     When I open the dashboard
     Then I see a calm, optional prompt "Quick check-in: how are you feeling?"
@@ -98,8 +98,8 @@ Feature: Low-energy-availability symptom check and healthcare-professional signp
     And after tapping "Not now" I can still log food and use every other feature
 
   Scenario: A week is judged on its average, not on its lightest day
-    Given one day this week was well below my steady-loss floor
-    And the week's average logged intake is above my floor
+    Given one day this week was well below my steady-loss minimum
+    And the week's average logged intake is above my minimum
     When the app checks whether to offer the well-being check
     Then this week does not count as an under-eating week
     # One light day is normal life — the same trend-not-a-day logic used for weight.
@@ -120,7 +120,7 @@ Feature: Low-energy-availability symptom check and healthcare-professional signp
 
   Scenario: A well-fuelled cut is never screened
     Given I have been in "Cut" mode for many consecutive weeks
-    And my average logged intake has stayed above my steady-loss floor throughout
+    And my average logged intake has stayed above my steady-loss minimum throughout
     When I open the dashboard
     Then no well-being check is offered
     # Time spent cutting is files 02/03's business. A fed cut is not a welfare concern.
@@ -168,8 +168,8 @@ Feature: Low-energy-availability symptom check and healthcare-professional signp
     And no running tally or history of my symptom scores is shown
 
   Scenario: Sustained under-eating with a fixation pattern is answered plainly
-    Given I have logged intake below my steady-loss floor for many consecutive days
-    And my behaviour matches the FIXATION_PATTERN (e.g. repeatedly pushing my target below that floor)
+    Given I have logged intake below my steady-loss minimum for many consecutive days
+    And my behaviour matches the FIXATION_PATTERN (e.g. repeatedly pushing my target below that minimum)
     When the well-being summary is shown
     Then it states plainly "Losing weight fast and eating less than your body needs harms your health, hormones, muscle and mood"
     And it says "Please speak to a healthcare professional before cutting any further"

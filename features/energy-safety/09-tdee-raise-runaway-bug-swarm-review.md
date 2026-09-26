@@ -41,9 +41,9 @@ days, and it tests a scenario this bug report doesn't match.
   `bmrOf` — `app.jsx:324`. `seedTDEE` — `app.jsx:326`. ✓ all as cited in the brief.
 - `SMOOTH_WEIGHTS = [0.5, 0.3, 0.2]` — `app.jsx:341`. `smoothWorkoutKcal` — `app.jsx:343-344`. ✓
 - `calcTargets`: `kcal = tdee + MODES[mode].adj + totalWorkoutKcal` at `app.jsx:401-402`, where
-  `tdee = seed + tdeeAdj` (`app.jsx:399,401`). Confirmed the floors below this (`bmrFloorApplied`,
+  `tdee = seed + tdeeAdj` (`app.jsx:399,401`). Confirmed the minimums below this (`bmrFloorApplied`,
   `deficitFloorApplied`, `safeMinApplied`, `app.jsx:403-414`) only ever pull `kcal` *down* — there
-  is no ceiling anywhere in this function. So a too-high number cannot be a floor bug by
+  is no upper limit anywhere in this function. So a too-high number cannot be a minimum bug by
   construction; it has to be `tdee` or `totalWorkoutKcal` being too big.
 - `runCalibration` — `app.jsx:684-744`. `CAL_MIN_WEIGHINS = 6` (`677`), confidence tiers
   low(<14)/medium(<28)/high(≥28) at `app.jsx:713`, step caps 100/150/200 at `app.jsx:679`,
@@ -172,7 +172,7 @@ catch. A cut that silently stops being a cut:
   anything changed — he'd have keep losing confidence in his own tracking rather than getting an
   honest "you're not in a deficit right now" message;
 - is *itself* a known adherence-and-trust failure mode I've seen plenty of times on the coaching
-  floor with commercial trackers: a user who's caught the tool being wrong once starts either
+  minimum with commercial trackers: a user who's caught the tool being wrong once starts either
   overriding it by hand every day (which defeats the entire point of an adaptive model) or ignoring
   it altogether and reverting to guesswork — both worse outcomes than the tool simply being
   conservative;
@@ -304,7 +304,7 @@ Finding 2, restated as a boundary problem: the boundary is drawn on the wrong va
 
 "I really can't see a reality where I should be eating over 3k kcal at cut" is the framing I'm
 supposed to pressure-test, not just accept because it's the person who filed the bug. For a 97.1kg,
-29.1%-body-fat, **very-active** man (seed 2878), a Cut ceiling of ~2878 − 500 + a genuinely large
+29.1%-body-fat, **very-active** man (seed 2878), a Cut upper limit of ~2878 − 500 + a genuinely large
 single-day smoothed workout bonus (two heavy sessions can plausibly smooth to 600-700kcal, see QA's
 worked numbers) lands at 2978-3078 **on a single hard-training day, with zero tdeeAdj involved at
 all** — uncomfortably close to 3113 without any bug operating. I'm not saying that's what happened
@@ -318,8 +318,8 @@ plainly rather than nodding it through.
 
 ### Fine
 
-- The core `−500` Cut adjustment, the deficit floor, and `SAFE_MIN` are all still doing exactly
-  what they're supposed to — I tried to find a floor-side explanation for a too-high number and
+- The core `−500` Cut adjustment, the steady-loss minimum, and `SAFE_MIN` are all still doing exactly
+  what they're supposed to — I tried to find a minimum-side explanation for a too-high number and
   confirmed, independently of QA, that none of them can ever push a number up. Not this bug's
   location.
 - `effectiveMode`'s `customKcal` branch: I traced every call site and agree this is very unlikely to
@@ -369,7 +369,7 @@ to. Genuinely complementary, not overlapping — I'd cite both together if I wer
 the founder myself.
 
 **Where I want to add, not just agree:** the "confidence" mislabelling (Critical Thinker's Finding
-2) has a coaching-floor parallel I want to name explicitly, because it's the exact mistake I've made
+2) has a coaching-minimum parallel I want to name explicitly, because it's the exact mistake I've made
 myself and corrected for: early in working with a new client, I used to treat "they've weighed in
 every day for two weeks" as itself a sign I could trust the trend more. I was wrong, repeatedly,
 specifically in the first two-to-three weeks of a new plan, which is exactly when water/glycogen
@@ -389,8 +389,8 @@ about the latter, sustained pattern — his instinct is right about the thing he
 experiencing, even if the literal number "3000" isn't a hard physiological line. I don't want the
 engineering fix anchored to "keep it under X kcal" as a number — that reintroduces exactly the kind
 of flat, body-blind threshold this app's own `SAFE_MIN` discussion already flagged as the wrong
-shape of fix (see `project_safe_min_shelved.md` in memory — a flat ceiling has the identical defect
-as a flat floor, just facing the other way).
+shape of fix (see `project_safe_min_shelved.md` in memory — a flat upper limit has the identical defect
+as a flat minimum, just facing the other way).
 
 ### Critical-Thinking responds
 
@@ -415,8 +415,8 @@ fat. That closes the gap in my own argument.
 
 **Standing my ground on one point:** Coach's caution against anchoring a fix to "keep it under X
 kcal" is right, and I'd already implicitly avoided that in my own findings — none of Findings 1-3
-propose a ceiling; they all propose evidence-quality gates (spacing, distinctness, reversibility),
-which is the structurally correct answer to "the same flat-ceiling mistake as SAFE_MIN" Coach is
+propose an upper limit; they all propose evidence-quality gates (spacing, distinctness, reversibility),
+which is the structurally correct answer to "the same flat-limit mistake as SAFE_MIN" Coach is
 warning against. Worth saying explicitly so the engineer doesn't accidentally reach for a kcal cap
 as the easy fix: that would repeat a mistake this project has already identified and rejected once
 in the opposite direction.
@@ -468,7 +468,7 @@ severity picture once found. What's confirmed versus still open:
    yet?
 5. **Ruled out:** `effectiveMode`/`customKcal` silently reading as something other than the
    founder's stated mode (verifiable, and very unlikely absent a stored `custom_kcal`); any of the
-   floors (`bmrFloorApplied`/`deficitFloorApplied`/`safeMinApplied`) explaining a too-high number
+   minimums (`bmrFloorApplied`/`deficitFloorApplied`/`safeMinApplied`) explaining a too-high number
    (structurally impossible — they only ever pull down).
 
 ### Genuinely still open (not resolved by static analysis or arithmetic alone)

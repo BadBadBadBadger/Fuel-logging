@@ -308,7 +308,7 @@ it verbatim: a bad day *"still counts fully in the average … never dropped or 
 deletes low days because they are low.
 
 **`05`'s side.** Same conclusion, with the arithmetic: drop 09/09 and the average goes 2510 → 2557;
-drop the two lowest and it reads 2596 — away from the floor he is watching. It also feeds
+drop the two lowest and it reads 2596 — away from the minimum he is watching. It also feeds
 `runCalibration`'s undamped raise path (`766`: *"Raising is NEVER damped"*).
 
 **`06`'s and `02`'s side.** An abandoned log *is* derivable with no new column: `l.id` is a
@@ -349,7 +349,7 @@ the genuinely partial day.
 **`02`'s refusal (strongest form).** Two reasons, both worse than the bug FL-010 describes.
 (i) Recomputing a past day's target needs that day's weight, body fat, `tdeeAdj`, workout bonus and
 any custom-kcal override — **none of which are stored**, which is the stated purpose of the snapshot
-(`6977-6984`). The obvious shortcut, shifting by ±500, is wrong on any day a safety floor held
+(`6977-6984`). The obvious shortcut, shifting by ±500, is wrong on any day a safety minimum held
 (`calcTargets:403-414`) and would push a historical target below `SAFE_MIN`. `h.floored` guards most
 of that, but a **user-typed custom target is invisible**: `customKcalApplied` is set on `targets`
 (`6967`), never snapshotted, and `floored` reads false. Closing that needs a new column.
@@ -384,7 +384,7 @@ overridden.** Five parts:
 2. **Write `mode` and nothing else.** Do not touch `targetKcal`, `targetFat` or `floored`. The
    snapshot keeps the target that actually applied. This is truthful — the app really did tell him
    2,709 that day — and it removes every one of `02`'s reason (i) hazards: no unstored inputs, no
-   floor shift, no custom-target hole, no column, no migration.
+   minimum shift, no custom-target hole, no column, no migration.
 3. **Show the target it was scored against**, `04`'s line, with the score dot in the same colour as
    that day's ring segment: `● Scored against CUT · target 2,709 kcal · 378 under`. Needs no new
    props and no migration — every field is already in the row History is handed (`6989-7001`). This
@@ -632,7 +632,7 @@ passes vacuously.
 | — | FL-007's incomplete-day detection, mark, or exclusion | **WON'T FIX** | A written founder decision forbids dropping a day; `02` found that `l.id` is an *edit* timestamp, so the derivable version is silently wrong on retro-edited days. §2.5 |
 | — | "Ends of the rolling line" as the headline figure | **WON'T FIX** | Understates ~3× (`01`, replicated) and differences a 3-reading mean against a 7-reading mean (`02`). §2.3 |
 | — | A new least-squares estimator | **WON'T FIX** | None exists (S13); a fourth smoothing rule on a 7-point window is not a trend. |
-| — | Recomputing or delta-shifting a past day's `targetKcal` | **WON'T FIX** | `02` §4.3: unstored inputs, a floor that must not be shifted, and an invisible custom-target hole that needs a column. Unless Q2 goes the other way. |
+| — | Recomputing or delta-shifting a past day's `targetKcal` | **WON'T FIX** | `02` §4.3: unstored inputs, a minimum that must not be shifted, and an invisible custom-target hole that needs a column. Unless Q2 goes the other way. |
 | — | A read-only cut-off on old days; revoking a badge after an edit; a confirm step on a mode change; a toast after one | **WON'T FIX** | Report open questions 2 and 3, answered: S17, S18, and the no-friction house rules. `02`, `04`, `05` agree. |
 | — | Reconciling the day counts into one number | **WON'T FIX** | Three legitimately different windows and one list. Naming them is the fix. |
 | — | Narrowing `filtered`, in any range | **WON'T FIX** | §2.1. Four regressions for one benefit already available elsewhere. |
@@ -683,7 +683,7 @@ CUT and there are two readings, with opposite results:
 **Recommendation: (a).** Three reasons. It is truthful — the app really did tell you 2,709 that day.
 It needs nothing that was never stored, whereas (b) needs that day's weight, body fat, `tdeeAdj`,
 workout bonus and any typed-in target, none of which are on the snapshot; the shortcut of shifting by
-500 is wrong on any day a safety floor held and could put a historical target below your safety
+500 is wrong on any day a safety minimum held and could put a historical target below your safety
 minimum. And a typed-in custom target is invisible to every stored field, so (b) has a hole that only
 a new database column can close. Either way the day detail will show the target it was scored
 against, so nothing is hidden.

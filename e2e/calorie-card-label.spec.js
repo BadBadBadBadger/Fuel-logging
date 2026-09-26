@@ -8,7 +8,7 @@
 //
 // The target is pinned by seeding `target_kcal`, the custom-target key the ✎ pill writes — so the
 // three cases are exactly the report's numbers and not whatever calcTargets makes of the seeded
-// profile that day. 2,319 sits above the 1,400 kcal male floor, so it is used as-is.
+// profile that day. 2,319 sits above the 1,400 kcal male minimum, so it is used as-is.
 
 const { test, expect } = require("@playwright/test");
 const { open, shot } = require("./harness");

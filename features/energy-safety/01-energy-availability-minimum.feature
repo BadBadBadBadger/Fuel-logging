@@ -1,19 +1,19 @@
 # ─────────────────────────────────────────────────────────────
 # DRAFT — for review. Energy-safety workstream, file 1 of 5.
 # REWRITTEN 2026-08-07 at build time (Step 4). The original draft made
-# Energy Availability (EA) a hard floor at 30 kcal/kg FFM. That did not
+# Energy Availability (EA) a hard minimum at 30 kcal/kg FFM. That did not
 # survive the numbers — see "WHY THIS CHANGED" below and ENERGY_MODEL.md §5.
 #
-# WHY: the shipped floor is a flat SAFE_MIN (1400 male / 1200 female) that sits
+# WHY: the shipped minimum is a flat SAFE_MIN (1400 male / 1200 female) that sits
 # BELOW a large user's BMR, so it never protects them — and sits ABOVE a small
 # user's sensible target only by accident. It protects nobody in particular.
-# This replaces it with a floor DERIVED FROM THE USER'S OWN ENERGY.
+# This replaces it with a minimum DERIVED FROM THE USER'S OWN ENERGY.
 #
 # ── THE TWO PROTECTIONS (deliberately separate) ──────────────
-#   1. STEADY-LOSS FLOOR — the one that MOVES YOUR TARGET, for everyone.
-#        floor = 75% of (believable maintenance + today's applied training bonus)
+#   1. STEADY-LOSS MINIMUM — the one that MOVES YOUR TARGET, for everyone.
+#        minimum = 75% of (believable maintenance + today's applied training bonus)
 #      A preset target never sits more than MAX_DEFICIT_FRAC below maintenance.
-#      Scales with body size, so it protects the small user the flat floor
+#      Scales with body size, so it protects the small user the flat minimum
 #      under-served AND the large user it never reached. Eases, never blocks.
 #   2. LOW-FUEL WARNING — energy availability, WARNING ONLY.
 #        EA = (target − today's RAW training burn) ÷ fat-free mass
@@ -25,8 +25,8 @@
 #     NEAT-only (max 1.55), training is added separately and then subtracted back
 #     out of EA. Reaching 45 kcal/kg FFM needs a whole-day factor ≈1.68+. An
 #     "all clear" band nothing can satisfy is wallpaper, not safety → DROPPED.
-#   • EA_HARD = 30 AS A FLOOR FORBIDS WEIGHT LOSS for anyone carrying fat. For a
-#     98.5 kg / 30% body-fat profile the EA-30 floor lands ABOVE a normal cut
+#   • EA_HARD = 30 AS A MINIMUM FORBIDS WEIGHT LOSS for anyone carrying fat. For a
+#     98.5 kg / 30% body-fat profile the EA-30 minimum lands ABOVE a normal cut
 #     target — it would have capped the deficit at ~160 kcal. The EA thresholds
 #     were derived in LEAN ATHLETES, who have no large fat store to cover the
 #     gap; a body with reserves is a different case → EA warns, never moves a
@@ -42,9 +42,9 @@
 #     male threshold is less precisely defined than the female 30. We therefore
 #     use 30 only to raise a supportive, occasional warning — never as a
 #     personalised clinical number, and never to override a target.
-#   • The ~25% deficit ceiling is practice, not a hard finding: it matches the
+#   • The ~25% deficit upper limit is practice, not a hard finding: it matches the
 #     app's own existing "aggressive deficit" language and keeps loss near the
-#     0.5–1%/wk rate ceiling for the bodies this app serves.
+#     0.5–1%/wk rate upper limit for the bodies this app serves.
 #
 # ── NUMBERS CONTRACT (read before writing code) ──────────────
 #   DERIVED figures are WORKED EXAMPLES — never hardcode them. Every kcal value
@@ -52,7 +52,7 @@
 #       FFM   = weight × (1 − bodyFat/100)
 #       BMR   = 370 + 21.6 × FFM                    (Katch-McArdle)
 #       TDEE  = BMR × activity multiplier           (NEAT-only, 1.20–1.55)
-#       floor = (1 − MAX_DEFICIT_FRAC) × (TDEE + applied training bonus)
+#       minimum = (1 − MAX_DEFICIT_FRAC) × (TDEE + applied training bonus)
 #       EA    = (target − raw training burn) ÷ FFM
 #   Implement the formulas; the exact arithmetic is owned by
 #   __tests__/logic.test.js, not by these scenarios. Scenario Outlines use
@@ -64,7 +64,7 @@
 #       flat SAFE_MIN = 1400/1200 (absolute backstop + body-fat-unset fallback)
 # ─────────────────────────────────────────────────────────────
 
-Feature: A body-sized floor replaces the flat calorie floor
+Feature: A body-sized minimum replaces the flat calorie minimum
 
   # Worked-example profile (illustrative only — never hardcode these outputs):
   Background:
@@ -72,49 +72,49 @@ Feature: A body-sized floor replaces the flat calorie floor
     And my fat-free mass therefore works out to about 69 kg
     And my resting BMR therefore works out to about 1,859 kcal
 
-  Scenario: My floor is worked out from my own energy, not a fixed number
+  Scenario: My minimum is worked out from my own energy, not a fixed number
     Given I am in "Cut" mode
     When the app calculates my daily calorie target
-    Then my floor is a fixed fraction below what the app believes I burn in a day
-    And my floor sits well above the flat 1,400 kcal, because my body is large
+    Then my minimum is a fixed fraction below what the app believes I burn in a day
+    And my minimum sits well above the flat 1,400 kcal, because my body is large
 
   Scenario Outline: The same flat cut is fine on one body and too deep on another
     Given my body is "<body>"
     When the app calculates my "Cut" target
-    Then the steady-loss floor is "<applied>"
+    Then the steady-loss minimum is "<applied>"
     And my target is never more than a quarter below what the app believes I burn
 
-    # One rule, two outcomes — proof the floor is derived, not baked in.
+    # One rule, two outcomes — proof the minimum is derived, not baked in.
     Examples: a flat −500 is a modest bite for one body and a third of the other
       | body                        | applied |
       | large, 98.5 kg at 30% fat   | not     |
       | small, 60 kg at 25% fat     | yes     |
 
   Scenario: Being eased is explained, not silently done
-    Given my calculated target falls below my steady-loss floor
+    Given my calculated target falls below my steady-loss minimum
     When I open the dashboard
     Then I see an amber "Eased to a steady pace" note with the target it settled on
     And I can tap "Why?" to read that losing faster mostly costs muscle and is harder to stick to
-    And the note never appears when my target already clears the floor
+    And the note never appears when my target already clears the minimum
 
-  Scenario: Weight loss still works — the floor eases, it never blocks
-    Given my calculated target falls below my steady-loss floor
+  Scenario: Weight loss still works — the minimum eases, it never blocks
+    Given my calculated target falls below my steady-loss minimum
     When the app calculates my daily calorie target
-    Then my target is raised to the floor
+    Then my target is raised to the minimum
     And my target still sits below what the app believes I burn, so I am still losing
 
   Scenario: A target I typed myself is warned about, not overridden
-    Given I have set my own custom calorie target below my steady-loss floor
+    Given I have set my own custom calorie target below my steady-loss minimum
     When I open the dashboard
-    Then I see an amber note naming the floor we would have set
+    Then I see an amber note naming the minimum we would have set
     And my typed target is left exactly as I set it
 
-  Scenario Outline: When several floors apply, the strictest one wins
+  Scenario Outline: When several minimums apply, the strictest one wins
     Given I am in "<mode>" mode
     When the app calculates my daily calorie target
-    Then the floor actually applied is the "<which>" one
+    Then the minimum actually applied is the "<which>" one
 
-    # target floor = max( steady-loss floor, [maintain only] sedentary TDEE, SAFE_MIN )
+    # target minimum = max( steady-loss minimum, [maintain only] sedentary TDEE, SAFE_MIN )
     Examples: contrasting rows prove max() and mode-dependence
       | mode     | which                         |
       | Maintain | sedentary maintenance (BMR×1.2) |
@@ -158,8 +158,8 @@ Feature: A body-sized floor replaces the flat calorie floor
     Then it subtracts today's FULL logged burn, not the smoothed share
     And so a hard session shows up as low fuel on the day I did it
 
-  Scenario: The flat legacy floor is retained only as a last-resort backstop
+  Scenario: The flat legacy minimum is retained only as a last-resort backstop
     Given my body-fat is not set
     When the app calculates my daily calorie target
     Then no energy-availability figure is produced at all
-    And the flat SAFE_MIN floor for my sex still backstops my target
+    And the flat SAFE_MIN minimum for my sex still backstops my target

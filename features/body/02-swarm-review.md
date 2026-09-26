@@ -379,7 +379,7 @@ design is sound; the four findings above are all at its edges.
 |---|---|---|
 | clamp | not present in any new text | clean |
 | gate (verb) | not present in any new text | clean |
-| floor / ceiling | not present in any new on-screen string | clean (identifiers only, elsewhere) |
+| minimum / upper limit | not present in any new on-screen string | clean (identifiers only, elsewhere) |
 
 `SYNC_GATE` and `BF_SYNC_STEP_CAP` appear in the spec header only as the names of existing
 constants that `02` deliberately does not touch. That is the noun form naming a specific

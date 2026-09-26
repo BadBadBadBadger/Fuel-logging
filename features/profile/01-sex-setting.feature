@@ -9,12 +9,12 @@ Feature: Sex setting on profile screen
 
   Scenario: Male selected
     Given I have selected Male on the profile screen
-    Then the safe minimum calorie floor is 1,400 kcal
+    Then the safe minimum calorie target is 1,400 kcal
     And protein targets use male body composition ratios
 
   Scenario: Female selected
     Given I have selected Female on the profile screen
-    Then the safe minimum calorie floor is 1,200 kcal
+    Then the safe minimum calorie target is 1,200 kcal
     And protein targets use female body composition ratios
     And a note appears "Targets may need adjusting around your cycle — override anytime"
 
