@@ -38,14 +38,14 @@ const estimateSessionKcal = (w, bf, type, dur, int) =>
 
 // Faithful mirror of app.jsx calcTargets: TDEE seeded from a NEAT-only activity
 // multiplier (sedentary 1.20 == the old flat baseline), the day's workout kcals added
-// directly, macros via computeMacros, and a MAINTAIN-ONLY floor at sedentary TDEE
+// directly, macros via computeMacros, and a MAINTAIN-ONLY minimum at sedentary TDEE
 // (BMR × 1.2 — the adaptive adjustment can never starve maintenance below it, even
 // for a higher-activity seed) plus the legacy SAFE_MIN backstop.
 const ACTIVITY = { sedentary: 1.20, light: 1.35, active: 1.45, very: 1.55 };
 const activityMult = p => ACTIVITY[p && p.activity] || ACTIVITY.sedentary;
 
-// ── Energy floor + low-fuel warning (Step 4) — mirror of app.jsx ──────────────
-// The floor that moves your target is RATE OF LOSS (scales with body size); energy availability is a
+// ── Energy-availability minimum + low-fuel warning (Step 4) — mirror of app.jsx ──────────────
+// The minimum that moves your target is RATE OF LOSS (scales with body size); energy availability is a
 // WARNING ONLY, shown only to lean bodies on days they trained. EA_OK (45) is not a band —
 // it is unreachable given NEAT-only multipliers with training subtracted back out.
 const EA_HARD          = 30;
@@ -87,7 +87,7 @@ const calcTargets = (p, mode, totalWorkoutKcal = 0, tdeeAdj = 0, rawBurnKcal = 0
     floorsExceedKcal: m.floorsExceedKcal };
 };
 
-// ── Macro floor engine (feature #7) — mirror of app.jsx computeMacros ──────────
+// ── Macro minimum engine (feature #7) — mirror of app.jsx computeMacros ──────────
 const PROTEIN_PER_LBM  = { male: 2.2, female: 2.0 };
 const FAT_FLOOR_PER_KG = 0.6;
 const FAT_MODE_PER_KG  = {
@@ -498,8 +498,8 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState
   if (raiseHeld) {
     adj = 0;
   } else if (rawAdj < 0 && wasCutting) {
-    const floor = Math.min(settledAdj, tdeeAdj);
-    adj = Math.max(floor, tdeeAdj + rawAdj) - tdeeAdj;
+    const lowest = Math.min(settledAdj, tdeeAdj);
+    adj = Math.max(lowest, tdeeAdj + rawAdj) - tdeeAdj;
     refused = adj === 0;
   }
   return { adj, refused, raiseHeld, wouldHaveBeen: rawAdj, confidence,
@@ -736,8 +736,8 @@ describe("calcTargets — Katch-McArdle", () => {
   });
 });
 
-// ── computeMacros — macro floor engine (#7) ───────────────────
-describe("computeMacros — floors hold, carbs absorb", () => {
+// ── computeMacros — macro minimum engine (#7) ───────────────────
+describe("computeMacros — minimums hold, carbs absorb", () => {
   const man   = { weight: 80, bodyFat: 18, sex: "male"   }; // lbm 65.6
   const woman = { weight: 70, bodyFat: 25, sex: "female" }; // lbm 52.5
 
@@ -749,11 +749,11 @@ describe("computeMacros — floors hold, carbs absorb", () => {
     expect(maintain).toBe(bulk);
   });
 
-  test("male protein floor is 2.2 g/kg LBM", () => {
+  test("male protein minimum is 2.2 g/kg LBM", () => {
     expect(computeMacros(man, "maintain", 2300).protein).toBe(Math.round(65.6 * 2.2));
   });
 
-  test("female protein floor is 2.0 g/kg LBM and lower than a man at equal LBM", () => {
+  test("female protein minimum is 2.0 g/kg LBM and lower than a man at equal LBM", () => {
     expect(computeMacros(woman, "maintain", 2000).protein).toBe(Math.round(52.5 * 2.0));
     const m = { weight: 70, bodyFat: 25, sex: "male"   }; // same lbm as `woman`
     const f = { weight: 70, bodyFat: 25, sex: "female" };
@@ -761,7 +761,7 @@ describe("computeMacros — floors hold, carbs absorb", () => {
       .toBeGreaterThan(computeMacros(f, "maintain", 2000).protein);
   });
 
-  test("fat rises from cut to bulk but never below the 0.6 g/kg floor", () => {
+  test("fat rises from cut to bulk but never below the 0.6 g/kg minimum", () => {
     const cutFat  = computeMacros(man, "cut",  1800).fat;
     const bulkFat = computeMacros(man, "bulk", 2800).fat;
     expect(bulkFat).toBeGreaterThan(cutFat);
@@ -783,10 +783,10 @@ describe("computeMacros — floors hold, carbs absorb", () => {
     expect(computeMacros(man, "cut", 1900)).toEqual(computeMacros(man, "cut", 1900));
   });
 
-  test("a target too low to fit the floors flags floorsExceedKcal and keeps carbs ≥ 50", () => {
+  test("a target too low to fit the minimums flags floorsExceedKcal and keeps carbs ≥ 50", () => {
     const r = computeMacros(man, "cut", 900);
     expect(r.floorsExceedKcal).toBe(true);
-    expect(r.carbs).toBe(50); // floor kept, never negative
+    expect(r.carbs).toBe(50); // minimum kept, never negative
   });
 
   test("a comfortable target does not flag floorsExceedKcal", () => {
@@ -1011,7 +1011,7 @@ describe("calcTargets — tdeeAdj", () => {
     expect(adjusted - base).toBe(200);
   });
 
-  test("negative tdeeAdj still lowers a BULK target (floor is maintain-only)", () => {
+  test("negative tdeeAdj still lowers a BULK target (minimum is maintain-only)", () => {
     const base     = calcTargets(prof, "bulk", 0, 0).kcal;
     const adjusted = calcTargets(prof, "bulk", 0, -150).kcal;
     expect(base - adjusted).toBe(150);
@@ -1026,72 +1026,72 @@ describe("calcTargets — tdeeAdj", () => {
   });
 });
 
-// ── calcTargets — BMR×1.2 maintenance floor (energy-safety file 04) ────────────
+// ── calcTargets — BMR × 1.2 maintenance minimum (energy-safety file 04) ────────────
 // The harm: adaptive tdeeAdj drove maintenance BELOW resting metabolism, prescribing
 // "eat less" to a stalling dieter. Rule: maintenance can never sit below sedentary
 // TDEE (BMR × 1.2); a deliberate cut may, bounded elsewhere. Numbers are DERIVED
 // from the formula here (never hardcoded upstream), with contrasting bodies proving
-// the floor is computed, not baked in.
-describe("calcTargets — maintenance BMR×1.2 floor", () => {
+// the minimum is computed, not baked in.
+describe("calcTargets — maintenance minimum (BMR × 1.2)", () => {
   const sedentaryTDEE = p => {
     const lbm = p.weight * (1 - p.bodyFat / 100);
     return Math.round(Math.round(370 + 21.6 * lbm) * 1.2);
   };
 
-  // Worked example from the harm report: 98.5 kg / 30% BF → BMR ≈ 1859, floor ≈ 2231.
+  // Worked example from the harm report: 98.5 kg / 30% BF → BMR ≈ 1859, minimum ≈ 2231.
   const harmed = { weight: 98.5, bodyFat: 30 };
-  // A smaller, contrasting body so the floor value differs — proof it is derived.
+  // A smaller, contrasting body so the minimum value differs — proof it is derived.
   const smaller = { weight: 62, bodyFat: 22 };
 
   test.each([harmed, smaller])(
     "maintenance is never pulled below sedentary TDEE by a full negative adjustment (%o)",
     (p) => {
-      const floor = sedentaryTDEE(p);
-      const raw   = floor - 600;                       // what the auto-lowering alone would give
+      const minKcal = sedentaryTDEE(p);
+      const raw   = minKcal - 600;                      // what the auto-lowering alone would give
       const { kcal, bmrFloorApplied } = calcTargets(p, "maintain", 0, -600);
-      expect(kcal).toBe(floor);
+      expect(kcal).toBe(minKcal);
       expect(kcal).toBeGreaterThan(raw);
       expect(bmrFloorApplied).toBe(true);
     },
   );
 
-  test("the floor value tracks body size (two bodies → two different floors)", () => {
+  test("the minimum value tracks body size (two bodies → two different minimums)", () => {
     expect(sedentaryTDEE(harmed)).not.toBe(sedentaryTDEE(smaller));
     expect(calcTargets(harmed, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(harmed));
     expect(calcTargets(smaller, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(smaller));
   });
 
-  test("any negative adjustment to maintenance is floored, not just the extreme", () => {
+  test("any negative adjustment to maintenance is held at the minimum, not just the extreme", () => {
     const { kcal, bmrFloorApplied } = calcTargets(harmed, "maintain", 0, -50);
     expect(kcal).toBe(sedentaryTDEE(harmed));
     expect(bmrFloorApplied).toBe(true);
   });
 
-  test("a positive adjustment raises maintenance and does NOT flag the floor", () => {
+  test("a positive adjustment raises maintenance and does NOT flag the minimum", () => {
     const { kcal, bmrFloorApplied } = calcTargets(harmed, "maintain", 0, 200);
     expect(kcal).toBe(sedentaryTDEE(harmed) + 200);
     expect(bmrFloorApplied).toBe(false);
   });
 
-  test("a deliberate cut is allowed below sedentary TDEE — the maintain floor does not apply", () => {
+  test("a deliberate cut is allowed below sedentary TDEE — the MAINTAIN minimum does not apply", () => {
     const { kcal, bmrFloorApplied } = calcTargets(harmed, "cut", 0, -600);
     expect(bmrFloorApplied).toBe(false);
     expect(kcal).toBeLessThan(sedentaryTDEE(harmed)); // cut deficit + negative adj both bite
   });
 
-  test("workout kcals cannot be gamed to bypass the floor downward", () => {
-    // Even with zero workout and a huge negative adj, maintenance holds at the floor.
+  test("workout kcals cannot be gamed to bypass the minimum downward", () => {
+    // Even with zero workout and a huge negative adj, maintenance holds at the minimum.
     expect(calcTargets(harmed, "maintain", 0, -600).kcal).toBe(sedentaryTDEE(harmed));
   });
 
-  test("floor is SEDENTARY, not the seed — a higher-activity seed still floors at BMR×1.2", () => {
+  test("minimum is SEDENTARY, not the seed — a higher-activity seed still bottoms out at BMR × 1.2", () => {
     // An 'active' user seeds at BMR×1.45 but a full negative adjustment must still be
     // allowed to calibrate maintenance DOWN to sedentary (BMR×1.2) — never below.
     const active = { ...harmed, activity: "active" };
     const seedActive = calcTargets(active, "maintain", 0, 0).tdee;      // BMR × 1.45
-    expect(seedActive).toBeGreaterThan(sedentaryTDEE(active));          // seed sits above the floor
+    expect(seedActive).toBeGreaterThan(sedentaryTDEE(active));          // seed sits above the minimum
     const { kcal, bmrFloorApplied } = calcTargets(active, "maintain", 0, -600);
-    expect(kcal).toBe(sedentaryTDEE(active));                          // floored at sedentary, not the seed
+    expect(kcal).toBe(sedentaryTDEE(active));                          // held at sedentary, not the seed
     expect(bmrFloorApplied).toBe(true);
   });
 });
@@ -1725,15 +1725,15 @@ describe("runCalibration", () => {
     expect(r.refused).toBe(false);
   });
 
-  test("Fix B: a raw step bigger than the recent cushion is clipped to the settled floor", () => {
+  test("Fix B: a raw step bigger than the recent cushion is clipped to the settled minimum", () => {
     const { history, weighIns } = gainingWhileCuttingCase();
     // tdeeAdj 150, of which only 50 is "recent" (settledAdj 100) — a small cushion, so the
     // same raw signal (bounded to at most 200 by CAL_STEP_CAP) can genuinely exceed it here.
     const r = runCalibration(history, weighIns, 2400 + 150, 0,
       { daysSinceLastRaise: Infinity, tdeeAdj: 150, settledAdj: 100 });
     expect(r.wouldHaveBeen).toBeLessThan(-50); // confirms this scenario really would overshoot the cushion
-    expect(r.adj).toBe(-50);                   // clipped to exactly what's left above the settled floor
-    expect(150 + r.adj).toBe(100);             // lands exactly on the settled floor, never below
+    expect(r.adj).toBe(-50);                   // clipped to exactly what's left above the settled minimum
+    expect(150 + r.adj).toBe(100);             // lands exactly on the settled minimum, never below
     expect(r.refused).toBe(false);             // NOT a full refusal — partial erosion still applied
   });
 
@@ -2284,11 +2284,11 @@ describe("Smoothed earn-to-eat (Step 3)", () => {
   });
 });
 
-// ── Energy floor + low-fuel warning (Step 4; features/energy-safety/01) ────────
+// ── Energy-availability minimum + low-fuel warning (Step 4; features/energy-safety/01) ────────
 // Numbers here are DERIVED from the formulas, never hardcoded upstream. Contrasting
 // bodies prove each rule is computed. The two protections are tested separately
-// because they are separate: the deficit floor MOVES THE TARGET, energy availability WARNS.
-describe("Step 4 — steady-loss floor (moves the target)", () => {
+// because they are separate: the deficit minimum MOVES THE TARGET, energy availability WARNS.
+describe("Step 4 — steady-loss minimum (moves the target)", () => {
   const tdeeOf = p => {
     const bmr = Math.round(370 + 21.6 * p.weight * (1 - p.bodyFat / 100));
     return Math.round(bmr * (ACTIVITY[p.activity] || ACTIVITY.sedentary));
@@ -2298,13 +2298,13 @@ describe("Step 4 — steady-loss floor (moves the target)", () => {
   const large = { weight: 98.5, bodyFat: 30, sex: "male"   }; // TDEE ≈ 2231
   const small = { weight: 60,   bodyFat: 25, sex: "female" }; // TDEE ≈ 1610
 
-  test("the floor is a fixed fraction of maintenance, so it tracks body size", () => {
+  test("the minimum is a fixed fraction of maintenance, so it tracks body size", () => {
     const fLarge = calcTargets(large, "cut").deficitFloor;
     const fSmall = calcTargets(small, "cut").deficitFloor;
     expect(fLarge).toBe(Math.round(0.75 * tdeeOf(large)));
     expect(fSmall).toBe(Math.round(0.75 * tdeeOf(small)));
     expect(fLarge).not.toBe(fSmall);
-    // The point of replacing the flat floor: a big body's floor sits well above 1,400.
+    // The point of replacing the flat minimum: a big body's minimum sits well above 1,400.
     expect(fLarge).toBeGreaterThan(SAFE_MIN.male);
   });
 
@@ -2331,12 +2331,12 @@ describe("Step 4 — steady-loss floor (moves the target)", () => {
     }
   });
 
-  test("maintain and bulk are untouched by the floor (it only binds a deficit)", () => {
+  test("maintain and bulk are untouched by the minimum (it only binds a deficit)", () => {
     expect(calcTargets(large, "maintain").deficitFloorApplied).toBe(false);
     expect(calcTargets(large, "bulk").deficitFloorApplied).toBe(false);
   });
 
-  test("the floor rises with the applied training bonus, so smoothing is not undone", () => {
+  test("the minimum rises with the applied training bonus, so smoothing is not undone", () => {
     const bonus = 300; // the SMOOTHED bonus the target was actually built from
     const base  = calcTargets(large, "cut").deficitFloor;
     const withTraining = calcTargets(large, "cut", bonus, 0, 600).deficitFloor;
@@ -2347,7 +2347,7 @@ describe("Step 4 — steady-loss floor (moves the target)", () => {
   });
 
   test("a negative adaptive adjustment cannot deepen the real deficit past the cap", () => {
-    // The floor is measured against BELIEVABLE maintenance (never below sedentary),
+    // The minimum is measured against BELIEVABLE maintenance (never below sedentary),
     // so auto-lowering can't quietly stack another 600 kcal onto the cut.
     const { kcal } = calcTargets(large, "cut", 0, -600);
     expect(kcal).toBe(Math.round(0.75 * tdeeOf(large)));
@@ -3235,7 +3235,7 @@ describe("pickFollowups — only asks what could change the day", () => {
     expect(pickFollowups(items)).toHaveLength(1);
   });
 
-  test("exactly at the floor counts as worth asking", () => {
+  test("exactly at the minimum counts as worth asking", () => {
     const items = [{ name: "Toast", kcal: 75, confidence: 40, ask: "portion" }];
     expect(pickFollowups(items)).toHaveLength(1);
   });
@@ -3266,7 +3266,7 @@ describe("pickFollowups — only asks what could change the day", () => {
 });
 
 // ── Intake scoring (feature dashboard/04) ───────────────────────────────────────
-describe("proteinDayScore — a floor, paced open, banded at close", () => {
+describe("proteinDayScore — a minimum, paced open, banded at close", () => {
   test("over target is always green, at any distance", () => {
     expect(proteinDayScore({ dayClosed:true, pctOfTarget:1.5, verdict:"met" }).colour).toBe("green");
   });
@@ -3320,23 +3320,23 @@ describe("calorieDayScore — Cut over-penalty, Bulk under-penalty (the mirror),
   });
 });
 
-describe("fatDayScore — a ceiling and a health floor at once", () => {
-  test("between floor and target is green, direction doesn't matter", () => {
+describe("fatDayScore — an upper limit and a fat minimum at once", () => {
+  test("between minimum and target is green, direction doesn't matter", () => {
     expect(fatDayScore({ fatG:60, floorG:48, targetG:70 }).colour).toBe("green");
   });
 
-  // ── FIXED 2026-09-09 — the floor is paced while the day is open ─────────────────
-  // Found by driving the app, not by any of these tests: the floor was judged flat from the
+  // ── FIXED 2026-09-09 — the minimum is paced while the day is open ─────────────────
+  // Found by driving the app, not by any of these tests: the minimum was judged flat from the
   // first meal onward, so mid-morning "haven't eaten a day's fat yet" read as a red hard-safety
   // breach and became the dashboard's dominant daytime state.
   test.each([
     ["ahead", "green"], ["on", "green"], ["met", "green"], ["behind", "amber"],
-  ])("while the day is open, being under the floor with verdict %s reads %s, never red", (verdict, colour) => {
+  ])("while the day is open, being under the minimum with verdict %s reads %s, never red", (verdict, colour) => {
     const r = fatDayScore({ fatG:10, floorG:59, targetG:79, dayClosed:false, verdict });
     expect(r.colour).toBe(colour);
     expect(r.colour).not.toBe("red");
   });
-  test("while the day is open, being under the floor is never a hard-safety hero", () => {
+  test("while the day is open, being under the minimum is never a hard-safety hero", () => {
     const r = fatDayScore({ fatG:0, floorG:59, targetG:79, dayClosed:false, verdict:"behind" });
     expect(r.floorBreach).toBeUndefined();
     expect(r.label).not.toBe("Add some healthy fats"); // stays exclusive to a real breach at close
@@ -3346,25 +3346,25 @@ describe("fatDayScore — a ceiling and a health floor at once", () => {
     expect(r.colour).toBe("red");
     expect(r.floorBreach).toBe(true);
   });
-  test("the ceiling stays unconditional — a day's fat eaten by noon is still over", () => {
+  test("the upper limit stays unconditional — a day's fat eaten by noon is still over", () => {
     const r = fatDayScore({ fatG:100, floorG:59, targetG:79, dayClosed:false, verdict:"met" });
     expect(r.colour).toBe("red");
     expect(r.ceilingBreach).toBe(true);
   });
   test.each([
     [1.05, "green"], [1.15, "amber"], [1.30, "red"],
-  ])("over ceiling: %sx target reads %s", (mult, colour) => {
+  ])("over the upper limit: %sx target reads %s", (mult, colour) => {
     const r = fatDayScore({ fatG: 70 * mult, floorG:48, targetG:70 });
     expect(r.colour).toBe(colour);
   });
   test.each([
     [0.90, "amber"], [0.70, "red"],
-  ])("below floor: %sx floor reads %s, never a normal 'under'", (mult, colour) => {
+  ])("below the minimum: %sx the minimum reads %s, never a normal 'under'", (mult, colour) => {
     const r = fatDayScore({ fatG: 48 * mult, floorG:48, targetG:70 });
     expect(r.colour).toBe(colour);
     expect(r.floorBreach).toBe(true);
   });
-  test("a Cut is never told to increase fat between floor and target", () => {
+  test("a Cut is never told to increase fat between minimum and target", () => {
     const r = fatDayScore({ fatG:55, floorG:48, targetG:70 });
     expect(r.colour).toBe("green");
     expect(r.label).not.toMatch(/increase/i);
@@ -3396,19 +3396,19 @@ describe("isDayClosed — the eating window, plus a hard fallback for a day with
 
 describe("heroFor — the priority order when several things need attention at once", () => {
   const green = { colour:"green", label:"On target" };
-  test("fat-floor breach outranks everything, the one hard-safety claim", () => {
+  test("fat-minimum breach outranks everything, the one hard-safety claim", () => {
     const fatFloor = { colour:"red", label:"Add some healthy fats", floorBreach:true };
     const calOver  = { colour:"red", label:"OVER BY" };
     const h = heroFor({ protein:green, calories:calOver, fat:fatFloor });
-    expect(h.word).toBe("FAT"); // "floor" stays internal — never on screen
+    expect(h.word).toBe("FAT"); // the rule name stays internal — never on screen
   });
-  test("calories outrank fat's ceiling", () => {
+  test("calories outrank fat's upper limit", () => {
     const calOver = { colour:"amber", label:"OVER BY" };
     const fatOver  = { colour:"amber", label:"OVER", ceilingBreach:true };
     const h = heroFor({ protein:green, calories:calOver, fat:fatOver });
     expect(h.word).toBe("CALORIES");
   });
-  test("fat's ceiling outranks protein-under", () => {
+  test("fat's upper limit outranks protein-under", () => {
     const fatOver = { colour:"amber", label:"OVER", ceilingBreach:true };
     const protUnder = { colour:"red", label:"Increase" };
     const h = heroFor({ protein:protUnder, calories:green, fat:fatOver });
@@ -3433,17 +3433,17 @@ describe("heroFor — the priority order when several things need attention at o
     expect(h.word).toBe("CALORIES");
     expect(h.action).toMatch(re);
   });
-  test("a paced-behind fat mid-day reaches the hero at the same rank the ceiling breach has", () => {
-    // Below calories, above protein — it is "fat, but not the floor", which is that rank already.
+  test("a paced-behind fat mid-day reaches the hero at the same rank going over the limit has", () => {
+    // Below calories, above protein — it is "fat, but not the minimum", which is that rank already.
     const fat      = fatDayScore({ fatG:10, floorG:59, targetG:79, dayClosed:false, verdict:"behind" });
     const calOver  = { colour:"amber", label:"JUST OVER", heroAction:"Over by 150 kcal today." };
     const protUnder = { colour:"amber", label:"Increase" };
     expect(heroFor({ protein:protUnder, calories:calOver, fat }).word).toBe("CALORIES");
     expect(heroFor({ protein:protUnder, calories:green,   fat }).word).toBe("FAT");
   });
-  test("a fully unlogged closed day still resolves — fat-floor wins, not a blank centre", () => {
+  test("a fully unlogged closed day still resolves — fat-minimum wins, not a blank centre", () => {
     // Every macro is simultaneously in its own miss state at 0 logged — fat is 0g, below any
-    // real floor, so the general priority order alone (no special case) already resolves it.
+    // real minimum, so the general priority order alone (no special case) already resolves it.
     const fatFloor = fatDayScore({ fatG:0, floorG:48, targetG:70 });
     const protein  = proteinDayScore({ dayClosed:true, pctOfTarget:0, verdict:"met" });
     const calories = calorieDayScore({ mode:"cut", dayClosed:true, kcalDelta:-2000 }); // green on Cut — under is never a penalty
@@ -3477,7 +3477,7 @@ describe("weeklyIntakeScore — the rolling read, and the two founder-decided fi
   });
 
   // ── DECIDED, founder, 2026-09-04 — the weekly baseline fix ──────────────────
-  test("a week spent mostly at a safety floor reads as cut outright, not maintain", () => {
+  test("a week spent mostly at a safety minimum reads as cut outright, not maintain", () => {
     // The spec's own worked example: SAFE_MIN-pinned target is only 151 kcal under TDEE,
     // which would fall inside the ±250 "maintain" band under the plain baseline comparison.
     const days = [
@@ -3488,7 +3488,7 @@ describe("weeklyIntakeScore — the rolling read, and the two founder-decided fi
     expect(r.readsAs).toBe("cut");
     expect(r.override).toBe("floor-majority");
   });
-  test("a floor active on only a minority of days does NOT trigger the override", () => {
+  test("a minimum active on only a minority of days does NOT trigger the override", () => {
     const days = [
       day(1200, true, true), day(1200, true, true), day(1200, true, true),
       day(1900, true, false), day(1900, true, false), day(1900, true, false), day(1900, true, false),
@@ -3516,17 +3516,17 @@ describe("weeklyIntakeScore — the rolling read, and the two founder-decided fi
     expect(r.totalDays).toBe(7);
     expect(r.state).not.toBe("filling-in"); // transparency over suppression — still a real verdict
   });
-  // ── FIXED 2026-09-09 — two ways the majority-floor override inverted guardrail §6 ──────
+  // ── FIXED 2026-09-09 — two ways the majority-held-up override inverted guardrail §6 ──────
   // Both found by driving the app with a 50 kg, 30%-body-fat sedentary woman on a Cut, whose
-  // target is pinned at SAFE_MIN 1200 — so EVERY day of her week is a floored day.
-  test("a week with nothing logged at all gives no verdict, however many days were floored", () => {
+  // target is pinned at SAFE_MIN 1200 — so EVERY day of her week is a held-up day.
+  test("a week with nothing logged at all gives no verdict, however many days were held up by a minimum", () => {
     const days = Array.from({ length:7 }, () => day(0, false, true));
     const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 });
     expect(r.state).toBe("filling-in");   // was: green "a real cut... Keep going", from zero days
     expect(r.readsAs).toBeUndefined();
     expect(r.override).toBeUndefined();
   });
-  test("a floored week whose logged average is a genuine surplus is NOT overridden to 'cut'", () => {
+  test("a held-up week whose logged average is a genuine surplus is NOT overridden to 'cut'", () => {
     const days = [
       day(3200, true, true), day(3200, true, true), day(3200, true, true), day(3000, true, true),
       day(0, false, true), day(0, false, true), day(0, false, true),
@@ -3536,7 +3536,7 @@ describe("weeklyIntakeScore — the rolling read, and the two founder-decided fi
     expect(r.override).toBeUndefined();
     expect(r.colour).toBe("red");
   });
-  test("the founder's own decided case still overrides — floored week landing in the maintain band", () => {
+  test("the founder's own decided case still overrides — a held-up week landing in the maintain band", () => {
     // Unchanged by the narrowing above: the override exists exactly for this week and still fires.
     const days = Array.from({ length:7 }, (_, i) => day(1200, true, i < 4));
     const r = weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:1351 });

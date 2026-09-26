@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-16. **44 files · 465 scenarios.** Replaces the single
+**Updated:** 2026-09-26. **44 files · 469 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -109,11 +109,11 @@
 |---|---|---|
 | [01-daily-target-modes](targets/01-daily-target-modes.feature) | Flexible daily calorie target with auto mode detection | 13 |
 | [02-tap-to-override](targets/02-tap-to-override.feature) | Tap to override daily calorie target | 5 |
-| [03-macro-floors](targets/03-macro-floors.feature) | Macro targets hold their floors instead of scaling | 7 |
+| [03-macro-minimums](targets/03-macro-minimums.feature) | Macro targets hold their minimums instead of scaling | 7 |
 | [04-safe-minimum-backstop](targets/04-safe-minimum-backstop.feature) | Safe minimum calorie guard (last-resort backstop) | 5 |
 
 > `04` is the flat `SAFE_MIN` (1,400 male / 1,200 female) — the **last-resort backstop only**, not the
-> primary protection. The floors that actually protect a body are in `energy-safety/01` and `/08`.
+> primary protection. The minimums that actually protect a body are in `energy-safety/01` and `/08`.
 
 ## energy-safety/ — the protections that move a number
 
@@ -122,14 +122,14 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 
 | File | Feature | Scen | |
 |---|---|---|---|
-| [01-energy-availability-floor](energy-safety/01-energy-availability-floor.feature) | A body-sized floor replaces the flat calorie floor | 12 | built |
+| [01-energy-availability-minimum](energy-safety/01-energy-availability-minimum.feature) | A body-sized minimum replaces the flat calorie minimum | 12 | built |
 | [02-cut-cycle-blocks](energy-safety/02-cut-cycle-blocks.feature) | Cut runs as load-weighted blocks | 14 | built |
 | [03-diet-break-intervention](energy-safety/03-diet-break-intervention.feature) | A break is time not cutting | 22 | built |
 | [04-adaptive-tdee-guardrails](energy-safety/04-adaptive-tdee-guardrails.feature) | The app's own guess can't talk you into under-eating | 10 | built |
 | [05-low-energy-availability-flags](energy-safety/05-low-energy-availability-flags.feature) | LEA symptom check and signposting | 11 | **shelved** (§5.5) |
 | [06-weigh-in-engagement](energy-safety/06-weigh-in-engagement.feature) | Encouraging weigh-ins without pressure | 11 | built |
 | [07-smoothed-earn-to-eat](energy-safety/07-smoothed-earn-to-eat.feature) | Spreading earned workout calories across days | 8 | built |
-| [08-maintenance-bmr-floor](energy-safety/08-maintenance-bmr-floor.feature) | Maintenance never floored below sedentary TDEE (BMR × 1.2) | 5 | built |
+| [08-maintenance-bmr-minimum](energy-safety/08-maintenance-bmr-minimum.feature) | Maintenance never set below sedentary TDEE (BMR × 1.2) | 5 | built |
 | [09-adaptive-tdee-raise-safeguards](energy-safety/09-adaptive-tdee-raise-safeguards.feature) | A raise needs fresh evidence, and can undo its own recent mistake while cutting | 9 | built |
 | [10-workout-burn-calibration-credit](energy-safety/10-workout-burn-calibration-credit.feature) | Calibration credits real training burn instead of reading it as a higher metabolism | 5 | built |
 | [11-intake-window-and-cut-evidence](energy-safety/11-intake-window-and-cut-evidence.feature) | The calibration intake window, and the evidence that gates a lowering | 8 | built |
@@ -242,8 +242,8 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 
 > **`04` supersedes `02`.** `02`'s flat "any macro, 5g/15g over = amber/red, under is always
 > fine" model treated protein/carbs/fat as interchangeable and is what gave the dashboard its
-> arbitrary macro-bar colours in the first place. `04` replaces it with roles (protein = floor,
-> calories = master constraint, fat = floor + ceiling, carbs = flex) plus a rolling 7-day weekly
+> arbitrary macro-bar colours in the first place. `04` replaces it with roles (protein = minimum,
+> calories = master constraint, fat = minimum + upper limit, carbs = flex) plus a rolling 7-day weekly
 > read. `01`'s calorie bands are kept, not reopened. `04` carries several items the handover
 > it's built from deliberately left open — band widths, hero priority order, the day-close
 > fallback hour — proposed inline and flagged, awaiting founder sign-off before the `@draft` tag
@@ -254,19 +254,19 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 > each cross-examining the other's findings before a synthesis pass fixed what had a clean
 > answer and flagged what didn't. Two items were ranked above everything else in `04`'s header as
 > `@founder-blocking`, both pushing toward under-eating for exactly the population this app
-> protects: the weekly "reads as" comparator could tell someone pinned at their own safety floor
+> protects: the weekly "reads as" comparator could tell someone pinned at their own safety minimum
 > they "haven't really cut," and an unlogged day could outscore an honestly-logged bad one on a
 > Cut. Round 2 — a third persona (`personas/nutrition-coach.md`) joined QA and Critical-Thinking
 > for an atomicity + file-structure pass. The three reviewers landed on three different
 > structural opinions (keep one file / split three ways / split a different way) before QA, whom
 > the founder tasked with the final call, reconciled them: **`05` was split out for presentation
 > only** — ring geometry and card composition — while daily and weekly grading stay permanently
-> together in `04`, because the weekly read is only ever correct in reference to the daily floor
+> together in `04`, because the weekly read is only ever correct in reference to the daily minimum
 > logic that feeds it. Full transcript of both rounds:
 > [`04-intake-scoring-swarm-review.md`](dashboard/04-intake-scoring-swarm-review.md).
 >
 > **Both `@founder-blocking` items were decided 2026-09-04**, tags removed: the weekly baseline
-> stays TDEE-based, but a week where a safety floor held the target up on 4+ of 7 days now reads
+> stays TDEE-based, but a week where a safety minimum held the target up on 4+ of 7 days now reads
 > as "cut" outright instead of running the band comparison — no lower number was ever on offer.
 > An unlogged day is now excluded from the weekly average rather than counted as a favourable
 > 0 kcal, and the weekly summary always states how many of the 7 days it's actually built from.
@@ -282,7 +282,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [02-quick-add-ai-estimate](logging/02-quick-add-ai-estimate.feature) | AI estimate when creating a Quick Add meal | 7 | |
 | [03-repeat-add-feedback](logging/03-repeat-add-feedback.feature) | Repeat-add feedback — re-blink and count | 6 | |
 | [04-meal-data-integrity](logging/04-meal-data-integrity.feature) | Structured elements are the source of truth | 4 | `@wip` |
-| [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 23 | `@wip` |
+| [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 26 | `@wip` |
 | [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 20 | |
 | [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | |
 
@@ -317,11 +317,11 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 
 | File | Feature | Scen |
 |---|---|---|
-| [01-state-aware](coach/01-state-aware.feature) | Coach is state-aware and varies its suggestions | 4 |
+| [01-state-aware](coach/01-state-aware.feature) | Coach is state-aware and varies its suggestions | 5 |
 | [02-pacing](coach/02-pacing.feature) | Coach paces advice to the time of day | 9 |
 | [03-dietary-requirements](coach/03-dietary-requirements.feature) | Dietary requirements and allergies steer every AI suggestion | 11 |
 
-> `02` and `03` carry safeguarding rules from the coach-hat review — the calorie ceiling is never
+> `02` and `03` carry safeguarding rules from the coach-hat review — the calorie limit is never
 > paced as "behind", and a declared allergen is filtered twice (prompt + output scan). Don't relax
 > either without re-running that review.
 

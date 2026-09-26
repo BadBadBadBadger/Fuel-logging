@@ -29,7 +29,7 @@ Citation spot-checks (all accurate): `FAT_FLOOR_PER_KG = 0.6` at `app.jsx:283` �
 ## Blocker
 
 **1. The hero priority-order table contradicts the reasoning comment directly above it.**
-The comment says: *"the health floor outranks everything because it is a real problem regardless of the goal."* The table then ranks calories **above** fat-below-floor for both listed goals. If the floor really outranks everything, both rows are wrong. If calories is meant to outrank the floor on Cut/Bulk specifically, the comment overstates the rule. Needs an explicit founder call: does the floor beat calories, or not?
+The comment says: *"the fat minimum outranks everything because it is a real problem regardless of the goal."* The table then ranks calories **above** fat-below-minimum for both listed goals. If the minimum really outranks everything, both rows are wrong. If calories is meant to outrank the minimum on Cut/Bulk specifically, the comment overstates the rule. Needs an explicit founder call: does the minimum beat calories, or not?
 
 **2. Protein's red threshold is ungated in the Outline but close-gated in the very next scenario.**
 The Outline ("Protein under target is graded by how far short") shows `50% → red` with no time-of-day precondition at all. The scenario immediately after it is titled *"Protein well under **at day close**..."* and its `Given` explicitly requires `the day has closed`. Two adjacent scenarios can be read as giving different preconditions for the same outcome.
@@ -40,7 +40,7 @@ The Outline ("Protein under target is graded by how far short") shows `50% → r
 4. No standalone scenario for carbs-under-target at day close.
 5. `dashboard/01` isn't updated to reflect it's being re-scoped — its bands are really only right for Cut/partial-Maintain, wrong for Bulk.
 6. Missing scenario: carbs over target *and* calories also over target — what colour does the carb bar itself show?
-7. Fat-floor-breach table starts at 1g, breaking the contiguous-band convention used everywhere else.
+7. Fat-minimum-breach table starts at 1g, breaking the contiguous-band convention used everywhere else.
 8. "Fat shows green or neutral" is not a real assertion.
 9. Maintain's daily calorie score never escalates to red at any magnitude, unflagged as OPEN unlike everything else.
 10. Terminology drift: Bulk's Outline claims to be "the exact mirror" of Cut's but uses a different field name and casing convention.
@@ -74,9 +74,9 @@ The file is well-organized and its authors clearly pressure-tested the *easy* co
 **C1 — The unlogged-day guardrail inverts for a Cut, the exact case the app exists to protect.**
 "Counts as a miss" was never given a value; the only one consistent with "the last 7 days of logged calories" is 0 kcal logged. For a Cut, where under is never a penalty, a 0-kcal day drags the weekly average *further* under TDEE — reading as **more** of a cut, green, "keep going." An honestly-logged binge day pulls the average toward maintain/bulk and reads amber/red. So not logging at all scores better than logging a bad day honestly — the precise inversion the guardrail scenario exists to prevent.
 
-**C2 — Fat's grading reuses the exact flat-gram bands the file just rejected for protein, on a target that scales with bodyweight the same way protein's does.** Being 5g below floor is a 16.7% shortfall for a 50kg body and 8.3% for a 100kg body — under the stated bands both are already in the same category by "5g+."
+**C2 — Fat's grading reuses the exact flat-gram bands the file just rejected for protein, on a target that scales with bodyweight the same way protein's does.** Being 5g below minimum is a 16.7% shortfall for a 50kg body and 8.3% for a 100kg body — under the stated bands both are already in the same category by "5g+."
 
-**C3 — The weekly comparator ("TDEE plus the mode adjustment") is a different number than the daily "calorie target" the rest of the file grades against.** Worked example: a 50kg, 30%-body-fat, sedentary female on a Cut. BMR 1126 → TDEE 1351 → raw cut target 851 → deficit floor 1013 → **SAFE_MIN.female = 1200**. Real daily target = 1200, only 151 kcal under TDEE. Eating exactly to target every day is daily-green throughout, yet the weekly average lands inside the ±250 "maintain" band, triggering "This week hasn't been a cut." She's pinned at the app's own hard safety floor; there is no more to cut.
+**C3 — The weekly comparator ("TDEE plus the mode adjustment") is a different number than the daily "calorie target" the rest of the file grades against.** Worked example: a 50kg, 30%-body-fat, sedentary female on a Cut. BMR 1126 → TDEE 1351 → raw cut target 851 → steady-loss minimum 1013 → **SAFE_MIN.female = 1200**. Real daily target = 1200, only 151 kcal under TDEE. Eating exactly to target every day is daily-green throughout, yet the weekly average lands inside the ±250 "maintain" band, triggering "This week hasn't been a cut." She's pinned at the app's own hard safety minimum; there is no more to cut.
 
 **C4 — Protein's percentage-band table has no day-open/day-close gating, contradicting the header's own stated reuse of `paceVerdict`,** which exists specifically to pace protein.
 
@@ -85,20 +85,20 @@ The file is well-organized and its authors clearly pressure-tested the *easy* co
 U1 — Day-close ordering conflict for a late first meal / crossing midnight.
 U2 — No daily-ring state defined for a fully unlogged day.
 U3 — Carbs' own colour when carbs and calories are simultaneously over is unspecified.
-U4 — Protein-floor vs calorie-ceiling mutual achievability on an aggressive cut never tested.
+U4 — Protein-minimum vs calorie-limit mutual achievability on an aggressive cut never tested.
 U5 — Maintain's priority tier mixes kcal/grams/percentage with no normalization defined.
-U6 — Small unclassified gap just below the fat floor.
+U6 — Small unclassified gap just below the fat minimum.
 
 ## Weak justifications
 
 W1 — Bulk's mirrored calorie bands, defended only by resemblance to Cut's, not by argument that the consequence is symmetric.
 W2 — Weekly ±250 kcal band, justified only by resemblance to the mode deltas.
 W3 — Protein pct-band Examples are sample points, not stated boundaries.
-W4 — Fat-below-floor shape justified purely as reuse, doubly weak given C2.
+W4 — Fat-below-minimum shape justified purely as reuse, doubly weak given C2.
 
 ## Fine
 
-F1 — The named 3-way collision (calories over + fat under floor + protein under, on a Cut) resolves cleanly via the priority table: calories wins, unambiguous.
+F1 — The named 3-way collision (calories over + fat under minimum + protein under, on a Cut) resolves cleanly via the priority table: calories wins, unambiguous.
 F2 — "The layer never changes a logged value" is actually upheld across every `Then` clause.
 F3 — Protein-over-target has no boundary to break, clean.
 F4 — "Never eat more on a cut" is tested twice, independently, for both calories and fat.
@@ -111,7 +111,7 @@ SAFE_MIN.female = 1200 confirmed at `app.jsx:269`, so their C3 worked example ch
 
 **1. Where they caught something I missed:** C1 — agree, real and severe. I took "counts as a miss" at face value without pressure-testing what value it carries into the average. Their chain is right. C2 — agree, and sharper than what I flagged (I only caught the shallow 0–1g boundary gap). C4 is substantially my own Blocker #2, arrived at from a different angle — good independent convergence.
 
-**2. Where I disagree (Blocker #1):** They're right, and I'll adjust. The table itself is a well-formed, unambiguous total order — their 3-way collision test proves it. My objection is entirely that the inline comment ("the health floor outranks everything") overclaims relative to what the table actually encodes. I'd downgrade my framing — documentation/prose-vs-artifact mismatch, not a computability problem — though I'd keep it at Blocker severity: an implementer who trusts the comment over the table ships a real, opposite product decision.
+**2. Where I disagree (Blocker #1):** They're right, and I'll adjust. The table itself is a well-formed, unambiguous total order — their 3-way collision test proves it. My objection is entirely that the inline comment ("the fat minimum outranks everything") overclaims relative to what the table actually encodes. I'd downgrade my framing — documentation/prose-vs-artifact mismatch, not a computability problem — though I'd keep it at Blocker severity: an implementer who trusts the comment over the table ships a real, opposite product decision.
 
 **3. Severity of C1 and C3 relative to my two Blockers:** Both are real, and both are more severe than either of mine. **C3 is the single most important finding across both reviews** — a demonstrated arithmetic failure with a worked example landing exactly on the app's own hard safety backstop. **C1 is close behind, arguably tied** — a guardrail whose own stated purpose is inverted by the interaction of two other rules already in the same file, for exactly the user population this app exists to protect. I'd rank both above my two findings, C3 first by a small margin for having a hard numeric proof rather than a logical chain.
 
@@ -119,7 +119,7 @@ SAFE_MIN.female = 1200 confirmed at `app.jsx:269`, so their C3 worked example ch
 
 ## Round 2 — Critical Thinker responds to QA's report
 
-**1. Where they caught something I missed:** Clean miss on my part: **their Blocker #1**. Checking prose-against-table is rule #1 in my own persona file, and I ran it on the wrong pair — I verified the table resolves the 3-way collision correctly, but never cross-checked it against the comment two lines above it. Worse than QA's framing shows: the standalone "fat floor always outranks a ceiling breach" scenario is a *second*, independent contradiction of the same table, not only a prose one. **Adding this as C5.** Also genuine catches I didn't make: #5 (dashboard/01 not re-scoped), #9 (Maintain's calorie band never reaching red, unflagged), #8 ("green or neutral"), #12 (two-ring dial has zero prior-art citation), #13 (no <7-days-history scenario — interacts with my own C1).
+**1. Where they caught something I missed:** Clean miss on my part: **their Blocker #1**. Checking prose-against-table is rule #1 in my own persona file, and I ran it on the wrong pair — I verified the table resolves the 3-way collision correctly, but never cross-checked it against the comment two lines above it. Worse than QA's framing shows: the standalone "fat minimum always outranks an over-the-limit reading" scenario is a *second*, independent contradiction of the same table, not only a prose one. **Adding this as C5.** Also genuine catches I didn't make: #5 (dashboard/01 not re-scoped), #9 (Maintain's calorie band never reaching red, unflagged), #8 ("green or neutral"), #12 (two-ring dial has zero prior-art citation), #13 (no <7-days-history scenario — interacts with my own C1).
 
 **2. Blocker #2 vs my C4:** Same gap, confirmed — not a different one.
 
@@ -133,8 +133,8 @@ SAFE_MIN.female = 1200 confirmed at `app.jsx:269`, so their C3 worked example ch
 
 Both agents converged on the same priority list. Applied directly to `04-intake-scoring.feature`:
 
-- **C5 / Blocker #1** — hero priority table reordered so the fat floor genuinely comes first for every goal, matching its own comment and the standalone scenario that already asserted this.
-- **C2** — fat's ceiling and floor bands converted from flat grams to percentage, mirroring the fix already applied to protein for the identical bodyweight-scaling reason.
+- **C5 / Blocker #1** — hero priority table reordered so the fat minimum genuinely comes first for every goal, matching its own comment and the standalone scenario that already asserted this.
+- **C2** — fat's upper limit and under-minimum bands converted from flat grams to percentage, mirroring the fix already applied to protein for the identical bodyweight-scaling reason.
 - **C4 / Blocker #2** — protein split into a paced open-day Outline (reusing `paceVerdict`'s ahead/on/behind verdict, never red mid-day) and a separate close-gated Outline for the percentage bands.
 - **Should-fix #10** — Bulk's table renamed to match Cut's field name and phrasing convention.
 - Missing scenarios added: carbs-over-when-calories-also-over, carbs-under-at-close (always green — carbs is pure flex), a fully unlogged day's own daily-ring state, fewer-than-7-days-of-history, and an explicit citation for the two-ring dial's design provenance (the founder-approved mockup comparison from earlier in the session, not app code).
@@ -162,7 +162,7 @@ Both agents converged on the same priority list. Applied directly to `04-intake-
 | "the weight/estimate layer" (×2) | Bodyweight-trend judgement and estimate-accuracy judgement | "the bodyweight trend and from estimate accuracy" |
 | "guarded" | `floorsExceedKcal` detects/flags the conflict, doesn't prevent it | "covered" |
 | "the reach target" (×2) | The protein target itself | "the protein target" / "protein's own target" |
-| "the floor is the only fence" | The fat health floor is the only bound below target | "the floor is the only limit that applies" |
+| "the minimum is the only fence" | The fat minimum is the only bound below target | "the minimum is the only limit that applies" |
 | "a flex macro" (scenario title) | **Real inconsistency, not just wording** — the Given said "carbs OR calories," but Background defines only carbs as flex; calories is "the master constraint." The collective title mislabelled calories. | Named both macros directly instead of the wrong collective label |
 | "master constraint" / "flex remainder" bare at first use | Only ever appeared as bare labels, never inside a defining sentence | Given the same adjacent-definition treatment "the hero" already had |
 
@@ -203,9 +203,9 @@ Both of the sign-off pass's findings were applied directly, matching the hedge-w
 remain flagged TOP PRIORITY, each with a proposed direction, neither decided — both need the
 founder's explicit call before anything else in the file is treated as settled:
 
-1. The weekly comparator can tell a user pinned at their own safety floor that they "haven't
-   really cut." Proposed: compare against the average of the user's own real floored daily
-   targets, not raw TDEE.
+1. The weekly comparator can tell a user pinned at their own safety minimum that they "haven't
+   really cut." Proposed: compare against the average of the user's own real daily
+   targets after the minimums, not raw TDEE.
 2. An unlogged day could outscore an honestly-logged bad day on a Cut — the exact inversion
    guardrail §6 exists to prevent. Proposed: an unlogged day reduces assessable weekly coverage
    rather than being averaged in as a favourable 0 kcal.
@@ -233,7 +233,7 @@ protection, goal fit, adherence — into one opaque ranking string; an "every ma
 Outline treating protein as interchangeable with the other three, when protein-under-at-close is
 independently and unconditionally red). On structure: daily and weekly aren't two different
 domains the way intake-scoring and weight-trend are — they're two resolutions of one domain, and
-the weekly number only means anything in reference to the daily floor logic that feeds it. The
+the weekly number only means anything in reference to the daily minimum logic that feeds it. The
 file's own worst bug (the SAFE_MIN mismatch) is proof: it happened because the weekly baseline
 was computed as an idealised, freshly-derived number instead of citing the real daily target a
 few hundred lines up. Splitting turns that coupling from a proximity-enforced habit into a
@@ -325,7 +325,7 @@ table's severity-vs-actionability ambiguity around protein's last-place ranking.
   tag legend, dashboard table and note rewritten to explain both rounds.
 - Thirteen concrete before/after fixes applied: the no-GWT "scenario" demoted to a header
   comment; "carbs or calories" split into two scenarios (the direct cause of the Bulk day-state
-  ambiguity); the fat-floor hero-copy claim extracted into its own scenario that now cites the
+  ambiguity); the fat-minimum hero-copy claim extracted into its own scenario that now cites the
   priority table instead of asserting its output unconditionally; the priority table decomposed
   into pairwise scenarios (surfacing the unresolved severity-vs-actionability question);
   Bulk-over's undefined "unless" branch removed from its `Then`; the day-close Outline retitled
@@ -382,10 +382,10 @@ Reviewed directly with the founder (no agents this round). Both `@founder-blocki
 decided; tags removed from `04-intake-scoring.feature`.
 
 **Weekly baseline.** Rejected the swarm's own proposed fix (compare against the user's own
-floored daily targets instead of TDEE) — worked through, it makes hitting-target always read
+daily targets after the minimums instead of TDEE) — worked through, it makes hitting-target always read
 "maintain" for everyone, which would have quietly destroyed the mismatch signal the scenario
-exists to give. Decided instead: keep the TDEE baseline for everyone, but add a majority-floor
-override — a week where a safety floor (sedentary floor, deficit floor, or `SAFE_MIN`) held the
+exists to give. Decided instead: keep the TDEE baseline for everyone, but add a majority-held-up
+override — a week where a safety minimum (sedentary minimum, steady-loss minimum, or `SAFE_MIN`) held the
 daily target up on 4 or more of the 7 days reads as "cut" outright, skipping the band comparison.
 There was never a lower number on offer on those days, so there's nothing honest to compare
 against.
@@ -403,5 +403,5 @@ underlying flaw isn't in this file at all — it's that `SAFE_MIN` is a flat num
 2026-08-10 at n=1 (`ARCHITECTURE_REVIEW.md` §4.I, `targets/04-safe-minimum-backstop.feature`),
 on the grounds that it never bound at the founder's own bodyweight. The founder is now reopening
 it. Both decisions above hold regardless of how `SAFE_MIN` is eventually calculated — the
-majority-floor override only checks whether a floor was binding, not what value it used. Tracked
+majority-held-up override only checks whether a minimum was binding, not what value it used. Tracked
 as its own piece of work, not folded into `04`.

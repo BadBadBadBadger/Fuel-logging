@@ -1,17 +1,17 @@
 # ─────────────────────────────────────────────────────────────
 # BUILT 2026-08-06 (app.jsx calcTargets, sw v56; unit-tested in
-# __tests__/logic.test.js — "calcTargets — maintenance BMR×1.2 floor").
+# __tests__/logic.test.js — "calcTargets — maintenance minimum (BMR × 1.2)").
 # This is the first piece of the energy-safety workstream to ship. The
 # adaptive-TDEE auto-lowering could previously drive a MAINTAIN target below
 # resting metabolism (the founder's harm report: ~1,650 shown against an
-# ~1,859 BMR). Maintenance is now floored at sedentary TDEE (BMR × 1.2).
+# ~1,859 BMR). Maintenance is now held at sedentary TDEE (BMR × 1.2).
 #
 # NUMBERS CONTRACT: every kcal shown against a body is DERIVED, never
 # hardcoded — FFM = weight×(1−bodyFat/100); BMR = 370 + 21.6×FFM;
-# sedentary TDEE = BMR × 1.2. Contrasting rows prove the floor is computed.
+# sedentary TDEE = BMR × 1.2. Contrasting rows prove the minimum is computed.
 # Exact arithmetic is owned by __tests__/logic.test.js.
 # ─────────────────────────────────────────────────────────────
-Feature: Maintenance is never floored below sedentary TDEE (BMR × 1.2)
+Feature: Maintenance never goes below sedentary TDEE (BMR × 1.2)
 
   Background:
     Given my profile weight is 98.5 kg and my body-fat is 30 percent
@@ -32,27 +32,27 @@ Feature: Maintenance is never floored below sedentary TDEE (BMR × 1.2)
     Then my maintenance target is my sedentary TDEE plus the adjustment
     And no "Held at your minimum maintenance" note is shown
 
-  Scenario Outline: The floor is a formula output — a different body gives a different floor
-    Given my sedentary maintenance (BMR × 1.2) works out to <floor> kcal
+  Scenario Outline: The minimum is a formula output — a different body gives a different minimum
+    Given my sedentary maintenance (BMR × 1.2) works out to <minimum> kcal
     And a full negative adjustment would otherwise put maintenance at <raw> kcal
     When the app calculates my maintenance target in "Maintain" mode
-    Then my maintenance target is <floor> kcal, not <raw> kcal
+    Then my maintenance target is <minimum> kcal, not <raw> kcal
 
-    # <raw> = <floor> − 600 (the accumulated-adjustment cap); contrasting bodies
+    # <raw> = <minimum> − 600 (the accumulated-adjustment cap); contrasting bodies
     # prove no single number is baked in.
     Examples:
-      | floor | raw   |
+      | minimum | raw   |
       | 2,231 | 1,631 |
       | 1,680 | 1,080 |
 
   Scenario: A deliberate cut is still allowed below sedentary TDEE
     Given I have deliberately selected "Cut" mode
     When the app calculates my cut target
-    Then the maintenance floor of BMR × 1.2 does NOT apply, because a cut is a chosen deficit
-    And the target is instead bounded by the steady-loss floor (features/energy-safety/01)
+    Then the maintenance minimum of BMR × 1.2 does NOT apply, because a cut is a chosen deficit
+    And the target is instead bounded by the steady-loss minimum (features/energy-safety/01)
     And it is still backstopped beneath that by the flat safe minimum for my sex
 
-  Scenario: The displayed effective TDEE is floored to match the target
+  Scenario: The displayed effective TDEE is raised to match the target
     Given I am in "Maintain" mode with a negative adaptive adjustment
     When I view my effective TDEE on the profile or weigh-in widget
     Then the shown effective TDEE is not below my sedentary TDEE

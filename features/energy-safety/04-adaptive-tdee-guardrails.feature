@@ -30,10 +30,10 @@
 #   | Maintain never shows below BMR × 1.2 ("Held at your minimum maintenance") | app.jsx targets layer | ✅ LIVE on main |
 #   | The running correction can't exceed ADJ_CAP (600 kcal) in either direction | app.jsx:475 | ✅ built |
 #   | The correction converges instead of slamming its cap; needs 6 weigh-ins to speak | app.jsx:477 runCalibration | ✅ built (Step 2) |
-#   | A cut is floored by rate of loss, not by BMR (MAX_DEFICIT_FRAC = 0.25) | app.jsx calcTargets | ✅ built (Step 4, file 01) |
+#   | A cut's minimum comes from rate of loss, not BMR (MAX_DEFICIT_FRAC = 0.25) | app.jsx calcTargets | ✅ built (Step 4, file 01) |
 #   | A break is suggested when the scale stops moving for 3 weeks | file 03 (stall check) | ✅ built (Step 5b) |
 #
-#   So the floors are in place, the correction is well-behaved, and something
+#   So the minimums are in place, the correction is well-behaved, and something
 #   already speaks up when you stall. What is missing is the asymmetry.
 #
 # ── THE ONE THING LEFT TO BUILD ──────────────────────────────
@@ -72,7 +72,7 @@
 #   Holding in all cases:
 #     • Upward correction is never slowed. Finding out you burn MORE than we
 #       thought is good news and should arrive as fast as the evidence does.
-#     • The floors already built are unaffected — they sit underneath this.
+#     • The minimums already built are unaffected — they sit underneath this.
 #     • Nothing here changes your mode. Mode is the picker's job (see file 03).
 #
 # ── DECIDED, DON'T RE-LITIGATE ───────────────────────────────
@@ -88,21 +88,21 @@
 #     is for a rise while NOT cutting ("normal on a break"), and this file's is
 #     for a rise while cutting. They never appear together, because you cannot
 #     be doing both.
-#   • Maintenance is floored at BMR × 1.2, not raw BMR. Nobody lives at their
+#   • Maintenance is held at BMR × 1.2, not raw BMR. Nobody lives at their
 #     resting metabolism, so a maintenance figure at raw BMR is unusable — the
-#     parked targets-bmr-floor-wip branch got this wrong and was superseded.
+#     parked `targets-bmr-floor-wip` branch got this wrong and was superseded.
 #
 # ── NUMBERS CONTRACT (read before writing code) ──────────────
 #   DERIVED figures are WORKED EXAMPLES — never hardcode them. Any maintenance /
 #   TDEE kcal value is an OUTPUT for that example body:
 #       FFM = weight × (1 − bodyFat/100) · BMR = 370 + 21.6 × FFM · TDEE = BMR × 1.2
 #   Implement the formulas; exact arithmetic is owned by __tests__/logic.test.js.
-#   Scenario Outlines use CONTRASTING bodies so the floor value changes — proof
+#   Scenario Outlines use CONTRASTING bodies so the minimum value changes — proof
 #   it is computed, not baked in.
 #   POLICY CONSTANTS (the only literals; owned by logic.test.js):
 #       ADJ_CAP = 600 kcal (accumulated adaptive adjustment limit, either way)
 #       ACTIVITY_MULT = 1.2 (sedentary; the seed is 1.20–1.55, see ENERGY_MODEL §3.1)
-#       MAX_DEFICIT_FRAC = 0.25 (steady-loss floor, file 01)
+#       MAX_DEFICIT_FRAC = 0.25 (steady-loss minimum, file 01)
 #       CAL_MIN_WEIGHINS = 6 (before the correction speaks at all)
 #   NO new policy constant is needed. The rule is a direction test plus a
 #   "was I cutting?" test, both of which the app already knows.
@@ -112,32 +112,32 @@ Feature: The app's own guess can never talk you into under-eating
 
   # ── ALREADY BUILT — kept as regression cover, not as work ──
 
-  Scenario Outline: The correction can never pull maintenance below its floor
+  Scenario Outline: The correction can never pull maintenance below its minimum
     Given I am in "Maintain" mode
-    And my sedentary-maintenance floor (BMR × 1.2) works out to <floor> kcal
+    And my sedentary-maintenance minimum (BMR × 1.2) works out to <minimum> kcal
     And a full negative adjustment would otherwise put maintenance at <raw> kcal
     When the app calculates my maintenance target
-    Then my maintenance target is <floor> kcal, not <raw> kcal
+    Then my maintenance target is <minimum> kcal, not <raw> kcal
     And I see a note "Held at your minimum maintenance"
 
-    # Different bodies → different floors, so no single value can be baked in.
+    # Different bodies → different minimums, so no single value can be baked in.
     Examples:
-      | floor | raw   |
+      | minimum | raw   |
       | 2,231 | 1,631 |
       | 1,680 | 1,200 |
 
-  Scenario: The correction is itself capped, and the floor still wins
+  Scenario: The correction is itself capped, and the minimum still wins
     Given the weekly calibration keeps signalling a lower TDEE for many weeks
     When the adjustment accumulates
     Then it never grows more negative than ADJ_CAP (600 kcal)
-    And even at the cap my maintenance is still held at its sedentary-TDEE floor
+    And even at the cap my maintenance is still held at its sedentary-TDEE minimum
 
-  Scenario: A deliberate cut is floored by rate of loss, not by BMR
+  Scenario: A deliberate cut's minimum comes from rate of loss, not BMR
     Given I have deliberately selected "Cut" mode
     When the app calculates today's cut target
     Then the target is never more than MAX_DEFICIT_FRAC below my believable maintenance
-    And no separate BMR floor is applied to a cut, because a cut is a choice
-    And my maintenance floor of BMR × 1.2 does not apply while I am cutting
+    And no separate BMR minimum is applied to a cut, because a cut is a choice
+    And my maintenance minimum of BMR × 1.2 does not apply while I am cutting
 
   # ── BUILT 2026-08-09 — the asymmetry ───────────────────────
   # Lives in runCalibration (app.jsx): the raw step is computed exactly as before, then
@@ -224,16 +224,16 @@ Feature: The app's own guess can never talk you into under-eating
   # the silence is now the specified behaviour. Three weeks of real cut data: it went
   # unread ("wallpaper"), never changed a decision, and had trained the user past amber
   # entirely — including the three cards that do carry safety weight. It only ever fired
-  # when NO floor had applied, i.e. in the band the app itself considers acceptable, so it
+  # when NO minimum had applied, i.e. in the band the app itself considers acceptable, so it
   # was a warning for a non-event. The duration concern it stood in for is handled by the
   # cut-block break prompts, which trigger on accumulated load rather than on a threshold
   # that is normal for any cutter.
   Scenario: A cut target below resting metabolism is allowed, and passes without comment
-    Given today's cut target lands below my BMR but at or above my steady-loss floor
+    Given today's cut target lands below my BMR but at or above my steady-loss minimum
     When the app shows the target
     Then the cut target is allowed
     And no card comments on being below resting metabolism
-    And the floors above stay responsible for every target that is genuinely unsafe
+    And the minimums above stay responsible for every target that is genuinely unsafe
     And the break prompts stay responsible for how long I have been cutting
     # A cut IS a choice to eat below what you burn, so for any cutter the arithmetic
     # lands below BMR routinely, with nothing wrong. Allowing it silently is the point.

@@ -1,7 +1,7 @@
 # ── Intake scoring (red / amber / green) — daily and weekly ──────────────────
 # Handover: a rough brief the founder wrote outside this repo (2026-08-26, no code access)
-# argued the dashboard's four "targets" aren't equivalent — protein is a floor, calories are
-# the master constraint, fat is a floor AND a ceiling, carbs are the flex remainder — and that
+# argued the dashboard's four "targets" aren't equivalent — protein is a minimum, calories are
+# the master constraint, fat is a minimum AND an upper limit, carbs are the flex remainder — and that
 # scoring should grade the constraint each one actually represents, not raw distance from a
 # number. This file is that argument worked through hat-by-hat (design / QA / nutrition-coach)
 # in conversation on 2026-08-26, then turned into scenarios.
@@ -23,11 +23,11 @@
 # note scoping it explicitly to the Cut role; it isn't self-updating.
 #
 # Reuses rather than re-derives:
-#   • the fat health floor — FAT_FLOOR_PER_KG = 0.6 g/kg bodyweight (app.jsx:283), the same
-#     hormonal floor computeMacros already enforces. Resolves handover §5.E.
+#   • the fat minimum — FAT_FLOOR_PER_KG = 0.6 g/kg bodyweight (app.jsx:283), the same
+#     hormonal minimum computeMacros already enforces. Resolves handover §5.E.
 #   • dashboard/01's 100/200/500 kcal shape — kept verbatim for Cut's calorie bands, mirrored
-#     for Bulk's. Fat's ceiling/floor bands do NOT reuse dashboard/02's flat-gram shape — see
-#     the swarm-review note below; they're percentage-of-target/floor, matching protein.
+#     for Bulk's. Fat's upper limit/under-minimum bands do NOT reuse dashboard/02's flat-gram shape — see
+#     the swarm-review note below; they're percentage-of-target/minimum, matching protein.
 #   • the eating-window pacing already built for the coach (paceVerdict / EATING_WINDOW_H,
 #     app.jsx:433-436, built specifically to give protein and water early-day grace —
 #     app.jsx:427-431) as the day-open/day-close signal (§4) and now also as the mid-day protein
@@ -43,11 +43,11 @@
 #   • new badge or celebration mechanics for a clean week. A clean week is a badge condition
 #     inside the existing badge logic (engagement/01-logging-celebration), not a fourth colour or
 #     a new celebration tier — see the "more badge categories" backlog item.
-#   • proving the protein floor and the calorie ceiling are simultaneously hittable on an
+#   • proving the protein minimum and the calorie limit are simultaneously hittable on an
 #     aggressive cut. That's already covered — `floorsExceedKcal` (computeMacros, app.jsx:280,
-#     303) is true exactly when the floors plus minimum carbs cost more than the target allows,
-#     and targets/03-macro-floors.feature owns that behaviour. This file scores whatever the
-#     floored targets turn out to be; it doesn't re-derive whether they fit together.
+#     303) is true exactly when the minimums plus minimum carbs cost more than the target allows,
+#     and targets/03-macro-minimums.feature owns that behaviour. This file scores whatever the
+#     targets after the minimums turn out to be; it doesn't re-derive whether they fit together.
 #   • how the two-ring dial is drawn. `05-intake-score-card-layout.feature` owns presentation —
 #     ring geometry, positioning, and how the card composes states this file computes. This file
 #     never mentions ring geometry or screen position; if you're looking for that, it's there.
@@ -64,8 +64,8 @@
 # everything else in this file, tagged `@founder-blocking` — both DECIDED by the founder on
 # 2026-09-04 (tags now removed; see the resolved scenarios themselves for the mechanism):
 #
-#   RESOLVED — "reads as" could tell a user pinned at their own safety floor that they "haven't
-#   really cut": fixed with a floor-majority override, not a new baseline — see "A week spent
+#   RESOLVED — "reads as" could tell a user pinned at their own safety minimum that they "haven't
+#   really cut": fixed with a majority-held-up override, not a new baseline — see "A week spent
 #   mostly at the safety minimum reads as a cut, not a shortfall" below. An unlogged day could
 #   outscore an honestly-logged bad one on a Cut: fixed by excluding unlogged days from the
 #   average outright, with the day-count always shown for transparency — see "An unlogged day is
@@ -73,8 +73,8 @@
 #   exists to protect.
 #
 # Also fixed in this pass: the hero priority table contradicted both the comment introducing it
-# and the standalone "fat floor always outranks a ceiling breach" scenario — the table was wrong,
-# not the prose; reordered so the floor genuinely comes first everywhere. Fat's ceiling/floor
+# and the standalone "fat minimum always outranks an over-the-limit reading" scenario — the table was wrong,
+# not the prose; reordered so the minimum genuinely comes first everywhere. Fat's upper limit/minimum
 # bands were flat grams while protein (a few scenarios earlier) explicitly rejected flat grams
 # for the same bodyweight-scaling reason — converted fat to percentage bands too. Protein's
 # under-target grading had no day-open/day-close precondition despite the header claiming it
@@ -106,7 +106,7 @@
 # STRUCTURE: this file stays ONE file for daily + weekly grading — that was a genuine three-way
 # disagreement (QA first proposed splitting daily/weekly/layout into three files; the coach
 # argued for keeping everything in one file, since the weekly baseline is only ever correct in
-# reference to the daily floor logic that feeds it — this file's own worst bug, the SAFE_MIN
+# reference to the daily minimum logic that feeds it — this file's own worst bug, the SAFE_MIN
 # mismatch worked through in the weekly baseline scenario below, happened exactly when that
 # reference went missing; Critical-Thinking argued
 # for a different cut entirely — logic vs. presentation, not daily vs. weekly, since a strict
@@ -127,10 +127,10 @@
 #
 # ATOMICITY fixes applied: the day-open "carbs or calories" scenario split into two (it silently
 # matched two macros under two different rulesets — the direct cause of the still-open Bulk
-# day-state ambiguity); the fat-floor scenario's hero-copy clause extracted into its own scenario
+# day-state ambiguity); the fat-minimum scenario's hero-copy clause extracted into its own scenario
 # that now explicitly cites the still-open priority-order table instead of asserting its output
 # unconditionally; the priority-order table's opaque ranking strings decomposed into pairwise
-# scenarios, matching the pattern the fat-floor-vs-ceiling case already used, surfacing that
+# scenarios, matching the pattern the fat-minimum-vs-upper-limit case already used, surfacing that
 # protein-under's last-place ranking contradicts this file's own "uniquely severe" language
 # without saying whether severity or remaining-actionability is the ranking principle; the
 # unlogged-day scenario split so the inner ring's own state and the hero's own resolution are
@@ -156,16 +156,16 @@
 # list: `04-intake-scoring-implementation-review.md`. Three defects it found were invisible to
 # the unit tests and are now fixed in code and covered:
 #
-#   • The fat health floor was graded FLAT from the first meal onward, with none of the
+#   • The fat minimum was graded FLAT from the first meal onward, with none of the
 #     day-open grace this file gives protein two sections above. At 11am, after an on-plan
 #     breakfast, the card read a red "FAT · Add some healthy fats" — which outranks everything
 #     else in the hero order — and stayed there until three quarters of the day's fat was eaten.
 #     Telling a Cut to eat more fat is the one thing this file says twice it must never do.
-#     FIXED: the floor is now paced against the eating window while the day is open, exactly as
-#     protein's is, and reaches red only at close. See "Fat below the health floor…" below, which
+#     FIXED: the minimum is now paced against the eating window while the day is open, exactly as
+#     protein's is, and reaches red only at close. See "Fat below the fat minimum…" below, which
 #     now carries the day-state precondition it was always missing.
-#   • The majority-floor override (the founder's 2026-09-04 decision) read whether the TARGET was
-#     floored and never what was eaten, so a week with NOTHING logged, and a week of logged
+#   • The majority-held-up override (the founder's 2026-09-04 decision) read whether the TARGET was
+#     held up by a minimum and never what was eaten, so a week with NOTHING logged, and a week of logged
 #     binges, both returned green "This week's been a real cut — averaging a genuine deficit."
 #     FIXED, narrowly, without reopening the decision itself. See that scenario below.
 #   • TODAY's card and THIS WEEK's own last segment could show different colours for the same
@@ -173,7 +173,7 @@
 #
 # STILL OPEN after the review, and deliberately not decided by it — a founder call:
 #   • Whether a day with no history snapshot at all should get a vote in the "4 or more of the
-#     last 7 days" floor majority. It currently does, with its floored-ness reconstructed from
+#     last 7 days" held-up majority. It currently does, with its held-up status reconstructed from
 #     TODAY's profile. See the note on that scenario below.
 #   • The red/amber/green pairing is not colour-blind-safe: measured against a deuteranope
 #     simulation, light theme's green, amber and red collapse to within a 1.02–1.07 contrast
@@ -183,11 +183,11 @@
 Feature: Daily and weekly intake scoring (red / amber / green)
 
   Background:
-    Given every macro has a role, not just a target: protein is a floor, calories are the
+    Given every macro has a role, not just a target: protein is a minimum, calories are the
       master constraint (bounded on whichever side threatens the current goal — over on a Cut,
-      under on a Bulk, both directions on Maintain), fat is a floor and a ceiling, carbs are the
+      under on a Bulk, both directions on Maintain), fat is a minimum AND an upper limit, carbs are the
       flex remainder (no bound of their own — defined in full in their own sections below)
-    And the fat floor is 0.6 g per kg bodyweight — the same hormonal floor computeMacros
+    And the fat minimum is 0.6 g per kg bodyweight — the same hormonal minimum computeMacros
       already enforces, never a new number
     And "this week" means the last 7 COMPLETE days, ending YESTERDAY — not the calendar week
       since Monday, and no longer "the last 7 days ending today", which this file said until
@@ -203,7 +203,7 @@ Feature: Daily and weekly intake scoring (red / amber / green)
       distance from target — copy text may repeat unchanged across an amber row and the red row
       above it; this is deliberate, not a gap to fill with harsher wording as severity rises
 
-  # ── Protein — a floor to reach, never a ceiling ──────────────────────────
+  # ── Protein — a minimum to reach, never an upper limit ──────────────────────────
 
   Scenario: Protein over target is always fine, at any distance
     Given I have logged more protein than my target
@@ -332,17 +332,17 @@ Feature: Daily and weekly intake scoring (red / amber / green)
     # A very large excess is a weight-trend concern, scored by a different feature entirely
     # (see the "NOT in this file" header note) — not a second colour state defined here.
 
-  # ── Fat — a ceiling and a health floor at once ───────────────────────────
+  # ── Fat — an upper limit and a fat minimum at once ───────────────────────────
 
-  Scenario: Fat between its floor and its target is fine, direction doesn't matter
-    Given my fat intake is at or above the health floor
+  Scenario: Fat between its minimum and its target is fine, direction doesn't matter
+    Given my fat intake is at or above the fat minimum
     And my fat intake is at or below my fat target
     Then fat shows green
 
-  Scenario Outline: Fat over its ceiling is graded by how far over, not by flat grams
+  Scenario Outline: Fat over its upper limit is graded by how far over, not by flat grams
     # OPEN (§5.A): band widths are a proposal. Changed in the swarm review from dashboard/02's
     # flat 5g/15g shape to a PERCENTAGE of target, for the identical reason protein's under-band
-    # was already built as a percentage a few scenarios above: fat's floor and target both scale
+    # was already built as a percentage a few scenarios above: fat's minimum and target both scale
     # with bodyweight (FAT_FLOOR_PER_KG, FAT_MODE_PER_KG — app.jsx:283/297), so a 50kg and a
     # 100kg body should no more share one gram figure here than they do for protein. Reusing the
     # flat-gram shape for fat while rejecting it for protein a few scenarios earlier was an
@@ -355,22 +355,22 @@ Feature: Daily and weekly intake scoring (red / amber / green)
       | 10–25% | amber  |
       | 25%+   | red    |
 
-  Scenario Outline: At day close, fat below the health floor is a real problem, not a normal "under"
-    # OPEN (§5.A/E): the floor value is settled (0.6 g/kg, reused). How far below it tips to red
-    # is proposed here as a percentage of the floor itself, for the same bodyweight-scaling
-    # reason as the ceiling table above — replaces the original flat-gram proposal, which also
-    # left the 0–1g-below-floor case undefined; this table now starts at the floor itself with
+  Scenario Outline: At day close, fat below the fat minimum is a real problem, not a normal "under"
+    # OPEN (§5.A/E): the minimum value is settled (0.6 g/kg, reused). How far below it tips to red
+    # is proposed here as a percentage of the minimum itself, for the same bodyweight-scaling
+    # reason as the upper limit table above — replaces the original flat-gram proposal, which also
+    # left the 0–1g-below-minimum case undefined; this table now starts at the minimum itself with
     # no gap.
     #
     # RESTRICTED TO DAY CLOSE, 2026-09-09, by the implementation review — this table had no
     # day-state precondition at all, which is the identical omission the round-1 swarm review
     # already found and fixed for protein ("At day close, protein under target is graded by how
-    # far short"). It matters more here than it did there: the fat floor is the one HARD SAFETY
+    # far short"). It matters more here than it did there: the fat minimum is the one HARD SAFETY
     # row of the hero priority order, so a flat reading of a half-eaten day put a red "Add some
     # healthy fats" at the top of the card from breakfast onward, every day, for everyone. On a
     # Cut that is advice this file forbids twice ("A cut is never told to eat more fat…").
     Given the day has closed
-    And my fat intake is "<pct>" below the health floor
+    And my fat intake is "<pct>" below the fat minimum
     Then fat shows "<colour>"
     Examples:
       | pct    | colour |
@@ -380,16 +380,16 @@ Feature: Daily and weekly intake scoring (red / amber / green)
   Scenario Outline: While the day is open, fat is paced against the eating window, like protein
     # Added 2026-09-09 by the implementation review, as the direct mirror of "While the day is
     # open, protein is paced against the eating window" above — same function (paceVerdict), same
-    # reason (a cumulative daily floor needs early-day grace or it reads as a breach all morning),
+    # reason (a cumulative daily minimum needs early-day grace or it reads as a breach all morning),
     # same rule that red is reserved for day close.
     #
     # Two deliberate differences from the closed-day table above, both to keep this file's own
     # claims true: the amber tag borrows protein's "Increase" rather than "Add some healthy
     # fats", so that message stays exclusive to a real breach as the scenario below requires; and
-    # a paced-behind fat does NOT take the hard-safety top rank, it sits where a ceiling breach
-    # sits — below calories, above protein. It is "fat, but not the floor", which is that rank.
+    # a paced-behind fat does NOT take the hard-safety top rank, it sits where an over-the-limit reading
+    # sits — below calories, above protein. It is "fat, but not the minimum", which is that rank.
     Given the day is still open
-    And my fat intake is below the health floor
+    And my fat intake is below the fat minimum
     And paceVerdict for my fat intake says "<verdict>"
     Then fat shows "<colour>", never red
     Examples:
@@ -398,22 +398,22 @@ Feature: Daily and weekly intake scoring (red / amber / green)
       | on      | green  |
       | behind  | amber  |
 
-  Scenario: "Add some healthy fats" is exclusive to a fat-floor breach
+  Scenario: "Add some healthy fats" is exclusive to a fat-minimum breach
     # Split out of the band Outline above in the round-2 atomicity pass — "the hero says X" is
     # not a fact about fat's own band, it's a fact about the priority-order table below, which
     # this scenario now cites explicitly instead of asserting the hero's output unconditionally.
-    Given fat is below the health floor
-    Then the hero says "Add some healthy fats" — the fat-floor row of the priority-order table
-      (see "Fat below the health floor always outranks a ceiling breach" below), never shown for
+    Given fat is below the fat minimum
+    Then the hero says "Add some healthy fats" — the fat-minimum row of the priority-order table
+      (see "Fat below the fat minimum always outranks an over-the-limit reading" below), never shown for
       any other reason
     And no other state ever shows that message
 
   Scenario: A cut is never told to eat more fat just to "hit" the target
     Given I am on a Cut
-    And my fat intake is above the health floor but below my fat target
+    And my fat intake is above the fat minimum but below my fat target
     Then fat shows green
     And no "increase fat" message is shown
-    # wrong advice for a deficit — the target here is a ceiling, the floor is the only limit
+    # wrong advice for a deficit — the target here is an upper limit, the minimum is the only limit
     # that applies. Resolved to a single colour in the swarm review — "green or neutral" wasn't
     # a real assertion; nothing else in this file or app.jsx renders a "neutral" state.
 
@@ -516,20 +516,20 @@ Feature: Daily and weekly intake scoring (red / amber / green)
 
   # ── Overall state and the hero's one action ──────────────────────────────
 
-  Scenario Outline: Calories outrank fat's ceiling when both need attention
+  Scenario Outline: Calories outrank fat's upper limit when both need attention
     # Decomposed from a single opaque priority-order table in the round-2 atomicity pass — see
-    # that pass's header note above. This is one pairwise link in the ranking; the fat-floor
+    # that pass's header note above. This is one pairwise link in the ranking; the fat-minimum
     # case (a HARD SAFETY claim, not a goal-protection one) is the standalone scenario further
     # below and always wins regardless of this link.
     Given calories are over target
-    And fat is also over its ceiling
+    And fat is also over its upper limit
     Then the hero speaks to calories first
     Examples:
       | goal |
       | cut  |
       | bulk |
 
-  Scenario Outline: Fat's ceiling outranks protein-under when both need attention
+  Scenario Outline: Fat's upper limit outranks protein-under when both need attention
     # OPEN, surfaced by the nutrition-coach pass: protein-under is called "the worst adherence
     # miss for a training goal in any mode" in "Protein well under at day close…" above, yet
     # ranks LAST here. If that's because nothing more can be done about protein once the day has
@@ -537,27 +537,27 @@ Feature: Daily and weekly intake scoring (red / amber / green)
     # an oversight, the order needs to change. This table doesn't yet name which principle —
     # severity vs. remaining actionability — it's using. Needs a founder call, same status as
     # the rest of the priority order.
-    Given fat is over its ceiling
+    Given fat is over its upper limit
     And protein is also under target
-    Then the hero speaks to fat's ceiling first
+    Then the hero speaks to fat's upper limit first
     Examples:
       | goal |
       | cut  |
       | bulk |
 
-  Scenario: Fat below the health floor always outranks a ceiling breach
-    Given fat is below the health floor
+  Scenario: Fat below the fat minimum always outranks an over-the-limit reading
+    Given fat is below the fat minimum
     And another macro is also out of range
-    Then the hero speaks to the fat floor first
+    Then the hero speaks to the fat minimum first
     # a real problem beats a breach of a target that only exists to be forgiving — the one HARD
     # SAFETY claim in the priority order, true regardless of goal, unlike every other link above
 
   # Maintain's own ordering remains unresolved and isn't decomposed above: it leads with
   # "whichever is furthest from its band," which mixes units with no stated conversion —
-  # calorie/fat-ceiling distance is kcal or grams, protein distance is a percentage — so as
+  # calorie/fat-upper-limit distance is kcal or grams, protein distance is a percentage — so as
   # written it isn't actually computable. Needs either a real normalisation rule or a fixed
   # lexicographic order like Cut/Bulk have before it can be split into pairwise scenarios the
-  # same way. Fat-below-floor still wins first on Maintain too — that link doesn't depend on
+  # same way. Fat-below-minimum still wins first on Maintain too — that link doesn't depend on
   # the unresolved part.
 
   Scenario: A fully unlogged day, once closed, shows as a miss on the inner ring too
@@ -597,33 +597,33 @@ Feature: Daily and weekly intake scoring (red / amber / green)
     #
     # DECIDED, founder, 2026-09-04 — resolves the TOP-PRIORITY item the swarm review found. The
     # REAL daily target a user is actually graded against every day (calcTargets, app.jsx:390-422)
-    # can be floored by up to three separate safety mechanisms — the maintain-only sedentary
-    # floor, the 75%-of-TDEE deficit floor, and SAFE_MIN — so it can sit much closer to TDEE than
+    # can be raised by up to three separate safety mechanisms — the maintain-only sedentary
+    # minimum, the 75%-of-TDEE steady-loss minimum, and SAFE_MIN — so it can sit much closer to TDEE than
     # a flat ±250 band around TDEE assumes. Worked example: a 50kg, 30%-body-fat, sedentary
-    # female on a Cut computes to BMR 1126 → TDEE 1351 → raw cut target 851 → floored to 1013 by
-    # the deficit floor → floored again to SAFE_MIN.female = 1200 (app.jsx:269). Her REAL daily
+    # female on a Cut computes to BMR 1126 → TDEE 1351 → raw cut target 851 → raised to 1013 by
+    # the steady-loss minimum → raised again to SAFE_MIN.female = 1200 (app.jsx:269). Her REAL daily
     # target is 1200, only 151 kcal under TDEE — daily-green every day (this file's own Cut rule,
     # above), yet 151 kcal under sits inside the ±250 "maintain" band below, so the week would
     # read amber: "This week hasn't been a cut." Wrong — she's at the app's own hard safety
     # minimum; there was never a lower number on offer.
     #
-    # Fix: NOT a new baseline. Comparing against her own floored target instead of TDEE was
+    # Fix: NOT a new baseline. Comparing against her own raised target instead of TDEE was
     # considered and rejected — it would make hitting-target always read "maintain" for everyone,
     # destroying the mismatch signal this scenario exists to give (someone who selected Cut but
-    # never actually ran a deficit). Instead, see the next scenario — a majority-floored week
+    # never actually ran a deficit). Instead, see the next scenario — a majority-held-up week
     # short-circuits this band comparison rather than reworking it.
     #
     # Separately raised by the founder in this conversation: SAFE_MIN itself (flat 1400 male /
     # 1200 female) is a known, previously-analysed flaw — a flat number can remove almost the
     # whole deficit for a small body (see `ARCHITECTURE_REVIEW.md` §4.I). That is a fix to
     # SAFE_MIN's own value, tracked separately from this file. This scenario's fix holds
-    # regardless of how SAFE_MIN is eventually calculated — it only checks whether a floor was
-    # binding, not what number the floor used.
+    # regardless of how SAFE_MIN is eventually calculated — it only checks whether a minimum was
+    # binding, not what number the minimum used.
 
   Scenario: A week spent mostly at the safety minimum reads as a cut, not a shortfall
     # DECIDED, founder, 2026-09-04. Resolves the TOP-PRIORITY item above without touching the
-    # band comparison for anyone who wasn't at the floor.
-    Given a safety floor — the sedentary floor, the deficit floor, or SAFE_MIN — held the daily
+    # band comparison for anyone who wasn't at the minimum.
+    Given a safety minimum — the sedentary minimum, the steady-loss minimum, or SAFE_MIN — held the daily
       target up on 4 or more of the last 7 days
     Then the week reads as "cut" outright
     And the ±250 band comparison below is not applied
@@ -631,7 +631,7 @@ Feature: Daily and weekly intake scoring (red / amber / green)
     # against one compares against a target that was never real
 
   Scenario Outline: The week's average kcal sorts into reads-as-cut / maintain / bulk bands around the baseline
-    # Applies only when the majority-floored override above does NOT fire.
+    # Applies only when the majority-held-up override above does NOT fire.
     # OPEN (§5.A) — the band WIDTH below is still proposed, not decided.
     # ±250 is proposed only as the width, mirroring the mode deltas the app already defines
     # (cut −500 / maintain 0 / bulk +500, ENERGY_MODEL.md "kcal = TDEE + modeAdj").

@@ -139,7 +139,7 @@ test.describe("A past day's calorie target", () => {
     await shot(page, "history-past-day-target-edited");
   });
 
-  test("the safety floor still holds on a typed number", async ({ page }) => {
+  test("the safety minimum still holds on a typed number", async ({ page }) => {
     // A typed target is the user's own choice, but it cannot go below SAFE_MIN.
     await open(page, { history: history() });
     await openPastDay(page);

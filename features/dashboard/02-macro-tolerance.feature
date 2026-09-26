@@ -1,7 +1,7 @@
 # ── SUPERSEDED, 2026-09-09 — this file no longer describes the app ────────────────
 # `dashboard/04-intake-scoring.feature` was BUILT on 2026-09-04/09. The macro bars' colours now
-# come from the role-based engine in that file (protein = a floor, calories = the master
-# constraint, fat = a floor and a ceiling, carbs = flex), not from the flat "any macro, 5g/15g
+# come from the role-based engine in that file (protein = a minimum, calories = the master
+# constraint, fat = a minimum AND an upper limit, carbs = flex), not from the flat "any macro, 5g/15g
 # over = amber/red, under is always fine" model below. Every scenario here is now false about the
 # shipped app — including the per-macro blue/orange/red-orange tints, which 04 deliberately
 # collapses into one uniform green/amber/red.

@@ -6,8 +6,8 @@ Live status of the browser-level test suite: what exists, what passes, what's ne
 **working document** — the status column is updated as items land, so it always answers "where are
 we". Durable behaviour lives in `ENERGY_MODEL.md` / `DOCS.md`; the specs themselves are the contract.
 
-**Current:** 150 tests · 150 passing · runtime ~90s · last updated 2026-09-16 (session 24)
-**Plan items 15–43 are all complete.** Jest 437/437 alongside.
+**Current:** 152 tests · 152 passing · runtime ~90s · last updated 2026-09-26 (session 25, cloud)
+**Plan items 15–44 are all complete.** Jest 447/447 alongside.
 
 > ### 🔖 Shelved — one open item, needing a decision rather than more investigation
 >
@@ -37,6 +37,21 @@ npx playwright test --grep "Cut mid-break"     # one scenario
 
 Screenshots land in `e2e/screenshots/` (gitignored), one per scenario. Playwright starts
 `dev-server.js` itself — nothing to run first.
+
+**In a Claude cloud session** the container's Chromium is an older build than the pinned
+`@playwright/test` expects, and `@playwright/test` itself may be missing from `node_modules`.
+Don't download browsers. Install the package without touching the tracked lockfile, and point a
+throwaway config at the browser that is there:
+
+```bash
+npm install --no-save --ignore-scripts @playwright/test@^1.62.1
+git checkout node_modules/.package-lock.json     # node_modules is tracked; keep it clean
+cat > pw.tmp.config.js <<'EOF'
+const base = require("./playwright.config.js");
+module.exports = { ...base, use: { ...base.use, launchOptions: { executablePath: "/opt/pw-browsers/chromium" } } };
+EOF
+npx playwright test -c pw.tmp.config.js && rm pw.tmp.config.js
+```
 
 **Screenshots capture the phone, not the page.** `shot(page, name)` targets the `.phone` element,
 stretches `#app-shell` so nothing is clipped at 844px, then measures where the content actually ends
@@ -197,7 +212,7 @@ the original harm: a long deficit walking the target down.
 | 28b | A fresh weigh-in is accepted and the trend takes it | ✅ |
 | 28c | Two flat months: a break is recommended, blamelessly | ✅ |
 | 28d | The target is **not** ground down by two months of disappointment | ✅ |
-| 28e | The target stays above the safe floor, not merely unchanged | ✅ |
+| 28e | The target stays above the safe minimum, not merely unchanged | ✅ |
 | 28f | At Maintain the same evidence **is** acted on — the control | ✅ |
 
 > **28f is what makes 28d mean anything.** An adjustment that never fires looks identical to one
@@ -332,7 +347,7 @@ correction lands in all three places — the row, the day's totals, and `logs__<
 | 39d | A typed target survives until the mode is changed again | ✅ |
 | 39e | Today is not editable here — its own control is on the dashboard | ✅ |
 | 40a | The target can be set by hand, and the day is regraded against it | ✅ |
-| 40b | The safety floor still holds on a typed number | ✅ |
+| 40b | The safety minimum still holds on a typed number | ✅ |
 | 40c | Cancelling leaves the stored target alone | ✅ |
 | 40d | A day saved before targets were stored says so, rather than pretending | ✅ |
 
@@ -387,6 +402,19 @@ after this suite, on the founder's instruction, and its header says so. The func
 
 > The worker stub returns the exact seven-row reply from the bug, so the assertion is on the
 > screen after the guard, not on the guard in isolation — 744 on the card, not 1488.
+
+### Suite: `photo-meal-name.spec.js` — a photo meal is named after the food (session 25, cloud)
+
+The founder's ask (2026-09-26): a photographed meal logged as one entry was always called *"Photo
+meal"*. Contract: `features/logging/05-ai-meal-capture.feature`, the 2026-09-26 block. The upload
+is the app's own `icon-192.png` through the real file input; the worker stub decides what the
+"model" saw. The fallback order is Jest's (`photoMealName`, lifted in `__tests__/ai-log.test.js`).
+Both tests fail on the pre-change build with `Received: "Photo meal"`.
+
+| # | Scenario | Status |
+|---|---|---|
+| 44a | The model's `meal` name is what `LOG ALL AS ONE ENTRY` stores; the items stay underneath | ✅ |
+| 44b | No `meal` in the reply and one item → the entry takes that item's name | ✅ |
 
 ---
 

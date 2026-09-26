@@ -77,7 +77,7 @@ state what you do not, and ask.
 | Instead of | Write |
 |---|---|
 | "the ratchet" | "the app lowers the calorie target as weight falls, and it does not rise again on its own" |
-| "clamped to the floor" | "raises the target to the floor value" — or "warns, never changes the target", whichever is true |
+| "clamped to the minimum" | "raises the target to the minimum" — or "warns, never changes the target", whichever is true |
 | "clamped ±150" | "capped at ±150" |
 | "the lean gate" | "shown only when body fat is below the sex-specific threshold" |
 | "gated on X" | "appears once X is true" / "X must be set before this runs" |

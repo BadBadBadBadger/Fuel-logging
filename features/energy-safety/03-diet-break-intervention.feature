@@ -27,7 +27,7 @@
 # EVIDENCE (coach hat — carried over from v1, still governs the copy):
 #   • Diet break = a planned return to maintenance for a set period,
 #     typically ≥ 1–2 weeks — MATADOR used 2 weeks (Byrne 2018).
-#   • Maintenance must be REAL maintenance — floored at sedentary TDEE
+#   • Maintenance must be REAL maintenance — held at sedentary TDEE
 #     (BMR × 1.2), no residual deficit. Already enforced by Step 4.
 #   • Returning to maintenance is what eases diet fatigue and supports
 #     recovery over weeks (Rossow 2013; Fagerberg 2018). "Reverse dieting"

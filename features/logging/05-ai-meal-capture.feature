@@ -315,6 +315,36 @@ Feature: AI meal capture via text, voice, or photo with confidence-gated follow-
     # 50% drop threshold, which this file left entirely to the Jest notes
 
   @policy @genai
+  # Added 2026-09-26 (sw v92), on the founder's word: a photographed meal logged as one entry
+  # was always called "Photo meal", which says nothing when read back a week later. The photo
+  # prompt now asks for a short diary-style "meal" name; photoMealName (app.jsx) picks the name.
+  # Jest: __tests__/ai-log.test.js. Playwright: e2e/photo-meal-name.spec.js.
+  @photo @happy
+  Scenario Outline: A photographed meal is named after the food, not "Photo meal"
+    Given I have photographed <what>
+    When the estimate comes back and I log it all as one entry
+    Then the entry is called something like "<name>"
+    And the items the AI found are still stored underneath it
+
+    Examples:
+      | what                                | name                            |
+      | a plate of chicken Caesar salad     | Chicken Caesar salad            |
+      | a yogurt pot with its label showing | Müller Corner strawberry yogurt |
+
+  @photo @edge
+  Scenario: If the AI sends no name, the entry is still named after something real
+    Given I have photographed a meal and the AI's reply has no name for it
+    When I log it all as one entry
+    Then it is called what I typed alongside the photo, if I typed anything
+    And otherwise, if the AI found exactly one item, it is called that item's name
+    And it is only called "Photo meal" when there is nothing else to go on
+
+  @photo
+  Scenario: What I type with a photo is a hint, not the name
+    Given I have photographed a baguette and typed "from Pret"
+    When the AI names the meal "Pret tuna baguette"
+    Then the entry is called "Pret tuna baguette", not "from Pret"
+
   Scenario: I can report an estimate as wrong
     Given I am reviewing or have saved an AI estimate
     Then I can report the estimate as inaccurate

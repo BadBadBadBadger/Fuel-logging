@@ -1,7 +1,7 @@
 # Built + verified on device 2026-06-11 (coach avoided re-suggesting logged foods).
 # COACH-HAT REVIEW (2026-06-11): pacing on a calorie tracker is a disordered-eating
 # vector, so two safeguarding rules are baked in below: (1) pace only applies to
-# FLOOR goals you must reach (protein, water, fibre) — NEVER the calorie ceiling,
+# Goals to reach you must reach (protein, water, fibre) — NEVER the calorie limit,
 # where being "behind" (under) is success, not a failure to fix; (2) the eating
 # window is derived from today's first logged meal, not a wall-clock default, so
 # fasting / Ramadan / 16:8 users are not falsely told they're "behind". Nudge copy
@@ -9,7 +9,7 @@
 Feature: Coach paces advice to the time of day
 
   # Pace is COMPUTED, not judged by the LLM. The eating window starts at today's
-  # first logged meal (not a wall-clock default), giving % elapsed; each FLOOR goal
+  # first logged meal (not a wall-clock default), giving % elapsed; each Goal to reach
   # gives its own % progress. The verdict (ahead / on / behind) is handed to the prompt.
 
   Background:
@@ -48,12 +48,12 @@ Feature: Coach paces advice to the time of day
 
   # ── Safeguarding rules from the coach-hat review ──
 
-  Scenario: The calorie ceiling is never paced as "behind"
+  Scenario: The calorie limit is never paced as "behind"
     Given I am in cut or maintain mode and under my calorie target
     When the coach generates a tip
     Then being under calories is never described as being "behind"
     And the coach never urges me to eat more to "catch up" on calories
-    And pace applies only to floor goals I am meant to reach (protein, water, fibre)
+    And pace applies only to goals to reach I am meant to reach (protein, water, fibre)
 
   Scenario: A fasting or late-start eating window is not falsely paced
     Given I have not logged any food yet today
@@ -62,13 +62,13 @@ Feature: Coach paces advice to the time of day
     Because the eating window only starts once I have actually eaten
 
   Scenario: Pace nudges stay gentle and point at a food choice, not urgency
-    Given a floor goal is genuinely behind late in the day
+    Given a goal to reach is genuinely behind late in the day
     When the coach nudges me
     Then it suggests a specific food choice to round the day out
     And it uses no "catch up" urgency, no punishment, and no shame framing
 
-  Scenario: Variety never outranks an unmet protein floor
-    Given my protein floor is still unmet late in the day
+  Scenario: Variety never outranks an unmet protein minimum
+    Given my protein minimum is still unmet late in the day
     When the coach makes a suggestion
-    Then meeting the protein floor takes priority over variety
-    And variety is only a tiebreaker once the floor is met
+    Then meeting the protein minimum takes priority over variety
+    And variety is only a tiebreaker once the minimum is met

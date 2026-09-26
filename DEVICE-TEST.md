@@ -1,4 +1,4 @@
-# Device test — the standing on-phone checklist (sw v72)
+# Device test — the standing on-phone checklist
 
 **This was written as a one-time checklist for the 2026-08-10 go-live and told you to delete it when
 done. Three releases later it is still here, still accruing items — so it is a living doc now, and
@@ -6,9 +6,11 @@ re-stamped as one (2026-08-16).** It survives because most of it cannot be autom
 iOS Safari, PWA install, service-worker cycling, haptics, and whether the cloud actually obeys.
 Everything durable about *why* still lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
-**Live as of:** `main` @ `d21d7d6`, service worker **v72**, served by **GitHub Pages** at
-https://badbadbadbadger.github.io/Fuel-logging/ (built from the root of `main` on every push;
-Cloudflare hosts only the AI worker). Rollback tag: **`pre-energy-safety`**.
+**Which version you should be on:** the newest *"New in vNN"* block below names it (currently
+**v94**, once PR `claude/ai-coach-jargon-guard-ey4ze7` is merged to `main`). The site is served by
+**GitHub Pages** at https://badbadbadbadger.github.io/Fuel-logging/ (built from the root of `main`
+on every push; Cloudflare hosts only the AI worker). *This line used to name v72 and a fixed commit
+and went stale for twenty releases — it no longer names one.*
 
 > ### Before anything else
 > An installed PWA serves the **old bundle** until the service worker fully cycles. Backgrounding the
@@ -16,7 +18,7 @@ Cloudflare hosts only the AI worker). Rollback tag: **`pre-energy-safety`**.
 > below doesn't match, you're testing the old code and everything after this is meaningless.
 >
 > To check: Settings → scroll to the bottom, or in Chrome devtools console:
-> `caches.keys().then(console.log)` → expect `fuel-log-v72`.
+> `caches.keys().then(console.log)` → expect the `fuel-log-vNN` of the newest block below.
 >
 > To check what is *deployed* rather than what your phone is holding, read it straight off the host:
 > `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`
@@ -65,6 +67,28 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [x] **"Below your resting metabolism"** — resolved: the card was removed in v74, see the foot of
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
+
+### New in v91–v94 — plain words from the coach, and photo meals named after the food (2026-09-26)
+
+Fully close and reopen the installed PWA first — you must be on **v94**. These are the only check
+the model's side gets: the suites stub the worker and cannot see a real reply.
+
+- [ ] **Daily Coach**, on a day with protein still short → tap ↺ a couple of times. No tip says
+      **"floor"** or **"ceiling"**. It should say *"your protein goal"*, *"the minimum"* and so on.
+      If either word turns up, screenshot it — the rule is an instruction to the AI, not a hard
+      check, and a real sighting is the signal to add one.
+- [ ] **AI Log → 📷 a plate of food** (type nothing) → ANALYSE PHOTO → `+ LOG ALL AS ONE ENTRY`.
+      The entry in today's list has a short name for the meal (e.g. *"Chicken Caesar salad"*), **not
+      "Photo meal"**. Tap it: the individual items are still there.
+- [ ] **AI Log → 📷 something packaged with the label showing** (a yogurt, a meal deal) → log all as
+      one → the name uses the **brand / product** from the packaging.
+- [ ] **AI Log → 📷 a meal and type a hint** like *"from Pret"* → the entry is named after the food
+      (*"Pret tuna baguette"*), not *"from Pret"*.
+- [ ] **Profile → set a custom target well under your usual** → the amber note under it says
+      *"…the lowest safe target for your body…"*, and on the dashboard the card reads **PROTEIN AND
+      FAT KEPT** (renamed; the old title used the banned word). Tap *Why?* on the *"eased to a steady pace"* card if it
+      shows — no **"floor"** anywhere. **Profile → adaptive TDEE**, if it shows *"Held at your
+      minimum maintenance"*: it ends *"…the adaptive adjustment stops here"*.
 
 ### New in v89–v90 — the seventh row, and History's captions (2026-09-16)
 
@@ -243,7 +267,7 @@ location.reload();
 ---
 
 > **Already known, don't re-report:** at very low weights (~50 kg) the flat safe minimum overrides the
-> body-sized floor and a cut collapses to almost no deficit — a 50 kg man gets 16 kcal. Real, understood,
+> body-sized minimum and a cut collapses to almost no deficit — a 50 kg man gets 16 kcal. Real, understood,
 > and **deliberately shelved** because the only user is 98.5 kg. `ARCHITECTURE_REVIEW.md` §4.I.
 
 ## Part B2 — the one thing no test can check: does the cloud actually obey?
@@ -268,7 +292,7 @@ takes about a minute. **Signed in, on your phone.**
 
 ## Part C — the small body case
 
-The steady-loss floor only visibly bites on smaller bodies. Temporarily set a **~60 kg** profile
+The steady-loss minimum only visibly bites on smaller bodies. Temporarily set a **~60 kg** profile
 (Profile → weight 60) and check:
 
 - [ ] A cut shows **"Eased to a steady pace"** rather than an alarming number
@@ -297,10 +321,10 @@ went unread — "wallpaper, I don't even notice it" — and had never once chang
 no amber card was being read at all, which is the actual cost: it was training the user past *"Eased
 to a steady pace"*, the stall nudge and the weight-up card, the three that carry real safety weight.
 
-The deciding argument was structural rather than aesthetic. The card only ever fired when **no floor
-had applied** — not SAFE_MIN, not the BMR×1.2 maintain floor, not the steady-loss floor — which is
+The deciding argument was structural rather than aesthetic. The card only ever fired when **no minimum
+had applied** — not SAFE_MIN, not the BMR × 1.2 maintenance minimum, not the steady-loss minimum — which is
 the band the app has already decided is acceptable. It was an amber warning for a non-event. Every
-genuinely unsafe target is caught by a floor, and floors move the number instead of talking. The
+genuinely unsafe target is caught by a minimum, and minimums move the number instead of talking. The
 "fine for weeks, not a place to settle" concern is real and is already carried by the cut-block break
 prompts, which trigger on accumulated load rather than on a threshold every cutter crosses by design.
 

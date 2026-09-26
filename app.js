@@ -566,17 +566,17 @@ var SAFE_MIN = {
   female: 1200
 };
 
-// ── Macro floor engine (feature #7) ──────────────────────────────
+// ── Macro minimum engine (feature #7) ──────────────────────────────
 // One source of truth for protein/fat/carbs at any calorie target, used by both
 // the preset path (calcTargets) and the custom-target path. Protein and fat are
-// FLOORS, not proportionally-scaled values — carbs absorb the whole deficit/surplus.
-//   • protein: a flat g/kg-LEAN-MASS floor, identical in every mode, so it stops
+// MINIMUMS, not proportionally-scaled values — carbs absorb the whole deficit/surplus.
+//   • protein: a flat g/kg-LEAN-MASS minimum, identical in every mode, so it stops
 //     fluctuating on a cut/maintain/bulk switch (male 2.2 / female 2.0).
 //   • fat: stays mode-varying (more to spare on a bulk) but never below a hormonal
-//     floor of 0.6 g/kg BODYWEIGHT — this is what the old proportional scaling broke.
-//   • carbs: whatever calories remain after the two floors, min 50g.
-//   • floorsExceedKcal: true when the target is too low to fit both floors + min
-//     carbs. We keep the floors (never silently break one) and let the UI warn.
+//     minimum of 0.6 g/kg BODYWEIGHT — this is what the old proportional scaling broke.
+//   • carbs: whatever calories remain after the two minimums, min 50g.
+//   • floorsExceedKcal: true when the target is too low to fit both minimums + min
+//     carbs. We keep the minimums (never silently break one) and let the UI warn.
 var PROTEIN_PER_LBM = {
   male: 2.2,
   female: 2.0
@@ -606,7 +606,7 @@ var computeMacros = function computeMacros(p, mode, kcal) {
   var fat = Math.round(w * fatPerKg);
   var floorKcal = protein * 4 + fat * 9;
   var carbs = Math.max(MIN_CARBS_G, Math.round((kcal - floorKcal) / 4));
-  // The floors alone (+ minimum carbs) already cost more than the target asks for.
+  // The minimums alone (+ minimum carbs) already cost more than the target asks for.
   var floorsExceedKcal = floorKcal + MIN_CARBS_G * 4 > kcal;
   return {
     protein: protein,
@@ -622,7 +622,7 @@ var computeMacros = function computeMacros(p, mode, kcal) {
 // These are NEAT-ONLY multipliers — deliberately below the textbook whole-day factors
 // (1.375–1.725) because logged workouts are added separately as "earn to eat"; a
 // whole-day factor would double-count training. Sedentary == 1.20 == the old flat
-// baseline, so existing/unset users and the BMR×1.2 maintenance floor are unchanged.
+// baseline, so existing/unset users and the BMR × 1.2 maintenance minimum are unchanged.
 // Values locked against the believability gate (ENERGY_MODEL.md §4); the exact numbers
 // are owned here + mirrored in __tests__/logic.test.js.
 var ACTIVITY = {
@@ -658,7 +658,7 @@ var bmrOf = function bmrOf(p) {
 var seedTDEE = function seedTDEE(p) {
   return Math.round(bmrOf(p) * activityMult(p));
 };
-// Absolute MAINTAIN floor — nobody's true maintenance sits below sedentary energy use,
+// Absolute MAINTAIN minimum — nobody's true maintenance sits below sedentary energy use,
 // so the adaptive auto-lowering can never drag maintenance there even for a user who
 // seeded a higher activity level (adaptive may calibrate that seed DOWN to sedentary,
 // never below). Stays BMR×1.2 regardless of the seed.
@@ -682,15 +682,15 @@ var smoothWorkoutKcal = function smoothWorkoutKcal(kcalByOffset) {
   }, 0));
 };
 
-// ── Energy floor + low-fuel warning (energy-model Step 4) ─────────
+// ── Energy-availability minimum + low-fuel warning (energy-model Step 4) ─────────
 // features/energy-safety/01. Two DIFFERENT protections, deliberately separated —
-// the draft spec conflated them into one EA-30 floor, which doesn't survive the
+// the draft spec conflated them into one EA-30 minimum, which doesn't survive the
 // numbers (see ENERGY_MODEL.md §5 Step 4):
 //
 //  1. MOVES THE TARGET — rate of loss. A preset target never takes more than
 //     MAX_DEFICIT_FRAC off believable maintenance (+ today's applied training
 //     bonus, so the Step-3 smoothing isn't undone). This scales with body size,
-//     which is what the flat SAFE_MIN never did: a 98.5 kg body floors ~1,673,
+//     which is what the flat SAFE_MIN never did: a 98.5 kg body bottoms out at ~1,673,
 //     a 60 kg body ~1,208. SAFE_MIN survives only as the absolute backstop.
 //  2. WARNING ONLY — energy availability. EA = (intake − today's training burn)
 //     / fat-free mass; below EA_HARD the RED-S literature (Loucks & Thuma 2003;
@@ -726,7 +726,7 @@ var isLeanBody = function isLeanBody(p) {
   return bodyFatSet(p) && Number(p.bodyFat) <= LEAN_BF[p.sex === "female" ? "female" : "male"];
 };
 
-// The steady-loss floor: 75% of the energy the day is actually built on.
+// The steady-loss minimum: 75% of the energy the day is actually built on.
 var deficitFloorOf = function deficitFloorOf(effTDEE) {
   var appliedBonus = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0;
   return Math.round((1 - MAX_DEFICIT_FRAC) * (effTDEE + (appliedBonus || 0)));
@@ -748,15 +748,15 @@ var calcTargets = function calcTargets(p, mode) {
   // auto-lowering) must never drag MAINTENANCE below sedentary (see sedentaryFloorOf),
   // which previously produced a sub-resting, physiologically-impossible maintain target.
   // A deliberate cut is a chosen deficit bounded separately (SAFE_MIN today, the
-  // energy-availability floor later), so the floor is MAINTAIN-ONLY.
+  // energy-availability minimum later), so the minimum is MAINTAIN-ONLY.
   var seed = Math.round(bmr * activityMult(p));
   var sedentaryTDEE = Math.round(bmr * 1.2);
   var tdee = seed + tdeeAdj;
   var kcal = tdee + MODES[mode].adj + (totalWorkoutKcal || 0);
   var bmrFloorApplied = mode === "maintain" && kcal < sedentaryTDEE;
   if (bmrFloorApplied) kcal = sedentaryTDEE;
-  // Steady-loss floor (Step 4). Measured against BELIEVABLE maintenance — the same
-  // floored effective TDEE the rest of the app trusts — so a negative adaptive
+  // Steady-loss minimum (Step 4). Measured against BELIEVABLE maintenance — the same
+  // effective TDEE after the minimums the rest of the app trusts — so a negative adaptive
   // adjustment can't quietly deepen the real deficit past the cap.
   var effTDEE = Math.max(sedentaryTDEE, tdee);
   var deficitFloor = deficitFloorOf(effTDEE, totalWorkoutKcal);
@@ -794,7 +794,7 @@ var calcTargets = function calcTargets(p, mode) {
 // judges "behind" itself (that misfires early in the day). Safeguards baked in:
 //   • the eating window STARTS at today's first logged meal, not a wall clock,
 //     so fasting / 16:8 / Ramadan users are never falsely told they're behind;
-//   • callers pace only FLOOR goals (protein, water) — never the calorie ceiling,
+//   • callers pace only goals to REACH (protein, water) — never the calorie limit,
 //     where being under is success, not a failure to fix;
 //   • "behind" is never used until >25% of the window has elapsed.
 var EATING_WINDOW_H = 14; // a typical waking eating span measured from the first meal
@@ -830,7 +830,7 @@ var paceVerdict = function paceVerdict(firstMealHour, nowHour, frac) {
 
 // ── Intake scoring (feature dashboard/04) ──────────────────────────
 // features/dashboard/04-intake-scoring.feature. Grades what's logged against the role each
-// macro plays — protein/fat are floors, calories is the master constraint (direction depends
+// macro plays — protein/fat are minimums, calories is the master constraint (direction depends
 // on goal), carbs is flex — instead of raw distance from a number. Band widths marked OPEN in
 // the spec ship here as its own proposed numbers, not re-derived; they're meant to be
 // feel-tested against real logged days and tuned, the same way every other threshold in this
@@ -985,23 +985,23 @@ var calorieDayScore = function calorieDayScore(_ref2) {
   };
 };
 
-// Fat — a floor AND a ceiling at once. Both bands are a percentage (of the floor, and of the
+// Fat — a minimum AND an upper limit at once. Both bands are a percentage (of the minimum, and of the
 // target) for the identical bodyweight-scaling reason as protein's bands above.
 var FAT_CEILING_AMBER_PCT = 0.10;
 var FAT_CEILING_RED_PCT = 0.25;
 var FAT_FLOOR_RED_BELOW_PCT = 0.15;
 
-// FIXED 2026-09-09 (found by driving the app, not by a test): the health floor is a CUMULATIVE
+// FIXED 2026-09-09 (found by driving the app, not by a test): the fat minimum is a CUMULATIVE
 // daily amount, and it was being judged flat from the first meal onward. At 11am, after a
-// perfectly on-plan breakfast, a 98.5 kg user was 22 g into a 59 g floor — so the card read a red
+// perfectly on-plan breakfast, a 98.5 kg user was 22 g into a 59 g minimum — so the card read a red
 // "FAT · Add some healthy fats", which outranks everything else in the hero order, and stayed
 // that way until three quarters of the day's fat was eaten. That was the dashboard's dominant
 // daytime state, and on a Cut it is the one message this app must never send by accident.
-// Fix: the FLOOR now gets exactly the treatment protein's floor already has — paced against the
+// Fix: the MINIMUM now gets exactly the treatment protein's minimum already has — paced against the
 // eating window while the day is open (paceVerdict, built for precisely this, app.jsx:427-431),
 // never red and never a hard-safety hero before the day has closed. "Add some healthy fats"
 // stays exclusive to a real breach at close, per the spec's own scenario; the mid-day nudge
-// borrows protein's "Increase" instead. The CEILING is unchanged and stays unconditional —
+// borrows protein's "Increase" instead. The UPPER LIMIT is unchanged and stays unconditional —
 // eating a whole day's fat by noon is a real "over" at any hour.
 var fatDayScore = function fatDayScore(_ref3) {
   var fatG = _ref3.fatG,
@@ -1073,17 +1073,17 @@ var isDayClosed = function isDayClosed(_ref5) {
 };
 
 // Hero priority — the card's single headline word + one action line when several macros need
-// attention at once. DECIDED order for Cut/Bulk (pairwise scenarios in the spec): fat-floor
-// breach (hard safety) > calories out of range > fat-ceiling breach > protein under target.
+// attention at once. DECIDED order for Cut/Bulk (pairwise scenarios in the spec): fat-minimum
+// breach (hard safety) > calories out of range > fat-over-limit > protein under target.
 // Maintain's own ordering is left explicitly unresolved by the spec ("mixes units with no
 // stated conversion... isn't actually computable as written") — ADOPTED the same order here as
-// the consistent default, since fat-below-floor is confirmed to win first on Maintain too and
+// the consistent default, since fat-below-minimum is confirmed to win first on Maintain too and
 // nothing argues for a different order among the rest. Flagged as adopted, not re-decided.
 var heroFor = function heroFor(_ref6) {
   var protein = _ref6.protein,
     calories = _ref6.calories,
     fat = _ref6.fat;
-  // "floor"/"ceiling" stay internal (floorBreach/ceilingBreach) — never on screen. The word
+  // The rule names stay in identifiers only (`floorBreach`/`ceilingBreach`) — never on screen. The word
   // shown for either fat case is just "FAT"; the action line is what says what's actually wrong.
   if (fat.floorBreach) return {
     colour: fat.colour,
@@ -1095,9 +1095,9 @@ var heroFor = function heroFor(_ref6) {
     word: "CALORIES",
     action: calories.heroAction || calories.label
   };
-  // Was `fat.ceilingBreach`. Widened to any non-green fat that isn't a floor breach: today that
-  // is still exactly the ceiling breach, plus the new mid-day "behind on fat" state above, which
-  // belongs at this same rank — "fat, but not the floor" — rather than needing a rank of its own.
+  // Was `fat.ceilingBreach`. Widened to any non-green fat that isn't a minimum breach: today that
+  // is still exactly going over the limit, plus the new mid-day "behind on fat" state above, which
+  // belongs at this same rank — "fat, but not the minimum" — rather than needing a rank of its own.
   if (fat.colour !== "green") return {
     colour: fat.colour,
     word: "FAT",
@@ -1171,7 +1171,7 @@ var WEEK_READ_COPY = {
   }
 };
 
-// days: up to the last 7 daily entries — { kcal, loggedAnything, floored }. tdeeBaseline: raw
+// days: up to the last 7 daily entries — `{ kcal, loggedAnything, floored }`. tdeeBaseline: raw
 // TDEE (maintenance, NOT adjusted for the selected mode — see the spec's own worked example,
 // which measures distance from raw TDEE; that's what lets "reads as" disagree with "selected").
 var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
@@ -1189,7 +1189,7 @@ var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
   });
   var daysUsed = assessable.length;
   // Nothing logged all week → there is no week to read. This check MOVED ABOVE the
-  // majority-floor override on 2026-09-09: below it, a week with nothing logged at all returned
+  // majority-held-up override on 2026-09-09: below it, a week with nothing logged at all returned
   // a green "This week's been a real cut — averaging a genuine deficit. Keep going." built from
   // zero days of evidence. Not logging must never outscore logging honestly — guardrail §6, the
   // exact inversion the founder's unlogged-day decision was made to close.
@@ -1203,18 +1203,18 @@ var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
   }, 0) / daysUsed;
   var band = weekBandFor(avgKcal - tdeeBaseline);
 
-  // The founder's majority-floor override (DECIDED 2026-09-04): a week where a safety floor held
+  // The founder's majority-held-up override (DECIDED 2026-09-04): a week where a safety minimum held
   // the daily target up on 4+ of the 7 days reads as "cut" outright, because there was never a
   // lower number on offer to compare against.
   //
   // NARROWED 2026-09-09: it no longer overrides a week whose logged average is a genuine surplus.
-  // The founder's reasoning is entirely about the TARGET having been floored — it says nothing
+  // The founder's reasoning is entirely about the TARGET having been held up by a minimum — it says nothing
   // about what was actually eaten. As first built, a 50 kg woman pinned at SAFE_MIN 1200 who
   // logged four days averaging 3,150 kcal was told "This week's been a real cut — averaging a
   // genuine deficit. Keep going." while the ring beside it showed four red days.
   //
   // STILL OPEN, founder call, deliberately not decided here: a day with NO snapshot at all still
-  // gets a vote in this majority, because Dashboard reconstructs its floored-ness from the
+  // gets a vote in this majority, because Dashboard reconstructs its held-up status from the
   // CURRENT profile. Whether a day the user never logged should count toward "a week spent mostly
   // at the safety minimum" is a product judgement, not a bug — see
   // features/dashboard/04-intake-scoring-implementation-review.md.
@@ -1396,7 +1396,7 @@ var rollingWeightMean = function rollingWeightMean(weighIns, key) {
 // PREVIOUS 7-day mean. Two non-overlapping calendar windows, so the figure rests on 14 days of
 // data even though it reads as a week, and no mean is ever differenced against itself — that last
 // part is what made the old headline overstate by roughly 3x. Two readings per window is the
-// floor; below that it returns null and the card says so instead of guessing.
+// minimum; below that it returns null and the card says so instead of guessing.
 var WEIGHT_TREND_MIN_PER_WINDOW = 2;
 var weightTrendKg = function weightTrendKg(weighIns, toKey) {
   var spanDays = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 7;
@@ -1427,7 +1427,7 @@ var weightTrendKg = function weightTrendKg(weighIns, toKey) {
 //     well-established history is allowed larger steps, so a real 500 kcal gap closes in
 //     ~3 weeks (simulated) yet never lurches.
 // The accumulated adjustment is still bounded by ADJ_CAP (±600, feature-04 policy) and the
-// maintenance BMR×1.2 floor at the target layer. Engages at 6 weigh-ins (was 8).
+// maintenance minimum (BMR × 1.2) at the target layer. Engages at 6 weigh-ins (was 8).
 var CAL_MIN_WEIGHINS = 6;
 var CAL_GAIN = 0.8; // proportional gain toward the measured error
 var CAL_STEP_CAP = {
@@ -1586,8 +1586,8 @@ var runCalibration = function runCalibration(history, weighIns, baseTDEE) {
   if (raiseHeld) {
     adj = 0;
   } else if (rawAdj < 0 && wasCutting) {
-    var floor = Math.min(settledAdj, tdeeAdj); // the floor can never sit above the current value
-    adj = Math.max(floor, tdeeAdj + rawAdj) - tdeeAdj;
+    var lowest = Math.min(settledAdj, tdeeAdj); // the lower limit can never sit above the current value
+    adj = Math.max(lowest, tdeeAdj + rawAdj) - tdeeAdj;
     refused = adj === 0;
   }
   return {
@@ -5345,7 +5345,7 @@ function IntakeScoreCard(_ref54) {
   // reader what time it was and nothing about fat, calories or protein — a red ring that wasn't
   // full read as "not done falling short" instead of "10pm"). Founder feedback, 2026-09-09: with
   // one hero word only, protein sitting quietly at 89% was invisible whenever fat's hard-safety
-  // floor outranked it for the headline. Segmenting the ring the same way the week ring already
+  // minimum outranked it for the headline. Segmenting the ring the same way the week ring already
   // does means both show at once — you can see protein's amber next to fat's red, not just infer
   // that fat won a hidden priority order.
   var TODAY_GAP_DEG = 10;
@@ -5584,18 +5584,18 @@ function CoachCard(_ref55) {
             foodsLine = eaten.length ? "Already eaten today (do NOT suggest any of these again):\n" + eaten.map(function (e) {
               return "- ".concat(e.name, " (").concat(Math.round(e.kcal || 0), " kcal, P").concat(Math.round(e.protein || 0), " C").concat(Math.round(e.carbs || 0), " F").concat(Math.round(e.fat || 0), ")");
             }).join("\n") : "Nothing logged yet today."; // (#6) Pace is COMPUTED here, never judged by the LLM. Window starts at the
-            // first logged meal; only floor goals (protein, water) are paced — never calories.
+            // first logged meal; only goals to REACH (protein, water) are paced — never calories.
             firstMealHour = logs.length ? new Date(Math.min.apply(Math, _toConsumableArray(logs.map(function (l) {
               return Number(l.id) || Date.now();
             })))).getHours() : null;
             protFrac = targets.protein > 0 ? totals.protein / targets.protein : 1;
             protPace = paceVerdict(firstMealHour, h, protFrac);
             waterPace = paceVerdict(firstMealHour, h, water / 8);
-            protPaceLine = protDelta >= 0 ? "" : "Protein pace \u2192 ".concat(Math.round(protPace.elapsed * 100), "% of the eating window elapsed vs ").concat(Math.round(protFrac * 100), "% of the protein floor hit; verdict: ").concat(protPace.verdict, ".");
+            protPaceLine = protDelta >= 0 ? "" : "Protein pace \u2192 ".concat(Math.round(protPace.elapsed * 100), "% of the eating window elapsed vs ").concat(Math.round(protFrac * 100), "% of the protein goal hit; verdict: ").concat(protPace.verdict, ".");
             waterPaceLine = water >= 8 ? "" : "Water pace \u2192 ".concat(Math.round(waterPace.elapsed * 100), "% of window elapsed vs ").concat(Math.round(water / 8 * 100), "% of the water goal hit; verdict: ").concat(waterPace.verdict, "."); // (#5) Vary across refreshes: hand the model what it already said today.
             prevLine = history.length ? "You have ALREADY suggested these today \u2014 say something meaningfully different: ".concat(history.slice(-3).join(" | "), ".") : "";
             ctx = ["- ".concat(kcalLine), "- ".concat(protLine), "- ".concat(waterLine), "- ".concat(streak, " day logging streak."), "- ".concat(foodsLine), protPaceLine ? "- ".concat(protPaceLine) : "", waterPaceLine ? "- ".concat(waterPaceLine) : "", prevLine ? "- ".concat(prevLine) : ""].filter(Boolean).join("\n");
-            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today (").concat(mode, " mode):\n").concat(ctx, "\n\nRules:\n- Use the pace VERDICT given above; do NOT decide for yourself whether I am \"behind\". Only protein and water are paced \u2014 NEVER calories. Being under my calorie target is success on a cut/maintain, never \"behind\", and you must never urge me to eat more to \"catch up\" on calories.\n- Never suggest more of a metric marked \"goal met \u2705\"; instead give that met goal a brief celebratory nod.\n- If the protein floor is still unmet, meeting it OUTRANKS variety; once the floors are met, favour VARIETY and fibre / gut-health diversity instead of re-recommending the same high-protein food.\n- Any food you suggest must NOT be something already eaten today, and must differ from what you already suggested.\n- If a floor goal's verdict is \"behind\", give a gentle, non-punishing nudge toward one specific food choice to round the day out \u2014 no \"catch up\" urgency, no shame.\n").concat(dietaryPromptBlock(DIETARY), "Write exactly 3 sentences: 1) an honest observation about today 2) a specific food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
+            prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today (").concat(mode, " mode):\n").concat(ctx, "\n\nRules:\n- Use the pace VERDICT given above; do NOT decide for yourself whether I am \"behind\". Only protein and water are paced \u2014 NEVER calories. Being under my calorie target is success on a cut/maintain, never \"behind\", and you must never urge me to eat more to \"catch up\" on calories.\n- Never suggest more of a metric marked \"goal met \u2705\"; instead give that met goal a brief celebratory nod.\n- If the protein goal is still unmet, meeting it OUTRANKS variety; once protein and water are met, favour VARIETY and fibre / gut-health diversity instead of re-recommending the same high-protein food.\n- Any food you suggest must NOT be something already eaten today, and must differ from what you already suggested.\n- Speak plain, everyday English. NEVER use the words \"floor\" or \"ceiling\" (or \"floors\"/\"ceilings\") \u2014 they are maths jargon that means nothing to me. Say \"your protein goal\", \"the minimum\", \"your calorie limit\" or \"the most you should have\" instead.\n- If protein's or water's verdict is \"behind\", give a gentle, non-punishing nudge toward one specific food choice to round the day out \u2014 no \"catch up\" urgency, no shame.\n").concat(dietaryPromptBlock(DIETARY), "Write exactly 3 sentences: 1) an honest observation about today 2) a specific food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
             _context28.n = 3;
             return callAI(prompt, 200);
           case 3:
@@ -6117,7 +6117,7 @@ function ProfileScreen(_ref76) {
     _useState40 = _slicedToArray(_useState39, 2),
     saved = _useState40[0],
     setSaved = _useState40[1];
-  // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein floor, so the
+  // Changing sex moves the safe minimum (1,400 ↔ 1,200) and the protein minimum, so the
   // confirmation names what actually changed instead of a generic "saved". First-time
   // setting is not a change — there were no targets to update yet.
   var _useState41 = useState("SAVED"),
@@ -6164,9 +6164,9 @@ function ProfileScreen(_ref76) {
   var bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
   var prev = calcTargets(f, "cut", 0, 0);
   var formulaTDEE = prev.tdee; // seeded estimate (activity-adjusted)
-  var tdeeFloor = sedentaryFloorOf(f); // absolute floor = sedentary (BMR × 1.2)
+  var tdeeFloor = sedentaryFloorOf(f); // absolute minimum = sedentary (BMR × 1.2)
   var adjTDEE = Math.max(tdeeFloor, formulaTDEE + tdeeAdj); // never below sedentary TDEE
-  var tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor; // adaptive adj hit the floor
+  var tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor; // adaptive adj hit the minimum
   var confidence = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 6 ? "Estimating" : null;
   useEffect(function () {
     if (!valid) return;
@@ -6866,7 +6866,7 @@ function ProfileScreen(_ref76) {
       marginTop: 6,
       lineHeight: 1.5
     }
-  }, "Held at your minimum maintenance. Your maintenance can't sit below sedentary energy use, so the adaptive adjustment is floored here \u2014 keep logging weight and it will re-converge."), !confidence && /*#__PURE__*/React.createElement("div", {
+  }, "Held at your minimum maintenance. Your maintenance can't sit below sedentary energy use, so the adaptive adjustment stops here \u2014 keep logging weight and it will re-converge."), !confidence && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--text-lo-2)",
@@ -8787,8 +8787,8 @@ function Dashboard(_ref90) {
     kcalDelta: totals.kcal - targets.kcal
   });
   var fatFloorG = Math.round((Number(prof === null || prof === void 0 ? void 0 : prof.weight) || 80) * FAT_FLOOR_PER_KG);
-  // Fat's floor is paced exactly like protein's while the day is open — same function, same
-  // reason. The fraction is measured against the FLOOR, because that is the bound being paced.
+  // Fat's minimum is paced exactly like protein's while the day is open — same function, same
+  // reason. The fraction is measured against the MINIMUM, because that is the bound being paced.
   var fatPace = paceVerdict(firstMealHour, nowHour, fatFloorG > 0 ? totals.fat / fatFloorG : 1);
   var fatScore = fatDayScore({
     fatG: totals.fat,
@@ -8951,9 +8951,9 @@ function Dashboard(_ref90) {
     setEditingTarget(false);
   };
 
-  // Warnings computed from custom target vs effective TDEE. Use the FLOORED
-  // effective TDEE (mirrors App effectiveTDEE and the maintenance floor) so a
-  // custom target isn't judged against a sub-floor baseline when a negative
+  // Warnings computed from custom target vs effective TDEE. Use the post-minimum
+  // effective TDEE (mirrors App effectiveTDEE and the maintenance minimum) so a
+  // custom target isn't judged against a below-minimum baseline when a negative
   // adaptive adjustment is active — otherwise a real deficit would read as smaller.
   var tdee = Math.max(tdeeFloor, baseTDEE + tdeeAdj); // effective TDEE, never below sedentary (BMR × 1.2)
   var targetWarning = function () {
@@ -8967,11 +8967,11 @@ function Dashboard(_ref90) {
       level: "amber",
       text: "This is an aggressive deficit. You may lose muscle alongside fat. Consider ".concat((tdee - 750).toLocaleString(), " kcal or above.")
     };
-    // Steady-loss floor (Step 4). A typed target isn't overridden — but a number below
-    // the floor we'd set for this body earns the same plain-English explanation.
+    // Steady-loss minimum (Step 4). A typed target isn't overridden — but a number below
+    // the minimum we'd set for this body earns the same plain-English explanation.
     if (targets.deficitFloor && customKcal < targets.deficitFloor) return {
       level: "amber",
-      text: "That's below the ".concat(targets.deficitFloor.toLocaleString(), " kcal we'd set as your steady-loss floor \u2014 losing faster than that mostly costs muscle and is harder to stick to.")
+      text: "That's below the ".concat(targets.deficitFloor.toLocaleString(), " kcal we'd set as the lowest safe target for your body \u2014 losing faster than that mostly costs muscle and is harder to stick to.")
     };
     if (diff >= -150 && diff < 0) return {
       level: "info",
@@ -9450,7 +9450,7 @@ function Dashboard(_ref90) {
       marginTop: 4,
       color: "var(--text-mid)"
     }
-  }, "Your floor is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
+  }, "That lowest safe target is worked out from your own body \u2014 it's a quarter below what we think you burn in a day, so it moves as you do. Losing faster than that mostly costs you muscle, sleep and training quality, and it's much harder to stick to."))))), targets.lowFuel && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--warn-tint-2)",
       border: "1px solid color-mix(in srgb, var(--warn) 20%, transparent)",
@@ -9848,13 +9848,13 @@ function Dashboard(_ref90) {
       letterSpacing: "0.06em",
       marginBottom: 2
     }
-  }, "FLOORS KEPT"), /*#__PURE__*/React.createElement("div", {
+  }, "PROTEIN AND FAT KEPT"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--gold-dim)",
       lineHeight: 1.5
     }
-  }, "This target's too low to hit your protein and fat floors. We've kept your floors, so your macros add up to a bit more than this number."))), /*#__PURE__*/React.createElement("div", {
+  }, "This target's too low to fit the minimum protein and fat your body needs. We've kept those minimums, so your macros add up to a bit more than this number."))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: CARD,
       borderRadius: 22,
@@ -10450,7 +10450,7 @@ var AI_PROMPT = function AI_PROMPT(desc) {
 // Vision variant — same contract, but the meal is in the attached photo. Any
 // typed text is optional extra context (brand, restaurant, portion the user knows).
 var AI_PHOTO_PROMPT = function AI_PHOTO_PROMPT(desc) {
-  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL.\n\nA photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.\n\nRules:\n- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).\n- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.\n- Hidden cooking fat and exact portion are the usual photo blind spots \u2014 reflect that in confidence and in \"ask\".\n- For ANY component with confidence below 80, set \"ask\" to the single highest-leverage unknown: \"fat\", \"portion\", or \"version\" (see below). Otherwise null.\n".concat(desc && desc.trim() ? "\nThe user added this context: \"".concat(desc.trim(), "\" \u2014 use it to disambiguate.\n") : "", "\n\"ask\" meanings: \"fat\" = hidden cooking fat (oil/butter vs dry/grilled); \"portion\" = ambiguous amount/size; \"version\" = animal-vs-plant or major recipe variant.\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    { \"name\": \"specific food with estimated portion\", \"kcal\": number, \"protein\": number, \"carbs\": number, \"fat\": number, \"confidence\": number, \"ask\": \"fat\" | \"portion\" | \"version\" | null, \"reasoning\": \"one sentence\" }\n  ]\n}");
+  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL.\n\nA photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.\n\nRules:\n- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).\n- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.\n- Hidden cooking fat and exact portion are the usual photo blind spots \u2014 reflect that in confidence and in \"ask\".\n- For ANY component with confidence below 80, set \"ask\" to the single highest-leverage unknown: \"fat\", \"portion\", or \"version\" (see below). Otherwise null.\n".concat(desc && desc.trim() ? "\nThe user added this context: \"".concat(desc.trim(), "\" \u2014 use it to disambiguate.\n") : "", "\n\"ask\" meanings: \"fat\" = hidden cooking fat (oil/butter vs dry/grilled); \"portion\" = ambiguous amount/size; \"version\" = animal-vs-plant or major recipe variant.\n\n\"meal\" is a short, natural name for the whole photo, 2\u20136 words, the way a person would write it in a food diary \u2014 e.g. \"Chicken Caesar salad\", \"Full English breakfast\", \"Pret tuna baguette\". If a brand or product name is visible on packaging, use it (e.g. \"M\xFCller Corner strawberry yogurt\"). No portions, weights or numbers in it.\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"meal\": \"short name for the whole meal\",\n  \"items\": [\n    { \"name\": \"specific food with estimated portion\", \"kcal\": number, \"protein\": number, \"carbs\": number, \"fat\": number, \"confidence\": number, \"ask\": \"fat\" | \"portion\" | \"version\" | null, \"reasoning\": \"one sentence\" }\n  ]\n}");
 };
 var AI_REESTIMATE_PROMPT = function AI_REESTIMATE_PROMPT(item) {
   return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
@@ -10536,6 +10536,17 @@ var dropDuplicateTotalRow = function dropDuplicateTotalRow(items) {
     var sk = sum("kcal");
     return !(sk > 0 && near(it.kcal, sk) && near(it.protein, sum("protein")) && near(it.carbs, sum("carbs")) && near(it.fat, sum("fat")));
   });
+};
+
+// What a photo meal is called when it is logged as one entry. The model's own short name for
+// the photo comes first (it has seen the plate or the packaging); then whatever the user typed;
+// then the single item's name; never the old catch-all "Photo meal" unless there is nothing at all.
+var photoMealName = function photoMealName(meal, desc, items) {
+  var m = typeof meal === "string" ? meal.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+  if (m) return m;
+  if (desc && desc.trim()) return desc.trim();
+  if (items && items.length === 1 && items[0].name) return items[0].name;
+  return "Photo meal";
 };
 var confColor = function confColor(c) {
   return c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
@@ -10985,54 +10996,58 @@ function AILog(_ref95) {
     _useState118 = _slicedToArray(_useState117, 2),
     items = _useState118[0],
     setItems = _useState118[1];
-  var _useState119 = useState(null),
+  var _useState119 = useState(""),
     _useState120 = _slicedToArray(_useState119, 2),
-    reestIdx = _useState120[0],
-    setReestIdx = _useState120[1];
-  var _useState121 = useState(""),
+    mealName = _useState120[0],
+    setMealName = _useState120[1]; // model's short name for a photo meal
+  var _useState121 = useState(null),
     _useState122 = _slicedToArray(_useState121, 2),
-    error = _useState122[0],
-    setError = _useState122[1];
-  var _useState123 = useState(false),
+    reestIdx = _useState122[0],
+    setReestIdx = _useState122[1];
+  var _useState123 = useState(""),
     _useState124 = _slicedToArray(_useState123, 2),
-    loggedAll = _useState124[0],
-    setLoggedAll = _useState124[1];
-  var _useState125 = useState({}),
+    error = _useState124[0],
+    setError = _useState124[1];
+  var _useState125 = useState(false),
     _useState126 = _slicedToArray(_useState125, 2),
-    loggedCount = _useState126[0],
-    setLoggedCount = _useState126[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedAll = _useState126[0],
+    setLoggedAll = _useState126[1];
+  var _useState127 = useState({}),
+    _useState128 = _slicedToArray(_useState127, 2),
+    loggedCount = _useState128[0],
+    setLoggedCount = _useState128[1]; // idx -> times logged (ephemeral; resets on unmount)
   // Capture adapters — voice transcript + transient photo. The photo lives ONLY
   // here in memory ({base64, preview}); it is never written to storage and never
   // included in the saved record (see logAll). It is discarded when we unmount.
-  var _useState127 = useState(null),
-    _useState128 = _slicedToArray(_useState127, 2),
-    photo = _useState128[0],
-    setPhoto = _useState128[1];
-  var _useState129 = useState(false),
+  var _useState129 = useState(null),
     _useState130 = _slicedToArray(_useState129, 2),
-    listening = _useState130[0],
-    setListening = _useState130[1];
+    photo = _useState130[0],
+    setPhoto = _useState130[1];
   var _useState131 = useState(false),
     _useState132 = _slicedToArray(_useState131, 2),
-    micDenied = _useState132[0],
-    setMicDenied = _useState132[1];
+    listening = _useState132[0],
+    setListening = _useState132[1];
   var _useState133 = useState(false),
     _useState134 = _slicedToArray(_useState133, 2),
-    usedVoice = _useState134[0],
-    setUsedVoice = _useState134[1];
-  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
-  var _useState135 = useState([]),
+    micDenied = _useState134[0],
+    setMicDenied = _useState134[1];
+  var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
-    followups = _useState136[0],
-    setFollowups = _useState136[1]; // [{idx, ask, name}]
-  var _useState137 = useState({}),
+    usedVoice = _useState136[0],
+    setUsedVoice = _useState136[1];
+  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
+  var _useState137 = useState([]),
     _useState138 = _slicedToArray(_useState137, 2),
-    fuDone = _useState138[0],
-    setFuDone = _useState138[1]; // idx -> true once answered/skipped
-  var _useState139 = useState([]),
+    followups = _useState138[0],
+    setFollowups = _useState138[1]; // [{idx, ask, name}]
+  var _useState139 = useState({}),
     _useState140 = _slicedToArray(_useState139, 2),
-    fuLog = _useState140[0],
-    setFuLog = _useState140[1]; // [{q, a}] persisted with the meal
+    fuDone = _useState140[0],
+    setFuDone = _useState140[1]; // idx -> true once answered/skipped
+  var _useState141 = useState([]),
+    _useState142 = _slicedToArray(_useState141, 2),
+    fuLog = _useState142[0],
+    setFuLog = _useState142[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
   var fileRef = React.useRef(null);
 
@@ -11164,6 +11179,7 @@ function AILog(_ref95) {
             setLoading(true);
             setError("");
             setItems(null);
+            setMealName("");
             setLoggedAll(false);
             setLoggedCount({});
             setFollowups([]);
@@ -11208,7 +11224,10 @@ function AILog(_ref95) {
             _t36 = _context35.v;
           case 6:
             parsed = _t36;
-            aiItems = parsed.items || []; // The model's rows are the rows. Normalise confidence only (vision models may return a
+            aiItems = parsed.items || [];
+            if (photo) setMealName(parsed.meal || "");
+
+            // The model's rows are the rows. Normalise confidence only (vision models may return a
             // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
             // parallel and REPLACED any row it found a product for — at a fixed confidence of 98,
             // per that product's serving, under the AI's item name. features/logging/07.
@@ -11317,6 +11336,7 @@ function AILog(_ref95) {
     // description — truncation is presentation-only (CSS), never in the data.
     // The one exception is a stated total (logging/06): the figures the user typed are not
     // part of the food's name, so the entry is called what the recogniser kept.
+    // A photo meal is called what the model saw (photoMealName), not "Photo meal".
     var stated = items.length === 1 && items[0].stated;
     var elements = items.map(function (it) {
       return {
@@ -11333,8 +11353,9 @@ function AILog(_ref95) {
     }, 0) / totals.kcal) : avgConf;
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
     var source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    var name = stated ? items[0].name : photo ? photoMealName(mealName, desc, items) : desc.trim();
     onAdd({
-      name: stated ? items[0].name : desc.trim() || "Photo meal",
+      name: name,
       kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs: Math.round(totals.carbs * 10) / 10,
@@ -11760,14 +11781,14 @@ function QuickAdd(_ref99) {
     isPremium = _ref99$isPremium === void 0 ? false : _ref99$isPremium,
     _ref99$onPremiumGate = _ref99.onPremiumGate,
     onPremiumGate = _ref99$onPremiumGate === void 0 ? function () {} : _ref99$onPremiumGate;
-  var _useState141 = useState(""),
-    _useState142 = _slicedToArray(_useState141, 2),
-    search = _useState142[0],
-    setSearch = _useState142[1];
-  var _useState143 = useState(null),
+  var _useState143 = useState(""),
     _useState144 = _slicedToArray(_useState143, 2),
-    modal = _useState144[0],
-    setModal = _useState144[1];
+    search = _useState144[0],
+    setSearch = _useState144[1];
+  var _useState145 = useState(null),
+    _useState146 = _slicedToArray(_useState145, 2),
+    modal = _useState146[0],
+    setModal = _useState146[1];
   var save = /*#__PURE__*/function () {
     var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(m) {
       return _regenerator().w(function (_context37) {
@@ -11951,26 +11972,26 @@ function QuickAdd(_ref99) {
 function FoodSearch(_ref101) {
   var onAdd = _ref101.onAdd,
     onBack = _ref101.onBack;
-  var _useState145 = useState(""),
-    _useState146 = _slicedToArray(_useState145, 2),
-    q = _useState146[0],
-    setQ = _useState146[1];
-  var _useState147 = useState([]),
+  var _useState147 = useState(""),
     _useState148 = _slicedToArray(_useState147, 2),
-    results = _useState148[0],
-    setResults = _useState148[1];
-  var _useState149 = useState(false),
+    q = _useState148[0],
+    setQ = _useState148[1];
+  var _useState149 = useState([]),
     _useState150 = _slicedToArray(_useState149, 2),
-    loading = _useState150[0],
-    setLoading = _useState150[1];
-  var _useState151 = useState(""),
+    results = _useState150[0],
+    setResults = _useState150[1];
+  var _useState151 = useState(false),
     _useState152 = _slicedToArray(_useState151, 2),
-    error = _useState152[0],
-    setError = _useState152[1];
-  var _useState153 = useState(false),
+    loading = _useState152[0],
+    setLoading = _useState152[1];
+  var _useState153 = useState(""),
     _useState154 = _slicedToArray(_useState153, 2),
-    done = _useState154[0],
-    setDone = _useState154[1];
+    error = _useState154[0],
+    setError = _useState154[1];
+  var _useState155 = useState(false),
+    _useState156 = _slicedToArray(_useState155, 2),
+    done = _useState156[0],
+    setDone = _useState156[1];
   var search = /*#__PURE__*/function () {
     var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38() {
       var res, data, parseServing, parseKcal, valid, _t39;
@@ -12311,46 +12332,46 @@ function History(_ref104) {
       unit: "g"
     }
   };
-  var _useState155 = useState("30D"),
-    _useState156 = _slicedToArray(_useState155, 2),
-    range = _useState156[0],
-    setRange = _useState156[1];
-  var _useState157 = useState(["KCAL"]),
+  var _useState157 = useState("30D"),
     _useState158 = _slicedToArray(_useState157, 2),
-    metrics = _useState158[0],
-    setMetrics = _useState158[1];
-  var _useState159 = useState(false),
+    range = _useState158[0],
+    setRange = _useState158[1];
+  var _useState159 = useState(["KCAL"]),
     _useState160 = _slicedToArray(_useState159, 2),
-    showWeight = _useState160[0],
-    setShowWeight = _useState160[1];
+    metrics = _useState160[0],
+    setMetrics = _useState160[1];
   var _useState161 = useState(false),
     _useState162 = _slicedToArray(_useState161, 2),
-    showBodyFat = _useState162[0],
-    setShowBodyFat = _useState162[1];
+    showWeight = _useState162[0],
+    setShowWeight = _useState162[1];
   var _useState163 = useState(false),
     _useState164 = _slicedToArray(_useState163, 2),
-    showTape = _useState164[0],
-    setShowTape = _useState164[1];
-  var _useState165 = useState("line"),
+    showBodyFat = _useState164[0],
+    setShowBodyFat = _useState164[1];
+  var _useState165 = useState(false),
     _useState166 = _slicedToArray(_useState165, 2),
-    chartType = _useState166[0],
-    setChartType = _useState166[1];
-  var _useState167 = useState(Math.max(0, history.length - 1)),
+    showTape = _useState166[0],
+    setShowTape = _useState166[1];
+  var _useState167 = useState("line"),
     _useState168 = _slicedToArray(_useState167, 2),
-    dayIdx = _useState168[0],
-    setDayIdx = _useState168[1];
-  var _useState169 = useState(null),
+    chartType = _useState168[0],
+    setChartType = _useState168[1];
+  var _useState169 = useState(Math.max(0, history.length - 1)),
     _useState170 = _slicedToArray(_useState169, 2),
-    addCtx = _useState170[0],
-    setAddCtx = _useState170[1];
+    dayIdx = _useState170[0],
+    setDayIdx = _useState170[1];
   var _useState171 = useState(null),
     _useState172 = _slicedToArray(_useState171, 2),
-    editId = _useState172[0],
-    setEditId = _useState172[1];
+    addCtx = _useState172[0],
+    setAddCtx = _useState172[1];
   var _useState173 = useState(null),
     _useState174 = _slicedToArray(_useState173, 2),
-    tgtDraft = _useState174[0],
-    setTgtDraft = _useState174[1]; // past-day target being typed, or null
+    editId = _useState174[0],
+    setEditId = _useState174[1];
+  var _useState175 = useState(null),
+    _useState176 = _slicedToArray(_useState175, 2),
+    tgtDraft = _useState176[0],
+    setTgtDraft = _useState176[1]; // past-day target being typed, or null
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -12542,7 +12563,7 @@ function History(_ref104) {
     });
   };
 
-  // The fat floor is a function of bodyweight alone, and the dashboard grades against the value
+  // The fat minimum is a function of bodyweight alone, and the dashboard grades against the value
   // stored on the day — so it is computed from that day's weight, not today's.
   var fatFloorOn = function fatFloorOn(b) {
     return Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG);
@@ -12564,9 +12585,9 @@ function History(_ref104) {
   };
 
   // Setting the target re-derives the macro split from it, the same way today's typed target
-  // does (app.jsx targets): the safety floor holds, protein and fat keep their floors, and
+  // does (app.jsx targets): the safety minimum holds, protein and fat keep their minimums, and
   // carbs absorb the change. Never proportionally scaled — that dragged fat under its hormonal
-  // floor on a deep custom cut.
+  // minimum on a deep custom cut.
   var setDayTarget = function setDayTarget(kcal) {
     var b = bodyOn(day.date);
     var safeKcal = Math.max(SAFE_MIN[b.sex === "female" ? "female" : "male"] || 1400, kcal);
@@ -13960,11 +13981,11 @@ function BadgeFanfare(_ref114) {
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState175 = useState(0),
-    _useState176 = _slicedToArray(_useState175, 2),
-    count = _useState176[0],
-    setCount = _useState176[1];
-  var _useState177 = useState(function () {
+  var _useState177 = useState(0),
+    _useState178 = _slicedToArray(_useState177, 2),
+    count = _useState178[0],
+    setCount = _useState178[1];
+  var _useState179 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -13978,8 +13999,8 @@ function BadgeFanfare(_ref114) {
         };
       });
     }),
-    _useState178 = _slicedToArray(_useState177, 1),
-    floaters = _useState178[0];
+    _useState180 = _slicedToArray(_useState179, 1),
+    floaters = _useState180[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -14237,125 +14258,125 @@ function NoteToast(_ref117) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState179 = useState("dashboard"),
-    _useState180 = _slicedToArray(_useState179, 2),
-    view = _useState180[0],
-    setView = _useState180[1];
-  var _useState181 = useState([]),
+  var _useState181 = useState("dashboard"),
     _useState182 = _slicedToArray(_useState181, 2),
-    logs = _useState182[0],
-    setLogs = _useState182[1];
-  var _useState183 = useState(0),
+    view = _useState182[0],
+    setView = _useState182[1];
+  var _useState183 = useState([]),
     _useState184 = _slicedToArray(_useState183, 2),
-    water = _useState184[0],
-    setWater = _useState184[1];
-  var _useState185 = useState("cut"),
+    logs = _useState184[0],
+    setLogs = _useState184[1];
+  var _useState185 = useState(0),
     _useState186 = _slicedToArray(_useState185, 2),
-    mode = _useState186[0],
-    setMode = _useState186[1];
-  var _useState187 = useState(null),
+    water = _useState186[0],
+    setWater = _useState186[1];
+  var _useState187 = useState("cut"),
     _useState188 = _slicedToArray(_useState187, 2),
-    prof = _useState188[0],
-    setProf = _useState188[1];
-  var _useState189 = useState([]),
+    mode = _useState188[0],
+    setMode = _useState188[1];
+  var _useState189 = useState(null),
     _useState190 = _slicedToArray(_useState189, 2),
-    hist = _useState190[0],
-    setHist = _useState190[1];
-  var _useState191 = useState([].concat(DEF_MEALS)),
+    prof = _useState190[0],
+    setProf = _useState190[1];
+  var _useState191 = useState([]),
     _useState192 = _slicedToArray(_useState191, 2),
-    meals = _useState192[0],
-    setMeals = _useState192[1];
-  var _useState193 = useState([]),
+    hist = _useState192[0],
+    setHist = _useState192[1];
+  var _useState193 = useState([].concat(DEF_MEALS)),
     _useState194 = _slicedToArray(_useState193, 2),
-    workouts = _useState194[0],
-    setWorkouts = _useState194[1];
+    meals = _useState194[0],
+    setMeals = _useState194[1];
+  var _useState195 = useState([]),
+    _useState196 = _slicedToArray(_useState195, 2),
+    workouts = _useState196[0],
+    setWorkouts = _useState196[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState195 = useState([0, 0]),
-    _useState196 = _slicedToArray(_useState195, 2),
-    priorWorkoutKcal = _useState196[0],
-    setPriorWorkoutKcal = _useState196[1];
-  var _useState197 = useState([]),
+  var _useState197 = useState([0, 0]),
     _useState198 = _slicedToArray(_useState197, 2),
-    earnedBdgs = _useState198[0],
-    setEarnedBdgs = _useState198[1];
-  var _useState199 = useState(null),
+    priorWorkoutKcal = _useState198[0],
+    setPriorWorkoutKcal = _useState198[1];
+  var _useState199 = useState([]),
     _useState200 = _slicedToArray(_useState199, 2),
-    newBadge = _useState200[0],
-    setNewBadge = _useState200[1];
-  var _useState201 = useState(false),
+    earnedBdgs = _useState200[0],
+    setEarnedBdgs = _useState200[1];
+  var _useState201 = useState(null),
     _useState202 = _slicedToArray(_useState201, 2),
-    ready = _useState202[0],
-    setReady = _useState202[1];
-  var _useState203 = useState([]),
+    newBadge = _useState202[0],
+    setNewBadge = _useState202[1];
+  var _useState203 = useState(false),
     _useState204 = _slicedToArray(_useState203, 2),
-    weighIns = _useState204[0],
-    setWeighIns = _useState204[1];
-  var _useState205 = useState(0),
+    ready = _useState204[0],
+    setReady = _useState204[1];
+  var _useState205 = useState([]),
     _useState206 = _slicedToArray(_useState205, 2),
-    tdeeAdj = _useState206[0],
-    setTdeeAdj = _useState206[1];
-  var _useState207 = useState([]),
+    weighIns = _useState206[0],
+    setWeighIns = _useState206[1];
+  var _useState207 = useState(0),
     _useState208 = _slicedToArray(_useState207, 2),
-    adjLog = _useState208[0],
-    setAdjLog = _useState208[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState209 = useState(null),
+    tdeeAdj = _useState208[0],
+    setTdeeAdj = _useState208[1];
+  var _useState209 = useState([]),
     _useState210 = _slicedToArray(_useState209, 2),
-    weighNudgeAt = _useState210[0],
-    setWeighNudgeAt = _useState210[1]; // last weigh-in-nudge dismissal (ms; local-only)
+    adjLog = _useState210[0],
+    setAdjLog = _useState210[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState211 = useState(null),
+    _useState212 = _slicedToArray(_useState211, 2),
+    weighNudgeAt = _useState212[0],
+    setWeighNudgeAt = _useState212[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState211 = useState([]),
-    _useState212 = _slicedToArray(_useState211, 2),
-    bodyMeasurements = _useState212[0],
-    setBodyMeasurements = _useState212[1];
-  var _useState213 = useState(false),
+  var _useState213 = useState([]),
     _useState214 = _slicedToArray(_useState213, 2),
-    muteMeasurements = _useState214[0],
-    setMuteMeasurements = _useState214[1];
-  var _useState215 = useState(""),
+    bodyMeasurements = _useState214[0],
+    setBodyMeasurements = _useState214[1];
+  var _useState215 = useState(false),
     _useState216 = _slicedToArray(_useState215, 2),
-    measurementNote = _useState216[0],
-    setMeasurementNote = _useState216[1];
-  var _useState217 = useState(null),
+    muteMeasurements = _useState216[0],
+    setMuteMeasurements = _useState216[1];
+  var _useState217 = useState(""),
     _useState218 = _slicedToArray(_useState217, 2),
-    measurementNudgeAt = _useState218[0],
-    setMeasurementNudgeAt = _useState218[1];
-  var _useState219 = useState(EMPTY_CUT_BLOCK),
+    measurementNote = _useState218[0],
+    setMeasurementNote = _useState218[1];
+  var _useState219 = useState(null),
     _useState220 = _slicedToArray(_useState219, 2),
-    cutBlock = _useState220[0],
-    setCutBlock = _useState220[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState221 = useState(0),
+    measurementNudgeAt = _useState220[0],
+    setMeasurementNudgeAt = _useState220[1];
+  var _useState221 = useState(EMPTY_CUT_BLOCK),
     _useState222 = _slicedToArray(_useState221, 2),
-    coachKey = _useState222[0],
-    setCoachKey = _useState222[1];
-  var _useState223 = useState(null),
+    cutBlock = _useState222[0],
+    setCutBlock = _useState222[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState223 = useState(0),
     _useState224 = _slicedToArray(_useState223, 2),
-    streakPop = _useState224[0],
-    setStreakPop = _useState224[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState224[0],
+    setCoachKey = _useState224[1];
   var _useState225 = useState(null),
     _useState226 = _slicedToArray(_useState225, 2),
-    badgeToast = _useState226[0],
-    setBadgeToast = _useState226[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState226[0],
+    setStreakPop = _useState226[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState227 = useState(null),
     _useState228 = _slicedToArray(_useState227, 2),
-    noteToast = _useState228[0],
-    setNoteToast = _useState228[1]; // plain one-line confirmations
-  var _useState229 = useState(false),
+    badgeToast = _useState228[0],
+    setBadgeToast = _useState228[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState229 = useState(null),
     _useState230 = _slicedToArray(_useState229, 2),
-    badgeGlow = _useState230[0],
-    setBadgeGlow = _useState230[1]; // the 🏆 glow paired with the toast
-  var _useState231 = useState(null),
+    noteToast = _useState230[0],
+    setNoteToast = _useState230[1]; // plain one-line confirmations
+  var _useState231 = useState(false),
     _useState232 = _slicedToArray(_useState231, 2),
-    customKcal = _useState232[0],
-    setCustomKcal = _useState232[1];
-  var _useState233 = useState(false),
+    badgeGlow = _useState232[0],
+    setBadgeGlow = _useState232[1]; // the 🏆 glow paired with the toast
+  var _useState233 = useState(null),
     _useState234 = _slicedToArray(_useState233, 2),
-    aggressiveCutAcked = _useState234[0],
-    setAggressiveCutAcked = _useState234[1];
-  var _useState235 = useState(0),
+    customKcal = _useState234[0],
+    setCustomKcal = _useState234[1];
+  var _useState235 = useState(false),
     _useState236 = _slicedToArray(_useState235, 2),
-    setThemeTick = _useState236[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState236[0],
+    setAggressiveCutAcked = _useState236[1];
+  var _useState237 = useState(0),
+    _useState238 = _slicedToArray(_useState237, 2),
+    setThemeTick = _useState238[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -14381,46 +14402,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState237 = useState("anonymous"),
-    _useState238 = _slicedToArray(_useState237, 2),
-    authState = _useState238[0],
-    setAuthState = _useState238[1];
-  var _useState239 = useState(null),
+  var _useState239 = useState("anonymous"),
     _useState240 = _slicedToArray(_useState239, 2),
-    authUser = _useState240[0],
-    setAuthUser = _useState240[1];
+    authState = _useState240[0],
+    setAuthState = _useState240[1];
   var _useState241 = useState(null),
     _useState242 = _slicedToArray(_useState241, 2),
-    premiumGate = _useState242[0],
-    setPremiumGate = _useState242[1]; // {emoji, name} | null
-  var _useState243 = useState(false),
+    authUser = _useState242[0],
+    setAuthUser = _useState242[1];
+  var _useState243 = useState(null),
     _useState244 = _slicedToArray(_useState243, 2),
-    showSignIn = _useState244[0],
-    setShowSignIn = _useState244[1];
+    premiumGate = _useState244[0],
+    setPremiumGate = _useState244[1]; // {emoji, name} | null
   var _useState245 = useState(false),
     _useState246 = _slicedToArray(_useState245, 2),
-    showSignOut = _useState246[0],
-    setShowSignOut = _useState246[1];
+    showSignIn = _useState246[0],
+    setShowSignIn = _useState246[1];
   var _useState247 = useState(false),
     _useState248 = _slicedToArray(_useState247, 2),
-    showLapsed = _useState248[0],
-    setShowLapsed = _useState248[1];
+    showSignOut = _useState248[0],
+    setShowSignOut = _useState248[1];
   var _useState249 = useState(false),
     _useState250 = _slicedToArray(_useState249, 2),
-    needsConsent = _useState250[0],
-    setNeedsConsent = _useState250[1]; // retroactive Art. 9 consent (R2)
-  var _useState251 = useState(null),
+    showLapsed = _useState250[0],
+    setShowLapsed = _useState250[1];
+  var _useState251 = useState(false),
     _useState252 = _slicedToArray(_useState251, 2),
-    consentInfo = _useState252[0],
-    setConsentInfo = _useState252[1]; // parsed local health_consent for display
-  var _useState253 = useState(navigator.onLine),
+    needsConsent = _useState252[0],
+    setNeedsConsent = _useState252[1]; // retroactive Art. 9 consent (R2)
+  var _useState253 = useState(null),
     _useState254 = _slicedToArray(_useState253, 2),
-    isOnline = _useState254[0],
-    setIsOnline = _useState254[1];
-  var _useState255 = useState(""),
+    consentInfo = _useState254[0],
+    setConsentInfo = _useState254[1]; // parsed local health_consent for display
+  var _useState255 = useState(navigator.onLine),
     _useState256 = _slicedToArray(_useState255, 2),
-    syncMsg = _useState256[0],
-    setSyncMsg = _useState256[1];
+    isOnline = _useState256[0],
+    setIsOnline = _useState256[1];
+  var _useState257 = useState(""),
+    _useState258 = _slicedToArray(_useState257, 2),
+    syncMsg = _useState258[0],
+    setSyncMsg = _useState258[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -15611,9 +15632,9 @@ function App() {
   }();
   var p = prof || DEF_PROFILE;
   var baseTDEE = seedTDEE(p); // seeded estimate (activity-adjusted); may exceed sedentary
-  var tdeeFloor = sedentaryFloorOf(p); // absolute maintenance floor (BMR × 1.2)
+  var tdeeFloor = sedentaryFloorOf(p); // absolute maintenance minimum (BMR × 1.2)
   // Mirror calcTargets: the adaptive adjustment can lift maintenance but never pull it
-  // below sedentary TDEE (BMR × 1.2). The floor is sedentary, NOT the seed — so a negative
+  // below sedentary TDEE (BMR × 1.2). The minimum is sedentary, NOT the seed — so a negative
   // adjustment on a higher-activity seed still bites down to sedentary.
   var effectiveTDEE = Math.max(tdeeFloor, baseTDEE + tdeeAdj);
 
@@ -15737,8 +15758,8 @@ function App() {
     if (customKcal == null) return baseTargets;
     var safeMin = SAFE_MIN[p.sex || "male"] || 1400;
     var safeKcal = Math.max(safeMin, customKcal);
-    // Floors hold; carbs absorb the change — never proportionally scale protein/fat
-    // (the old bug dragged fat under its hormonal floor on a deep custom cut).
+    // Minimums hold; carbs absorb the change — never proportionally scale protein/fat
+    // (the old bug dragged fat under its hormonal minimum on a deep custom cut).
     var m = computeMacros(p, effectiveMode, safeKcal);
     return _objectSpread(_objectSpread({}, baseTargets), {}, {
       kcal: safeKcal,
@@ -15748,7 +15769,7 @@ function App() {
       floorsExceedKcal: m.floorsExceedKcal,
       safeMinApplied: safeKcal > customKcal,
       customKcalApplied: true,
-      // A typed target is the user's own choice: the steady-loss floor WARNS here
+      // A typed target is the user's own choice: the steady-loss minimum WARNS here
       // (see targetWarning) instead of silently overriding the number they set.
       deficitFloorApplied: false,
       ea: energyAvailability(safeKcal, todayWorkoutKcal, p),
@@ -15761,7 +15782,7 @@ function App() {
   // silently drifted from the truth the moment either changed — a real accuracy bug in anything
   // calling itself "history." Snapshots now carry the REAL target that applied that day, read
   // directly off `targets` (the same canonical value the dashboard shows right now), including the
-  // custom-kcal override and every floor. Old snapshots recorded before this field existed have no
+  // custom-kcal override and every minimum. Old snapshots recorded before this field existed have no
   // recoverable historical target — Dashboard's weekDays falls back to the old reconstruction only
   // for those, never for anything snapshotted from here on.
   useEffect(function () {

@@ -33,3 +33,15 @@ Feature: Coach is state-aware and varies its suggestions
     When the coach generates a tip
     Then it does not suggest more protein or more water
     And it gives those met goals a brief celebratory nod
+
+  # Added 2026-09-26 (sw v91), on the founder's word: "floor" and "ceiling" are maths terms that
+  # make no sense in spoken English. The model copies whatever words the prompt feeds it, so the
+  # prompt forbids both AND stopped using them itself ("protein minimum" → "protein goal"). A soft
+  # instruction, like every prompt rule — there is no output check (compare the allergen
+  # backstop in 03); add one if the word is seen in a real tip.
+  Scenario: The coach talks in plain English, never "floor" or "ceiling"
+    Given my protein goal is not yet met
+    When the coach generates a tip
+    Then the prompt it is given never calls a goal a "floor" or a limit a "ceiling"
+    And the prompt tells it never to use either word
+    And the tip talks about "your protein goal", "the minimum" or "your calorie limit" instead
