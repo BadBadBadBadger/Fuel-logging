@@ -1,6 +1,6 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.9.2 (a hallucinated meal-total row is dropped; History's two explaining-captions removed) — **live**, sw v90
-**Last Updated:** 13 September 2026
+**Version:** 6.9.3 (the coach and three on-screen notes stop saying "floor"; photo meals are named after the food) — sw v93, **on branch `claude/ai-coach-jargon-guard-ey4ze7` until merged** (live: 6.9.2, sw v90)
+**Last Updated:** 26 September 2026
 
 > **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
 > seven-day average divided by eight, because a part-finished today was counted as a whole day:
@@ -245,7 +245,7 @@ insufficient against a real noisy scale, which reached the +600 lifetime ceiling
 | `water__YYYY-MM-DD` | Integer string |
 | `workouts__YYYY-MM-DD` | JSON: `[{id, type, duration, intensity, kcal, time, notes?}]` |
 | `mode__YYYY-MM-DD` | `"cut"` / `"maintain"` / `"bulk"` |
-| `coach__YYYY-MM-DD` | JSON: `{tip, r}` (AI tip text + refresh count) |
+| `coach__YYYY-MM-DD` | JSON: `{tip, r, history}` (AI tip text + refresh count + the last 3 tips, fed back so refreshes don't repeat) |
 | `target_kcal` | Integer string: user's custom daily calorie target (null/absent = use preset) |
 | `aggressive_cut_acked` | `"1"` when user has acknowledged the red aggressive-cut warning |
 | `streak_anim__YYYY-MM-DD` | `"1"` — set after the streak celebration plays, prevents replay same day |
@@ -304,7 +304,7 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `Avatar` | `user, size = 34` | Google profile pic with graceful fallback. Uses `referrerPolicy="no-referrer"` so `googleusercontent` images don't 403/429, and an `onError` handler that falls back to the user's initial (cream on dark) instead of a broken-image icon |
 | `WeighInWidget` | `weighIns, onWeighIn, tdeeAdj, baseTDEE` | Daily weight input, trend, confidence, TDEE insight |
 | `WorkoutLogger` | `workouts, onAdd, onRemove, prof, earnedToday, isPremium, onPremiumGate` | `earnedToday` = the smoothed earn-to-eat bonus applied to today (`targets.bonus`); shown as "+{Y} added to today". Paste log button calls `onPremiumGate` when `isPremium` is false |
-| `CoachCard` | `mode, totals, targets, streak, water` | Only rendered when `isPremium` is true — no AI call is made for anonymous users |
+| `CoachCard` | `mode, totals, targets, streak, water, logs` | Only rendered when `isPremium` is true — no AI call is made for anonymous users |
 | `ProfileScreen` | `tdeeAdj, weighIns, aggressiveCutAcked` | Unchanged |
 | `StreakCelebration` | `anim, onDone` | Full-screen emoji overlay; Web Audio whoosh+thud; auto-dismisses after 1.5s |
 | `AILog` | `onAdd` | AI-powered meal breakdown; only reachable when premium (view is never set to `"ai"` for anonymous) |
@@ -504,6 +504,7 @@ Describes a meal in plain English. AI breaks it into individual components with:
 - Confidence score (0–100): 90+ = exact label data, 60–89 = good knowledge, <60 = estimate
 - Reasoning explaining the source of data
 - **The model's numbers are the numbers.** Until 2026-09-15 an Open Food Facts free-text search ran after every reply and replaced any row it found a product for (see the changelog). Removed — `features/logging/07`.
+- **A photo is named after the food.** The photo prompt also asks for a short diary-style `"meal"` name (2–6 words, the brand off the packaging when visible, no weights). `LOG ALL AS ONE ENTRY` on a photo uses `photoMealName`: the model's name → what you typed → the single item's name → *"Photo meal"* only if there is nothing else. Typed text with a photo is a hint to the model, not the name. `features/logging/05`.
 - **A full typed totals line is the meal** — all four of kcal, `P:`/protein, `C:`/carbs, `F:`/fat present → one row, at once, exactly those figures at 100%, no model call, no follow-ups; `LOG ALL AS ONE ENTRY` logs it named after the food. `parseStatedTotals` / `statedTotalsItem` in `app.jsx`; `features/logging/06`.
 - Individual item or all-at-once logging
 - Re-estimate any item by tapping ✏️ and correcting the name
@@ -517,8 +518,15 @@ Paste a workout log (exercises, sets, reps, weights) and Claude estimates:
 ### Daily Coach Tip (`CoachCard`)
 Auto-generates when 200+ kcal logged. Three sentences:
 1. Honest observation about today
-2. Specific food suggestion for tomorrow
+2. Specific food or habit suggestion for the current time of day (morning, afternoon, evening…)
 3. Genuine praise
+
+The prompt is fed computed facts, never asked to infer them: over/under per metric, the foods
+already eaten (by element), a pace verdict for protein and water (`paceVerdict`), the last three
+tips, and the dietary block (`features/coach/`). **Plain English only:** the prompt forbids
+*"floor"* and *"ceiling"* and does not use either word itself, because the model copies the
+prompt's wording (`features/coach/01`, guarded by `__tests__/ai-log.test.js`). This is an
+instruction, not an output check — unlike allergens, which have a zero-token backstop.
 
 Max 3 refreshes/day. Stored in `coach__YYYY-MM-DD`.
 
@@ -641,7 +649,9 @@ one place that list is maintained.
 | `features/targets/` | daily target modes, tap-to-override, macro floors, the flat `SAFE_MIN` backstop | 4 |
 | `features/energy-safety/` | the energy-safety workstream — energy floor, cut-cycling, diet break, adaptive-TDEE guardrails, LEA symptom check, weigh-in engagement, smoothed earn-to-eat, maintenance BMR×1.2 floor | 8 |
 | `features/dashboard/` | calorie + macro tolerance colours, budget confidence | 3 |
-| `features/logging/` | entry editing, Quick Add AI estimate, repeat-add feedback, meal data integrity, AI meal capture | 5 |
+| `features/logging/` | entry editing, Quick Add AI estimate, repeat-add feedback, meal data integrity, AI meal capture, stated totals, estimate-of-what-you-typed | 7 |
+| `features/history/` | range windows and averages, correcting a past day | 2 |
+| `features/body/` | body-measurement tracking, measurement feedback and history | 2 |
 | `features/coach/` | coach state-awareness, pacing, dietary requirements and allergies | 3 |
 | `features/app-shell/` | navigation, avatar, theme, haptics | 4 |
 | `features/engagement/` | logging celebration | 1 |
@@ -1513,6 +1523,29 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Plain words from the coach; photo meals named after the food (Sep 2026, v6.9.3)
+Two small asks from the founder, one cloud session, branch `claude/ai-coach-jargon-guard-ey4ze7`.
+Jest **447/447**, Playwright **152/152**, sw `v90→v93` (one bump per commit). **No DB change.**
+- **The coach said "floor".** The founder: *"floor"* and *"ceiling"* are maths terms that make no
+  sense in spoken English. The cause was the prompt itself — it said *"protein floor"*, *"floor
+  goal"* and *"once the floors are met"*, and the model repeated it. Those lines now say *"protein
+  goal"* and *"protein and water"*, and a new rule forbids both words and offers plain
+  replacements. A Jest guard fails if either word reappears anywhere the coach prompt is built
+  from. Still a soft rule — no output check; add one if a real tip is seen using the word.
+- **"Floor" was on screen in three places too**, found while checking the docs: the custom-target
+  note (*"…your steady-loss floor"* → *"…the lowest safe target for your body"*), the *Why?* under
+  *"eased to a steady pace"* (*"Your floor is…"* → *"That lowest safe target is…"*), and the macro
+  card *"FLOORS KEPT"* → **"PROTEIN AND FAT KEPT"** (*"…too low to fit the minimum protein and fat
+  your body needs"*). The word stays in code identifiers and specs as the name of the rule.
+- **Photo meals were all called "Photo meal".** The photo prompt now asks for a short `"meal"`
+  name; `photoMealName` picks it, falling back to typed text, then a single item's name. New
+  `e2e/photo-meal-name.spec.js` (fails on the old build with `Received: "Photo meal"`);
+  `logging/05` +3 scenarios, `coach/01` +1 (index 465→469).
+- **Doc gaps closed on the way:** `DEVICE-TEST.md` no longer names a stale v72 as live;
+  this file's coach section (suggests for *now*, not *tomorrow*), `coach__` key shape and §20
+  folder table (logging 7 files; history and body were missing); `PLAYWRIGHT-PLAN.md` gained
+  how to run the suite in a cloud session.
 
 ### A seventh row that was the other six added up; and two captions that said it twice (Sep 2026, v6.9.2)
 Two fixes from two sessions on the same day, merged into one build. Jest **437/437**, Playwright

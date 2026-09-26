@@ -1,4 +1,4 @@
-# Device test — the standing on-phone checklist (sw v72)
+# Device test — the standing on-phone checklist
 
 **This was written as a one-time checklist for the 2026-08-10 go-live and told you to delete it when
 done. Three releases later it is still here, still accruing items — so it is a living doc now, and
@@ -6,9 +6,11 @@ re-stamped as one (2026-08-16).** It survives because most of it cannot be autom
 iOS Safari, PWA install, service-worker cycling, haptics, and whether the cloud actually obeys.
 Everything durable about *why* still lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
-**Live as of:** `main` @ `d21d7d6`, service worker **v72**, served by **GitHub Pages** at
-https://badbadbadbadger.github.io/Fuel-logging/ (built from the root of `main` on every push;
-Cloudflare hosts only the AI worker). Rollback tag: **`pre-energy-safety`**.
+**Which version you should be on:** the newest *"New in vNN"* block below names it (currently
+**v93**, once PR `claude/ai-coach-jargon-guard-ey4ze7` is merged to `main`). The site is served by
+**GitHub Pages** at https://badbadbadbadger.github.io/Fuel-logging/ (built from the root of `main`
+on every push; Cloudflare hosts only the AI worker). *This line used to name v72 and a fixed commit
+and went stale for twenty releases — it no longer names one.*
 
 > ### Before anything else
 > An installed PWA serves the **old bundle** until the service worker fully cycles. Backgrounding the
@@ -16,7 +18,7 @@ Cloudflare hosts only the AI worker). Rollback tag: **`pre-energy-safety`**.
 > below doesn't match, you're testing the old code and everything after this is meaningless.
 >
 > To check: Settings → scroll to the bottom, or in Chrome devtools console:
-> `caches.keys().then(console.log)` → expect `fuel-log-v72`.
+> `caches.keys().then(console.log)` → expect the `fuel-log-vNN` of the newest block below.
 >
 > To check what is *deployed* rather than what your phone is holding, read it straight off the host:
 > `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`
@@ -65,6 +67,27 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
 - [x] **"Below your resting metabolism"** — resolved: the card was removed in v74, see the foot of
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
+
+### New in v91–v93 — plain words from the coach, and photo meals named after the food (2026-09-26)
+
+Fully close and reopen the installed PWA first — you must be on **v93**. These are the only check
+the model's side gets: the suites stub the worker and cannot see a real reply.
+
+- [ ] **Daily Coach**, on a day with protein still short → tap ↺ a couple of times. No tip says
+      **"floor"** or **"ceiling"**. It should say *"your protein goal"*, *"the minimum"* and so on.
+      If either word turns up, screenshot it — the rule is an instruction to the AI, not a hard
+      check, and a real sighting is the signal to add one.
+- [ ] **AI Log → 📷 a plate of food** (type nothing) → ANALYSE PHOTO → `+ LOG ALL AS ONE ENTRY`.
+      The entry in today's list has a short name for the meal (e.g. *"Chicken Caesar salad"*), **not
+      "Photo meal"**. Tap it: the individual items are still there.
+- [ ] **AI Log → 📷 something packaged with the label showing** (a yogurt, a meal deal) → log all as
+      one → the name uses the **brand / product** from the packaging.
+- [ ] **AI Log → 📷 a meal and type a hint** like *"from Pret"* → the entry is named after the food
+      (*"Pret tuna baguette"*), not *"from Pret"*.
+- [ ] **Profile → set a custom target well under your usual** → the amber note under it says
+      *"…the lowest safe target for your body…"*, and on the dashboard the card reads **PROTEIN AND
+      FAT KEPT** (was *"FLOORS KEPT"*). Tap *Why?* on the *"eased to a steady pace"* card if it
+      shows — no **"floor"** anywhere.
 
 ### New in v89–v90 — the seventh row, and History's captions (2026-09-16)
 

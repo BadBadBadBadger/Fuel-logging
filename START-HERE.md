@@ -1,6 +1,14 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-16 (session 24). **Jest 437/437 · Playwright 150/150 · sw v90 · `main` @ `1d6a7ae` — pushed, live on Pages.**
+**Updated:** 2026-09-26 (session 25, cloud). **Jest 447/447 · Playwright 152/152 · sw v93 on branch
+`claude/ai-coach-jargon-guard-ey4ze7` (PR open, not merged) · live on Pages: `main` @ `1d6a7ae`, sw v90.**
+
+> **v91–v93 (session 25, cloud, on a branch): plain words and named photo meals.** The coach kept
+> saying *"floor"* because its own prompt did (*"protein floor"*, *"floor goal"*); the prompt now
+> uses plain words and forbids *"floor"* and *"ceiling"*, with a Jest guard. Three on-screen notes
+> that said *"floor"* were reworded (the *"FLOORS KEPT"* card is now **PROTEIN AND FAT KEPT**). A
+> photographed meal logged as one entry is now named after the food (`photoMealName`), not
+> *"Photo meal"*. Device checks: `DEVICE-TEST.md` → *New in v91–v93*. Detail: `DOCS.md` §37 v6.9.3.
 
 > **v89–v90: two small fixes from two sessions, merged into one build.** **v89** came from a cloud
 > session (`a178e03`, PR #2): the v88 prompt rule *"never turn a typed totals line into a row"* is
@@ -185,10 +193,11 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v90**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v93** on the branch (v90 on `main`).
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
-- Run `npx jest` before claiming anything works. Currently **437/437**. `npm run test:ui` is **150/150**.
+- Run `npx jest` before claiming anything works. Currently **447/447**. `npm run test:ui` is **152/152**
+  (in a cloud session, see `PLAYWRIGHT-PLAN.md` → *How to run* first).
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.
   Change a constant in one, change it in both.
@@ -292,6 +301,24 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 ---
 
 ## Right now
+
+**Session 25 (cloud, 2026-09-26) — v91–v93 on `claude/ai-coach-jargon-guard-ey4ze7`, PR open.**
+- **v91 — coach jargon.** `CoachCard`'s prompt no longer says *"floor"* (it fed *"protein floor"*,
+  *"floor goal"*, *"once the floors are met"* to the model, which echoed them) and has a rule
+  forbidding *"floor"* / *"ceiling"*. Guard: `__tests__/ai-log.test.js` scans every string the
+  prompt is built from. Spec: `coach/01` +1.
+- **v92 — photo meal names.** `AI_PHOTO_PROMPT` asks for a `"meal"` name; `AILog` keeps it in
+  `mealName` state; `logAll` uses `photoMealName(mealName, desc, items)` for photos (defined next to
+  `dropDuplicateTotalRow`, so the Jest lift picks it up). Spec: `logging/05` +3. Suite:
+  `e2e/photo-meal-name.spec.js` (44a–b).
+- **v93 — on-screen "floor".** The custom-target note, the steady-loss *Why?* and the
+  *"FLOORS KEPT"* card reworded (`targets/03` updated). No test pinned any of the three strings.
+- **Docs:** this file, `DOCS.md` (6.9.3, §15, §20, §5/§7 coach rows, §37), `DEVICE-TEST.md`
+  (new block; the stale v72 header fixed), `PLAYWRIGHT-PLAN.md` (152, cloud how-to-run, suite 44),
+  `features/README.md` (469).
+- **Not done:** no output check on coach tips for the banned words (prompt rule only), and the
+  word *"floor"* is still all through the internal docs and specs as the name of the rule — only
+  user-facing text was swept. **No DB change.**
 
 **Session 24 — v89 (cloud) merged with v90 (laptop); both live.** Two threads met on `main`:
 - **Cloud, `a178e03` (PR #2, Sonnet 5 session):** `dropDuplicateTotalRow` (app.jsx, next to
@@ -508,6 +535,9 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
+00. **◀ Merge PR `claude/ai-coach-jargon-guard-ey4ze7`, then phone-check v91–v93** —
+   `DEVICE-TEST.md` → *New in v91–v93*: a few coach refreshes with no "floor"/"ceiling"; a photo
+   meal logged as one entry carries a food name, not "Photo meal"; the reworded target notes.
 0. **◀ Phone-check v89–v90, and finish v88's** — `DEVICE-TEST.md` → *New in v89–v90* (the
    six-item lunch with a trailing estimate block → six rows, not seven; History 7 Days → nothing
    under the four tiles, nothing under the weight figure) plus the two boxes still open under

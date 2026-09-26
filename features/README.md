@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-09-16. **44 files · 465 scenarios.** Replaces the single
+**Updated:** 2026-09-26. **44 files · 469 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -282,7 +282,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [02-quick-add-ai-estimate](logging/02-quick-add-ai-estimate.feature) | AI estimate when creating a Quick Add meal | 7 | |
 | [03-repeat-add-feedback](logging/03-repeat-add-feedback.feature) | Repeat-add feedback — re-blink and count | 6 | |
 | [04-meal-data-integrity](logging/04-meal-data-integrity.feature) | Structured elements are the source of truth | 4 | `@wip` |
-| [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 23 | `@wip` |
+| [05-ai-meal-capture](logging/05-ai-meal-capture.feature) | AI meal capture via text, voice, or photo | 26 | `@wip` |
 | [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 20 | |
 | [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | |
 
@@ -317,7 +317,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 
 | File | Feature | Scen |
 |---|---|---|
-| [01-state-aware](coach/01-state-aware.feature) | Coach is state-aware and varies its suggestions | 4 |
+| [01-state-aware](coach/01-state-aware.feature) | Coach is state-aware and varies its suggestions | 5 |
 | [02-pacing](coach/02-pacing.feature) | Coach paces advice to the time of day | 9 |
 | [03-dietary-requirements](coach/03-dietary-requirements.feature) | Dietary requirements and allergies steer every AI suggestion | 11 |
 

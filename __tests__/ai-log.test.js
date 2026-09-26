@@ -234,3 +234,23 @@ describe("A photo meal is named after what the model saw, not \"Photo meal\"", (
     expect(src).not.toMatch(/\|\| "Photo meal"\), kcal/);
   });
 });
+
+describe("The coach never says \"floor\" or \"ceiling\" (features/coach/01)", () => {
+  // The model copies the prompt's own words, so the words must be gone from everything the coach
+  // prompt feeds it — not just forbidden in one rule. The one allowed mention is that rule itself.
+  const coach = (() => {
+    const start = src.indexOf("function CoachCard(");
+    return src.slice(start, src.indexOf("const t    = await callAI(prompt", start));
+  })();
+  const strings = coach.match(/`[^`]*`|"[^"\n]*"/g) || [];
+
+  test("the rule forbidding both words is in the prompt", () => {
+    expect(coach).toMatch(/NEVER use the words "floor" or "ceiling"/);
+  });
+  test("no other string the prompt is built from uses either word", () => {
+    const offenders = strings
+      .map(s => s.replace(/- Speak plain, everyday English\.[^\n]*/, ""))
+      .filter(s => /\b(floor|ceiling)s?\b/i.test(s));
+    expect(offenders).toEqual([]);
+  });
+});
