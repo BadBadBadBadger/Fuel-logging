@@ -1,7 +1,7 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-26 (session 25, cloud). **Jest 447/447 · Playwright 152/152 · sw v94 on branch
-`claude/ai-coach-jargon-guard-ey4ze7` (PR open, not merged) · live on Pages: `main` @ `1d6a7ae`, sw v90.**
+**Updated:** 2026-09-26 (session 25, cloud). **Jest 447/447 · Playwright 152/152 · sw v94 · `main` @ `ceb9c34`
+(PR #3) — merged, live on Pages (deploy run succeeded 2026-09-26 20:01 UTC).**
 
 > **v91–v94 (session 25, cloud, on a branch): plain words and named photo meals.** The coach kept
 > using a banned maths word because its own prompt used it; the prompt now uses plain words and
@@ -193,7 +193,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v94** on the branch (v90 on `main`).
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v94**.
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
 - Run `npx jest` before claiming anything works. Currently **447/447**. `npm run test:ui` is **152/152**
@@ -252,7 +252,9 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `1d6a7ae` is what is **live on GitHub Pages** (sw **v90**, confirmed by curl 2026-09-16) —
+`main` @ `ceb9c34` is what is **live on GitHub Pages** (sw **v94**, PR #3; the Pages deploy run for
+that commit succeeded 2026-09-26 — the cloud session could not curl the site, so confirm with the
+command below). Before it, `main` @ `1d6a7ae` (sw **v90**, confirmed by curl 2026-09-16) —
 the merge of the cloud session's v89 (`a178e03`, duplicate meal-total row) and this laptop's History
 caption removal (`131f0ad`). Verify any time by reading the deployed worker:
 `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
@@ -319,7 +321,7 @@ built**. The tag is stale, not a to-do. Clear the tags during the device test (`
 
 ## Right now
 
-**Session 25 (cloud, 2026-09-26) — v91–v94 on `claude/ai-coach-jargon-guard-ey4ze7`, PR open.**
+**Session 25 (cloud, 2026-09-26) — v91–v94, PR #3, merged as `ceb9c34` and live.**
 - **v91 — coach jargon.** `CoachCard`'s prompt no longer uses the banned words (it used them to describe the protein
   and water goals, and the model echoed them) and has a rule forbidding both. Guard: `__tests__/ai-log.test.js` scans every string the
   prompt is built from. Spec: `coach/01` +1.
@@ -554,7 +556,7 @@ that §4 warns against leaning on.
 
 ## Next up (in order)
 
-00. **◀ Merge PR `claude/ai-coach-jargon-guard-ey4ze7`, then phone-check v91–v94** —
+00. **◀ Phone-check v91–v94** (live since 2026-09-26) —
    `DEVICE-TEST.md` → *New in v91–v94*: a few coach refreshes with no "floor"/"ceiling"; a photo
    meal logged as one entry carries a food name, not "Photo meal"; the reworded target notes.
 0. **◀ Phone-check v89–v90, and finish v88's** — `DEVICE-TEST.md` → *New in v89–v90* (the
@@ -614,7 +616,8 @@ that §4 warns against leaning on.
 ## Reference — operational facts (don't lose these)
 
 **Git**
-- `main` @ `1d6a7ae` = **live on Pages** (sw v90). It merges `a178e03` (cloud, v89: duplicate
+- `main` @ `ceb9c34` = **live on Pages** (sw v94, PR #3: coach plain words, photo meal names, the
+  jargon sweep). Before it, `main` @ `1d6a7ae` (sw v90). It merges `a178e03` (cloud, v89: duplicate
   meal-total row dropped, PR #2 from `claude/online-status-check-x8cni3`) with `131f0ad` (laptop:
   History captions removed). No rollback tag was cut for v89 or v90.
 - The v88 run sits directly under it — rollback tag **`pre-ai-log-bugfix`** is the last commit
