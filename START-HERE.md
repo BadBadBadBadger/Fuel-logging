@@ -203,6 +203,13 @@ the repo for orientation. Open further docs only when the task actually needs th
     the premium gate (paywall), consent gate (sign-up), believability gate (the pre-ship check against
     MyFitnessPal, defined in full at `ENERGY_MODEL.md` §4).
 
+  - *floor* / *ceiling* → **banned from anything the user reads, including the AI coach.** They are
+    maths terms that mean nothing in spoken English. Say *"your protein goal"*, *"the minimum"*,
+    *"your calorie limit"*, *"the most you should have"*. The coach prompt (`CoachCard` in `app.jsx`)
+    forbids both words and no longer uses them itself — keep it that way, because the model copies
+    whatever words the prompt feeds it. They survive only as internal identifiers (`floorBreach`,
+    `ceilingBreach`).
+
   Same rule for any other jargon noun: if a plain sentence needs more words, use more words. When the
   founder says a word means nothing to him, that's the signal — fix the word everywhere, not just in
   the reply.

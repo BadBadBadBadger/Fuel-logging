@@ -2695,7 +2695,7 @@ function CoachCard({ mode, totals, targets, streak, water, logs = [] }) {
       const protPace  = paceVerdict(firstMealHour, h, protFrac);
       const waterPace = paceVerdict(firstMealHour, h, water / 8);
       const protPaceLine = protDelta >= 0 ? "" :
-        `Protein pace → ${Math.round(protPace.elapsed * 100)}% of the eating window elapsed vs ${Math.round(protFrac * 100)}% of the protein floor hit; verdict: ${protPace.verdict}.`;
+        `Protein pace → ${Math.round(protPace.elapsed * 100)}% of the eating window elapsed vs ${Math.round(protFrac * 100)}% of the protein goal hit; verdict: ${protPace.verdict}.`;
       const waterPaceLine = water >= 8 ? "" :
         `Water pace → ${Math.round(waterPace.elapsed * 100)}% of window elapsed vs ${Math.round((water / 8) * 100)}% of the water goal hit; verdict: ${waterPace.verdict}.`;
 
@@ -2718,9 +2718,10 @@ ${ctx}
 Rules:
 - Use the pace VERDICT given above; do NOT decide for yourself whether I am "behind". Only protein and water are paced — NEVER calories. Being under my calorie target is success on a cut/maintain, never "behind", and you must never urge me to eat more to "catch up" on calories.
 - Never suggest more of a metric marked "goal met ✅"; instead give that met goal a brief celebratory nod.
-- If the protein floor is still unmet, meeting it OUTRANKS variety; once the floors are met, favour VARIETY and fibre / gut-health diversity instead of re-recommending the same high-protein food.
+- If the protein goal is still unmet, meeting it OUTRANKS variety; once protein and water are met, favour VARIETY and fibre / gut-health diversity instead of re-recommending the same high-protein food.
 - Any food you suggest must NOT be something already eaten today, and must differ from what you already suggested.
-- If a floor goal's verdict is "behind", give a gentle, non-punishing nudge toward one specific food choice to round the day out — no "catch up" urgency, no shame.
+- Speak plain, everyday English. NEVER use the words "floor" or "ceiling" (or "floors"/"ceilings") — they are maths jargon that means nothing to me. Say "your protein goal", "the minimum", "your calorie limit" or "the most you should have" instead.
+- If protein's or water's verdict is "behind", give a gentle, non-punishing nudge toward one specific food choice to round the day out — no "catch up" urgency, no shame.
 ${dietaryPromptBlock(DIETARY)}Write exactly 3 sentences: 1) an honest observation about today 2) a specific food or habit suggestion appropriate for ${timeLabel} 3) genuine praise. Brief, personal, max one emoji per sentence.`;
       const t    = await callAI(prompt, 200);
       const r    = refreshes + 1;
