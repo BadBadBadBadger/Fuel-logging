@@ -7,7 +7,7 @@ iOS Safari, PWA install, service-worker cycling, haptics, and whether the cloud 
 Everything durable about *why* still lives in `ENERGY_MODEL.md` / `DOCS.md`.
 
 **Which version you should be on:** the newest *"New in vNN"* block below names it (currently
-**v94**, once PR `claude/ai-coach-jargon-guard-ey4ze7` is merged to `main`). The site is served by
+**v94**, live since 2026-09-26). The site is served by
 **GitHub Pages** at https://badbadbadbadger.github.io/Fuel-logging/ (built from the root of `main`
 on every push; Cloudflare hosts only the AI worker). *This line used to name v72 and a fixed commit
 and went stale for twenty releases — it no longer names one.*

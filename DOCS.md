@@ -1,5 +1,5 @@
 # FUEL LOG — Product Documentation
-**Version:** 6.9.3 (the coach and three on-screen notes lose the maths jargon; photo meals are named after the food) — sw v94, **on branch `claude/ai-coach-jargon-guard-ey4ze7` until merged** (live: 6.9.2, sw v90)
+**Version:** 6.9.3 (the coach and three on-screen notes lose the maths jargon; photo meals are named after the food) — **live**, sw v94 (PR #3, `ceb9c34`)
 **Last Updated:** 26 September 2026
 
 > **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
