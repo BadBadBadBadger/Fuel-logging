@@ -531,6 +531,7 @@ const CUT_PROMPT_SNOOZE_DAYS  = 3;
 const DIET_BREAK_DAYS         = 14;
 const CUT_BAR_MIN_LOAD        = 7;
 const STALL_WEEKS             = 3;
+const STALL_RATE              = 0.001;
 const RECHARGED_CARD_DAYS     = 3;
 
 const dayCutLoad = (targetKcal, maintenanceKcal) => {
@@ -603,7 +604,7 @@ const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = nul
   if (!block || !block.start) return null;
   const th = cutThresholds(profile || {});
   const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
-  const stalled = cutting && stallRate != null && stallRate < TREND_CUT_RATE &&
+  const stalled = cutting && stallRate != null && stallRate < STALL_RATE &&
                   daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
   const level = (block.load >= th.hard || bigLoss) ? "hard"
               : (block.load >= th.soft || stalled) ? "soft" : null;
@@ -2886,6 +2887,13 @@ describe("the stall check — the honest reason to break, not elapsed time", () 
     expect(at(0.01)).toBe(null);
   });
 
+  test("slow loss is not a stall — below TREND_CUT_RATE but still moving stays quiet", () => {
+    // ~0.2 kg/wk at 98 kg: a gentle cut that is working. It used to be called "stalled".
+    expect(at(0.002)).toBe(null);
+    expect(at(STALL_RATE)).toBe(null);
+    expect(at(STALL_RATE - 0.0001).stalled).toBe(true);
+  });
+
   test("too few weigh-ins says nothing rather than guessing", () => {
     expect(at(null)).toBe(null);
   });
@@ -3145,7 +3153,7 @@ const stalledWeeks = (weighIns, todayK) => {
   let weeks = 0;
   for (let w = STALL_WEEKS; w <= STALL_MAX_WEEKS; w++) {
     const rate = trendLossFrac(weighIns, todayK, w * 7);
-    if (rate == null || rate >= TREND_CUT_RATE) break;
+    if (rate == null || rate >= STALL_RATE) break;
     weeks = w;
   }
   return weeks;
@@ -3185,6 +3193,11 @@ describe("stalledWeeks — saying how long it has really been", () => {
     const weeks = stalledWeeks(s, todayK);
     expect(weeks).toBeGreaterThanOrEqual(3);
     expect(weeks).toBeLessThan(8);
+  });
+
+  test("slow, steady loss is not a stall at any span", () => {
+    // 98 kg losing ~0.2 kg/wk — under TREND_CUT_RATE, well above STALL_RATE.
+    expect(stalledWeeks(series(60, i => 98 - i * 0.028), todayK)).toBe(0);
   });
 
   test("a stall shorter than the trigger window is not a stall", () => {

@@ -1203,6 +1203,11 @@ const CUT_PROMPT_SNOOZE_DAYS  = 3;     // hard prompt "Remind me in 3 days"
 const DIET_BREAK_DAYS         = 14;    // rest days that fully drain a block (file 03)
 const CUT_BAR_MIN_LOAD        = 7;     // ~a week of real cutting before the gauge says anything
 const STALL_WEEKS             = 3;     // weeks of a flat scale that read as stalled
+// Slower than this per week over STALL_WEEKS reads as stalled. Deliberately NOT TREND_CUT_RATE:
+// that is the bar for "certainly dieting", and the band between the two is slow, working loss —
+// 0.2%/wk is ~0.6 kg a month at 100 kg. Calling that a stall told people "the scale hasn't
+// moved" while it visibly had, and pushed a break on a cut that was doing its job.
+const STALL_RATE              = 0.001; // <0.1%/wk ≈ under 0.3 kg over three weeks at 100 kg
 const RECHARGED_CARD_DAYS     = 3;     // the "Recharged" card retires itself after this
 
 // One day's contribution. Returns 0 for anything shallower than CUT_MIN_FRAC so a
@@ -1249,7 +1254,7 @@ const stalledWeeks = (weighIns, todayK) => {
   let weeks = 0;
   for (let w = STALL_WEEKS; w <= STALL_MAX_WEEKS; w++) {
     const rate = trendLossFrac(weighIns, todayK, w * 7);
-    if (rate == null || rate >= TREND_CUT_RATE) break;
+    if (rate == null || rate >= STALL_RATE) break;
     weeks = w;
   }
   return weeks;
@@ -1348,7 +1353,7 @@ const cutPromptFor = ({ block, profile, todayK, lossFrac = null, stallRate = nul
   if (!block || !block.start) return null;
   const th    = cutThresholds(profile || {});
   const bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
-  const stalled = cutting && stallRate != null && stallRate < TREND_CUT_RATE &&
+  const stalled = cutting && stallRate != null && stallRate < STALL_RATE &&
                   daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
   const level = (block.load >= th.hard || bigLoss) ? "hard"
               : (block.load >= th.soft || stalled) ? "soft" : null;
