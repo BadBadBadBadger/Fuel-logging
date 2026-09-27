@@ -1,7 +1,15 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-26 (session 25, cloud). **Jest 447/447 · Playwright 152/152 · sw v94 · `main` @ `ceb9c34`
-(PR #3) — merged, live on Pages (deploy run succeeded 2026-09-26 20:01 UTC).**
+**Updated:** 2026-09-27 (session 26, cloud). **Jest 449/449 · Playwright 152/152 (not re-run) · sw v95 · `main` @ `ad8481e`
+(PR #5) — merged, live on Pages (deploy run succeeded 2026-09-27 17:42 UTC).**
+
+> **v95 (session 26, cloud): slow loss is not a stall.** The "Your loss has stalled" nudge
+> compared the 3-week trend against `TREND_CUT_RATE` (0.25%/wk) — the bar for *certainly dieting*
+> — so a 98 kg user losing ~0.2 kg/wk was told the scale hadn't moved. The stall now has its own
+> `STALL_RATE` (0.1%/wk); the band between the two is slow, working loss and stays quiet. Spec:
+> `features/energy-safety/03` numbers contract. Device check: after a "Not yet" snooze (7 days),
+> the stall card must not return while the 7-day average is still falling ~0.2 kg/wk; the
+> separate *"You've been cutting for N weeks"* card still can, by design.
 
 > **v91–v94 (session 25, cloud, on a branch): plain words and named photo meals.** The coach kept
 > using a banned maths word because its own prompt used it; the prompt now uses plain words and
@@ -252,9 +260,10 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `ceb9c34` is what is **live on GitHub Pages** (sw **v94**, PR #3; the Pages deploy run for
-that commit succeeded 2026-09-26 — the cloud session could not curl the site, so confirm with the
-command below). Before it, `main` @ `1d6a7ae` (sw **v90**, confirmed by curl 2026-09-16) —
+`main` @ `ad8481e` is what is **live on GitHub Pages** (sw **v95**, PR #5, the stall-rate fix; the
+Pages deploy run for that commit succeeded 2026-09-27 17:42 UTC — the cloud session could not curl
+the site, so confirm with the command below). Before it, `main` @ `ceb9c34` (sw **v94**, PR #3).
+Before that, `main` @ `1d6a7ae` (sw **v90**, confirmed by curl 2026-09-16) —
 the merge of the cloud session's v89 (`a178e03`, duplicate meal-total row) and this laptop's History
 caption removal (`131f0ad`). Verify any time by reading the deployed worker:
 `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
