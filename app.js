@@ -1921,6 +1921,11 @@ var CUT_PROMPT_SNOOZE_DAYS = 3; // hard prompt "Remind me in 3 days"
 var DIET_BREAK_DAYS = 14; // rest days that fully drain a block (file 03)
 var CUT_BAR_MIN_LOAD = 7; // ~a week of real cutting before the gauge says anything
 var STALL_WEEKS = 3; // weeks of a flat scale that read as stalled
+// Slower than this per week over STALL_WEEKS reads as stalled. Deliberately NOT TREND_CUT_RATE:
+// that is the bar for "certainly dieting", and the band between the two is slow, working loss —
+// 0.2%/wk is ~0.6 kg a month at 100 kg. Calling that a stall told people "the scale hasn't
+// moved" while it visibly had, and pushed a break on a cut that was doing its job.
+var STALL_RATE = 0.001; // <0.1%/wk ≈ under 0.3 kg over three weeks at 100 kg
 var RECHARGED_CARD_DAYS = 3; // the "Recharged" card retires itself after this
 
 // One day's contribution. Returns 0 for anything shallower than CUT_MIN_FRAC so a
@@ -1976,7 +1981,7 @@ var stalledWeeks = function stalledWeeks(weighIns, todayK) {
   var weeks = 0;
   for (var w = STALL_WEEKS; w <= STALL_MAX_WEEKS; w++) {
     var rate = trendLossFrac(weighIns, todayK, w * 7);
-    if (rate == null || rate >= TREND_CUT_RATE) break;
+    if (rate == null || rate >= STALL_RATE) break;
     weeks = w;
   }
   return weeks;
@@ -2117,7 +2122,7 @@ var cutPromptFor = function cutPromptFor(_ref1) {
   if (!block || !block.start) return null;
   var th = cutThresholds(profile || {});
   var bigLoss = lossFrac != null && lossFrac >= BLOCK_LOSS_TRIGGER;
-  var stalled = cutting && stallRate != null && stallRate < TREND_CUT_RATE && daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
+  var stalled = cutting && stallRate != null && stallRate < STALL_RATE && daysBetween(block.start, todayK) >= STALL_WEEKS * 7;
   var level = block.load >= th.hard || bigLoss ? "hard" : block.load >= th.soft || stalled ? "soft" : null;
   if (!level) return null;
   var snoozedFor = level === "hard" ? block.snoozeAt ? now - block.snoozeAt < CUT_PROMPT_SNOOZE_DAYS * 86400000 : false : block.nudgeAt ? now - block.nudgeAt < CUT_NUDGE_SNOOZE_DAYS * 86400000 : false;

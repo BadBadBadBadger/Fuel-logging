@@ -111,9 +111,13 @@
 #                 was above the minimum when the break BEGAN — otherwise it
 #                 would vanish just as the user was about to finish.
 #       STALL_WEEKS = 3 — weeks of a flat scale, while cutting, that read as a
-#                 stall. The RATE it compares against is TREND_CUT_RATE, which
-#                 02 already owns — losing slower than the backstop calls
-#                 "cutting" is precisely what a stall is. No new rate constant.
+#                 stall.
+#       STALL_RATE = 0.001 — under 0.1% of bodyweight a week over STALL_WEEKS
+#                 is a stall. Originally this reused TREND_CUT_RATE (0.25%/wk),
+#                 but that is the bar for "certainly dieting", not for "stopped":
+#                 a 98 kg user losing ~0.2 kg/wk was told the scale hadn't moved
+#                 and offered a break on a cut that was working. The band between
+#                 the two rates is slow loss, and it stays unbothered.
 #       RECHARGED_CARD_DAYS = 3 — after which the celebration card retires
 #                 itself, dismissed or not.
 #       GUARD threshold: the early-return confirm fires only when
@@ -226,7 +230,7 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
 
   Scenario: Three weeks of cutting with a flat scale suggests a break
     Given I have been in an open cut block for STALL_WEEKS (3) weeks or more
-    And my weight trend over those three weeks is flatter than TREND_CUT_RATE
+    And my weight trend over those three weeks is flatter than STALL_RATE
     When I open the dashboard
     Then I see file 02's soft nudge card, opening "Your loss has stalled"
     And it says the scale hasn't moved in about three weeks, and that bodies
@@ -248,6 +252,7 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
       | 3     | flat                        | shown     |
       | 2     | flat                        | not shown |
       | 12    | losing at TREND_CUT_RATE    | not shown |
+      | 12    | losing slowly, 0.2%/wk      | not shown |
 
   Scenario: Without enough weigh-ins the stall check says nothing
     Given I have been cutting for 8 weeks
