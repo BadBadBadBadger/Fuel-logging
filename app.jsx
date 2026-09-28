@@ -3617,12 +3617,20 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
     showMeasurementNudge = false, onMeasurementNudgeDismiss = () => {} }) {
   const [val, setVal]   = useState(""); // kg · lb · or stone (when st mode)
   const [val2, setVal2] = useState(""); // pounds (st mode only)
+  // Today's reading can be replaced — weigh after the loo, after a heavy dinner the night before
+  // clears, whatever. onWeighIn already upserts by date, so this is purely whether the field shows.
+  const [editing, setEditing] = useState(false);
   const wUnit = getWUnit();
   const entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0)
                 : wUnit === "lb" ? lbToKg(val || 0)
                 : Number(val);
   const today       = todayKey();
   const todayEntry  = weighIns.find(w => w.date === today);
+  const showInput   = !todayEntry || editing;
+  const submit = () => {
+    if (!(entryKg > 0)) return;
+    onWeighIn(entryKg); setVal(""); setVal2(""); setEditing(false);
+  };
 
   // Rolling-average trend, not a raw two-point jump: the badge used to be
   // `newest entry − oldest of the last 7`, which is exactly as exposed to a single
@@ -3663,6 +3671,14 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
                     {t > 0 ? "+" : ""}{t}{wUnit === "kg" ? "kg" : "lb"}/wk
                   </span>;
                 })()}
+                {!editing && (
+                  <button onClick={() => setEditing(true)} aria-label="Change today's weight"
+                    style={{ marginLeft:10, padding:0, background:"none", border:"none",
+                      color:"var(--text-label)", fontSize:12, fontWeight:700,
+                      textDecoration:"underline", cursor:"pointer", verticalAlign:"middle" }}>
+                    Change
+                  </button>
+                )}
               </div>
             : <div style={{ fontSize:13, color:"var(--text-lo-2)", marginTop:2 }}>Not logged today</div>
           }
@@ -3681,32 +3697,39 @@ function WeighInWidget({ weighIns, onWeighIn, tdeeAdj, baseTDEE, tdeeFloor = bas
         </div>
       </div>
 
-      {!todayEntry && (
+      {showInput && (
         <div style={{ display:"flex", gap:8, marginBottom:8 }}>
           {wUnit === "st" ? (
             <>
               <input type="number" min="0" inputMode="numeric" value={val} aria-label="stone today"
                 onChange={e => setVal(e.target.value)} placeholder="st"
                 style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13, textAlign:"center" }}
-                onKeyDown={e => e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""), setVal2(""))}/>
+                onKeyDown={e => e.key === "Enter" && submit()}/>
               <input type="number" min="0" max="13" inputMode="numeric" value={val2} aria-label="pounds today"
                 onChange={e => setVal2(e.target.value)} placeholder="lb"
                 style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13, textAlign:"center" }}
-                onKeyDown={e => e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""), setVal2(""))}/>
+                onKeyDown={e => e.key === "Enter" && submit()}/>
             </>
           ) : (
             <input type="number" step="0.1" min="0" max={wUnit === "lb" ? 660 : 300} value={val}
               onChange={e => setVal(e.target.value)} placeholder={wUnit === "lb" ? "lb today..." : "kg today..."}
               style={{ ...INP, flex:1, padding:"10px 12px", fontSize:13 }}
-              onKeyDown={e => e.key === "Enter" && entryKg > 0 && (onWeighIn(entryKg), setVal(""))}/>
+              onKeyDown={e => e.key === "Enter" && submit()}/>
           )}
-          <button onClick={() => { if (entryKg > 0) { onWeighIn(entryKg); setVal(""); setVal2(""); }}}
+          <button onClick={submit}
             disabled={!(entryKg > 0)}
             style={{ padding:"10px 18px", background: entryKg > 0 ? A : "var(--surface-2)",
               color: entryKg > 0 ? "var(--bg)" : "var(--border-strong)",
               border:"none", borderRadius:10, fontWeight:900, fontSize:13 }}>
-            LOG
+            {todayEntry ? "UPDATE" : "LOG"}
           </button>
+          {editing && (
+            <button onClick={() => { setEditing(false); setVal(""); setVal2(""); }}
+              style={{ padding:"10px 12px", background:"none", border:`1px solid ${BD}`,
+                borderRadius:10, color:"var(--text-label)", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+              Cancel
+            </button>
+          )}
         </div>
       )}
 
@@ -7251,7 +7274,10 @@ function App() {
     const weekAgoKey = dateKey(wk);
     const inFlight = adjLog.filter(a => a.date > weekAgoKey).reduce((s, a) => s + a.adj, 0);
     const { settledAdj, daysSinceLastRaise } = raiseContext(adjLog, tdeeAdj);
-    const result = runCalibration(hist, updated, base + tdeeAdj, inFlight,
+    // At most one adjustment a day. Today's reading can now be replaced, and without this a
+    // second weigh-in would stack a second step on the one the first reading already made.
+    const adjustedToday = adjLog.some(a => a.date === entry.date);
+    const result = adjustedToday ? null : runCalibration(hist, updated, base + tdeeAdj, inFlight,
       { daysSinceLastRaise, tdeeAdj, settledAdj });
     if (result && Math.abs(result.adj) >= CAL_MIN_STEP) {
       const newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
