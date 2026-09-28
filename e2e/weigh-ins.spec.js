@@ -243,3 +243,51 @@ test.describe("The headline weight-trend badge — rolling averages, not a raw t
     await shot(page, "weight-trend-badge-rolling-not-raw-jump");
   });
 });
+
+// Today's reading is not final. Weigh after the loo and the lighter number should be the one that
+// counts — the widget used to lock once today had an entry, with no way to replace it.
+test.describe("Changing today's weight", () => {
+  const OVER_HISTORY = { days: DAYS, kcal: 3400, mode: "maintain", endDaysAgo: 1 };
+
+  test("a second reading replaces today's, and never stacks a second calibration step", async ({ page }) => {
+    // The control scenario above: eating over the estimate, so the first reading really does
+    // move the loop — otherwise "no second step" would pass just because nothing ever moves.
+    // Two things keep the second reading from stacking a step: the in-flight compensation (today's
+    // step is already inside the 7-day window it subtracts) and onWeighIn's one-step-a-day guard.
+    // This checks the outcome, which holds with either alone.
+    await open(page, { weighInsSpec: STALLED_OPEN, historySpec: OVER_HISTORY,
+      cutBlock: LONG_BLOCK, mode: "maintain" });
+    await expect(page.getByText("CONSUMED")).toBeVisible({ timeout: 15_000 });
+
+    const adjBefore = await storedAdj(page);
+    await logWeight(page, 98.5);
+    const adjAfterFirst = await storedAdj(page);
+    expect(adjAfterFirst).not.toBe(adjBefore);
+    await expect(page.getByPlaceholder(/kg today|lb today/)).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Change today's weight" }).click();
+    await page.getByPlaceholder(/kg today|lb today/).fill("98");
+    await page.getByRole("button", { name: "UPDATE", exact: true }).click();
+    await page.waitForTimeout(600);
+
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("weighins")));
+    const todays = stored.filter(w => w.date === stored[stored.length - 1].date);
+    expect(todays).toHaveLength(1);
+    expect(todays[0].weight).toBe(98);
+    expect(stored).toHaveLength(DAYS + 1);                  // series ends yesterday: replaced, not added
+    expect(await storedAdj(page)).toBe(adjAfterFirst);      // one adjustment a day at most
+    await expect(page.getByRole("button", { name: "Change today's weight" })).toBeVisible();
+  });
+
+  test("Cancel puts the reading back without changing it", async ({ page }) => {
+    await open(page, { weighInsSpec: LOSING_OPEN, mode: "cut" });
+    await expect(page.getByText("BODY WEIGHT")).toBeVisible({ timeout: 15_000 });
+    await logWeight(page, 94.9);
+    await page.getByRole("button", { name: "Change today's weight" }).click();
+    await page.getByPlaceholder(/kg today|lb today/).fill("90");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByPlaceholder(/kg today|lb today/)).toHaveCount(0);
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("weighins")));
+    expect(stored[stored.length - 1].weight).toBe(94.9);
+  });
+});
