@@ -281,7 +281,8 @@ const weeklyIntakeScore = ({ days, selectedMode, tdeeBaseline }) => {
   const daysUsed = assessable.length;
   if (daysUsed === 0) return { state:"filling-in", daysUsed, totalDays };
   const avgKcal = assessable.reduce((s, d) => s + d.kcal, 0) / daysUsed;
-  const band    = weekBandFor(avgKcal - tdeeBaseline);
+  const avgBonus = assessable.reduce((s, d) => s + (Number(d.bonus) || 0), 0) / daysUsed;
+  const band    = weekBandFor(avgKcal - (tdeeBaseline + avgBonus));
   const flooredCount = days.filter(d => d.floored).length;
   if (flooredCount >= WEEK_FLOOR_MAJORITY_DAYS && band !== "bulk")
     return { readsAs:"cut", ...WEEK_READ_COPY[selectedMode].cut,
@@ -3522,6 +3523,33 @@ describe("weeklyIntakeScore — the rolling read, and the two founder-decided fi
     expect(rGap.avgKcal).toBe(rHonest.avgKcal); // the unlogged day changed nothing about the average
     expect(rGap.daysUsed).toBe(6);
   });
+  // ── FIXED 2026-09-30 — workout calories eaten back were read as "no deficit" ──────────────
+  // Intakes from a real logged week (23–29 Sep, Cut, one 3,335 kcal day); TDEE and the per-day
+  // smoothed workout bonuses are illustrative.
+  const realWeek = () => [
+    { kcal:2355, bonus:0   }, { kcal:2400, bonus:450 }, { kcal:2605, bonus:450 },
+    { kcal:2523, bonus:300 }, { kcal:2067, bonus:150 }, { kcal:3335, bonus:450 },
+    { kcal:2796, bonus:300 },
+  ].map(d => ({ ...d, loggedAnything:true, floored:false }));
+  test("a training week is judged against maintenance INCLUDING that week's workout bonus", () => {
+    const r = weeklyIntakeScore({ days:realWeek(), selectedMode:"cut", tdeeBaseline:2650 });
+    // avg 2,583 vs 2,650 + avg bonus 300 → 367 under: a real cut, not "maintain"
+    expect(r.readsAs).toBe("cut");
+    expect(r.colour).toBe("green");
+    // Without the bonus credit the same week read as maintain — the bug.
+    const noBonus = realWeek().map(d => ({ ...d, bonus:0 }));
+    expect(weeklyIntakeScore({ days:noBonus, selectedMode:"cut", tdeeBaseline:2650 }).readsAs).toBe("maintain");
+  });
+  test("one big day doesn't sink an otherwise on-target cut week", () => {
+    // Six days on a 2,150 target (TDEE 2,650 − 500) plus one 3,335 day: still averages a real deficit.
+    const days = [...Array.from({ length:6 }, () => day(2150)), day(3335)];
+    expect(weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:2650 }).readsAs).toBe("cut");
+  });
+  test("an unlogged day's bonus doesn't pad the baseline", () => {
+    const days = [...Array.from({ length:6 }, () => day(2500)), { kcal:0, bonus:1000, loggedAnything:false, floored:false }];
+    expect(weeklyIntakeScore({ days, selectedMode:"cut", tdeeBaseline:2650 }).readsAs).toBe("maintain");
+  });
+
   test("the day-count is always stated, even for a very thin week", () => {
     const days = [day(1900), ...Array.from({ length:6 }, () => day(0, false))];
     const r = weeklyIntakeScore({ days, selectedMode:"maintain", tdeeBaseline:2000 });

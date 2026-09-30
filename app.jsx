@@ -632,7 +632,13 @@ const weeklyIntakeScore = ({ days, selectedMode, tdeeBaseline }) => {
   if (daysUsed === 0) return { state:"filling-in", daysUsed, totalDays };
 
   const avgKcal = assessable.reduce((s, d) => s + d.kcal, 0) / daysUsed;
-  const band    = weekBandFor(avgKcal - tdeeBaseline);
+  // Each day's maintenance includes the workout bonus folded into that day's target (the
+  // snapshot's `workoutBonus`). tdeeBaseline alone is resting-life maintenance, so comparing
+  // against it counted every calorie eaten back on a training day as "no deficit" — a user
+  // hitting their Cut target every day of a four-session week was told "This week hasn't been
+  // a cut". Fixed 2026-09-30. Days without a recorded bonus count as 0, as before.
+  const avgBonus = assessable.reduce((s, d) => s + (Number(d.bonus) || 0), 0) / daysUsed;
+  const band    = weekBandFor(avgKcal - (tdeeBaseline + avgBonus));
 
   // The founder's majority-held-up override (DECIDED 2026-09-04): a week where a safety minimum held
   // the daily target up on 4+ of the 7 days reads as "cut" outright, because there was never a
@@ -4152,7 +4158,7 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
       const dFat      = fatDayScore({ fatG:(h.fat || 0), floorG:dayFatFloor, targetG:dayTargetFat, dayClosed:true });
       colour = heroFor({ protein:dProtein, calories:dCalories, fat:dFat }).colour;
     }
-    return { kcal: (h && h.kcal) || 0, loggedAnything, floored: dayFloored, colour };
+    return { kcal: (h && h.kcal) || 0, bonus: (h && h.workoutBonus) || 0, loggedAnything, floored: dayFloored, colour };
   });
   const accountIsNew = hist.length < WEEK_MIN_HISTORY_DAYS;
   // The trigger is account AGE (snapshots that exist at all — a brand-new user's missing days
