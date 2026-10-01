@@ -1201,7 +1201,15 @@ var weeklyIntakeScore = function weeklyIntakeScore(_ref7) {
   var avgKcal = assessable.reduce(function (s, d) {
     return s + d.kcal;
   }, 0) / daysUsed;
-  var band = weekBandFor(avgKcal - tdeeBaseline);
+  // Each day's maintenance includes the workout bonus folded into that day's target (the
+  // snapshot's `workoutBonus`). tdeeBaseline alone is resting-life maintenance, so comparing
+  // against it counted every calorie eaten back on a training day as "no deficit" — a user
+  // hitting their Cut target every day of a four-session week was told "This week hasn't been
+  // a cut". Fixed 2026-09-30. Days without a recorded bonus count as 0, as before.
+  var avgBonus = assessable.reduce(function (s, d) {
+    return s + (Number(d.bonus) || 0);
+  }, 0) / daysUsed;
+  var band = weekBandFor(avgKcal - (tdeeBaseline + avgBonus));
 
   // The founder's majority-held-up override (DECIDED 2026-09-04): a week where a safety minimum held
   // the daily target up on 4+ of the 7 days reads as "cut" outright, because there was never a
@@ -8936,6 +8944,7 @@ function Dashboard(_ref90) {
     }
     return {
       kcal: h && h.kcal || 0,
+      bonus: h && h.workoutBonus || 0,
       loggedAnything: loggedAnything,
       floored: dayFloored,
       colour: colour
