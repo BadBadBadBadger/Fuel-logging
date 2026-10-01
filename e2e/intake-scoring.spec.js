@@ -249,4 +249,28 @@ test.describe("The two cards together (05)", () => {
     expect(opacities).toHaveLength(7);
     expect(new Set(opacities)).toEqual(new Set(["1"]));
   });
+
+  // 2026-10-01, founder decision: a week segment is that day's CALORIES only. It was the day's
+  // full hero colour, so the same amber meant "ate too much" on one day and "fat a gram under its
+  // minimum" on another — around a centre that, by then, only ever judged calories.
+  test("a week segment grades calories only — a fat-short day on target stays green", async ({ page }) => {
+    await open(page, { extra: { dev_time_hour: "11" },
+      history: resolveHistory([
+        snap(1, { kcal: 2200, fat: 30, protein: 90 }), // way under the fat minimum and protein — on calories
+        ...[2, 3, 4, 5, 6, 7].map(d => snap(d, { kcal: 2200 })),
+      ]) });
+    const segs = await segments(page);
+    expect(segs).toHaveLength(7);
+    expect(new Set(segs).size).toBe(1); // all seven the same green
+  });
+  test("a day over its calorie target still shows as a different colour", async ({ page }) => {
+    await open(page, { extra: { dev_time_hour: "11" },
+      history: resolveHistory([
+        snap(1, { kcal: 2600 }), // ~360 over a 2,241 target
+        ...[2, 3, 4, 5, 6, 7].map(d => snap(d, { kcal: 2200 })),
+      ]) });
+    const segs = await segments(page);
+    expect(new Set(segs).size).toBe(2);
+    expect(segs.filter(s => s === segs[6])).toHaveLength(1); // only yesterday differs
+  });
 });

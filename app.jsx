@@ -2561,8 +2561,8 @@ function IntakeScoreCard({ hero, todayMiss, todayColours = [], weekScore, dayCol
   });
 
   // 7 segments, oldest-first, today's segment closing the loop back at the top. Each logged day
-  // is coloured by that day's OWN adherence (the same red/amber/green the per-macro engine
-  // grades "today" with), softened — full-strength colour is reserved for today's segment so the
+  // is coloured by that day's CALORIES against its own target (since 2026-10-01 — was the full
+  // per-macro hero colour, which mixed "over" and "fat short" into one amber), softened — full-strength colour is reserved for today's segment so the
   // live day still reads as the one currently in progress. An unlogged day stays the empty grey
   // track: colouring it would misrepresent absence of data as a known good or bad day.
   // Every segment is now a finished day, so they are all drawn at full strength. The old
@@ -4139,9 +4139,6 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
     const hasRealTarget = h && h.targetKcal != null;
     const fallback = hasRealTarget ? null : calcTargets(prof || {}, dayMode, 0, tdeeAdj, 0);
     const dayTargetKcal    = hasRealTarget ? h.targetKcal     : fallback.kcal;
-    const dayTargetProtein = hasRealTarget ? h.targetProtein  : fallback.protein;
-    const dayTargetFat     = hasRealTarget ? h.targetFat      : fallback.fat;
-    const dayFatFloor      = hasRealTarget ? h.targetFatFloor : fatFloorG;
     const dayFloored       = hasRealTarget ? !!h.floored
       : !!(fallback.safeMinApplied || fallback.deficitFloorApplied || fallback.bmrFloorApplied);
     // kcal OR entries, not entries alone. `runCalibration` already uses `d.kcal > 0` as the
@@ -4150,14 +4147,14 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
     // real kcal and an empty array. Keying only off the array made six such days read as
     // "unlogged", greying the ring and dropping them from the weekly average. Fixed 2026-09-09.
     const loggedAnything = !!(h && ((Number(h.kcal) || 0) > 0 || (h.logs && h.logs.length > 0)));
-    let colour = null;
-    if (loggedAnything) {
-      const dProteinFrac = dayTargetProtein > 0 ? (h.protein || 0) / dayTargetProtein : 1;
-      const dProtein  = proteinDayScore({ dayClosed:true, pctOfTarget:dProteinFrac, verdict:"met" });
-      const dCalories = calorieDayScore({ mode:dayMode, dayClosed:true, kcalDelta:(h.kcal || 0) - dayTargetKcal });
-      const dFat      = fatDayScore({ fatG:(h.fat || 0), floorG:dayFatFloor, targetG:dayTargetFat, dayClosed:true });
-      colour = heroFor({ protein:dProtein, calories:dCalories, fat:dFat }).colour;
-    }
+    // Each week segment is that day's CALORIES only — the same question the verdict in the ring's
+    // centre answers. It used to be the day's full hero colour, so one amber meant "ate 400 over"
+    // on one day and "fat 1 g under its minimum" on the next: same colour, opposite reasons, and a
+    // ring that looked like a failed week around a centre saying "a real cut". Founder decision,
+    // 2026-10-01. Protein and fat are still graded live on the TODAY card.
+    const colour = loggedAnything
+      ? calorieDayScore({ mode:dayMode, dayClosed:true, kcalDelta:(h.kcal || 0) - dayTargetKcal }).colour
+      : null;
     return { kcal: (h && h.kcal) || 0, bonus: (h && h.workoutBonus) || 0, loggedAnything, floored: dayFloored, colour };
   });
   const accountIsNew = hist.length < WEEK_MIN_HISTORY_DAYS;
