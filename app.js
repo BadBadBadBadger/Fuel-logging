@@ -14519,7 +14519,7 @@ function App() {
   useEffect(function () {
     var load = /*#__PURE__*/function () {
       var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39() {
-        var k, lv, wv, mv, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t40;
+        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t40, _t41;
         return _regenerator().w(function (_context39) {
           while (1) switch (_context39.p = _context39.n) {
             case 0:
@@ -14537,14 +14537,52 @@ function App() {
             case 3:
               wv = _context39.v;
               if (wv) setWater(parseInt(wv) || 0);
+              // A new day has no stored mode yet. It CARRIES the last one forward — "mode persists until
+              // the user changes it" (energy-safety/02). It used to fall back to the useState default,
+              // "cut": every morning opened in Cut, the once-a-day break accrual counted that day as a
+              // cut day and reset the break to zero, and only then did a cloud pull restore Maintain on
+              // screen — so a week-long break sat at "about 14 days to fully recharged". Fixed 2026-10-11.
               _context39.n = 4;
               return sg("mode__" + k);
             case 4:
               mv = _context39.v;
-              if (mv) setMode(mv);
-              _context39.n = 5;
-              return sg("profile");
+              if (!mv) {
+                _context39.n = 5;
+                break;
+              }
+              setMode(mv);
+              _context39.n = 10;
+              break;
             case 5:
+              _prior = null;
+              _context39.p = 6;
+              _context39.n = 7;
+              return sg("history");
+            case 7:
+              hv0 = _context39.v;
+              before = (hv0 ? JSON.parse(hv0) : []).filter(function (h) {
+                return h && h.date <= k && MODES[h.mode];
+              });
+              if (before.length) _prior = before.reduce(function (a, b) {
+                return b.date > a.date ? b : a;
+              }).mode;
+              _context39.n = 9;
+              break;
+            case 8:
+              _context39.p = 8;
+              _t40 = _context39.v;
+            case 9:
+              if (!_prior) {
+                _context39.n = 10;
+                break;
+              }
+              setMode(_prior);
+              _context39.n = 10;
+              return ss("mode__" + k, _prior);
+            case 10:
+              _context39.n = 11;
+              return sg("profile");
+            case 11:
               pv = _context39.v;
               if (pv) {
                 pp = JSON.parse(pv);
@@ -14552,129 +14590,129 @@ function App() {
                 setDietaryCache(pp.dietary);
               }
               loadedMeals = [].concat(DEF_MEALS);
-              _context39.n = 6;
+              _context39.n = 12;
               return sg("meals");
-            case 6:
+            case 12:
               mv2 = _context39.v;
               if (mv2) {
                 loadedMeals = JSON.parse(mv2);
                 setMeals(loadedMeals);
               }
-              _context39.n = 7;
+              _context39.n = 13;
               return sg("workouts__" + k);
-            case 7:
+            case 13:
               wkv = _context39.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
               // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
               prior = [];
               d = 1;
-            case 8:
+            case 14:
               if (!(d <= 2)) {
-                _context39.n = 11;
+                _context39.n = 17;
                 break;
               }
-              _context39.n = 9;
+              _context39.n = 15;
               return sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
-            case 9:
+            case 15:
               pwv = _context39.v;
               prior.push(pwv ? JSON.parse(pwv).reduce(function (s, w) {
                 return s + (w.kcal || 0);
               }, 0) : 0);
-            case 10:
+            case 16:
               d++;
-              _context39.n = 8;
+              _context39.n = 14;
               break;
-            case 11:
+            case 17:
               setPriorWorkoutKcal(prior);
-              _context39.n = 12;
+              _context39.n = 18;
               return sg("badges");
-            case 12:
+            case 18:
               bv = _context39.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context39.n = 13;
+              _context39.n = 19;
               return sg("history");
-            case 13:
+            case 19:
               hv = _context39.v;
               if (hv) setHist(JSON.parse(hv));
-              _context39.n = 14;
+              _context39.n = 20;
               return sg("weighins");
-            case 14:
+            case 20:
               wiv = _context39.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context39.n = 15;
+              _context39.n = 21;
               return sg("bodymeasurements");
-            case 15:
+            case 21:
               bmv = _context39.v;
               if (bmv) {
                 try {
                   setBodyMeasurements(JSON.parse(bmv) || []);
                 } catch (e) {}
               }
-              _context39.n = 16;
+              _context39.n = 22;
               return sg("mute_body_measurements");
-            case 16:
+            case 22:
               mmv = _context39.v;
               if (mmv) setMuteMeasurements(mmv === "1");
-              _context39.n = 17;
+              _context39.n = 23;
               return sg("body_measurement_note");
-            case 17:
+            case 23:
               mnv = _context39.v;
               if (mnv) setMeasurementNote(mnv);
-              _context39.n = 18;
+              _context39.n = 24;
               return sg("body_measurement_nudge_dismissed");
-            case 18:
+            case 24:
               mnav = _context39.v;
               if (mnav) setMeasurementNudgeAt(parseInt(mnav) || null);
-              _context39.n = 19;
+              _context39.n = 25;
               return sg("tdee_adj");
-            case 19:
+            case 25:
               tav = _context39.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context39.n = 20;
+              _context39.n = 26;
               return sg("tdee_adj_log");
-            case 20:
+            case 26:
               alv = _context39.v;
               if (alv) {
                 try {
                   setAdjLog(JSON.parse(alv) || []);
                 } catch (e) {}
               }
-              _context39.n = 21;
+              _context39.n = 27;
               return sg("weigh_nudge_dismissed");
-            case 21:
+            case 27:
               wnv = _context39.v;
               if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
-              _context39.n = 22;
+              _context39.n = 28;
               return sg("cut_block");
-            case 22:
+            case 28:
               cbv = _context39.v;
               if (cbv) {
                 try {
                   setCutBlock(_objectSpread(_objectSpread({}, EMPTY_CUT_BLOCK), JSON.parse(cbv)));
                 } catch (e) {}
               }
-              _context39.n = 23;
+              _context39.n = 29;
               return sg("target_kcal");
-            case 23:
+            case 29:
               ckv = _context39.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context39.n = 24;
+              _context39.n = 30;
               return sg("aggressive_cut_acked");
-            case 24:
+            case 30:
               acv = _context39.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context39.n = 25;
+              _context39.n = 31;
               return sg("auth_state");
-            case 25:
+            case 31:
               asv = _context39.v;
-              _context39.n = 26;
+              _context39.n = 32;
               return sg("auth_user");
-            case 26:
+            case 32:
               auv = _context39.v;
               premiumUid = null; // The background pull below and the revive further down both write the meal list.
               // The revive's is the union of the two, so it wins whichever order they land in.
@@ -14682,29 +14720,29 @@ function App() {
                 done: false
               };
               if (!(asv === "premium" && auv)) {
-                _context39.n = 30;
+                _context39.n = 36;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context39.n = 28;
+                _context39.n = 34;
                 break;
               }
-              _context39.n = 27;
+              _context39.n = 33;
               return ss("auth_state", "anonymous");
-            case 27:
+            case 33:
               setShowLapsed(true);
-              _context39.n = 30;
+              _context39.n = 36;
               break;
-            case 28:
+            case 34:
               premiumUid = u.id || null;
               setAuthState("premium");
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context39.n = 29;
+              _context39.n = 35;
               return sg("health_consent");
-            case 29:
+            case 35:
               hc = _context39.v;
               hcParsed = null;
               try {
@@ -14747,27 +14785,27 @@ function App() {
                   }
                 })["catch"](function () {});
               }
-            case 30:
-              _context39.p = 30;
-              _context39.n = 31;
+            case 36:
+              _context39.p = 36;
+              _context39.n = 37;
               return reviveMeals(premiumUid, loadedMeals);
-            case 31:
+            case 37:
               revived = _context39.v;
               if (revived) {
                 revive.done = true;
                 setMeals(revived);
               }
-              _context39.n = 33;
+              _context39.n = 39;
               break;
-            case 32:
-              _context39.p = 32;
-              _t40 = _context39.v;
-            case 33:
+            case 38:
+              _context39.p = 38;
+              _t41 = _context39.v;
+            case 39:
               setReady(true);
-            case 34:
+            case 40:
               return _context39.a(2);
           }
-        }, _callee39, null, [[30, 32]]);
+        }, _callee39, null, [[36, 38], [6, 8]]);
       }));
       return function load() {
         return _ref118.apply(this, arguments);
@@ -15129,7 +15167,7 @@ function App() {
 
   var handleSignInSuccess = /*#__PURE__*/function () {
     var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t41;
+      var user, rec, pulled, tod, snap, _t42;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.p = _context51.n) {
           case 0:
@@ -15219,7 +15257,7 @@ function App() {
             break;
           case 9:
             _context51.p = 9;
-            _t41 = _context51.v;
+            _t42 = _context51.v;
           case 10:
             setSyncMsg("");
           case 11:
@@ -15270,7 +15308,7 @@ function App() {
   }();
   var handleSignOut = /*#__PURE__*/function () {
     var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
-      var clearKeys, _i4, _clearKeys, k, i, key, _t42;
+      var clearKeys, _i4, _clearKeys, k, i, key, _t43;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
           case 0:
@@ -15286,7 +15324,7 @@ function App() {
             break;
           case 3:
             _context53.p = 3;
-            _t42 = _context53.v;
+            _t43 = _context53.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "tdee_adj_log", "weigh_nudge_dismissed", "cut_block", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i4 = 0, _clearKeys = clearKeys;
