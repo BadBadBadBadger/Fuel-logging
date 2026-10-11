@@ -103,3 +103,19 @@ test.describe("A diet break", () => {
     await expect(page.getByText("RECHARGED")).toHaveCount(0);
   });
 });
+
+// 2026-10-11 — a new day has no stored mode, and it used to open in Cut. The daily accrual then
+// counted every morning of a break as a cut day and reset it, so a week-long break sat at
+// "about 14 days to fully recharged" forever. Mode now carries over from the last day.
+test.describe("A break across days", () => {
+  test("a new morning keeps yesterday's Maintain, so the break moves on a day", async ({ page }) => {
+    await open(page, {
+      historySpec: { days: 3, kcal: 2600, mode: "maintain", endDaysAgo: 1 }, // no mode stored for today
+      cutBlock: { ...MID_BREAK, lastAccrued: "@-1d" },                        // today not accrued yet
+    });
+
+    await expect(page.getByText("ON A BREAK · DAY 8")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/about 6 days to fully recharged/)).toBeVisible();
+    expect(await storedMode(page)).toBe("maintain");
+  });
+});

@@ -6854,7 +6854,22 @@ function App() {
       const k = todayKey();
       const lv = await sg("logs__"  + k); if (lv)  setLogs(JSON.parse(lv));
       const wv = await sg("water__" + k); if (wv)  setWater(parseInt(wv) || 0);
-      const mv = await sg("mode__"  + k); if (mv)  setMode(mv);
+      // A new day has no stored mode yet. It CARRIES the last one forward — "mode persists until
+      // the user changes it" (energy-safety/02). It used to fall back to the useState default,
+      // "cut": every morning opened in Cut, the once-a-day break accrual counted that day as a
+      // cut day and reset the break to zero, and only then did a cloud pull restore Maintain on
+      // screen — so a week-long break sat at "about 14 days to fully recharged". Fixed 2026-10-11.
+      const mv = await sg("mode__"  + k);
+      if (mv) setMode(mv);
+      else {
+        let prior = null;
+        try {
+          const hv0 = await sg("history");
+          const before = (hv0 ? JSON.parse(hv0) : []).filter(h => h && h.date <= k && MODES[h.mode]);
+          if (before.length) prior = before.reduce((a, b) => (b.date > a.date ? b : a)).mode;
+        } catch(e) {}
+        if (prior) { setMode(prior); await ss("mode__" + k, prior); }
+      }
       const pv = await sg("profile");     if (pv)  { const pp = JSON.parse(pv); setProf(pp); setDietaryCache(pp.dietary); }
       let loadedMeals = [...DEF_MEALS];
       const mv2 = await sg("meals");      if (mv2) { loadedMeals = JSON.parse(mv2); setMeals(loadedMeals); }
