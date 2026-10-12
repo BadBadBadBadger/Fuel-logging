@@ -1341,6 +1341,39 @@ const accrueCutBlock = (block, todayK, day) => {
   return days.slice(-370).reduce((b, date) => stepCutBlock(b, { ...day, date }), b0);
 };
 
+// One-off repair, run once per device (2026-10-12). Two bugs — a new day opening in Cut, and the
+// startup cloud pull overwriting the day just accrued — meant a synced user's break never
+// counted: every morning was undone, and the load crept UP while they were at maintenance. The
+// fixes stop it recurring, but the days already lost are still missing from the stored block.
+// This rebuilds them from what the app recorded at the time: each day's declared mode in history,
+// plus the same weight-trend backstop the daily accrual applies.
+//
+// It only ever ADDS rest days the block missed — a block whose own count is already as long, or
+// that is mid-cut, comes back untouched (the same object). It credits only days history actually
+// records: the run stops at the first day with no snapshot, rather than inferring rest from
+// absence. The drain starts from the block's own load: the true figure is unrecoverable, and
+// because the drain is pro rata the day count comes out right regardless — only the bar's height
+// is approximate.
+const BREAK_REBUILT_KEY = "cut_break_rebuilt_v1";
+const rebuildBreakFromHistory = (block, hist, weighIns) => {
+  if (!block || !block.start || !block.lastAccrued) return block;
+  const byDate    = new Map((hist || []).map(h => [h.date, h]));
+  const dayBefore = k => dateKey(new Date(new Date(k + "T12:00:00").getTime() - 86400000));
+  const dates = [];
+  for (let d = block.lastAccrued; d >= block.start && dates.length < DIET_BREAK_DAYS; d = dayBefore(d)) {
+    const h = byDate.get(d);
+    if (!h || !MODES[h.mode]) break;        // not recorded — not ours to guess
+    const trend = trendLossFrac(weighIns || [], d);
+    if (h.mode === "cut" || (trend != null && trend >= TREND_CUT_RATE)) break;
+    dates.unshift(d);
+  }
+  if (dates.length <= (block.offRun || 0)) return block;
+  // Replay those days through the normal daily step, so the drain, the close-out and the one
+  // "Recharged" card behave exactly as if each had been counted on the day.
+  return dates.reduce((b, date) => stepCutBlock(b, { date, cutting: false, load: 0 }),
+    { ...block, load: block.breakLoad || block.load, offRun: 0, breakLoad: 0 });
+};
+
 const daysBetween = (fromK, toK) =>
   Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
 
@@ -6785,6 +6818,9 @@ function App() {
   const [earnedBdgs, setEarnedBdgs] = useState([]);
   const [newBadge,   setNewBadge]   = useState(null);
   const [ready,      setReady]      = useState(false);
+  // True once the startup cloud pull has landed or failed (or was never started). The daily
+  // cut-block accrual waits for it — see that effect.
+  const [cloudSettled, setCloudSettled] = useState(false);
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
   const [adjLog,     setAdjLog]     = useState([]); // recent {date,adj} events — dead-time comp (local-only)
@@ -6796,6 +6832,9 @@ function App() {
   const [measurementNote,       setMeasurementNote]       = useState("");
   const [measurementNudgeAt,    setMeasurementNudgeAt]    = useState(null);
   const [cutBlock,   setCutBlock]   = useState(EMPTY_CUT_BLOCK); // cut-cycling state (Step 5); 4 fields sync
+  // Whether rebuildBreakFromHistory has had its one run on this device. A ref, not state: it
+  // must not re-trigger the accrual effect that reads it.
+  const breakRebuilt = React.useRef(true);
   const [coachKey,         setCoachKey]         = useState(0);
   const [streakPop,        setStreakPop]        = useState(null);  // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   const [badgeToast,       setBadgeToast]       = useState(null);  // Bronze/Silver badge → quiet toast + 🏆 glow
@@ -6892,6 +6931,7 @@ function App() {
       const alv = await sg("tdee_adj_log"); if (alv) { try { setAdjLog(JSON.parse(alv) || []); } catch(e) {} }
       const wnv = await sg("weigh_nudge_dismissed"); if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
       const cbv = await sg("cut_block"); if (cbv) { try { setCutBlock({ ...EMPTY_CUT_BLOCK, ...JSON.parse(cbv) }); } catch(e) {} }
+      breakRebuilt.current = !!(await sg(BREAK_REBUILT_KEY));
       const ckv = await sg("target_kcal"); if (ckv) { const n = parseInt(ckv); if (n > 0) setCustomKcal(n); }
       const acv = await sg("aggressive_cut_acked"); if (acv) setAggressiveCutAcked(true);
 
@@ -6902,6 +6942,7 @@ function App() {
       // The background pull below and the revive further down both write the meal list.
       // The revive's is the union of the two, so it wins whichever order they land in.
       const revive = { done: false };
+      let pulling = false;
       if (asv === "premium" && auv) {
         const u = JSON.parse(auv);
         if (u.subExpiry && Date.now() > u.subExpiry) {
@@ -6919,6 +6960,11 @@ function App() {
           if (!hcParsed || hcParsed.version !== POLICY_VERSION) setNeedsConsent(true);
           // Background pull — app shows immediately from local, Supabase data merges in
           if (u.id && navigator.onLine) {
+            // No timeout on this, deliberately. Accrual catches up by date and can't double-count,
+            // so a pull that never lands only defers today's step to the next launch — while
+            // accruing before a late pull lands lets it overwrite the day (the bug this gate
+            // closes), and on a fresh device would sync a brand-new block over the real one.
+            pulling = true;
             pullFromSupabase(u.id).then(pulled => {
               if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
               if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
@@ -6942,10 +6988,11 @@ function App() {
                 setWorkouts(pulled.workouts[todayKey()] || []);
                 setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
               }
-            }).catch(() => {});
+            }).catch(() => {}).finally(() => setCloudSettled(true));
           }
         }
       }
+      if (!pulling) setCloudSettled(true);
 
       // One-time recovery for lists the old "Reset to defaults" button wiped.
       try {
@@ -7489,16 +7536,32 @@ function App() {
 
   // Catch up every day since the last accrual, so closing the app never stops the clock.
   // Idempotent by date — re-opening today cannot double-count.
+  //
+  // Waits for the startup cloud pull. The pull's profiles read is issued before this runs, so
+  // when it landed afterwards it replaced the block just accrued with the cloud's copy from the
+  // DAY BEFORE — on a break, every morning's rest day was undone and the bar sat at "ON A BREAK ·
+  // STARTING TODAY". Accruing after the pull builds today on top of the cloud's state instead,
+  // and syncs the result back up. Fixed 2026-10-12.
+  //
+  // The once-per-device rebuild of a break those bugs had reset runs here too, on the same
+  // settled block and history, before today is added on top of it.
   useEffect(() => {
-    if (!ready || cutBlock.lastAccrued === todayK) return;
-    const next = accrueCutBlock(cutBlock, todayK, {
+    if (!ready || !cloudSettled) return;
+    let next = cutBlock;
+    if (!breakRebuilt.current) {
+      breakRebuilt.current = true;
+      ss(BREAK_REBUILT_KEY, "1");
+      next = rebuildBreakFromHistory(next, hist, weighIns);
+    }
+    next = accrueCutBlock(next, todayK, {
       cutting: cuttingToday, load: todayCutLoad,
       weight: weighIns.length ? weighIns[weighIns.length - 1].weight : (p.weight || null),
     });
+    if (next === cutBlock) return;   // already accrued today, and nothing to rebuild
     setCutBlock(next);
     ss("cut_block", JSON.stringify(next));
     if (authState === "premium" && authUser?.id) syncCutBlock(authUser.id, next).catch(() => {});
-  }, [ready, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
+  }, [ready, cloudSettled, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
 
   // Loss since this block opened, for BLOCK_LOSS_TRIGGER (5% of bodyweight).
   const blockNowAvg = weighRollingAvg(weighIns, dateKey(new Date(Date.now() + 86400000)), 7);

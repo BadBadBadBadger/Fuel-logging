@@ -2099,6 +2099,52 @@ var accrueCutBlock = function accrueCutBlock(block, todayK, day) {
     }));
   }, b0);
 };
+
+// One-off repair, run once per device (2026-10-12). Two bugs — a new day opening in Cut, and the
+// startup cloud pull overwriting the day just accrued — meant a synced user's break never
+// counted: every morning was undone, and the load crept UP while they were at maintenance. The
+// fixes stop it recurring, but the days already lost are still missing from the stored block.
+// This rebuilds them from what the app recorded at the time: each day's declared mode in history,
+// plus the same weight-trend backstop the daily accrual applies.
+//
+// It only ever ADDS rest days the block missed — a block whose own count is already as long, or
+// that is mid-cut, comes back untouched (the same object). It credits only days history actually
+// records: the run stops at the first day with no snapshot, rather than inferring rest from
+// absence. The drain starts from the block's own load: the true figure is unrecoverable, and
+// because the drain is pro rata the day count comes out right regardless — only the bar's height
+// is approximate.
+var BREAK_REBUILT_KEY = "cut_break_rebuilt_v1";
+var rebuildBreakFromHistory = function rebuildBreakFromHistory(block, hist, weighIns) {
+  if (!block || !block.start || !block.lastAccrued) return block;
+  var byDate = new Map((hist || []).map(function (h) {
+    return [h.date, h];
+  }));
+  var dayBefore = function dayBefore(k) {
+    return dateKey(new Date(new Date(k + "T12:00:00").getTime() - 86400000));
+  };
+  var dates = [];
+  for (var d = block.lastAccrued; d >= block.start && dates.length < DIET_BREAK_DAYS; d = dayBefore(d)) {
+    var h = byDate.get(d);
+    if (!h || !MODES[h.mode]) break; // not recorded — not ours to guess
+    var trend = trendLossFrac(weighIns || [], d);
+    if (h.mode === "cut" || trend != null && trend >= TREND_CUT_RATE) break;
+    dates.unshift(d);
+  }
+  if (dates.length <= (block.offRun || 0)) return block;
+  // Replay those days through the normal daily step, so the drain, the close-out and the one
+  // "Recharged" card behave exactly as if each had been counted on the day.
+  return dates.reduce(function (b, date) {
+    return stepCutBlock(b, {
+      date: date,
+      cutting: false,
+      load: 0
+    });
+  }, _objectSpread(_objectSpread({}, block), {}, {
+    load: block.breakLoad || block.load,
+    offRun: 0,
+    breakLoad: 0
+  }));
+};
 var daysBetween = function daysBetween(fromK, toK) {
   return Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
 };
@@ -14345,75 +14391,84 @@ function App() {
     _useState206 = _slicedToArray(_useState205, 2),
     ready = _useState206[0],
     setReady = _useState206[1];
-  var _useState207 = useState([]),
+  // True once the startup cloud pull has landed or failed (or was never started). The daily
+  // cut-block accrual waits for it — see that effect.
+  var _useState207 = useState(false),
     _useState208 = _slicedToArray(_useState207, 2),
-    weighIns = _useState208[0],
-    setWeighIns = _useState208[1];
-  var _useState209 = useState(0),
+    cloudSettled = _useState208[0],
+    setCloudSettled = _useState208[1];
+  var _useState209 = useState([]),
     _useState210 = _slicedToArray(_useState209, 2),
-    tdeeAdj = _useState210[0],
-    setTdeeAdj = _useState210[1];
-  var _useState211 = useState([]),
+    weighIns = _useState210[0],
+    setWeighIns = _useState210[1];
+  var _useState211 = useState(0),
     _useState212 = _slicedToArray(_useState211, 2),
-    adjLog = _useState212[0],
-    setAdjLog = _useState212[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState213 = useState(null),
+    tdeeAdj = _useState212[0],
+    setTdeeAdj = _useState212[1];
+  var _useState213 = useState([]),
     _useState214 = _slicedToArray(_useState213, 2),
-    weighNudgeAt = _useState214[0],
-    setWeighNudgeAt = _useState214[1]; // last weigh-in-nudge dismissal (ms; local-only)
+    adjLog = _useState214[0],
+    setAdjLog = _useState214[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState215 = useState(null),
+    _useState216 = _slicedToArray(_useState215, 2),
+    weighNudgeAt = _useState216[0],
+    setWeighNudgeAt = _useState216[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState215 = useState([]),
-    _useState216 = _slicedToArray(_useState215, 2),
-    bodyMeasurements = _useState216[0],
-    setBodyMeasurements = _useState216[1];
-  var _useState217 = useState(false),
+  var _useState217 = useState([]),
     _useState218 = _slicedToArray(_useState217, 2),
-    muteMeasurements = _useState218[0],
-    setMuteMeasurements = _useState218[1];
-  var _useState219 = useState(""),
+    bodyMeasurements = _useState218[0],
+    setBodyMeasurements = _useState218[1];
+  var _useState219 = useState(false),
     _useState220 = _slicedToArray(_useState219, 2),
-    measurementNote = _useState220[0],
-    setMeasurementNote = _useState220[1];
-  var _useState221 = useState(null),
+    muteMeasurements = _useState220[0],
+    setMuteMeasurements = _useState220[1];
+  var _useState221 = useState(""),
     _useState222 = _slicedToArray(_useState221, 2),
-    measurementNudgeAt = _useState222[0],
-    setMeasurementNudgeAt = _useState222[1];
-  var _useState223 = useState(EMPTY_CUT_BLOCK),
+    measurementNote = _useState222[0],
+    setMeasurementNote = _useState222[1];
+  var _useState223 = useState(null),
     _useState224 = _slicedToArray(_useState223, 2),
-    cutBlock = _useState224[0],
-    setCutBlock = _useState224[1]; // cut-cycling state (Step 5); 4 fields sync
-  var _useState225 = useState(0),
+    measurementNudgeAt = _useState224[0],
+    setMeasurementNudgeAt = _useState224[1];
+  var _useState225 = useState(EMPTY_CUT_BLOCK),
     _useState226 = _slicedToArray(_useState225, 2),
-    coachKey = _useState226[0],
-    setCoachKey = _useState226[1];
-  var _useState227 = useState(null),
+    cutBlock = _useState226[0],
+    setCutBlock = _useState226[1]; // cut-cycling state (Step 5); 4 fields sync
+  // Whether rebuildBreakFromHistory has had its one run on this device. A ref, not state: it
+  // must not re-trigger the accrual effect that reads it.
+  var breakRebuilt = React.useRef(true);
+  var _useState227 = useState(0),
     _useState228 = _slicedToArray(_useState227, 2),
-    streakPop = _useState228[0],
-    setStreakPop = _useState228[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState228[0],
+    setCoachKey = _useState228[1];
   var _useState229 = useState(null),
     _useState230 = _slicedToArray(_useState229, 2),
-    badgeToast = _useState230[0],
-    setBadgeToast = _useState230[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState230[0],
+    setStreakPop = _useState230[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState231 = useState(null),
     _useState232 = _slicedToArray(_useState231, 2),
-    noteToast = _useState232[0],
-    setNoteToast = _useState232[1]; // plain one-line confirmations
-  var _useState233 = useState(false),
+    badgeToast = _useState232[0],
+    setBadgeToast = _useState232[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState233 = useState(null),
     _useState234 = _slicedToArray(_useState233, 2),
-    badgeGlow = _useState234[0],
-    setBadgeGlow = _useState234[1]; // the 🏆 glow paired with the toast
-  var _useState235 = useState(null),
+    noteToast = _useState234[0],
+    setNoteToast = _useState234[1]; // plain one-line confirmations
+  var _useState235 = useState(false),
     _useState236 = _slicedToArray(_useState235, 2),
-    customKcal = _useState236[0],
-    setCustomKcal = _useState236[1];
-  var _useState237 = useState(false),
+    badgeGlow = _useState236[0],
+    setBadgeGlow = _useState236[1]; // the 🏆 glow paired with the toast
+  var _useState237 = useState(null),
     _useState238 = _slicedToArray(_useState237, 2),
-    aggressiveCutAcked = _useState238[0],
-    setAggressiveCutAcked = _useState238[1];
-  var _useState239 = useState(0),
+    customKcal = _useState238[0],
+    setCustomKcal = _useState238[1];
+  var _useState239 = useState(false),
     _useState240 = _slicedToArray(_useState239, 2),
-    setThemeTick = _useState240[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState240[0],
+    setAggressiveCutAcked = _useState240[1];
+  var _useState241 = useState(0),
+    _useState242 = _slicedToArray(_useState241, 2),
+    setThemeTick = _useState242[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -14439,46 +14494,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState241 = useState("anonymous"),
-    _useState242 = _slicedToArray(_useState241, 2),
-    authState = _useState242[0],
-    setAuthState = _useState242[1];
-  var _useState243 = useState(null),
+  var _useState243 = useState("anonymous"),
     _useState244 = _slicedToArray(_useState243, 2),
-    authUser = _useState244[0],
-    setAuthUser = _useState244[1];
+    authState = _useState244[0],
+    setAuthState = _useState244[1];
   var _useState245 = useState(null),
     _useState246 = _slicedToArray(_useState245, 2),
-    premiumGate = _useState246[0],
-    setPremiumGate = _useState246[1]; // {emoji, name} | null
-  var _useState247 = useState(false),
+    authUser = _useState246[0],
+    setAuthUser = _useState246[1];
+  var _useState247 = useState(null),
     _useState248 = _slicedToArray(_useState247, 2),
-    showSignIn = _useState248[0],
-    setShowSignIn = _useState248[1];
+    premiumGate = _useState248[0],
+    setPremiumGate = _useState248[1]; // {emoji, name} | null
   var _useState249 = useState(false),
     _useState250 = _slicedToArray(_useState249, 2),
-    showSignOut = _useState250[0],
-    setShowSignOut = _useState250[1];
+    showSignIn = _useState250[0],
+    setShowSignIn = _useState250[1];
   var _useState251 = useState(false),
     _useState252 = _slicedToArray(_useState251, 2),
-    showLapsed = _useState252[0],
-    setShowLapsed = _useState252[1];
+    showSignOut = _useState252[0],
+    setShowSignOut = _useState252[1];
   var _useState253 = useState(false),
     _useState254 = _slicedToArray(_useState253, 2),
-    needsConsent = _useState254[0],
-    setNeedsConsent = _useState254[1]; // retroactive Art. 9 consent (R2)
-  var _useState255 = useState(null),
+    showLapsed = _useState254[0],
+    setShowLapsed = _useState254[1];
+  var _useState255 = useState(false),
     _useState256 = _slicedToArray(_useState255, 2),
-    consentInfo = _useState256[0],
-    setConsentInfo = _useState256[1]; // parsed local health_consent for display
-  var _useState257 = useState(navigator.onLine),
+    needsConsent = _useState256[0],
+    setNeedsConsent = _useState256[1]; // retroactive Art. 9 consent (R2)
+  var _useState257 = useState(null),
     _useState258 = _slicedToArray(_useState257, 2),
-    isOnline = _useState258[0],
-    setIsOnline = _useState258[1];
-  var _useState259 = useState(""),
+    consentInfo = _useState258[0],
+    setConsentInfo = _useState258[1]; // parsed local health_consent for display
+  var _useState259 = useState(navigator.onLine),
     _useState260 = _slicedToArray(_useState259, 2),
-    syncMsg = _useState260[0],
-    setSyncMsg = _useState260[1];
+    isOnline = _useState260[0],
+    setIsOnline = _useState260[1];
+  var _useState261 = useState(""),
+    _useState262 = _slicedToArray(_useState261, 2),
+    syncMsg = _useState262[0],
+    setSyncMsg = _useState262[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -14519,7 +14574,7 @@ function App() {
   useEffect(function () {
     var load = /*#__PURE__*/function () {
       var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39() {
-        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, u, hc, hcParsed, revived, _t40, _t41;
+        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t40, _t41;
         return _regenerator().w(function (_context39) {
           while (1) switch (_context39.p = _context39.n) {
             case 0:
@@ -14692,57 +14747,62 @@ function App() {
                 } catch (e) {}
               }
               _context39.n = 29;
-              return sg("target_kcal");
+              return sg(BREAK_REBUILT_KEY);
             case 29:
+              breakRebuilt.current = !!_context39.v;
+              _context39.n = 30;
+              return sg("target_kcal");
+            case 30:
               ckv = _context39.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context39.n = 30;
+              _context39.n = 31;
               return sg("aggressive_cut_acked");
-            case 30:
+            case 31:
               acv = _context39.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context39.n = 31;
-              return sg("auth_state");
-            case 31:
-              asv = _context39.v;
               _context39.n = 32;
-              return sg("auth_user");
+              return sg("auth_state");
             case 32:
+              asv = _context39.v;
+              _context39.n = 33;
+              return sg("auth_user");
+            case 33:
               auv = _context39.v;
               premiumUid = null; // The background pull below and the revive further down both write the meal list.
               // The revive's is the union of the two, so it wins whichever order they land in.
               revive = {
                 done: false
               };
+              pulling = false;
               if (!(asv === "premium" && auv)) {
-                _context39.n = 36;
+                _context39.n = 37;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context39.n = 34;
+                _context39.n = 35;
                 break;
               }
-              _context39.n = 33;
+              _context39.n = 34;
               return ss("auth_state", "anonymous");
-            case 33:
-              setShowLapsed(true);
-              _context39.n = 36;
-              break;
             case 34:
+              setShowLapsed(true);
+              _context39.n = 37;
+              break;
+            case 35:
               premiumUid = u.id || null;
               setAuthState("premium");
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context39.n = 35;
+              _context39.n = 36;
               return sg("health_consent");
-            case 35:
+            case 36:
               hc = _context39.v;
               hcParsed = null;
               try {
@@ -14752,6 +14812,11 @@ function App() {
               if (!hcParsed || hcParsed.version !== POLICY_VERSION) setNeedsConsent(true);
               // Background pull — app shows immediately from local, Supabase data merges in
               if (u.id && navigator.onLine) {
+                // No timeout on this, deliberately. Accrual catches up by date and can't double-count,
+                // so a pull that never lands only defers today's step to the next launch — while
+                // accruing before a late pull lands lets it overwrite the day (the bug this gate
+                // closes), and on a fresh device would sync a brand-new block over the real one.
+                pulling = true;
                 pullFromSupabase(u.id).then(function (pulled) {
                   if (pulled.profile) {
                     setProf(pulled.profile);
@@ -14783,29 +14848,34 @@ function App() {
                     setWorkouts(pulled.workouts[todayKey()] || []);
                     setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
                   }
-                })["catch"](function () {});
+                })["catch"](function () {})["finally"](function () {
+                  return setCloudSettled(true);
+                });
               }
-            case 36:
-              _context39.p = 36;
-              _context39.n = 37;
-              return reviveMeals(premiumUid, loadedMeals);
             case 37:
+              if (!pulling) setCloudSettled(true);
+
+              // One-time recovery for lists the old "Reset to defaults" button wiped.
+              _context39.p = 38;
+              _context39.n = 39;
+              return reviveMeals(premiumUid, loadedMeals);
+            case 39:
               revived = _context39.v;
               if (revived) {
                 revive.done = true;
                 setMeals(revived);
               }
-              _context39.n = 39;
+              _context39.n = 41;
               break;
-            case 38:
-              _context39.p = 38;
-              _t41 = _context39.v;
-            case 39:
-              setReady(true);
             case 40:
+              _context39.p = 40;
+              _t41 = _context39.v;
+            case 41:
+              setReady(true);
+            case 42:
               return _context39.a(2);
           }
-        }, _callee39, null, [[36, 38], [6, 8]]);
+        }, _callee39, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
         return _ref118.apply(this, arguments);
@@ -15914,17 +15984,33 @@ function App() {
 
   // Catch up every day since the last accrual, so closing the app never stops the clock.
   // Idempotent by date — re-opening today cannot double-count.
+  //
+  // Waits for the startup cloud pull. The pull's profiles read is issued before this runs, so
+  // when it landed afterwards it replaced the block just accrued with the cloud's copy from the
+  // DAY BEFORE — on a break, every morning's rest day was undone and the bar sat at "ON A BREAK ·
+  // STARTING TODAY". Accruing after the pull builds today on top of the cloud's state instead,
+  // and syncs the result back up. Fixed 2026-10-12.
+  //
+  // The once-per-device rebuild of a break those bugs had reset runs here too, on the same
+  // settled block and history, before today is added on top of it.
   useEffect(function () {
-    if (!ready || cutBlock.lastAccrued === todayK) return;
-    var next = accrueCutBlock(cutBlock, todayK, {
+    if (!ready || !cloudSettled) return;
+    var next = cutBlock;
+    if (!breakRebuilt.current) {
+      breakRebuilt.current = true;
+      ss(BREAK_REBUILT_KEY, "1");
+      next = rebuildBreakFromHistory(next, hist, weighIns);
+    }
+    next = accrueCutBlock(next, todayK, {
       cutting: cuttingToday,
       load: todayCutLoad,
       weight: weighIns.length ? weighIns[weighIns.length - 1].weight : p.weight || null
     });
+    if (next === cutBlock) return; // already accrued today, and nothing to rebuild
     setCutBlock(next);
     ss("cut_block", JSON.stringify(next));
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncCutBlock(authUser.id, next)["catch"](function () {});
-  }, [ready, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
+  }, [ready, cloudSettled, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
 
   // Loss since this block opened, for BLOCK_LOSS_TRIGGER (5% of bodyweight).
   var blockNowAvg = weighRollingAvg(weighIns, dateKey(new Date(Date.now() + 86400000)), 7);

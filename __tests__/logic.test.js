@@ -597,6 +597,24 @@ const accrueCutBlock = (block, todayK, day) => {
   return days.slice(-370).reduce((b, date) => stepCutBlock(b, { ...day, date }), b0);
 };
 
+// Mirror of app.jsx rebuildBreakFromHistory (one-off repair, 2026-10-12).
+const rebuildBreakFromHistory = (block, hist, weighIns) => {
+  if (!block || !block.start || !block.lastAccrued) return block;
+  const byDate    = new Map((hist || []).map(h => [h.date, h]));
+  const dayBefore = k => dateKey(new Date(new Date(k + "T12:00:00").getTime() - 86400000));
+  const dates = [];
+  for (let d = block.lastAccrued; d >= block.start && dates.length < DIET_BREAK_DAYS; d = dayBefore(d)) {
+    const h = byDate.get(d);
+    if (!h || !MODES[h.mode]) break;
+    const trend = trendLossFrac(weighIns || [], d);
+    if (h.mode === "cut" || (trend != null && trend >= TREND_CUT_RATE)) break;
+    dates.unshift(d);
+  }
+  if (dates.length <= (block.offRun || 0)) return block;
+  return dates.reduce((b, date) => stepCutBlock(b, { date, cutting: false, load: 0 }),
+    { ...block, load: block.breakLoad || block.load, offRun: 0, breakLoad: 0 });
+};
+
 const daysBetween = (fromK, toK) =>
   Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
 
@@ -2733,6 +2751,90 @@ describe("the drain — a break is time not cutting, measured", () => {
     const b = runDays(30, offDay, "2026-03-01", closed);
     expect(b.load).toBe(0);
     expect(b.start).toBe(null);
+  });
+});
+
+// ── One-off repair, 2026-10-12 ─────────────────────────────────────────────────────────────
+// A synced user's break was reset every morning by two bugs, so the stored block says a break
+// is "starting today" ten days into it. The repair rebuilds the rest days history recorded.
+describe("rebuildBreakFromHistory — crediting the rest days the sync bugs lost", () => {
+  // Every day from `from` to `to` inclusive, in one mode.
+  const run = (from, to, mode) => {
+    const out = [];
+    for (let d = new Date(from + "T12:00:00"); dateKey(d) <= to; d = new Date(d.getTime() + 86400000))
+      out.push({ date: dateKey(d), mode });
+    return out;
+  };
+  const history = [...run("2026-09-20", "2026-10-01", "cut"), ...run("2026-10-02", "2026-10-12", "maintain")];
+  // What the bugs left behind: reset that morning, load inflated by phantom cut days.
+  const resetBlock = { ...EMPTY_CUT_BLOCK, start: "2026-08-12", load: 40, breakLoad: 0, offRun: 0,
+    lastAccrued: "2026-10-12" };
+
+  test("eleven recorded Maintain days become an eleven-day break, three days from recharged", () => {
+    const b = rebuildBreakFromHistory(resetBlock, history, []);
+    expect(b.offRun).toBe(11);                 // 2–12 Oct
+    expect(b.breakLoad).toBe(40);
+    expect(b.load).toBe(8.57);                 // 40 × (1 − 11/14)
+    expect(b.lastAccrued).toBe("2026-10-12");
+    expect(b.start).toBe("2026-08-12");        // still open: 3 days to go
+    expect(cutBarFor({ block: b, profile: {}, todayK: "2026-10-12" }).daysLeft).toBe(3);
+  });
+
+  test("tomorrow's normal accrual carries on from the rebuilt break", () => {
+    const b = accrueCutBlock(rebuildBreakFromHistory(resetBlock, history, []), "2026-10-13",
+      { cutting: false, load: 0 });
+    expect(b.offRun).toBe(12);
+    expect(b.load).toBe(5.71);                 // 40 × 2/14
+  });
+
+  test("a half-counted break (the v99 lag) is topped up from the same history", () => {
+    const lagging = { ...resetBlock, offRun: 5, breakLoad: 36, load: 23.14 };
+    const b = rebuildBreakFromHistory(lagging, history, []);
+    expect(b.offRun).toBe(11);
+    expect(b.breakLoad).toBe(36);              // drains from the break's own starting load
+  });
+
+  test("a block that already counts every rest day comes back untouched — the same object", () => {
+    const right = runDays(11, offDay, "2026-10-02",
+      { ...EMPTY_CUT_BLOCK, start: "2026-08-12", load: 33, lastAccrued: "2026-10-01" });
+    expect(rebuildBreakFromHistory(right, history, [])).toBe(right);
+  });
+
+  test("a block mid-cut is never touched", () => {
+    const cutting = { ...resetBlock, lastAccrued: "2026-10-01" };   // last day recorded as cut
+    expect(rebuildBreakFromHistory(cutting, history, [])).toBe(cutting);
+  });
+
+  test("it credits only what history records — a missing day ends the run", () => {
+    const gappy = history.filter(h => h.date !== "2026-10-06");    // app not opened on 6 Oct
+    expect(rebuildBreakFromHistory(resetBlock, gappy, []).offRun).toBe(6);   // 7–12 Oct only
+    expect(rebuildBreakFromHistory(resetBlock, [], [])).toBe(resetBlock);
+  });
+
+  test("a Maintain day the weight trend says was still a cut does not count as rest", () => {
+    // 0.1 kg/day down from 100 kg through 5 Oct, then back to 100: the backstop reads 2–6 Oct as
+    // still cutting (6 Oct: 0.51%/wk) and 7 Oct on as not (0.19%/wk, then negative) — exactly as
+    // the daily accrual would have. So the rebuilt break is 7–12 Oct.
+    const weighIns = [
+      ...run("2026-09-15", "2026-10-05", null).map((d, i) => ({ date: d.date, weight: 100 - i * 0.1 })),
+      ...run("2026-10-06", "2026-10-12", null).map(d => ({ date: d.date, weight: 100 })),
+    ];
+    expect(trendLossFrac(weighIns, "2026-10-06")).toBeGreaterThanOrEqual(TREND_CUT_RATE);
+    expect(trendLossFrac(weighIns, "2026-10-07")).toBeLessThan(TREND_CUT_RATE);
+    expect(rebuildBreakFromHistory(resetBlock, history, weighIns).offRun).toBe(6);
+  });
+
+  test("fourteen or more rest days close the block and arm the Recharged card", () => {
+    const long = [...run("2026-09-20", "2026-09-27", "cut"), ...run("2026-09-28", "2026-10-12", "maintain")];
+    const b = rebuildBreakFromHistory(resetBlock, long, []);
+    expect(b.start).toBe(null);
+    expect(b.load).toBe(0);
+    expect(b.lastBreakEnd).toBe("2026-10-12");
+    expect(b.rechargedOn).toBe("2026-10-12");
+  });
+
+  test("no open block, nothing to rebuild", () => {
+    expect(rebuildBreakFromHistory(EMPTY_CUT_BLOCK, history, [])).toBe(EMPTY_CUT_BLOCK);
   });
 });
 

@@ -118,4 +118,51 @@ test.describe("A break across days", () => {
     await expect(page.getByText(/about 6 days to fully recharged/)).toBeVisible();
     expect(await storedMode(page)).toBe("maintain");
   });
+
+  // 2026-10-12 — the startup cloud pull reads the profiles row BEFORE the day's accrual runs, and
+  // used to land AFTER it, replacing today's freshly accrued rest day with yesterday's cloud copy.
+  // A synced user on a break saw "ON A BREAK · STARTING TODAY" every morning.
+  test("a slow cloud pull doesn't undo the morning's rest day", async ({ page }) => {
+    // Yesterday's state as the cloud holds it: the break was reset (breakLoad 0) that morning.
+    await page.addInitScript(() => {
+      const ok = data => ({ data, error: null });
+      const fake = {
+        from(table) {
+          const b = {
+            select: () => b, eq: () => b, order: () => b, upsert: () => b, insert: () => b,
+            delete: () => b, update: () => b,
+            maybeSingle: () => {
+              b.single = true;
+              return b;
+            },
+            then: (resolve, reject) => new Promise(r => setTimeout(r, 400)).then(() => {
+              if (table === "profiles" && b.single) return ok({
+                id: "u1", weight: 98.5, height: 178, body_fat: 22, sex: "male", activity: "light",
+                cut_block_start: "2026-05-01", cut_block_load: 84, cut_break_load: 0, last_break_end: null,
+              });
+              return ok(b.single ? null : []);
+            }).then(resolve, reject),
+          };
+          return b;
+        },
+        auth: { signOut: async () => ({}) },
+      };
+      Object.defineProperty(window, "supabaseClient", { get: () => fake, set: () => {}, configurable: true });
+    });
+    await open(page, {
+      premium: { id: "u1", name: "T", email: "t@example.com", picture: "", subExpiry: null, since: Date.now() },
+      historySpec: { days: 3, kcal: 2600, mode: "maintain", endDaysAgo: 1 },
+      cutBlock: { ...MID_BREAK, load: 84, offRun: 0, breakLoad: 0, lastAccrued: "@-1d" },
+      // The one-time meal recovery already ran on a real phone; left armed, it awaits the network
+      // before the app is ready and hides the race. The one-off break rebuild is marked done too:
+      // it would credit the seeded Maintain days, and this test is about the race alone (the
+      // rebuild has its own in cut-break-sync.spec.js).
+      extra: { "qa_revive_v68": "1", "cut_break_rebuilt_v1": "1" },
+    });
+
+    await expect(page.getByText("ON A BREAK · DAY 1")).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1500); // well past the pull landing
+    await expect(page.getByText("ON A BREAK · DAY 1")).toBeVisible();
+    await expect(page.getByText("ON A BREAK · STARTING TODAY")).toHaveCount(0);
+  });
 });
