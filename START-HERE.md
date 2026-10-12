@@ -1,7 +1,43 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-09-27 (session 26, cloud). **Jest 449/449 · Playwright 152/152 (not re-run) · sw v95 · `main` @ `ad8481e`
-(PR #5) — merged, live on Pages (deploy run succeeded 2026-09-27 17:42 UTC).**
+**Updated:** 2026-10-12 (cloud). **Jest 461/461 · Playwright 160/160 · sw v101 · `main` @ `33a8e8f`
+(PR #11) — merged, live on Pages (deploy run succeeded 2026-10-12 16:29 UTC).**
+
+> **v99–v101 (2026-10-11/12, cloud, PRs #10–#11): a synced user's diet break never counted.** On
+> Maintain since 2 Oct, the founder's break card read *"ON A BREAK · STARTING TODAY · about 14 days"*
+> for ten days, and the bar went **up**. Two bugs, both invisible to single-load tests:
+> 1. **A new day opened in Cut.** Mode is stored per day (`mode__<date>`) and an unstored day fell to
+>    the `useState("cut")` default. The once-a-day cut-block accrual ran on that first render,
+>    counted a cut day and reset the break; a cloud pull then put Maintain back on screen. Fixed in
+>    v99: a new day takes the latest history snapshot's mode (the spec already said *"mode persists
+>    until the user changes it"*).
+> 2. **The startup cloud pull overwrote the day's accrual.** Its `profiles` read is issued before the
+>    accrual and landed after it, replacing today's block with **yesterday's** cloud copy. With fix 1
+>    alone the break ran at half speed (DAY 1, 1, 2, 2…). Fixed in v100: the accrual waits for the
+>    pull (`cloudSettled`), with deliberately **no timeout** — accrual catches up by date, and
+>    accruing before a late pull is the bug again.
+>
+> v101 adds a **one-off repair**, `rebuildBreakFromHistory`, run once per device (flag
+> `cut_break_rebuilt_v1`). It credits the rest days history records (declared mode plus the
+> weight-trend backstop), stopping at the first cut or unrecorded day. It only ever adds days. The
+> load it drains from is the block's own, inflated by the phantom cut days, so the **day count is
+> exact but the bar's height is approximate**.
+>
+> `e2e/cut-break-sync.spec.js` is the test that would have caught all of this. It drives a synced
+> user through consecutive mornings (`page.clock`, reload, local storage carried over) against a
+> stateful fake Supabase, where reads see request-time state and arrive 400 ms later. Device check:
+> `DEVICE-TEST.md` → *New in v96–v101*. Expected on the founder's phone from 12 Oct: **DAY 11 · about
+> 3 days**, then **RECHARGED** on 15 Oct.
+
+> **v96–v98 (2026-09-28 – 10-01, PRs #7–#9): weigh-in and the weekly card.**
+> - **v96:** today's weigh-in can be changed ("Change" link); it re-runs calibration, which can't
+>   stack a second step on the same day.
+> - **v97:** the THIS WEEK verdict compares the 7-day intake against TDEE **plus the average
+>   snapshotted `workoutBonus`**. Eating back training calories had read as "no deficit", so a
+>   training-heavy cut week said *"This week hasn't been a cut"*.
+> - **v98:** the week ring's segments are coloured by **calories only**. The full hero colour made
+>   one amber mean "ate too much" on one day and "fat a gram short" on another (founder decision).
+>   Protein and fat stay on the TODAY card.
 
 > **v95 (session 26, cloud): slow loss is not a stall.** The "Your loss has stalled" nudge
 > compared the 3-week trend against `TREND_CUT_RATE` (0.25%/wk) — the bar for *certainly dieting*
@@ -260,9 +296,11 @@ the repo for orientation. Open further docs only when the task actually needs th
 > version directly: `curl -s https://badbadbadbadger.github.io/Fuel-logging/sw.js | head -1`.
 > ("Fully on Cloudflare Pages" is a *future* commercial-launch prerequisite, not today's setup.)
 
-`main` @ `ad8481e` is what is **live on GitHub Pages** (sw **v95**, PR #5, the stall-rate fix; the
-Pages deploy run for that commit succeeded 2026-09-27 17:42 UTC — the cloud session could not curl
-the site, so confirm with the command below). Before it, `main` @ `ceb9c34` (sw **v94**, PR #3).
+`main` @ `33a8e8f` is what is **live on GitHub Pages** (sw **v101**, PR #11, the diet-break sync
+fixes and one-off repair; the Pages deploy run succeeded 2026-10-12 16:29 UTC — the cloud session
+could not curl the site, so confirm with the command below). Before it: `770fd5e` (sw **v99**,
+PR #10), `7f6724a` (sw **v98**, PR #9), `86ca332` (sw **v97**, PR #8), `69618b2` (sw **v96**, PR #7),
+then `ad8481e` (sw **v95**, PR #5, the stall-rate fix). Before that, `main` @ `ceb9c34` (sw **v94**, PR #3).
 Before that, `main` @ `1d6a7ae` (sw **v90**, confirmed by curl 2026-09-16) —
 the merge of the cloud session's v89 (`a178e03`, duplicate meal-total row) and this laptop's History
 caption removal (`131f0ad`). Verify any time by reading the deployed worker:
