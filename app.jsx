@@ -6785,6 +6785,9 @@ function App() {
   const [earnedBdgs, setEarnedBdgs] = useState([]);
   const [newBadge,   setNewBadge]   = useState(null);
   const [ready,      setReady]      = useState(false);
+  // True once the startup cloud pull has landed (or was never started). The daily cut-block
+  // accrual waits for it — see that effect.
+  const [cloudSettled, setCloudSettled] = useState(false);
   const [weighIns,   setWeighIns]   = useState([]);
   const [tdeeAdj,    setTdeeAdj]    = useState(0);
   const [adjLog,     setAdjLog]     = useState([]); // recent {date,adj} events — dead-time comp (local-only)
@@ -6902,6 +6905,7 @@ function App() {
       // The background pull below and the revive further down both write the meal list.
       // The revive's is the union of the two, so it wins whichever order they land in.
       const revive = { done: false };
+      let pulling = false;
       if (asv === "premium" && auv) {
         const u = JSON.parse(auv);
         if (u.subExpiry && Date.now() > u.subExpiry) {
@@ -6919,6 +6923,9 @@ function App() {
           if (!hcParsed || hcParsed.version !== POLICY_VERSION) setNeedsConsent(true);
           // Background pull — app shows immediately from local, Supabase data merges in
           if (u.id && navigator.onLine) {
+            pulling = true;
+            // Never let a hung request hold the day's accrual back for the whole session.
+            setTimeout(() => setCloudSettled(true), 10000);
             pullFromSupabase(u.id).then(pulled => {
               if (pulled.profile)  { setProf(pulled.profile); setDietaryCache(pulled.profile.dietary); }
               if (pulled.cutBlock) setCutBlock(pulled.cutBlock);
@@ -6942,10 +6949,11 @@ function App() {
                 setWorkouts(pulled.workouts[todayKey()] || []);
                 setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
               }
-            }).catch(() => {});
+            }).catch(() => {}).finally(() => setCloudSettled(true));
           }
         }
       }
+      if (!pulling) setCloudSettled(true);
 
       // One-time recovery for lists the old "Reset to defaults" button wiped.
       try {
@@ -7489,8 +7497,14 @@ function App() {
 
   // Catch up every day since the last accrual, so closing the app never stops the clock.
   // Idempotent by date — re-opening today cannot double-count.
+  //
+  // Waits for the startup cloud pull. The pull's profiles read is issued before this runs, so
+  // when it landed afterwards it replaced the block just accrued with the cloud's copy from the
+  // DAY BEFORE — on a break, every morning's rest day was undone and the bar sat at "ON A BREAK ·
+  // STARTING TODAY". Accruing after the pull builds today on top of the cloud's state instead,
+  // and syncs the result back up. Fixed 2026-10-12.
   useEffect(() => {
-    if (!ready || cutBlock.lastAccrued === todayK) return;
+    if (!ready || !cloudSettled || cutBlock.lastAccrued === todayK) return;
     const next = accrueCutBlock(cutBlock, todayK, {
       cutting: cuttingToday, load: todayCutLoad,
       weight: weighIns.length ? weighIns[weighIns.length - 1].weight : (p.weight || null),
@@ -7498,7 +7512,7 @@ function App() {
     setCutBlock(next);
     ss("cut_block", JSON.stringify(next));
     if (authState === "premium" && authUser?.id) syncCutBlock(authUser.id, next).catch(() => {});
-  }, [ready, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
+  }, [ready, cloudSettled, cuttingToday, todayCutLoad, todayK]); // eslint-disable-line
 
   // Loss since this block opened, for BLOCK_LOSS_TRIGGER (5% of bodyweight).
   const blockNowAvg = weighRollingAvg(weighIns, dateKey(new Date(Date.now() + 86400000)), 7);
