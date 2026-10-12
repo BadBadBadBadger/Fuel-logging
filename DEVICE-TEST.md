@@ -68,6 +68,23 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v96–v101 — the diet break counts for a synced account, the weekly card, weigh-in (2026-10-12)
+
+Fully close and reopen the installed PWA. On the first launch after a deploy it runs the old
+cached version, then reloads itself; check after that reload. You must be on **v101**.
+
+- [ ] **Break card, the morning after a Maintain day:** *"ON A BREAK · DAY n"* goes up by **one**
+      each morning. It never stays on *"STARTING TODAY"* and never repeats a day. On the founder's
+      phone it should read **DAY 11 · about 3 days** on 12 Oct (the one-off repair), then DAY 12,
+      DAY 13, and the **RECHARGED** card on 15 Oct.
+- [ ] **The bar drains** while on Maintain: it is shorter each morning, never longer.
+- [ ] **A new day keeps yesterday's mode:** open the app on a new morning after a Maintain day, and
+      the mode picker already shows **MAINTAIN**. It does not flick from Cut to Maintain.
+- [ ] **THIS WEEK ring:** a day only goes amber or red for **calories** over its target. A day that
+      was on calories but short on fat or protein stays green.
+- [ ] **Weight card:** after today's weigh-in, **Change** reopens the field, and a new number
+      replaces today's rather than adding a second one.
+
 ### New in v91–v94 — plain words from the coach, and photo meals named after the food (2026-09-26)
 
 Fully close and reopen the installed PWA first — you must be on **v94**. These are the only check
