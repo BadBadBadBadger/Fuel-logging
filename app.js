@@ -2099,6 +2099,52 @@ var accrueCutBlock = function accrueCutBlock(block, todayK, day) {
     }));
   }, b0);
 };
+
+// One-off repair, run once per device (2026-10-12). Two bugs — a new day opening in Cut, and the
+// startup cloud pull overwriting the day just accrued — meant a synced user's break never
+// counted: every morning was undone, and the load crept UP while they were at maintenance. The
+// fixes stop it recurring, but the days already lost are still missing from the stored block.
+// This rebuilds them from what the app recorded at the time: each day's declared mode in history,
+// plus the same weight-trend backstop the daily accrual applies.
+//
+// It only ever ADDS rest days the block missed — a block whose own count is already as long, or
+// that is mid-cut, comes back untouched (the same object). It credits only days history actually
+// records: the run stops at the first day with no snapshot, rather than inferring rest from
+// absence. The drain starts from the block's own load: the true figure is unrecoverable, and
+// because the drain is pro rata the day count comes out right regardless — only the bar's height
+// is approximate.
+var BREAK_REBUILT_KEY = "cut_break_rebuilt_v1";
+var rebuildBreakFromHistory = function rebuildBreakFromHistory(block, hist, weighIns) {
+  if (!block || !block.start || !block.lastAccrued) return block;
+  var byDate = new Map((hist || []).map(function (h) {
+    return [h.date, h];
+  }));
+  var dayBefore = function dayBefore(k) {
+    return dateKey(new Date(new Date(k + "T12:00:00").getTime() - 86400000));
+  };
+  var dates = [];
+  for (var d = block.lastAccrued; d >= block.start && dates.length < DIET_BREAK_DAYS; d = dayBefore(d)) {
+    var h = byDate.get(d);
+    if (!h || !MODES[h.mode]) break; // not recorded — not ours to guess
+    var trend = trendLossFrac(weighIns || [], d);
+    if (h.mode === "cut" || trend != null && trend >= TREND_CUT_RATE) break;
+    dates.unshift(d);
+  }
+  if (dates.length <= (block.offRun || 0)) return block;
+  // Replay those days through the normal daily step, so the drain, the close-out and the one
+  // "Recharged" card behave exactly as if each had been counted on the day.
+  return dates.reduce(function (b, date) {
+    return stepCutBlock(b, {
+      date: date,
+      cutting: false,
+      load: 0
+    });
+  }, _objectSpread(_objectSpread({}, block), {}, {
+    load: block.breakLoad || block.load,
+    offRun: 0,
+    breakLoad: 0
+  }));
+};
 var daysBetween = function daysBetween(fromK, toK) {
   return Math.max(0, Math.round((new Date(toK + "T12:00:00") - new Date(fromK + "T12:00:00")) / 86400000));
 };
@@ -14345,8 +14391,8 @@ function App() {
     _useState206 = _slicedToArray(_useState205, 2),
     ready = _useState206[0],
     setReady = _useState206[1];
-  // True once the startup cloud pull has landed (or was never started). The daily cut-block
-  // accrual waits for it — see that effect.
+  // True once the startup cloud pull has landed or failed (or was never started). The daily
+  // cut-block accrual waits for it — see that effect.
   var _useState207 = useState(false),
     _useState208 = _slicedToArray(_useState207, 2),
     cloudSettled = _useState208[0],
@@ -14389,6 +14435,9 @@ function App() {
     _useState226 = _slicedToArray(_useState225, 2),
     cutBlock = _useState226[0],
     setCutBlock = _useState226[1]; // cut-cycling state (Step 5); 4 fields sync
+  // Whether rebuildBreakFromHistory has had its one run on this device. A ref, not state: it
+  // must not re-trigger the accrual effect that reads it.
+  var breakRebuilt = React.useRef(true);
   var _useState227 = useState(0),
     _useState228 = _slicedToArray(_useState227, 2),
     coachKey = _useState228[0],
@@ -14698,27 +14747,31 @@ function App() {
                 } catch (e) {}
               }
               _context39.n = 29;
-              return sg("target_kcal");
+              return sg(BREAK_REBUILT_KEY);
             case 29:
+              breakRebuilt.current = !!_context39.v;
+              _context39.n = 30;
+              return sg("target_kcal");
+            case 30:
               ckv = _context39.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context39.n = 30;
+              _context39.n = 31;
               return sg("aggressive_cut_acked");
-            case 30:
+            case 31:
               acv = _context39.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context39.n = 31;
-              return sg("auth_state");
-            case 31:
-              asv = _context39.v;
               _context39.n = 32;
-              return sg("auth_user");
+              return sg("auth_state");
             case 32:
+              asv = _context39.v;
+              _context39.n = 33;
+              return sg("auth_user");
+            case 33:
               auv = _context39.v;
               premiumUid = null; // The background pull below and the revive further down both write the meal list.
               // The revive's is the union of the two, so it wins whichever order they land in.
@@ -14727,29 +14780,29 @@ function App() {
               };
               pulling = false;
               if (!(asv === "premium" && auv)) {
-                _context39.n = 36;
+                _context39.n = 37;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context39.n = 34;
+                _context39.n = 35;
                 break;
               }
-              _context39.n = 33;
+              _context39.n = 34;
               return ss("auth_state", "anonymous");
-            case 33:
-              setShowLapsed(true);
-              _context39.n = 36;
-              break;
             case 34:
+              setShowLapsed(true);
+              _context39.n = 37;
+              break;
+            case 35:
               premiumUid = u.id || null;
               setAuthState("premium");
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context39.n = 35;
+              _context39.n = 36;
               return sg("health_consent");
-            case 35:
+            case 36:
               hc = _context39.v;
               hcParsed = null;
               try {
@@ -14759,11 +14812,11 @@ function App() {
               if (!hcParsed || hcParsed.version !== POLICY_VERSION) setNeedsConsent(true);
               // Background pull — app shows immediately from local, Supabase data merges in
               if (u.id && navigator.onLine) {
+                // No timeout on this, deliberately. Accrual catches up by date and can't double-count,
+                // so a pull that never lands only defers today's step to the next launch — while
+                // accruing before a late pull lands lets it overwrite the day (the bug this gate
+                // closes), and on a fresh device would sync a brand-new block over the real one.
                 pulling = true;
-                // Never let a hung request hold the day's accrual back for the whole session.
-                setTimeout(function () {
-                  return setCloudSettled(true);
-                }, 10000);
                 pullFromSupabase(u.id).then(function (pulled) {
                   if (pulled.profile) {
                     setProf(pulled.profile);
@@ -14799,30 +14852,30 @@ function App() {
                   return setCloudSettled(true);
                 });
               }
-            case 36:
+            case 37:
               if (!pulling) setCloudSettled(true);
 
               // One-time recovery for lists the old "Reset to defaults" button wiped.
-              _context39.p = 37;
-              _context39.n = 38;
+              _context39.p = 38;
+              _context39.n = 39;
               return reviveMeals(premiumUid, loadedMeals);
-            case 38:
+            case 39:
               revived = _context39.v;
               if (revived) {
                 revive.done = true;
                 setMeals(revived);
               }
-              _context39.n = 40;
+              _context39.n = 41;
               break;
-            case 39:
-              _context39.p = 39;
-              _t41 = _context39.v;
             case 40:
-              setReady(true);
+              _context39.p = 40;
+              _t41 = _context39.v;
             case 41:
+              setReady(true);
+            case 42:
               return _context39.a(2);
           }
-        }, _callee39, null, [[37, 39], [6, 8]]);
+        }, _callee39, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
         return _ref118.apply(this, arguments);
@@ -15937,13 +15990,23 @@ function App() {
   // DAY BEFORE — on a break, every morning's rest day was undone and the bar sat at "ON A BREAK ·
   // STARTING TODAY". Accruing after the pull builds today on top of the cloud's state instead,
   // and syncs the result back up. Fixed 2026-10-12.
+  //
+  // The once-per-device rebuild of a break those bugs had reset runs here too, on the same
+  // settled block and history, before today is added on top of it.
   useEffect(function () {
-    if (!ready || !cloudSettled || cutBlock.lastAccrued === todayK) return;
-    var next = accrueCutBlock(cutBlock, todayK, {
+    if (!ready || !cloudSettled) return;
+    var next = cutBlock;
+    if (!breakRebuilt.current) {
+      breakRebuilt.current = true;
+      ss(BREAK_REBUILT_KEY, "1");
+      next = rebuildBreakFromHistory(next, hist, weighIns);
+    }
+    next = accrueCutBlock(next, todayK, {
       cutting: cuttingToday,
       load: todayCutLoad,
       weight: weighIns.length ? weighIns[weighIns.length - 1].weight : p.weight || null
     });
+    if (next === cutBlock) return; // already accrued today, and nothing to rebuild
     setCutBlock(next);
     ss("cut_block", JSON.stringify(next));
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncCutBlock(authUser.id, next)["catch"](function () {});

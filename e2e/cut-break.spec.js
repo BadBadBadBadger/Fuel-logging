@@ -154,8 +154,10 @@ test.describe("A break across days", () => {
       historySpec: { days: 3, kcal: 2600, mode: "maintain", endDaysAgo: 1 },
       cutBlock: { ...MID_BREAK, load: 84, offRun: 0, breakLoad: 0, lastAccrued: "@-1d" },
       // The one-time meal recovery already ran on a real phone; left armed, it awaits the network
-      // before the app is ready and hides the race.
-      extra: { "qa_revive_v68": "1" },
+      // before the app is ready and hides the race. The one-off break rebuild is marked done too:
+      // it would credit the seeded Maintain days, and this test is about the race alone (the
+      // rebuild has its own in cut-break-sync.spec.js).
+      extra: { "qa_revive_v68": "1", "cut_break_rebuilt_v1": "1" },
     });
 
     await expect(page.getByText("ON A BREAK · DAY 1")).toBeVisible({ timeout: 15_000 });
