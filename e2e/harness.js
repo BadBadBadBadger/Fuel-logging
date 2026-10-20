@@ -243,7 +243,9 @@ async function installSbRecorder(page) {
  *  page.reload() the way a real account survives closing the app. Not cleared by the harness's
  *  localStorage.clear(), and seeded only once per context. A read sees the rows as they were when
  *  the request was MADE and arrives 400 ms later; a write applies when it is made. Like PostgREST,
- *  a select returns at most 1000 rows, or the slice range() asks for within that cap. */
+ *  a select returns at most 1000 rows, or the slice range() asks for within that cap. While
+ *  sessionStorage "__fake_cloud_down" is set, every write answers { error } and changes nothing,
+ *  as during a Supabase outage — reads still work, so the cloud keeps serving its older copy. */
 async function installFakeCloud(page, seedCloud) {
   await page.addInitScript(seed => {
     const KEY = "__fake_cloud";
@@ -267,7 +269,10 @@ async function installFakeCloud(page, seedCloud) {
           then(resolve, reject) {
             const d = db();
             let result = { data: null, error: null };
-            if (q.op === "upsert") {
+            const down = !!sessionStorage.getItem("__fake_cloud_down");
+            if (down && q.op !== "select") {
+              result = { data: null, error: { message: "fake outage" } };
+            } else if (q.op === "upsert") {
               const rows = Array.isArray(q.payload) ? q.payload : [q.payload];
               const tbl = d[table] || [];
               for (const r of rows) {

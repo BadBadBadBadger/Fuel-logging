@@ -1526,17 +1526,40 @@ const syncUpsert = async (table, rows, conflict) => {
   try { await sb().from(table).upsert(rows, { onConflict: conflict }); } catch(e) {}
 };
 
+// Resolves true only once the cloud has confirmed both halves — supabase-js reports a failure
+// as { error }, not a throw, so a swallowed catch alone would call an outage a success.
 const syncFoodLogs = async (uid, date, logs) => {
-  if (!uid || !navigator.onLine) return;
-  try { await sb().from("food_logs").delete().eq("user_id", uid).eq("date", date); } catch(e) {}
-  if (!logs.length) return;
-  const now = new Date().toISOString();
-  await syncUpsert("food_logs",
-    logs.map(l => ({ user_id:uid, date, entry_id:l.id, name:l.name,
-      kcal:l.kcal, protein:l.protein, carbs:l.carbs, fat:l.fat,
-      conf: l.conf == null ? 100 : l.conf, elements: l.elements || null,
-      time:l.time||null, updated_at:now })),
-    "user_id,entry_id");
+  if (!uid || !navigator.onLine || !sb()) return false;
+  try {
+    const del = await sb().from("food_logs").delete().eq("user_id", uid).eq("date", date);
+    if (del?.error) return false;
+    if (!logs.length) return true;
+    const now = new Date().toISOString();
+    const up = await sb().from("food_logs").upsert(
+      logs.map(l => ({ user_id:uid, date, entry_id:l.id, name:l.name,
+        kcal:l.kcal, protein:l.protein, carbs:l.carbs, fat:l.fat,
+        conf: l.conf == null ? 100 : l.conf, elements: l.elements || null,
+        time:l.time||null, updated_at:now })),
+      { onConflict: "user_id,entry_id" });
+    return !up?.error;
+  } catch(e) { return false; }
+};
+
+// A day's logs the cloud hasn't confirmed yet. Learned the hard way (2026-10-20): during a
+// Supabase outage the writes failed silently, the next launch's pull read the cloud's older copy
+// of the day, and replaced the meals just logged with it. Now every log write is marked pending
+// here first and only cleared once syncFoodLogs confirms — and the pull never overwrites a pending
+// day: it keeps the phone's copy and retries the upload instead. The marker holds the exact list
+// being synced, so a confirm for an older write can't clear a newer one still in flight.
+const PENDING_LOGS = "logs_pending__";
+const syncFoodLogsTracked = async (uid, date, logs) => {
+  const sent = JSON.stringify(logs);
+  await ss(PENDING_LOGS + date, sent);
+  if (!(await syncFoodLogs(uid, date, logs))) return false;
+  if ((await sg(PENDING_LOGS + date)) === sent) {
+    try { await window.storage.delete(PENDING_LOGS + date); } catch(e) {}
+  }
+  return true;
 };
 
 const syncWater = async (uid, date, glasses) => {
@@ -1851,6 +1874,15 @@ const pullFromSupabase = async uid => {
         floored: h.floored ?? null,
         workoutBonus: h.workout_bonus ?? null,
       }));
+      // A day whose last write the cloud never confirmed keeps the phone's logs, and gets
+      // another go at the upload — see PENDING_LOGS.
+      for (const snap of fullHist) {
+        if (!(await sg(PENDING_LOGS + snap.date))) continue;
+        let local = null; try { local = JSON.parse(await sg("logs__" + snap.date)); } catch(e) {}
+        if (!Array.isArray(local)) continue;
+        snap.logs = local;
+        syncFoodLogsTracked(uid, snap.date, local).catch(() => {});
+      }
       await ss("history", JSON.stringify(fullHist));
       for (const snap of fullHist) {
         await ss("logs__"  + snap.date, JSON.stringify(snap.logs || []));
@@ -7064,7 +7096,7 @@ function App() {
     setLogs(l);
     await ss("logs__" + todayKey(), JSON.stringify(l));
     if (authState === "premium" && authUser?.id)
-      syncFoodLogs(authUser.id, todayKey(), l).catch(() => {});
+      syncFoodLogsTracked(authUser.id, todayKey(), l).catch(() => {});
   };
   const saveWater = async w => {
     setWater(w);
@@ -7249,7 +7281,7 @@ function App() {
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith("logs__") || key.startsWith("water__") ||
+        if (key && (key.startsWith("logs__") || key.startsWith(PENDING_LOGS) || key.startsWith("water__") ||
             key.startsWith("workouts__") || key.startsWith("mode__") ||
             key.startsWith("coach__")    || key.startsWith("streak_pop__") ||
             key.startsWith("sync_migrated__"))) {
@@ -7330,9 +7362,11 @@ function App() {
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(nh);
     await ss("history", JSON.stringify(nh));
+    // Kept alongside history, as the pull does: it's the copy a pending day falls back on.
+    if (upd.logs) await ss("logs__" + upd.date, JSON.stringify(upd.logs));
     if (authState === "premium" && authUser?.id) {
       syncHistory(authUser.id, nh).catch(() => {});
-      if (upd.logs) syncFoodLogs(authUser.id, upd.date, upd.logs).catch(() => {});
+      if (upd.logs) syncFoodLogsTracked(authUser.id, upd.date, upd.logs).catch(() => {});
     }
   };
 
