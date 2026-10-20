@@ -13,60 +13,9 @@
 // write applies when it is made. That ordering is the race, reproduced rather than assumed.
 
 const { test, expect } = require("@playwright/test");
-const { open, PROFILE } = require("./harness");
+const { open, PROFILE, installFakeCloud } = require("./harness");
 
 const UID = "u1";
-
-/** Replace window.supabaseClient with a fake whose state lives in sessionStorage, so it survives
- *  page.reload() the way a real account survives closing the app. Not cleared by the harness's
- *  localStorage.clear(), and seeded only once per context. */
-async function installFakeCloud(page, seedCloud) {
-  await page.addInitScript(seed => {
-    const KEY = "__fake_cloud";
-    if (!sessionStorage.getItem(KEY)) sessionStorage.setItem(KEY, JSON.stringify(seed));
-    const db  = () => JSON.parse(sessionStorage.getItem(KEY));
-    const put = d => sessionStorage.setItem(KEY, JSON.stringify(d));
-    const keyOf = (t, r) => (t === "profiles" || t === "settings" ? [r.id]
-      : [r.user_id, r.date, r.entry_id, r.badge_key, r.name]).join("|");
-    const fake = {
-      from(table) {
-        const q = { op: "select", single: false, payload: null };
-        const b = {
-          select: () => b, eq: () => b, order: () => b, in: () => b, neq: () => b, gte: () => b, lte: () => b,
-          upsert: p => { q.op = "upsert"; q.payload = p; return b; },
-          insert: p => { q.op = "upsert"; q.payload = p; return b; },
-          update: () => { q.op = "noop"; return b; },
-          delete: () => { q.op = "noop"; return b; },
-          maybeSingle: () => { q.single = true; return b; },
-          single: () => { q.single = true; return b; },
-          then(resolve, reject) {
-            const d = db();
-            let result = { data: null, error: null };
-            if (q.op === "upsert") {
-              const rows = Array.isArray(q.payload) ? q.payload : [q.payload];
-              const tbl = d[table] || [];
-              for (const r of rows) {
-                const i = tbl.findIndex(x => keyOf(table, x) === keyOf(table, r));
-                if (i >= 0) tbl[i] = { ...tbl[i], ...r }; else tbl.push({ ...r });
-              }
-              d[table] = tbl;
-              put(d);                                   // a write lands when it is made
-            } else if (q.op === "select") {
-              const rows = JSON.parse(JSON.stringify(d[table] || []));   // a read sees NOW
-              rows.sort((x, y) => String(x.date || "").localeCompare(String(y.date || "")));
-              result = { data: q.single ? (rows[0] || null) : rows, error: null };
-            }
-            const ms = q.op === "select" ? 400 : 50;    // ...and its answer arrives later
-            return new Promise(r => setTimeout(r, ms)).then(() => result).then(resolve, reject);
-          },
-        };
-        return b;
-      },
-      auth: { signOut: async () => ({}) },
-    };
-    Object.defineProperty(window, "supabaseClient", { get: () => fake, set: () => {}, configurable: true });
-  }, seedCloud);
-}
 
 const snapRow = (date, mode) => ({
   user_id: UID, date, mode, kcal: mode === "cut" ? 2300 : 2800, protein: 160, carbs: 250, fat: 70,

@@ -2426,37 +2426,41 @@ var syncUpsert = /*#__PURE__*/function () {
     return _ref15.apply(this, arguments);
   };
 }();
+
+// Resolves true only once the cloud has confirmed both halves — supabase-js reports a failure
+// as { error }, not a throw, so a swallowed catch alone would call an outage a success.
 var syncFoodLogs = /*#__PURE__*/function () {
   var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(uid, date, logs) {
-    var now, _t4;
+    var del, now, up, _t4;
     return _regenerator().w(function (_context4) {
       while (1) switch (_context4.p = _context4.n) {
         case 0:
-          if (!(!uid || !navigator.onLine)) {
+          if (!(!uid || !navigator.onLine || !sb())) {
             _context4.n = 1;
             break;
           }
-          return _context4.a(2);
+          return _context4.a(2, false);
         case 1:
           _context4.p = 1;
           _context4.n = 2;
           return sb().from("food_logs")["delete"]().eq("user_id", uid).eq("date", date);
         case 2:
-          _context4.n = 4;
-          break;
-        case 3:
-          _context4.p = 3;
-          _t4 = _context4.v;
-        case 4:
-          if (logs.length) {
-            _context4.n = 5;
+          del = _context4.v;
+          if (!(del !== null && del !== void 0 && del.error)) {
+            _context4.n = 3;
             break;
           }
-          return _context4.a(2);
-        case 5:
+          return _context4.a(2, false);
+        case 3:
+          if (logs.length) {
+            _context4.n = 4;
+            break;
+          }
+          return _context4.a(2, true);
+        case 4:
           now = new Date().toISOString();
-          _context4.n = 6;
-          return syncUpsert("food_logs", logs.map(function (l) {
+          _context4.n = 5;
+          return sb().from("food_logs").upsert(logs.map(function (l) {
             return {
               user_id: uid,
               date: date,
@@ -2471,48 +2475,81 @@ var syncFoodLogs = /*#__PURE__*/function () {
               time: l.time || null,
               updated_at: now
             };
-          }), "user_id,entry_id");
+          }), {
+            onConflict: "user_id,entry_id"
+          });
+        case 5:
+          up = _context4.v;
+          return _context4.a(2, !(up !== null && up !== void 0 && up.error));
         case 6:
-          return _context4.a(2);
+          _context4.p = 6;
+          _t4 = _context4.v;
+          return _context4.a(2, false);
       }
-    }, _callee4, null, [[1, 3]]);
+    }, _callee4, null, [[1, 6]]);
   }));
   return function syncFoodLogs(_x7, _x8, _x9) {
     return _ref16.apply(this, arguments);
   };
 }();
-var syncWater = /*#__PURE__*/function () {
-  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(uid, date, glasses) {
+
+// A day's logs the cloud hasn't confirmed yet. Learned the hard way (2026-10-20): during a
+// Supabase outage the writes failed silently, the next launch's pull read the cloud's older copy
+// of the day, and replaced the meals just logged with it. Now every log write is marked pending
+// here first and only cleared once syncFoodLogs confirms — and the pull never overwrites a pending
+// day: it keeps the phone's copy and retries the upload instead. The marker holds the exact list
+// being synced, so a confirm for an older write can't clear a newer one still in flight.
+var PENDING_LOGS = "logs_pending__";
+var syncFoodLogsTracked = /*#__PURE__*/function () {
+  var _ref17 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(uid, date, logs) {
+    var sent, _t5, _t6, _t7;
     return _regenerator().w(function (_context5) {
-      while (1) switch (_context5.n) {
+      while (1) switch (_context5.p = _context5.n) {
         case 0:
-          if (!(!uid || !navigator.onLine)) {
-            _context5.n = 1;
-            break;
-          }
-          return _context5.a(2);
+          sent = JSON.stringify(logs);
+          _context5.n = 1;
+          return ss(PENDING_LOGS + date, sent);
         case 1:
           _context5.n = 2;
-          return syncUpsert("water_logs", [{
-            user_id: uid,
-            date: date,
-            glasses: glasses,
-            updated_at: new Date().toISOString()
-          }], "user_id,date");
+          return syncFoodLogs(uid, date, logs);
         case 2:
-          return _context5.a(2);
+          if (_context5.v) {
+            _context5.n = 3;
+            break;
+          }
+          return _context5.a(2, false);
+        case 3:
+          _context5.n = 4;
+          return sg(PENDING_LOGS + date);
+        case 4:
+          _t5 = _context5.v;
+          _t6 = sent;
+          if (!(_t5 === _t6)) {
+            _context5.n = 8;
+            break;
+          }
+          _context5.p = 5;
+          _context5.n = 6;
+          return window.storage["delete"](PENDING_LOGS + date);
+        case 6:
+          _context5.n = 8;
+          break;
+        case 7:
+          _context5.p = 7;
+          _t7 = _context5.v;
+        case 8:
+          return _context5.a(2, true);
       }
-    }, _callee5);
+    }, _callee5, null, [[5, 7]]);
   }));
-  return function syncWater(_x0, _x1, _x10) {
+  return function syncFoodLogsTracked(_x0, _x1, _x10) {
     return _ref17.apply(this, arguments);
   };
 }();
-var syncWorkouts = /*#__PURE__*/function () {
-  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(uid, date, ws) {
-    var now, _t5;
+var syncWater = /*#__PURE__*/function () {
+  var _ref18 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(uid, date, glasses) {
     return _regenerator().w(function (_context6) {
-      while (1) switch (_context6.p = _context6.n) {
+      while (1) switch (_context6.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
             _context6.n = 1;
@@ -2520,24 +2557,52 @@ var syncWorkouts = /*#__PURE__*/function () {
           }
           return _context6.a(2);
         case 1:
-          _context6.p = 1;
           _context6.n = 2;
-          return sb().from("workouts")["delete"]().eq("user_id", uid).eq("date", date);
+          return syncUpsert("water_logs", [{
+            user_id: uid,
+            date: date,
+            glasses: glasses,
+            updated_at: new Date().toISOString()
+          }], "user_id,date");
         case 2:
-          _context6.n = 4;
-          break;
-        case 3:
-          _context6.p = 3;
-          _t5 = _context6.v;
-        case 4:
-          if (ws.length) {
-            _context6.n = 5;
+          return _context6.a(2);
+      }
+    }, _callee6);
+  }));
+  return function syncWater(_x11, _x12, _x13) {
+    return _ref18.apply(this, arguments);
+  };
+}();
+var syncWorkouts = /*#__PURE__*/function () {
+  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(uid, date, ws) {
+    var now, _t8;
+    return _regenerator().w(function (_context7) {
+      while (1) switch (_context7.p = _context7.n) {
+        case 0:
+          if (!(!uid || !navigator.onLine)) {
+            _context7.n = 1;
             break;
           }
-          return _context6.a(2);
+          return _context7.a(2);
+        case 1:
+          _context7.p = 1;
+          _context7.n = 2;
+          return sb().from("workouts")["delete"]().eq("user_id", uid).eq("date", date);
+        case 2:
+          _context7.n = 4;
+          break;
+        case 3:
+          _context7.p = 3;
+          _t8 = _context7.v;
+        case 4:
+          if (ws.length) {
+            _context7.n = 5;
+            break;
+          }
+          return _context7.a(2);
         case 5:
           now = new Date().toISOString();
-          _context6.n = 6;
+          _context7.n = 6;
           return syncUpsert("workouts", ws.map(function (w) {
             return {
               user_id: uid,
@@ -2553,28 +2618,28 @@ var syncWorkouts = /*#__PURE__*/function () {
             };
           }), "user_id,entry_id");
         case 6:
-          return _context6.a(2);
+          return _context7.a(2);
       }
-    }, _callee6, null, [[1, 3]]);
+    }, _callee7, null, [[1, 3]]);
   }));
-  return function syncWorkouts(_x11, _x12, _x13) {
-    return _ref18.apply(this, arguments);
+  return function syncWorkouts(_x14, _x15, _x16) {
+    return _ref19.apply(this, arguments);
   };
 }();
 var syncProfile = /*#__PURE__*/function () {
-  var _ref19 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(uid, p) {
-    var _t6;
-    return _regenerator().w(function (_context7) {
-      while (1) switch (_context7.p = _context7.n) {
+  var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, p) {
+    var _t9;
+    return _regenerator().w(function (_context8) {
+      while (1) switch (_context8.p = _context8.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !p)) {
-            _context7.n = 1;
+            _context8.n = 1;
             break;
           }
-          return _context7.a(2);
+          return _context8.a(2);
         case 1:
-          _context7.p = 1;
-          _context7.n = 2;
+          _context8.p = 1;
+          _context8.n = 2;
           return sb().from("profiles").upsert({
             id: uid,
             weight: p.weight,
@@ -2585,18 +2650,18 @@ var syncProfile = /*#__PURE__*/function () {
             updated_at: new Date().toISOString()
           });
         case 2:
-          _context7.n = 4;
+          _context8.n = 4;
           break;
         case 3:
-          _context7.p = 3;
-          _t6 = _context7.v;
+          _context8.p = 3;
+          _t9 = _context8.v;
         case 4:
-          return _context7.a(2);
+          return _context8.a(2);
       }
-    }, _callee7, null, [[1, 3]]);
+    }, _callee8, null, [[1, 3]]);
   }));
-  return function syncProfile(_x14, _x15) {
-    return _ref19.apply(this, arguments);
+  return function syncProfile(_x17, _x18) {
+    return _ref20.apply(this, arguments);
   };
 }();
 
@@ -2608,19 +2673,19 @@ var syncProfile = /*#__PURE__*/function () {
 // resume a break at the right speed AND decide the early-return guard the same way this
 // one would — the off-day count is re-derived from it on pull, so it needs no column.
 var syncCutBlock = /*#__PURE__*/function () {
-  var _ref20 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(uid, b) {
-    var _t7;
-    return _regenerator().w(function (_context8) {
-      while (1) switch (_context8.p = _context8.n) {
+  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, b) {
+    var _t0;
+    return _regenerator().w(function (_context9) {
+      while (1) switch (_context9.p = _context9.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !b)) {
-            _context8.n = 1;
+            _context9.n = 1;
             break;
           }
-          return _context8.a(2);
+          return _context9.a(2);
         case 1:
-          _context8.p = 1;
-          _context8.n = 2;
+          _context9.p = 1;
+          _context9.n = 2;
           return sb().from("profiles").upsert({
             id: uid,
             cut_block_start: b.start || null,
@@ -2632,37 +2697,37 @@ var syncCutBlock = /*#__PURE__*/function () {
             onConflict: "id"
           });
         case 2:
-          _context8.n = 4;
+          _context9.n = 4;
           break;
         case 3:
-          _context8.p = 3;
-          _t7 = _context8.v;
+          _context9.p = 3;
+          _t0 = _context9.v;
         case 4:
-          return _context8.a(2);
+          return _context9.a(2);
       }
-    }, _callee8, null, [[1, 3]]);
+    }, _callee9, null, [[1, 3]]);
   }));
-  return function syncCutBlock(_x16, _x17) {
-    return _ref20.apply(this, arguments);
+  return function syncCutBlock(_x19, _x20) {
+    return _ref21.apply(this, arguments);
   };
 }();
 
 // Persist the compliance consent record onto the profiles row (R2/R6). Upsert
 // touches only the consent columns, leaving body metrics untouched on conflict.
 var syncConsent = /*#__PURE__*/function () {
-  var _ref21 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9(uid, meta) {
-    var _t8;
-    return _regenerator().w(function (_context9) {
-      while (1) switch (_context9.p = _context9.n) {
+  var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid, meta) {
+    var _t1;
+    return _regenerator().w(function (_context0) {
+      while (1) switch (_context0.p = _context0.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !meta)) {
-            _context9.n = 1;
+            _context0.n = 1;
             break;
           }
-          return _context9.a(2);
+          return _context0.a(2);
         case 1:
-          _context9.p = 1;
-          _context9.n = 2;
+          _context0.p = 1;
+          _context0.n = 2;
           return sb().from("profiles").upsert({
             id: uid,
             age_confirmed_at: meta.ageConfirmedAt ? new Date(meta.ageConfirmedAt).toISOString() : null,
@@ -2673,36 +2738,36 @@ var syncConsent = /*#__PURE__*/function () {
             onConflict: "id"
           });
         case 2:
-          _context9.n = 4;
+          _context0.n = 4;
           break;
         case 3:
-          _context9.p = 3;
-          _t8 = _context9.v;
+          _context0.p = 3;
+          _t1 = _context0.v;
         case 4:
-          return _context9.a(2);
+          return _context0.a(2);
       }
-    }, _callee9, null, [[1, 3]]);
+    }, _callee0, null, [[1, 3]]);
   }));
-  return function syncConsent(_x18, _x19) {
-    return _ref21.apply(this, arguments);
+  return function syncConsent(_x21, _x22) {
+    return _ref22.apply(this, arguments);
   };
 }();
 
 // Record consent withdrawal (R2 — withdrawal must be as easy as giving it).
 var syncConsentWithdrawn = /*#__PURE__*/function () {
-  var _ref22 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0(uid) {
-    var _t9;
-    return _regenerator().w(function (_context0) {
-      while (1) switch (_context0.p = _context0.n) {
+  var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid) {
+    var _t10;
+    return _regenerator().w(function (_context1) {
+      while (1) switch (_context1.p = _context1.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
-            _context0.n = 1;
+            _context1.n = 1;
             break;
           }
-          return _context0.a(2);
+          return _context1.a(2);
         case 1:
-          _context0.p = 1;
-          _context0.n = 2;
+          _context1.p = 1;
+          _context1.n = 2;
           return sb().from("profiles").upsert({
             id: uid,
             health_consent_withdrawn_at: new Date().toISOString(),
@@ -2711,34 +2776,34 @@ var syncConsentWithdrawn = /*#__PURE__*/function () {
             onConflict: "id"
           });
         case 2:
-          _context0.n = 4;
+          _context1.n = 4;
           break;
         case 3:
-          _context0.p = 3;
-          _t9 = _context0.v;
+          _context1.p = 3;
+          _t10 = _context1.v;
         case 4:
-          return _context0.a(2);
+          return _context1.a(2);
       }
-    }, _callee0, null, [[1, 3]]);
+    }, _callee1, null, [[1, 3]]);
   }));
-  return function syncConsentWithdrawn(_x20) {
-    return _ref22.apply(this, arguments);
+  return function syncConsentWithdrawn(_x23) {
+    return _ref23.apply(this, arguments);
   };
 }();
 var syncWeighIns = /*#__PURE__*/function () {
-  var _ref23 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(uid, wis) {
+  var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, wis) {
     var now;
-    return _regenerator().w(function (_context1) {
-      while (1) switch (_context1.n) {
+    return _regenerator().w(function (_context10) {
+      while (1) switch (_context10.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !(wis !== null && wis !== void 0 && wis.length))) {
-            _context1.n = 1;
+            _context10.n = 1;
             break;
           }
-          return _context1.a(2);
+          return _context10.a(2);
         case 1:
           now = new Date().toISOString();
-          _context1.n = 2;
+          _context10.n = 2;
           return syncUpsert("weigh_ins", wis.map(function (w) {
             return {
               user_id: uid,
@@ -2748,28 +2813,28 @@ var syncWeighIns = /*#__PURE__*/function () {
             };
           }), "user_id,date");
         case 2:
-          return _context1.a(2);
+          return _context10.a(2);
       }
-    }, _callee1);
+    }, _callee10);
   }));
-  return function syncWeighIns(_x21, _x22) {
-    return _ref23.apply(this, arguments);
+  return function syncWeighIns(_x24, _x25) {
+    return _ref24.apply(this, arguments);
   };
 }();
 var syncBodyMeasurements = /*#__PURE__*/function () {
-  var _ref24 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10(uid, ms) {
+  var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, ms) {
     var now;
-    return _regenerator().w(function (_context10) {
-      while (1) switch (_context10.n) {
+    return _regenerator().w(function (_context11) {
+      while (1) switch (_context11.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !(ms !== null && ms !== void 0 && ms.length))) {
-            _context10.n = 1;
+            _context11.n = 1;
             break;
           }
-          return _context10.a(2);
+          return _context11.a(2);
         case 1:
           now = new Date().toISOString();
-          _context10.n = 2;
+          _context11.n = 2;
           return syncUpsert("body_measurements", ms.map(function (m) {
             var _m$hip2;
             return {
@@ -2784,28 +2849,28 @@ var syncBodyMeasurements = /*#__PURE__*/function () {
             };
           }), "user_id,date");
         case 2:
-          return _context10.a(2);
+          return _context11.a(2);
       }
-    }, _callee10);
+    }, _callee11);
   }));
-  return function syncBodyMeasurements(_x23, _x24) {
-    return _ref24.apply(this, arguments);
+  return function syncBodyMeasurements(_x26, _x27) {
+    return _ref25.apply(this, arguments);
   };
 }();
 var syncSettings = /*#__PURE__*/function () {
-  var _ref25 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(uid, mode, tdeeAdj, customKcal, acked) {
-    var _t0;
-    return _regenerator().w(function (_context11) {
-      while (1) switch (_context11.p = _context11.n) {
+  var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, mode, tdeeAdj, customKcal, acked) {
+    var _t11;
+    return _regenerator().w(function (_context12) {
+      while (1) switch (_context12.p = _context12.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
-            _context11.n = 1;
+            _context12.n = 1;
             break;
           }
-          return _context11.a(2);
+          return _context12.a(2);
         case 1:
-          _context11.p = 1;
-          _context11.n = 2;
+          _context12.p = 1;
+          _context12.n = 2;
           return sb().from("settings").upsert({
             id: uid,
             mode: mode || "cut",
@@ -2815,34 +2880,34 @@ var syncSettings = /*#__PURE__*/function () {
             updated_at: new Date().toISOString()
           });
         case 2:
-          _context11.n = 4;
+          _context12.n = 4;
           break;
         case 3:
-          _context11.p = 3;
-          _t0 = _context11.v;
+          _context12.p = 3;
+          _t11 = _context12.v;
         case 4:
-          return _context11.a(2);
+          return _context12.a(2);
       }
-    }, _callee11, null, [[1, 3]]);
+    }, _callee12, null, [[1, 3]]);
   }));
-  return function syncSettings(_x25, _x26, _x27, _x28, _x29) {
-    return _ref25.apply(this, arguments);
+  return function syncSettings(_x28, _x29, _x30, _x31, _x32) {
+    return _ref26.apply(this, arguments);
   };
 }();
 var syncMeals = /*#__PURE__*/function () {
-  var _ref26 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12(uid, meals) {
+  var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid, meals) {
     var now;
-    return _regenerator().w(function (_context12) {
-      while (1) switch (_context12.n) {
+    return _regenerator().w(function (_context13) {
+      while (1) switch (_context13.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
-            _context12.n = 1;
+            _context13.n = 1;
             break;
           }
-          return _context12.a(2);
+          return _context13.a(2);
         case 1:
           now = new Date().toISOString();
-          _context12.n = 2;
+          _context13.n = 2;
           return syncUpsert("meal_library", meals.map(function (m) {
             return {
               user_id: uid,
@@ -2855,12 +2920,12 @@ var syncMeals = /*#__PURE__*/function () {
             };
           }), "user_id,name");
         case 2:
-          return _context12.a(2);
+          return _context13.a(2);
       }
-    }, _callee12);
+    }, _callee13);
   }));
-  return function syncMeals(_x30, _x31) {
-    return _ref26.apply(this, arguments);
+  return function syncMeals(_x33, _x34) {
+    return _ref27.apply(this, arguments);
   };
 }();
 
@@ -2869,49 +2934,49 @@ var syncMeals = /*#__PURE__*/function () {
 // row by (user_id, name), the same pair the upsert conflicts on. Renaming a meal in the
 // editor orphans the old row the same way, so that path deletes the old name too.
 var syncMealDelete = /*#__PURE__*/function () {
-  var _ref27 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13(uid, name) {
-    var _t1;
-    return _regenerator().w(function (_context13) {
-      while (1) switch (_context13.p = _context13.n) {
+  var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid, name) {
+    var _t12;
+    return _regenerator().w(function (_context14) {
+      while (1) switch (_context14.p = _context14.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !sb() || !name)) {
-            _context13.n = 1;
-            break;
-          }
-          return _context13.a(2);
-        case 1:
-          _context13.p = 1;
-          _context13.n = 2;
-          return sb().from("meal_library")["delete"]().eq("user_id", uid).eq("name", name);
-        case 2:
-          _context13.n = 4;
-          break;
-        case 3:
-          _context13.p = 3;
-          _t1 = _context13.v;
-        case 4:
-          return _context13.a(2);
-      }
-    }, _callee13, null, [[1, 3]]);
-  }));
-  return function syncMealDelete(_x32, _x33) {
-    return _ref27.apply(this, arguments);
-  };
-}();
-var syncBadges = /*#__PURE__*/function () {
-  var _ref28 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee14(uid, keys) {
-    var now;
-    return _regenerator().w(function (_context14) {
-      while (1) switch (_context14.n) {
-        case 0:
-          if (!(!uid || !navigator.onLine || !(keys !== null && keys !== void 0 && keys.length))) {
             _context14.n = 1;
             break;
           }
           return _context14.a(2);
         case 1:
-          now = new Date().toISOString();
+          _context14.p = 1;
           _context14.n = 2;
+          return sb().from("meal_library")["delete"]().eq("user_id", uid).eq("name", name);
+        case 2:
+          _context14.n = 4;
+          break;
+        case 3:
+          _context14.p = 3;
+          _t12 = _context14.v;
+        case 4:
+          return _context14.a(2);
+      }
+    }, _callee14, null, [[1, 3]]);
+  }));
+  return function syncMealDelete(_x35, _x36) {
+    return _ref28.apply(this, arguments);
+  };
+}();
+var syncBadges = /*#__PURE__*/function () {
+  var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(uid, keys) {
+    var now;
+    return _regenerator().w(function (_context15) {
+      while (1) switch (_context15.n) {
+        case 0:
+          if (!(!uid || !navigator.onLine || !(keys !== null && keys !== void 0 && keys.length))) {
+            _context15.n = 1;
+            break;
+          }
+          return _context15.a(2);
+        case 1:
+          now = new Date().toISOString();
+          _context15.n = 2;
           return syncUpsert("badges", keys.map(function (badge_key) {
             return {
               user_id: uid,
@@ -2920,28 +2985,28 @@ var syncBadges = /*#__PURE__*/function () {
             };
           }), "user_id,badge_key");
         case 2:
-          return _context14.a(2);
+          return _context15.a(2);
       }
-    }, _callee14);
+    }, _callee15);
   }));
-  return function syncBadges(_x34, _x35) {
-    return _ref28.apply(this, arguments);
+  return function syncBadges(_x37, _x38) {
+    return _ref29.apply(this, arguments);
   };
 }();
 var syncHistory = /*#__PURE__*/function () {
-  var _ref29 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee15(uid, hist) {
+  var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(uid, hist) {
     var now;
-    return _regenerator().w(function (_context15) {
-      while (1) switch (_context15.n) {
+    return _regenerator().w(function (_context16) {
+      while (1) switch (_context16.n) {
         case 0:
           if (!(!uid || !navigator.onLine || !(hist !== null && hist !== void 0 && hist.length))) {
-            _context15.n = 1;
+            _context16.n = 1;
             break;
           }
-          return _context15.a(2);
+          return _context16.a(2);
         case 1:
           now = new Date().toISOString();
-          _context15.n = 2;
+          _context16.n = 2;
           return syncUpsert("history_snapshots", hist.map(function (h) {
             var _h$targetKcal, _h$targetProtein, _h$targetFat, _h$targetFatFloor, _h$floored, _h$workoutBonus;
             return {
@@ -2970,217 +3035,287 @@ var syncHistory = /*#__PURE__*/function () {
             };
           }), "user_id,date");
         case 2:
-          return _context15.a(2);
+          return _context16.a(2);
       }
-    }, _callee15);
+    }, _callee16);
   }));
-  return function syncHistory(_x36, _x37) {
-    return _ref29.apply(this, arguments);
+  return function syncHistory(_x39, _x40) {
+    return _ref30.apply(this, arguments);
   };
 }();
 var migrateLocalToSupabase = /*#__PURE__*/function () {
-  var _ref30 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee16(uid) {
-    var migKey, pv, wiv, m, ta, ck, ak, mv, bv, hv, hist, _iterator2, _step2, _snap$logs, snap, i, key, v, _t10, _t11, _t12, _t13, _t14, _t15;
-    return _regenerator().w(function (_context16) {
-      while (1) switch (_context16.p = _context16.n) {
+  var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(uid) {
+    var migKey, pv, wiv, m, ta, ck, ak, mv, bv, hv, hist, _iterator2, _step2, _snap$logs, snap, i, key, v, _t13, _t14, _t15, _t16, _t17, _t18;
+    return _regenerator().w(function (_context17) {
+      while (1) switch (_context17.p = _context17.n) {
         case 0:
           migKey = "sync_migrated__" + uid;
           if (!localStorage.getItem(migKey)) {
-            _context16.n = 1;
+            _context17.n = 1;
             break;
           }
-          return _context16.a(2);
+          return _context17.a(2);
         case 1:
-          _context16.p = 1;
-          _context16.n = 2;
+          _context17.p = 1;
+          _context17.n = 2;
           return sg("profile");
         case 2:
-          pv = _context16.v;
+          pv = _context17.v;
           if (!pv) {
-            _context16.n = 3;
+            _context17.n = 3;
             break;
           }
-          _context16.n = 3;
+          _context17.n = 3;
           return syncProfile(uid, JSON.parse(pv));
         case 3:
-          _context16.n = 4;
+          _context17.n = 4;
           return sg("weighins");
         case 4:
-          wiv = _context16.v;
+          wiv = _context17.v;
           if (!wiv) {
-            _context16.n = 5;
+            _context17.n = 5;
             break;
           }
-          _context16.n = 5;
+          _context17.n = 5;
           return syncWeighIns(uid, JSON.parse(wiv));
         case 5:
-          _context16.n = 6;
+          _context17.n = 6;
           return sg("mode__" + todayKey());
         case 6:
-          _t10 = _context16.v;
-          if (_t10) {
-            _context16.n = 7;
+          _t13 = _context17.v;
+          if (_t13) {
+            _context17.n = 7;
             break;
           }
-          _t10 = "cut";
+          _t13 = "cut";
         case 7:
-          m = _t10;
-          _t12 = parseInt;
-          _context16.n = 8;
+          m = _t13;
+          _t15 = parseInt;
+          _context17.n = 8;
           return sg("tdee_adj");
         case 8:
-          _t13 = _context16.v;
-          if (_t13) {
-            _context16.n = 9;
+          _t16 = _context17.v;
+          if (_t16) {
+            _context17.n = 9;
             break;
           }
-          _t13 = "0";
+          _t16 = "0";
         case 9:
-          _t11 = _t12(_t13);
-          if (_t11) {
-            _context16.n = 10;
+          _t14 = _t15(_t16);
+          if (_t14) {
+            _context17.n = 10;
             break;
           }
-          _t11 = 0;
+          _t14 = 0;
         case 10:
-          ta = _t11;
-          _context16.n = 11;
+          ta = _t14;
+          _context17.n = 11;
           return sg("target_kcal");
         case 11:
-          ck = _context16.v;
-          _context16.n = 12;
+          ck = _context17.v;
+          _context17.n = 12;
           return sg("aggressive_cut_acked");
         case 12:
-          ak = _context16.v;
-          _context16.n = 13;
+          ak = _context17.v;
+          _context17.n = 13;
           return syncSettings(uid, m, ta, ck ? parseInt(ck) : null, !!ak);
         case 13:
-          _context16.n = 14;
+          _context17.n = 14;
           return sg("meals");
         case 14:
-          mv = _context16.v;
+          mv = _context17.v;
           if (!mv) {
-            _context16.n = 15;
+            _context17.n = 15;
             break;
           }
-          _context16.n = 15;
+          _context17.n = 15;
           return syncMeals(uid, JSON.parse(mv));
         case 15:
-          _context16.n = 16;
+          _context17.n = 16;
           return sg("badges");
         case 16:
-          bv = _context16.v;
+          bv = _context17.v;
           if (!bv) {
-            _context16.n = 17;
+            _context17.n = 17;
             break;
           }
-          _context16.n = 17;
+          _context17.n = 17;
           return syncBadges(uid, JSON.parse(bv));
         case 17:
-          _context16.n = 18;
+          _context17.n = 18;
           return sg("history");
         case 18:
-          hv = _context16.v;
+          hv = _context17.v;
           if (!hv) {
-            _context16.n = 27;
+            _context17.n = 27;
             break;
           }
           hist = JSON.parse(hv);
-          _context16.n = 19;
+          _context17.n = 19;
           return syncHistory(uid, hist);
         case 19:
           _iterator2 = _createForOfIteratorHelper(hist);
-          _context16.p = 20;
+          _context17.p = 20;
           _iterator2.s();
         case 21:
           if ((_step2 = _iterator2.n()).done) {
-            _context16.n = 24;
+            _context17.n = 24;
             break;
           }
           snap = _step2.value;
           if (!((_snap$logs = snap.logs) !== null && _snap$logs !== void 0 && _snap$logs.length)) {
-            _context16.n = 22;
+            _context17.n = 22;
             break;
           }
-          _context16.n = 22;
+          _context17.n = 22;
           return syncFoodLogs(uid, snap.date, snap.logs);
         case 22:
           if (!snap.water) {
-            _context16.n = 23;
+            _context17.n = 23;
             break;
           }
-          _context16.n = 23;
+          _context17.n = 23;
           return syncWater(uid, snap.date, snap.water);
         case 23:
-          _context16.n = 21;
+          _context17.n = 21;
           break;
         case 24:
-          _context16.n = 26;
+          _context17.n = 26;
           break;
         case 25:
-          _context16.p = 25;
-          _t14 = _context16.v;
-          _iterator2.e(_t14);
+          _context17.p = 25;
+          _t17 = _context17.v;
+          _iterator2.e(_t17);
         case 26:
-          _context16.p = 26;
+          _context17.p = 26;
           _iterator2.f();
-          return _context16.f(26);
+          return _context17.f(26);
         case 27:
           i = 0;
         case 28:
           if (!(i < localStorage.length)) {
-            _context16.n = 30;
+            _context17.n = 30;
             break;
           }
           key = localStorage.key(i);
           if (!(key !== null && key !== void 0 && key.startsWith("workouts__"))) {
-            _context16.n = 29;
+            _context17.n = 29;
             break;
           }
           v = localStorage.getItem(key);
           if (!v) {
-            _context16.n = 29;
+            _context17.n = 29;
             break;
           }
-          _context16.n = 29;
+          _context17.n = 29;
           return syncWorkouts(uid, key.replace("workouts__", ""), JSON.parse(v));
         case 29:
           i++;
-          _context16.n = 28;
+          _context17.n = 28;
           break;
         case 30:
           localStorage.setItem(migKey, "1");
-          _context16.n = 32;
+          _context17.n = 32;
           break;
         case 31:
-          _context16.p = 31;
-          _t15 = _context16.v;
+          _context17.p = 31;
+          _t18 = _context17.v;
         case 32:
-          return _context16.a(2);
+          return _context17.a(2);
       }
-    }, _callee16, null, [[20, 25, 26, 27], [1, 31]]);
+    }, _callee17, null, [[20, 25, 26, 27], [1, 31]]);
   }));
-  return function migrateLocalToSupabase(_x38) {
-    return _ref30.apply(this, arguments);
+  return function migrateLocalToSupabase(_x41) {
+    return _ref31.apply(this, arguments);
+  };
+}();
+
+// Every row of a query, a page at a time. PostgREST caps a response at the project's max-rows
+// (1000 on Supabase) and says nothing about the rest, so a plain select of a long history comes
+// back silently truncated — oldest rows first, newest missing. Learned the hard way (2026-10-20):
+// once an account passed 1000 food_logs, the pull saw today's snapshot but none of today's
+// entries, and replaced the day's logs with nothing on every launch. Pages advance by what each
+// actually returned and stop on an empty one, so a lower max-rows can't end it early either.
+// `build` makes a fresh, totally-ordered query each time: range() over ties isn't stable.
+var SELECT_PAGE = 1000;
+var selectAll = /*#__PURE__*/function () {
+  var _ref32 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18(build) {
+    var rows, _yield$build$range, data, error;
+    return _regenerator().w(function (_context18) {
+      while (1) switch (_context18.n) {
+        case 0:
+          rows = [];
+        case 1:
+          _context18.n = 2;
+          return build().range(rows.length, rows.length + SELECT_PAGE - 1);
+        case 2:
+          _yield$build$range = _context18.v;
+          data = _yield$build$range.data;
+          error = _yield$build$range.error;
+          if (!error) {
+            _context18.n = 3;
+            break;
+          }
+          return _context18.a(2, {
+            data: null,
+            error: error
+          });
+        case 3:
+          if (data !== null && data !== void 0 && data.length) {
+            _context18.n = 4;
+            break;
+          }
+          return _context18.a(2, {
+            data: rows,
+            error: null
+          });
+        case 4:
+          rows.push.apply(rows, _toConsumableArray(data));
+        case 5:
+          _context18.n = 1;
+          break;
+        case 6:
+          return _context18.a(2);
+      }
+    }, _callee18);
+  }));
+  return function selectAll(_x42) {
+    return _ref32.apply(this, arguments);
   };
 }();
 var pullFromSupabase = /*#__PURE__*/function () {
-  var _ref31 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee17(uid) {
-    var _weighR$data, _bodyMeasR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, bodyMeasR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, load, breakLoad, offRun, block, wi, bm, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, byDate, _iterator6, _step6, _w, _i2, _Object$entries, _Object$entries$_i, d, ws, _t16, _t17, _t18, _t19;
-    return _regenerator().w(function (_context17) {
-      while (1) switch (_context17.p = _context17.n) {
+  var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(uid) {
+    var _weighR$data, _bodyMeasR$data, _mealsR$data, _badgesR$data, _histR$data, _workR$data, _yield$Promise$all, _yield$Promise$all2, profR, weighR, bodyMeasR, settR, mealsR, badgesR, histR, foodR, waterR, workR, result, local, pv, p, localBlock, cv, load, breakLoad, offRun, block, wi, bm, s, meals, keys, foodByDate, _iterator3, _step3, f, waterByDate, _iterator4, _step4, w, fullHist, _iterator5, _step5, snap, _local, _iterator6, _step6, _snap, byDate, _iterator7, _step7, _w, _i2, _Object$entries, _Object$entries$_i, d, ws, _t19, _t20, _t21, _t22, _t23, _t24, _t25;
+    return _regenerator().w(function (_context19) {
+      while (1) switch (_context19.p = _context19.n) {
         case 0:
           if (!(!uid || !navigator.onLine)) {
-            _context17.n = 1;
+            _context19.n = 1;
             break;
           }
-          return _context17.a(2, {});
+          return _context19.a(2, {});
         case 1:
-          _context17.p = 1;
-          _context17.n = 2;
-          return Promise.all([sb().from("profiles").select("*").eq("id", uid).maybeSingle(), sb().from("weigh_ins").select("*").eq("user_id", uid).order("date"), sb().from("body_measurements").select("*").eq("user_id", uid).order("date"), sb().from("settings").select("*").eq("id", uid).maybeSingle(), sb().from("meal_library").select("*").eq("user_id", uid), sb().from("badges").select("badge_key").eq("user_id", uid), sb().from("history_snapshots").select("*").eq("user_id", uid).order("date"), sb().from("food_logs").select("*").eq("user_id", uid).order("date"), sb().from("water_logs").select("*").eq("user_id", uid).order("date"), sb().from("workouts").select("*").eq("user_id", uid).order("date")]);
+          _context19.p = 1;
+          _context19.n = 2;
+          return Promise.all([sb().from("profiles").select("*").eq("id", uid).maybeSingle(), selectAll(function () {
+            return sb().from("weigh_ins").select("*").eq("user_id", uid).order("date").order("id");
+          }), selectAll(function () {
+            return sb().from("body_measurements").select("*").eq("user_id", uid).order("date").order("id");
+          }), sb().from("settings").select("*").eq("id", uid).maybeSingle(), selectAll(function () {
+            return sb().from("meal_library").select("*").eq("user_id", uid).order("id");
+          }), selectAll(function () {
+            return sb().from("badges").select("badge_key").eq("user_id", uid).order("badge_key");
+          }), selectAll(function () {
+            return sb().from("history_snapshots").select("*").eq("user_id", uid).order("date").order("id");
+          }), selectAll(function () {
+            return sb().from("food_logs").select("*").eq("user_id", uid).order("date").order("entry_id");
+          }), selectAll(function () {
+            return sb().from("water_logs").select("*").eq("user_id", uid).order("date").order("id");
+          }), selectAll(function () {
+            return sb().from("workouts").select("*").eq("user_id", uid).order("date").order("entry_id");
+          })]);
         case 2:
-          _yield$Promise$all = _context17.v;
+          _yield$Promise$all = _context19.v;
           _yield$Promise$all2 = _slicedToArray(_yield$Promise$all, 10);
           profR = _yield$Promise$all2[0];
           weighR = _yield$Promise$all2[1];
@@ -3192,9 +3327,15 @@ var pullFromSupabase = /*#__PURE__*/function () {
           foodR = _yield$Promise$all2[7];
           waterR = _yield$Promise$all2[8];
           workR = _yield$Promise$all2[9];
+          if (!(histR.error || foodR.error || waterR.error || workR.error)) {
+            _context19.n = 3;
+            break;
+          }
+          return _context19.a(2, {});
+        case 3:
           result = {};
           if (!profR.data) {
-            _context17.n = 13;
+            _context19.n = 14;
             break;
           }
           // Preserve local-only profile fields the profiles table doesn't carry (weighCadence,
@@ -3202,18 +3343,18 @@ var pullFromSupabase = /*#__PURE__*/function () {
           // authoritative. `activity` now HAS a column, but an older row may still be null —
           // in that case keep the local pick rather than resetting the user to sedentary.
           local = {};
-          _context17.p = 3;
-          _context17.n = 4;
+          _context19.p = 4;
+          _context19.n = 5;
           return sg("profile");
-        case 4:
-          pv = _context17.v;
-          if (pv) local = JSON.parse(pv);
-          _context17.n = 6;
-          break;
         case 5:
-          _context17.p = 5;
-          _t16 = _context17.v;
+          pv = _context19.v;
+          if (pv) local = JSON.parse(pv);
+          _context19.n = 7;
+          break;
         case 6:
+          _context19.p = 6;
+          _t19 = _context19.v;
+        case 7:
           p = _objectSpread(_objectSpread({}, local), {}, {
             weight: profR.data.weight,
             height: profR.data.height,
@@ -3221,28 +3362,28 @@ var pullFromSupabase = /*#__PURE__*/function () {
             sex: profR.data.sex,
             activity: profR.data.activity || local.activity || null
           });
-          _context17.n = 7;
+          _context19.n = 8;
           return ss("profile", JSON.stringify(p));
-        case 7:
+        case 8:
           result.profile = p;
           // Cut-cycling block state. The local blob carries the working fields (accrual
           // cursor, dismissals); the cloud carries the four durable ones, so a new device
           // resumes an open cut instead of restarting it.
           localBlock = {};
-          _context17.p = 8;
-          _context17.n = 9;
+          _context19.p = 9;
+          _context19.n = 10;
           return sg("cut_block");
-        case 9:
-          cv = _context17.v;
-          if (cv) localBlock = JSON.parse(cv);
-          _context17.n = 11;
-          break;
         case 10:
-          _context17.p = 10;
-          _t17 = _context17.v;
+          cv = _context19.v;
+          if (cv) localBlock = JSON.parse(cv);
+          _context19.n = 12;
+          break;
         case 11:
+          _context19.p = 11;
+          _t20 = _context19.v;
+        case 12:
           if (!(profR.data.cut_block_start || profR.data.last_break_end)) {
-            _context17.n = 13;
+            _context19.n = 14;
             break;
           }
           load = Number(profR.data.cut_block_load) || 0;
@@ -3257,13 +3398,13 @@ var pullFromSupabase = /*#__PURE__*/function () {
             offRun: offRun,
             lastBreakEnd: profR.data.last_break_end || null
           });
-          _context17.n = 12;
+          _context19.n = 13;
           return ss("cut_block", JSON.stringify(block));
-        case 12:
-          result.cutBlock = block;
         case 13:
+          result.cutBlock = block;
+        case 14:
           if (!((_weighR$data = weighR.data) !== null && _weighR$data !== void 0 && _weighR$data.length)) {
-            _context17.n = 15;
+            _context19.n = 16;
             break;
           }
           wi = weighR.data.map(function (r) {
@@ -3272,13 +3413,13 @@ var pullFromSupabase = /*#__PURE__*/function () {
               weight: Number(r.weight)
             };
           });
-          _context17.n = 14;
+          _context19.n = 15;
           return ss("weighins", JSON.stringify(wi));
-        case 14:
-          result.weighIns = wi;
         case 15:
+          result.weighIns = wi;
+        case 16:
           if (!((_bodyMeasR$data = bodyMeasR.data) !== null && _bodyMeasR$data !== void 0 && _bodyMeasR$data.length)) {
-            _context17.n = 17;
+            _context19.n = 18;
             break;
           }
           bm = bodyMeasR.data.map(function (r) {
@@ -3291,48 +3432,48 @@ var pullFromSupabase = /*#__PURE__*/function () {
               computed_bf: Number(r.computed_bf)
             };
           });
-          _context17.n = 16;
+          _context19.n = 17;
           return ss("bodymeasurements", JSON.stringify(bm));
-        case 16:
-          result.bodyMeasurements = bm;
         case 17:
+          result.bodyMeasurements = bm;
+        case 18:
           if (!settR.data) {
-            _context17.n = 22;
+            _context19.n = 23;
             break;
           }
           s = settR.data;
           if (!s.mode) {
-            _context17.n = 18;
+            _context19.n = 19;
             break;
           }
-          _context17.n = 18;
+          _context19.n = 19;
           return ss("mode__" + todayKey(), s.mode);
-        case 18:
-          if (!(s.tdee_adj != null)) {
-            _context17.n = 19;
-            break;
-          }
-          _context17.n = 19;
-          return ss("tdee_adj", String(s.tdee_adj));
         case 19:
-          if (!(s.custom_kcal != null)) {
-            _context17.n = 20;
+          if (!(s.tdee_adj != null)) {
+            _context19.n = 20;
             break;
           }
-          _context17.n = 20;
-          return ss("target_kcal", String(s.custom_kcal));
+          _context19.n = 20;
+          return ss("tdee_adj", String(s.tdee_adj));
         case 20:
-          if (!s.aggressive_cut_acked) {
-            _context17.n = 21;
+          if (!(s.custom_kcal != null)) {
+            _context19.n = 21;
             break;
           }
-          _context17.n = 21;
-          return ss("aggressive_cut_acked", "1");
+          _context19.n = 21;
+          return ss("target_kcal", String(s.custom_kcal));
         case 21:
-          result.settings = s;
+          if (!s.aggressive_cut_acked) {
+            _context19.n = 22;
+            break;
+          }
+          _context19.n = 22;
+          return ss("aggressive_cut_acked", "1");
         case 22:
+          result.settings = s;
+        case 23:
           if (!((_mealsR$data = mealsR.data) !== null && _mealsR$data !== void 0 && _mealsR$data.length)) {
-            _context17.n = 24;
+            _context19.n = 25;
             break;
           }
           meals = mealsR.data.map(function (m) {
@@ -3344,23 +3485,23 @@ var pullFromSupabase = /*#__PURE__*/function () {
               fat: Number(m.fat)
             };
           });
-          _context17.n = 23;
+          _context19.n = 24;
           return ss("meals", JSON.stringify(meals));
-        case 23:
-          result.meals = meals;
         case 24:
+          result.meals = meals;
+        case 25:
           if (!((_badgesR$data = badgesR.data) !== null && _badgesR$data !== void 0 && _badgesR$data.length)) {
-            _context17.n = 26;
+            _context19.n = 27;
             break;
           }
           keys = badgesR.data.map(function (b) {
             return b.badge_key;
           });
-          _context17.n = 25;
+          _context19.n = 26;
           return ss("badges", JSON.stringify(keys));
-        case 25:
-          result.badges = keys;
         case 26:
+          result.badges = keys;
+        case 27:
           foodByDate = {};
           if (foodR.data) {
             _iterator3 = _createForOfIteratorHelper(foodR.data);
@@ -3401,11 +3542,11 @@ var pullFromSupabase = /*#__PURE__*/function () {
             }
           }
           if (!((_histR$data = histR.data) !== null && _histR$data !== void 0 && _histR$data.length)) {
-            _context17.n = 36;
+            _context19.n = 51;
             break;
           }
           fullHist = histR.data.map(function (h) {
-            var _ref32, _waterByDate$h$date, _h$target_kcal, _h$target_protein, _h$target_fat, _h$target_fat_floor, _h$floored2, _h$workout_bonus;
+            var _ref34, _waterByDate$h$date, _h$target_kcal, _h$target_protein, _h$target_fat, _h$target_fat_floor, _h$floored2, _h$workout_bonus;
             return {
               date: h.date,
               mode: h.mode,
@@ -3414,7 +3555,7 @@ var pullFromSupabase = /*#__PURE__*/function () {
               carbs: h.carbs,
               fat: h.fat,
               training: h.training,
-              water: (_ref32 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref32 !== void 0 ? _ref32 : 0,
+              water: (_ref34 = (_waterByDate$h$date = waterByDate[h.date]) !== null && _waterByDate$h$date !== void 0 ? _waterByDate$h$date : h.water) !== null && _ref34 !== void 0 ? _ref34 : 0,
               logs: foodByDate[h.date] || [],
               // dashboard/04 — carried through so a pulled day still grades against its own real
               // target rather than falling back to Dashboard's reconstruction. null on older rows
@@ -3426,50 +3567,105 @@ var pullFromSupabase = /*#__PURE__*/function () {
               floored: (_h$floored2 = h.floored) !== null && _h$floored2 !== void 0 ? _h$floored2 : null,
               workoutBonus: (_h$workout_bonus = h.workout_bonus) !== null && _h$workout_bonus !== void 0 ? _h$workout_bonus : null
             };
-          });
-          _context17.n = 27;
-          return ss("history", JSON.stringify(fullHist));
-        case 27:
+          }); // A day whose last write the cloud never confirmed keeps the phone's logs, and gets
+          // another go at the upload — see PENDING_LOGS.
           _iterator5 = _createForOfIteratorHelper(fullHist);
-          _context17.p = 28;
+          _context19.p = 28;
           _iterator5.s();
         case 29:
           if ((_step5 = _iterator5.n()).done) {
-            _context17.n = 32;
+            _context19.n = 38;
             break;
           }
           snap = _step5.value;
-          _context17.n = 30;
-          return ss("logs__" + snap.date, JSON.stringify(snap.logs || []));
+          _context19.n = 30;
+          return sg(PENDING_LOGS + snap.date);
         case 30:
-          _context17.n = 31;
-          return ss("water__" + snap.date, String(snap.water || 0));
+          if (_context19.v) {
+            _context19.n = 31;
+            break;
+          }
+          return _context19.a(3, 37);
         case 31:
-          _context17.n = 29;
-          break;
-        case 32:
-          _context17.n = 34;
-          break;
+          _local = null;
+          _context19.p = 32;
+          _t21 = JSON;
+          _context19.n = 33;
+          return sg("logs__" + snap.date);
         case 33:
-          _context17.p = 33;
-          _t18 = _context17.v;
-          _iterator5.e(_t18);
+          _local = _t21.parse.call(_t21, _context19.v);
+          _context19.n = 35;
+          break;
         case 34:
-          _context17.p = 34;
-          _iterator5.f();
-          return _context17.f(34);
+          _context19.p = 34;
+          _t22 = _context19.v;
         case 35:
-          result.history = fullHist;
+          if (Array.isArray(_local)) {
+            _context19.n = 36;
+            break;
+          }
+          return _context19.a(3, 37);
         case 36:
+          snap.logs = _local;
+          syncFoodLogsTracked(uid, snap.date, _local)["catch"](function () {});
+        case 37:
+          _context19.n = 29;
+          break;
+        case 38:
+          _context19.n = 40;
+          break;
+        case 39:
+          _context19.p = 39;
+          _t23 = _context19.v;
+          _iterator5.e(_t23);
+        case 40:
+          _context19.p = 40;
+          _iterator5.f();
+          return _context19.f(40);
+        case 41:
+          _context19.n = 42;
+          return ss("history", JSON.stringify(fullHist));
+        case 42:
+          _iterator6 = _createForOfIteratorHelper(fullHist);
+          _context19.p = 43;
+          _iterator6.s();
+        case 44:
+          if ((_step6 = _iterator6.n()).done) {
+            _context19.n = 47;
+            break;
+          }
+          _snap = _step6.value;
+          _context19.n = 45;
+          return ss("logs__" + _snap.date, JSON.stringify(_snap.logs || []));
+        case 45:
+          _context19.n = 46;
+          return ss("water__" + _snap.date, String(_snap.water || 0));
+        case 46:
+          _context19.n = 44;
+          break;
+        case 47:
+          _context19.n = 49;
+          break;
+        case 48:
+          _context19.p = 48;
+          _t24 = _context19.v;
+          _iterator6.e(_t24);
+        case 49:
+          _context19.p = 49;
+          _iterator6.f();
+          return _context19.f(49);
+        case 50:
+          result.history = fullHist;
+        case 51:
           if (!((_workR$data = workR.data) !== null && _workR$data !== void 0 && _workR$data.length)) {
-            _context17.n = 40;
+            _context19.n = 55;
             break;
           }
           byDate = {};
-          _iterator6 = _createForOfIteratorHelper(workR.data);
+          _iterator7 = _createForOfIteratorHelper(workR.data);
           try {
-            for (_iterator6.s(); !(_step6 = _iterator6.n()).done;) {
-              _w = _step6.value;
+            for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
+              _w = _step7.value;
               if (!byDate[_w.date]) byDate[_w.date] = [];
               byDate[_w.date].push({
                 id: _w.entry_id,
@@ -3482,36 +3678,36 @@ var pullFromSupabase = /*#__PURE__*/function () {
               });
             }
           } catch (err) {
-            _iterator6.e(err);
+            _iterator7.e(err);
           } finally {
-            _iterator6.f();
+            _iterator7.f();
           }
           _i2 = 0, _Object$entries = Object.entries(byDate);
-        case 37:
+        case 52:
           if (!(_i2 < _Object$entries.length)) {
-            _context17.n = 39;
+            _context19.n = 54;
             break;
           }
           _Object$entries$_i = _slicedToArray(_Object$entries[_i2], 2), d = _Object$entries$_i[0], ws = _Object$entries$_i[1];
-          _context17.n = 38;
+          _context19.n = 53;
           return ss("workouts__" + d, JSON.stringify(ws));
-        case 38:
+        case 53:
           _i2++;
-          _context17.n = 37;
+          _context19.n = 52;
           break;
-        case 39:
+        case 54:
           result.workouts = byDate;
-        case 40:
-          return _context17.a(2, result);
-        case 41:
-          _context17.p = 41;
-          _t19 = _context17.v;
-          return _context17.a(2, {});
+        case 55:
+          return _context19.a(2, result);
+        case 56:
+          _context19.p = 56;
+          _t25 = _context19.v;
+          return _context19.a(2, {});
       }
-    }, _callee17, null, [[28, 33, 34, 35], [8, 10], [3, 5], [1, 41]]);
+    }, _callee19, null, [[43, 48, 49, 50], [32, 34], [28, 39, 40, 41], [9, 11], [4, 6], [1, 56]]);
   }));
-  return function pullFromSupabase(_x39) {
-    return _ref31.apply(this, arguments);
+  return function pullFromSupabase(_x43) {
+    return _ref33.apply(this, arguments);
   };
 }();
 
@@ -3521,31 +3717,31 @@ var pullFromSupabase = /*#__PURE__*/function () {
 
 var SCHEMA_VERSION = 1;
 var runMigrations = /*#__PURE__*/function () {
-  var _ref33 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee18() {
+  var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
     var stored, v;
-    return _regenerator().w(function (_context18) {
-      while (1) switch (_context18.n) {
+    return _regenerator().w(function (_context20) {
+      while (1) switch (_context20.n) {
         case 0:
-          _context18.n = 1;
+          _context20.n = 1;
           return sg("fuel_schema_v");
         case 1:
-          stored = _context18.v;
+          stored = _context20.v;
           v = stored ? parseInt(stored) : 0;
           if (!(v >= SCHEMA_VERSION)) {
-            _context18.n = 2;
+            _context20.n = 2;
             break;
           }
-          return _context18.a(2);
+          return _context20.a(2);
         case 2:
-          _context18.n = 3;
+          _context20.n = 3;
           return ss("fuel_schema_v", String(SCHEMA_VERSION));
         case 3:
-          return _context18.a(2);
+          return _context20.a(2);
       }
-    }, _callee18);
+    }, _callee20);
   }));
   return function runMigrations() {
-    return _ref33.apply(this, arguments);
+    return _ref35.apply(this, arguments);
   };
 }();
 
@@ -3561,19 +3757,19 @@ var runMigrations = /*#__PURE__*/function () {
 // Runs a single time per device; after that, deletes are meant to stick.
 var REVIVE_KEY = "qa_revive_v68";
 var reviveMeals = /*#__PURE__*/function () {
-  var _ref34 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee19(uid, current) {
-    var byName, add, before, _yield$sb$from$select, data, error, hv, _iterator7, _step7, snap, _iterator8, _step8, l, revived, _t20, _t21;
-    return _regenerator().w(function (_context19) {
-      while (1) switch (_context19.p = _context19.n) {
+  var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(uid, current) {
+    var byName, add, before, _yield$sb$from$select, data, error, hv, _iterator8, _step8, snap, _iterator9, _step9, l, revived, _t26, _t27;
+    return _regenerator().w(function (_context21) {
+      while (1) switch (_context21.p = _context21.n) {
         case 0:
-          _context19.n = 1;
+          _context21.n = 1;
           return sg(REVIVE_KEY);
         case 1:
-          if (!_context19.v) {
-            _context19.n = 2;
+          if (!_context21.v) {
+            _context21.n = 2;
             break;
           }
-          return _context19.a(2, null);
+          return _context21.a(2, null);
         case 2:
           byName = new Map();
           add = function add(m) {
@@ -3594,146 +3790,146 @@ var reviveMeals = /*#__PURE__*/function () {
           //    can't reach it: bail without marking done and try again next time. Otherwise a first
           //    launch in a tunnel would quietly fall through to the rougher log rebuild for good.
           if (!uid) {
-            _context19.n = 7;
+            _context21.n = 7;
             break;
           }
           if (!(!navigator.onLine || !sb())) {
-            _context19.n = 3;
+            _context21.n = 3;
             break;
           }
-          return _context19.a(2, null);
+          return _context21.a(2, null);
         case 3:
-          _context19.p = 3;
-          _context19.n = 4;
+          _context21.p = 3;
+          _context21.n = 4;
           return sb().from("meal_library").select("*").eq("user_id", uid);
         case 4:
-          _yield$sb$from$select = _context19.v;
+          _yield$sb$from$select = _context21.v;
           data = _yield$sb$from$select.data;
           error = _yield$sb$from$select.error;
           if (!error) {
-            _context19.n = 5;
+            _context21.n = 5;
             break;
           }
-          return _context19.a(2, null);
+          return _context21.a(2, null);
         case 5:
           (data || []).forEach(add);
-          _context19.n = 7;
+          _context21.n = 7;
           break;
         case 6:
-          _context19.p = 6;
-          _t20 = _context19.v;
-          return _context19.a(2, null);
+          _context21.p = 6;
+          _t26 = _context21.v;
+          return _context21.a(2, null);
         case 7:
           if (!(byName.size === before)) {
-            _context19.n = 11;
+            _context21.n = 11;
             break;
           }
-          _context19.p = 8;
-          _context19.n = 9;
+          _context21.p = 8;
+          _context21.n = 9;
           return sg("history");
         case 9:
-          hv = _context19.v;
-          _iterator7 = _createForOfIteratorHelper((hv ? JSON.parse(hv) : []) || []);
+          hv = _context21.v;
+          _iterator8 = _createForOfIteratorHelper((hv ? JSON.parse(hv) : []) || []);
           try {
-            for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
-              snap = _step7.value;
-              _iterator8 = _createForOfIteratorHelper(snap.logs || []);
+            for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
+              snap = _step8.value;
+              _iterator9 = _createForOfIteratorHelper(snap.logs || []);
               try {
-                for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
-                  l = _step8.value;
+                for (_iterator9.s(); !(_step9 = _iterator9.n()).done;) {
+                  l = _step9.value;
                   add(l);
                 }
               } catch (err) {
-                _iterator8.e(err);
+                _iterator9.e(err);
               } finally {
-                _iterator8.f();
+                _iterator9.f();
               }
             }
           } catch (err) {
-            _iterator7.e(err);
+            _iterator8.e(err);
           } finally {
-            _iterator7.f();
+            _iterator8.f();
           }
-          _context19.n = 11;
+          _context21.n = 11;
           break;
         case 10:
-          _context19.p = 10;
-          _t21 = _context19.v;
+          _context21.p = 10;
+          _t27 = _context21.v;
         case 11:
-          _context19.n = 12;
+          _context21.n = 12;
           return ss(REVIVE_KEY, "1");
         case 12:
           if (!(byName.size === before)) {
-            _context19.n = 13;
+            _context21.n = 13;
             break;
           }
-          return _context19.a(2, null);
+          return _context21.a(2, null);
         case 13:
           revived = _toConsumableArray(byName.values());
-          _context19.n = 14;
+          _context21.n = 14;
           return ss("meals", JSON.stringify(revived));
         case 14:
           if (uid) syncMeals(uid, revived)["catch"](function () {});
-          return _context19.a(2, revived);
+          return _context21.a(2, revived);
       }
-    }, _callee19, null, [[8, 10], [3, 6]]);
+    }, _callee21, null, [[8, 10], [3, 6]]);
   }));
-  return function reviveMeals(_x40, _x41) {
-    return _ref34.apply(this, arguments);
+  return function reviveMeals(_x44, _x45) {
+    return _ref36.apply(this, arguments);
   };
 }();
 
 // Current Supabase access token (JWT) — the worker requires it to authorise AI calls.
 var getAccessToken = /*#__PURE__*/function () {
-  var _ref35 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee20() {
-    var _data$session, client, _yield$client$auth$ge, data, _t22;
-    return _regenerator().w(function (_context20) {
-      while (1) switch (_context20.p = _context20.n) {
+  var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
+    var _data$session, client, _yield$client$auth$ge, data, _t28;
+    return _regenerator().w(function (_context22) {
+      while (1) switch (_context22.p = _context22.n) {
         case 0:
-          _context20.p = 0;
+          _context22.p = 0;
           client = sb();
           if (client) {
-            _context20.n = 1;
+            _context22.n = 1;
             break;
           }
-          return _context20.a(2, null);
+          return _context22.a(2, null);
         case 1:
-          _context20.n = 2;
+          _context22.n = 2;
           return client.auth.getSession();
         case 2:
-          _yield$client$auth$ge = _context20.v;
+          _yield$client$auth$ge = _context22.v;
           data = _yield$client$auth$ge.data;
-          return _context20.a(2, (data === null || data === void 0 || (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) || null);
+          return _context22.a(2, (data === null || data === void 0 || (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) || null);
         case 3:
-          _context20.p = 3;
-          _t22 = _context20.v;
-          return _context20.a(2, null);
+          _context22.p = 3;
+          _t28 = _context22.v;
+          return _context22.a(2, null);
       }
-    }, _callee20, null, [[0, 3]]);
+    }, _callee22, null, [[0, 3]]);
   }));
   return function getAccessToken() {
-    return _ref35.apply(this, arguments);
+    return _ref37.apply(this, arguments);
   };
 }();
 
 // Server-side voucher redemption (Phase A). Sends the code to the worker /redeem endpoint.
 var redeemVoucher = /*#__PURE__*/function () {
-  var _ref36 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee21(code) {
+  var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(code) {
     var token, res, data;
-    return _regenerator().w(function (_context21) {
-      while (1) switch (_context21.n) {
+    return _regenerator().w(function (_context23) {
+      while (1) switch (_context23.n) {
         case 0:
-          _context21.n = 1;
+          _context23.n = 1;
           return getAccessToken();
         case 1:
-          token = _context21.v;
+          token = _context23.v;
           if (token) {
-            _context21.n = 2;
+            _context23.n = 2;
             break;
           }
           throw new Error("Please sign in to redeem a voucher.");
         case 2:
-          _context21.n = 3;
+          _context23.n = 3;
           return fetch(AI_ENDPOINT + "/redeem", {
             method: "POST",
             headers: {
@@ -3745,48 +3941,48 @@ var redeemVoucher = /*#__PURE__*/function () {
             })
           });
         case 3:
-          res = _context21.v;
+          res = _context23.v;
           if (res.ok) {
-            _context21.n = 5;
+            _context23.n = 5;
             break;
           }
-          _context21.n = 4;
+          _context23.n = 4;
           return res.json();
         case 4:
-          data = _context21.v;
+          data = _context23.v;
           throw new Error(data.error || "Voucher redemption failed.");
         case 5:
-          _context21.n = 6;
+          _context23.n = 6;
           return res.json();
         case 6:
-          return _context21.a(2, _context21.v);
+          return _context23.a(2, _context23.v);
       }
-    }, _callee21);
+    }, _callee23);
   }));
-  return function redeemVoucher(_x42) {
-    return _ref36.apply(this, arguments);
+  return function redeemVoucher(_x46) {
+    return _ref38.apply(this, arguments);
   };
 }();
 
 // Account deletion (R5). The worker deletes the auth.users row with the service
 // role, which cascades to every table. The client cannot do this itself.
 var deleteAccountRequest = /*#__PURE__*/function () {
-  var _ref37 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee22() {
-    var token, res, msg, _t23, _t24;
-    return _regenerator().w(function (_context22) {
-      while (1) switch (_context22.p = _context22.n) {
+  var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24() {
+    var token, res, msg, _t29, _t30;
+    return _regenerator().w(function (_context24) {
+      while (1) switch (_context24.p = _context24.n) {
         case 0:
-          _context22.n = 1;
+          _context24.n = 1;
           return getAccessToken();
         case 1:
-          token = _context22.v;
+          token = _context24.v;
           if (token) {
-            _context22.n = 2;
+            _context24.n = 2;
             break;
           }
           throw new Error("Please sign in again, then retry.");
         case 2:
-          _context22.n = 3;
+          _context24.n = 3;
           return fetch(AI_ENDPOINT + "/delete-account", {
             method: "POST",
             headers: {
@@ -3795,63 +3991,63 @@ var deleteAccountRequest = /*#__PURE__*/function () {
             }
           });
         case 3:
-          res = _context22.v;
+          res = _context24.v;
           if (res.ok) {
-            _context22.n = 9;
+            _context24.n = 9;
             break;
           }
           msg = "Account deletion failed. Please try again or email fuellogadmin@gmail.com.";
-          _context22.p = 4;
-          _context22.n = 5;
+          _context24.p = 4;
+          _context24.n = 5;
           return res.json();
         case 5:
-          _t23 = _context22.v.error;
-          if (_t23) {
-            _context22.n = 6;
+          _t29 = _context24.v.error;
+          if (_t29) {
+            _context24.n = 6;
             break;
           }
-          _t23 = msg;
+          _t29 = msg;
         case 6:
-          msg = _t23;
-          _context22.n = 8;
+          msg = _t29;
+          _context24.n = 8;
           break;
         case 7:
-          _context22.p = 7;
-          _t24 = _context22.v;
+          _context24.p = 7;
+          _t30 = _context24.v;
         case 8:
           throw new Error(msg);
         case 9:
-          return _context22.a(2, true);
+          return _context24.a(2, true);
       }
-    }, _callee22, null, [[4, 7]]);
+    }, _callee24, null, [[4, 7]]);
   }));
   return function deleteAccountRequest() {
-    return _ref37.apply(this, arguments);
+    return _ref39.apply(this, arguments);
   };
 }();
 
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
 var callAI = /*#__PURE__*/function () {
-  var _ref38 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee23(prompt) {
+  var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(prompt) {
     var maxTokens,
       token,
       ctrl,
       timer,
       res,
       data,
-      _args23 = arguments,
-      _t25;
-    return _regenerator().w(function (_context23) {
-      while (1) switch (_context23.p = _context23.n) {
+      _args25 = arguments,
+      _t31;
+    return _regenerator().w(function (_context25) {
+      while (1) switch (_context25.p = _context25.n) {
         case 0:
-          maxTokens = _args23.length > 1 && _args23[1] !== undefined ? _args23[1] : 500;
-          _context23.n = 1;
+          maxTokens = _args25.length > 1 && _args25[1] !== undefined ? _args25[1] : 500;
+          _context25.n = 1;
           return getAccessToken();
         case 1:
-          token = _context23.v;
+          token = _context25.v;
           if (token) {
-            _context23.n = 2;
+            _context25.n = 2;
             break;
           }
           throw new Error("Please sign in to use AI features.");
@@ -3862,8 +4058,8 @@ var callAI = /*#__PURE__*/function () {
           timer = setTimeout(function () {
             return ctrl.abort();
           }, 30000);
-          _context23.p = 3;
-          _context23.n = 4;
+          _context25.p = 3;
+          _context25.n = 4;
           return fetch(AI_ENDPOINT, {
             method: "POST",
             signal: ctrl.signal,
@@ -3881,54 +4077,54 @@ var callAI = /*#__PURE__*/function () {
             })
           });
         case 4:
-          res = _context23.v;
-          _context23.n = 6;
+          res = _context25.v;
+          _context25.n = 6;
           break;
         case 5:
-          _context23.p = 5;
-          _t25 = _context23.v;
-          throw new Error(_t25.name === "AbortError" ? "AI request timed out — check your connection and try again." : "Couldn't reach the AI — check your connection.");
+          _context25.p = 5;
+          _t31 = _context25.v;
+          throw new Error(_t31.name === "AbortError" ? "AI request timed out — check your connection and try again." : "Couldn't reach the AI — check your connection.");
         case 6:
-          _context23.p = 6;
+          _context25.p = 6;
           clearTimeout(timer);
-          return _context23.f(6);
+          return _context25.f(6);
         case 7:
           if (res.ok) {
-            _context23.n = 11;
+            _context25.n = 11;
             break;
           }
           if (!(res.status === 401)) {
-            _context23.n = 8;
+            _context25.n = 8;
             break;
           }
           throw new Error("Your session expired — please sign in again.");
         case 8:
           if (!(res.status === 429)) {
-            _context23.n = 9;
+            _context25.n = 9;
             break;
           }
           throw new Error("Daily AI limit reached — try again tomorrow.");
         case 9:
           if (!(res.status === 402 || res.status === 403)) {
-            _context23.n = 10;
+            _context25.n = 10;
             break;
           }
           throw new Error("AI features require an active Premium account.");
         case 10:
           throw new Error("AI service is unavailable right now (" + res.status + ").");
         case 11:
-          _context23.n = 12;
+          _context25.n = 12;
           return res.json();
         case 12:
-          data = _context23.v;
-          return _context23.a(2, (data.content || []).map(function (b) {
+          data = _context25.v;
+          return _context25.a(2, (data.content || []).map(function (b) {
             return b.text || "";
           }).join("").trim());
       }
-    }, _callee23, null, [[3, 5, 6, 7]]);
+    }, _callee25, null, [[3, 5, 6, 7]]);
   }));
-  return function callAI(_x43) {
-    return _ref38.apply(this, arguments);
+  return function callAI(_x47) {
+    return _ref40.apply(this, arguments);
   };
 }();
 var repairJson = function repairJson(text) {
@@ -3946,24 +4142,24 @@ var repairJson = function repairJson(text) {
   return JSON.parse(s);
 };
 var callAIJson = /*#__PURE__*/function () {
-  var _ref39 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee24(prompt) {
+  var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(prompt) {
     var maxTokens,
       text,
-      _args24 = arguments;
-    return _regenerator().w(function (_context24) {
-      while (1) switch (_context24.n) {
+      _args26 = arguments;
+    return _regenerator().w(function (_context26) {
+      while (1) switch (_context26.n) {
         case 0:
-          maxTokens = _args24.length > 1 && _args24[1] !== undefined ? _args24[1] : 500;
-          _context24.n = 1;
+          maxTokens = _args26.length > 1 && _args26[1] !== undefined ? _args26[1] : 500;
+          _context26.n = 1;
           return callAI(prompt, maxTokens);
         case 1:
-          text = _context24.v;
-          return _context24.a(2, repairJson(text));
+          text = _context26.v;
+          return _context26.a(2, repairJson(text));
       }
-    }, _callee24);
+    }, _callee26);
   }));
-  return function callAIJson(_x44) {
-    return _ref39.apply(this, arguments);
+  return function callAIJson(_x48) {
+    return _ref41.apply(this, arguments);
   };
 }();
 
@@ -4015,10 +4211,10 @@ var ErrorBoundary = /*#__PURE__*/function (_React$Component) {
     }
   }]);
 }(React.Component); // ── Premium Modals ────────────────────────────────────────────
-function PremiumModal(_ref40) {
-  var feature = _ref40.feature,
-    onUpgrade = _ref40.onUpgrade,
-    onDismiss = _ref40.onDismiss;
+function PremiumModal(_ref42) {
+  var feature = _ref42.feature,
+    onUpgrade = _ref42.onUpgrade,
+    onDismiss = _ref42.onDismiss;
   var emoji = feature ? feature.emoji : "⭐";
   var name = feature ? feature.name : "This feature";
   return /*#__PURE__*/React.createElement("div", {
@@ -4085,10 +4281,10 @@ function PremiumModal(_ref40) {
       letterSpacing: "0.1em",
       marginBottom: 10
     }
-  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref41, i) {
-    var _ref42 = _slicedToArray(_ref41, 2),
-      e = _ref42[0],
-      t = _ref42[1];
+  }, "PREMIUM UNLOCKS"), [["🤖", "AI Meal Log — describe any meal"], ["🏋️", "Workout AI Parser — paste and analyse"], ["🧑‍💼", "Daily Coach — personalised tips"], ["☁️", "Cloud sync — log on any device"]].map(function (_ref43, i) {
+    var _ref44 = _slicedToArray(_ref43, 2),
+      e = _ref44[0],
+      t = _ref44[1];
     return /*#__PURE__*/React.createElement("div", {
       key: i,
       style: {
@@ -4143,9 +4339,9 @@ function PremiumModal(_ref40) {
     }
   }, "Maybe Later")));
 }
-function SignInModal(_ref43) {
-  var onSuccess = _ref43.onSuccess,
-    onCancel = _ref43.onCancel;
+function SignInModal(_ref45) {
+  var onSuccess = _ref45.onSuccess,
+    onCancel = _ref45.onCancel;
   var devMode = !GOOGLE_CLIENT_ID;
   var _useState = useState(devMode ? "payment" : "google"),
     _useState2 = _slicedToArray(_useState, 2),
@@ -4188,23 +4384,23 @@ function SignInModal(_ref43) {
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: function () {
-          var _callback = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(resp) {
-            var _yield$sb$auth$signIn, data, error, u, p, _t26;
-            return _regenerator().w(function (_context25) {
-              while (1) switch (_context25.p = _context25.n) {
+          var _callback = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27(resp) {
+            var _yield$sb$auth$signIn, data, error, u, p, _t32;
+            return _regenerator().w(function (_context27) {
+              while (1) switch (_context27.p = _context27.n) {
                 case 0:
-                  _context25.p = 0;
-                  _context25.n = 1;
+                  _context27.p = 0;
+                  _context27.n = 1;
                   return sb().auth.signInWithIdToken({
                     provider: "google",
                     token: resp.credential
                   });
                 case 1:
-                  _yield$sb$auth$signIn = _context25.v;
+                  _yield$sb$auth$signIn = _context27.v;
                   data = _yield$sb$auth$signIn.data;
                   error = _yield$sb$auth$signIn.error;
                   if (!error) {
-                    _context25.n = 2;
+                    _context27.n = 2;
                     break;
                   }
                   throw error;
@@ -4216,11 +4412,11 @@ function SignInModal(_ref43) {
                     email: u.email || "",
                     picture: u.user_metadata.avatar_url || ""
                   });
-                  _context25.n = 4;
+                  _context27.n = 4;
                   break;
                 case 3:
-                  _context25.p = 3;
-                  _t26 = _context25.v;
+                  _context27.p = 3;
+                  _t32 = _context27.v;
                   p = parseJwt(resp.credential);
                   setGUser({
                     name: p.name || "User",
@@ -4230,11 +4426,11 @@ function SignInModal(_ref43) {
                 case 4:
                   setStep("payment");
                 case 5:
-                  return _context25.a(2);
+                  return _context27.a(2);
               }
-            }, _callee25, null, [[0, 3]]);
+            }, _callee27, null, [[0, 3]]);
           }));
-          function callback(_x45) {
+          function callback(_x49) {
             return _callback.apply(this, arguments);
           }
           return callback;
@@ -4261,28 +4457,28 @@ function SignInModal(_ref43) {
     };
   };
   var handleVoucher = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26() {
-      var _t27;
-      return _regenerator().w(function (_context26) {
-        while (1) switch (_context26.p = _context26.n) {
+    var _ref46 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
+      var _t33;
+      return _regenerator().w(function (_context28) {
+        while (1) switch (_context28.p = _context28.n) {
           case 0:
             if (consentOK) {
-              _context26.n = 1;
+              _context28.n = 1;
               break;
             }
             setVError("Please consent to health-data storage to continue.");
-            return _context26.a(2);
+            return _context28.a(2);
           case 1:
             if (voucher.trim()) {
-              _context26.n = 2;
+              _context28.n = 2;
               break;
             }
             setVError("Enter a voucher code.");
-            return _context26.a(2);
+            return _context28.a(2);
           case 2:
             setVError("");
-            _context26.p = 3;
-            _context26.n = 4;
+            _context28.p = 3;
+            _context28.n = 4;
             return redeemVoucher(voucher);
           case 4:
             haptic();
@@ -4291,19 +4487,19 @@ function SignInModal(_ref43) {
               email: "",
               picture: ""
             }, "voucher", consentMeta());
-            _context26.n = 6;
+            _context28.n = 6;
             break;
           case 5:
-            _context26.p = 5;
-            _t27 = _context26.v;
-            setVError(_t27.message || "Redemption failed. Try again.");
+            _context28.p = 5;
+            _t33 = _context28.v;
+            setVError(_t33.message || "Redemption failed. Try again.");
           case 6:
-            return _context26.a(2);
+            return _context28.a(2);
         }
-      }, _callee26, null, [[3, 5]]);
+      }, _callee28, null, [[3, 5]]);
     }));
     return function handleVoucher() {
-      return _ref44.apply(this, arguments);
+      return _ref46.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -4577,10 +4773,10 @@ function SignInModal(_ref43) {
     }
   }, "Cancel"))));
 }
-function SignOutModal(_ref45) {
-  var userName = _ref45.userName,
-    onConfirm = _ref45.onConfirm,
-    onCancel = _ref45.onCancel;
+function SignOutModal(_ref47) {
+  var userName = _ref47.userName,
+    onConfirm = _ref47.onConfirm,
+    onCancel = _ref47.onCancel;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -4653,9 +4849,9 @@ function SignOutModal(_ref45) {
 
 // Retroactive / re-consent prompt (R2). Shown when a signed-in user has not yet
 // agreed to the current privacy-policy version. Blocking — they consent or sign out.
-function ConsentModal(_ref46) {
-  var onConsent = _ref46.onConsent,
-    onSignOut = _ref46.onSignOut;
+function ConsentModal(_ref48) {
+  var onConsent = _ref48.onConsent,
+    onSignOut = _ref48.onSignOut;
   var _useState13 = useState(false),
     _useState14 = _slicedToArray(_useState13, 2),
     ok = _useState14[0],
@@ -4772,13 +4968,13 @@ function ConsentModal(_ref46) {
 // ── Account & Privacy screen ──────────────────────────────────
 // Reached by tapping the avatar. Home for data export (R4), account deletion
 // (R5), policy links, consent status, and sign out (LEGAL_ROADMAP Phase B).
-function AccountScreen(_ref47) {
-  var user = _ref47.user,
-    consentInfo = _ref47.consentInfo,
-    onBack = _ref47.onBack,
-    onExport = _ref47.onExport,
-    onSignOut = _ref47.onSignOut,
-    onDelete = _ref47.onDelete;
+function AccountScreen(_ref49) {
+  var user = _ref49.user,
+    consentInfo = _ref49.consentInfo,
+    onBack = _ref49.onBack,
+    onExport = _ref49.onExport,
+    onSignOut = _ref49.onSignOut,
+    onDelete = _ref49.onDelete;
   var _useState15 = useState(false),
     _useState16 = _slicedToArray(_useState15, 2),
     confirm = _useState16[0],
@@ -4796,31 +4992,31 @@ function AccountScreen(_ref47) {
     err = _useState22[0],
     setErr = _useState22[1];
   var runDelete = /*#__PURE__*/function () {
-    var _ref48 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee27() {
-      var _t28;
-      return _regenerator().w(function (_context27) {
-        while (1) switch (_context27.p = _context27.n) {
+    var _ref50 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
+      var _t34;
+      return _regenerator().w(function (_context29) {
+        while (1) switch (_context29.p = _context29.n) {
           case 0:
             setBusy(true);
             setErr("");
-            _context27.p = 1;
-            _context27.n = 2;
+            _context29.p = 1;
+            _context29.n = 2;
             return onDelete();
           case 2:
-            _context27.n = 4;
+            _context29.n = 4;
             break;
           case 3:
-            _context27.p = 3;
-            _t28 = _context27.v;
-            setErr(_t28.message || "Deletion failed.");
+            _context29.p = 3;
+            _t34 = _context29.v;
+            setErr(_t34.message || "Deletion failed.");
             setBusy(false);
           case 4:
-            return _context27.a(2);
+            return _context29.a(2);
         }
-      }, _callee27, null, [[1, 3]]);
+      }, _callee29, null, [[1, 3]]);
     }));
     return function runDelete() {
-      return _ref48.apply(this, arguments);
+      return _ref50.apply(this, arguments);
     };
   }();
   var linkRow = function linkRow(label, href) {
@@ -5109,9 +5305,9 @@ function AccountScreen(_ref47) {
     }
   }, "fuellogadmin@gmail.com"), "."));
 }
-function LapsedModal(_ref49) {
-  var onRenew = _ref49.onRenew,
-    onDismiss = _ref49.onDismiss;
+function LapsedModal(_ref51) {
+  var onRenew = _ref51.onRenew,
+    onDismiss = _ref51.onDismiss;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
@@ -5195,10 +5391,10 @@ var INP = {
   fontFamily: "inherit",
   outline: "none"
 };
-function BackHdr(_ref50) {
-  var title = _ref50.title,
-    onBack = _ref50.onBack,
-    right = _ref50.right;
+function BackHdr(_ref52) {
+  var title = _ref52.title,
+    onBack = _ref52.onBack,
+    right = _ref52.right;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -5239,10 +5435,10 @@ function BackHdr(_ref50) {
     }
   }, title), right);
 }
-function Chip(_ref51) {
-  var label = _ref51.label,
-    value = _ref51.value,
-    color = _ref51.color;
+function Chip(_ref53) {
+  var label = _ref53.label,
+    value = _ref53.value,
+    color = _ref53.color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -5277,11 +5473,11 @@ var SCORE_COLOUR = {
 
 // Replaces the old flat-tolerance MBar (dashboard/02, superseded) — same bar shell, but colour
 // comes from the role-based score (dashboard/04) instead of a flat 5g/15g-over delta.
-function ScoredBar(_ref52) {
-  var label = _ref52.label,
-    value = _ref52.value,
-    target = _ref52.target,
-    score = _ref52.score;
+function ScoredBar(_ref54) {
+  var label = _ref54.label,
+    value = _ref54.value,
+    target = _ref54.target,
+    score = _ref54.score;
   var pct = target > 0 ? Math.min(100, value / target * 100) : 0;
   var accent = SCORE_COLOUR[score.colour] || "var(--text-mid-6)";
   return /*#__PURE__*/React.createElement("div", {
@@ -5355,10 +5551,10 @@ var arcPath = function arcPath(cx, cy, r, startDeg, endDeg) {
 // as one ambiguous thing plus a caption. Split into two independent square-ish cards, each with
 // its own title and its own ring — a reader now has to notice two separate boxes before they can
 // even get to "which timeframe," rather than parse a shared ring's position.
-function ScoreCard(_ref53) {
-  var title = _ref53.title,
-    ring = _ref53.ring,
-    children = _ref53.children;
+function ScoreCard(_ref55) {
+  var title = _ref55.title,
+    ring = _ref55.ring,
+    children = _ref55.children;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
@@ -5383,14 +5579,14 @@ function ScoreCard(_ref53) {
     }
   }, title), ring, children);
 }
-function IntakeScoreCard(_ref54) {
-  var hero = _ref54.hero,
-    todayMiss = _ref54.todayMiss,
-    _ref54$todayColours = _ref54.todayColours,
-    todayColours = _ref54$todayColours === void 0 ? [] : _ref54$todayColours,
-    weekScore = _ref54.weekScore,
-    _ref54$dayColours = _ref54.dayColours,
-    dayColours = _ref54$dayColours === void 0 ? [] : _ref54$dayColours;
+function IntakeScoreCard(_ref56) {
+  var hero = _ref56.hero,
+    todayMiss = _ref56.todayMiss,
+    _ref56$todayColours = _ref56.todayColours,
+    todayColours = _ref56$todayColours === void 0 ? [] : _ref56$todayColours,
+    weekScore = _ref56.weekScore,
+    _ref56$dayColours = _ref56.dayColours,
+    dayColours = _ref56$dayColours === void 0 ? [] : _ref56$dayColours;
   var innerColour = SCORE_COLOUR[todayMiss ? "grey" : hero.colour];
   var isFillingIn = weekScore.state === "filling-in";
   var verdictColour = SCORE_COLOUR[isFillingIn ? "grey" : weekScore.colour];
@@ -5571,14 +5767,14 @@ function IntakeScoreCard(_ref54) {
 
 // ── Coach Card ────────────────────────────────────────────────
 
-function CoachCard(_ref55) {
-  var mode = _ref55.mode,
-    totals = _ref55.totals,
-    targets = _ref55.targets,
-    streak = _ref55.streak,
-    water = _ref55.water,
-    _ref55$logs = _ref55.logs,
-    logs = _ref55$logs === void 0 ? [] : _ref55$logs;
+function CoachCard(_ref57) {
+  var mode = _ref57.mode,
+    totals = _ref57.totals,
+    targets = _ref57.targets,
+    streak = _ref57.streak,
+    water = _ref57.water,
+    _ref57$logs = _ref57.logs,
+    logs = _ref57$logs === void 0 ? [] : _ref57$logs;
   var _useState23 = useState(""),
     _useState24 = _slicedToArray(_useState23, 2),
     tip = _useState24[0],
@@ -5611,19 +5807,19 @@ function CoachCard(_ref55) {
   }, [totals.kcal]); // eslint-disable-line
 
   var gen = /*#__PURE__*/function () {
-    var _ref56 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee28() {
-      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, eaten, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t29;
-      return _regenerator().w(function (_context28) {
-        while (1) switch (_context28.p = _context28.n) {
+    var _ref58 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
+      var h, timeLabel, kcalNum, kcalDelta, kcalLine, protNum, protDelta, protLine, waterLine, eaten, foodsLine, firstMealHour, protFrac, protPace, waterPace, protPaceLine, waterPaceLine, prevLine, ctx, prompt, t, r, newHistory, _t35;
+      return _regenerator().w(function (_context30) {
+        while (1) switch (_context30.p = _context30.n) {
           case 0:
             if (!(loading || refreshes >= 3)) {
-              _context28.n = 1;
+              _context30.n = 1;
               break;
             }
-            return _context28.a(2);
+            return _context30.a(2);
           case 1:
             setLoading(true);
-            _context28.p = 2;
+            _context30.p = 2;
             h = getCurrentHour();
             timeLabel = h < 6 ? "early morning" : h < 12 ? "morning" : h < 14 ? "midday" : h < 18 ? "afternoon" : h < 21 ? "evening" : "night"; // Spell out over/under per metric so the model never tells you to eat/drink
             // more of something you've already hit. Raw "X/Y" alone reads as a deficit.
@@ -5655,36 +5851,36 @@ function CoachCard(_ref55) {
             prevLine = history.length ? "You have ALREADY suggested these today \u2014 say something meaningfully different: ".concat(history.slice(-3).join(" | "), ".") : "";
             ctx = ["- ".concat(kcalLine), "- ".concat(protLine), "- ".concat(waterLine), "- ".concat(streak, " day logging streak."), "- ".concat(foodsLine), protPaceLine ? "- ".concat(protPaceLine) : "", waterPaceLine ? "- ".concat(waterPaceLine) : "", prevLine ? "- ".concat(prevLine) : ""].filter(Boolean).join("\n");
             prompt = "You are a supportive fitness coach. Local time: ".concat(timeLabel, " (").concat(h, ":00). Today (").concat(mode, " mode):\n").concat(ctx, "\n\nRules:\n- Use the pace VERDICT given above; do NOT decide for yourself whether I am \"behind\". Only protein and water are paced \u2014 NEVER calories. Being under my calorie target is success on a cut/maintain, never \"behind\", and you must never urge me to eat more to \"catch up\" on calories.\n- Never suggest more of a metric marked \"goal met \u2705\"; instead give that met goal a brief celebratory nod.\n- If the protein goal is still unmet, meeting it OUTRANKS variety; once protein and water are met, favour VARIETY and fibre / gut-health diversity instead of re-recommending the same high-protein food.\n- Any food you suggest must NOT be something already eaten today, and must differ from what you already suggested.\n- Speak plain, everyday English. NEVER use the words \"floor\" or \"ceiling\" (or \"floors\"/\"ceilings\") \u2014 they are maths jargon that means nothing to me. Say \"your protein goal\", \"the minimum\", \"your calorie limit\" or \"the most you should have\" instead.\n- If protein's or water's verdict is \"behind\", give a gentle, non-punishing nudge toward one specific food choice to round the day out \u2014 no \"catch up\" urgency, no shame.\n").concat(dietaryPromptBlock(DIETARY), "Write exactly 3 sentences: 1) an honest observation about today 2) a specific food or habit suggestion appropriate for ").concat(timeLabel, " 3) genuine praise. Brief, personal, max one emoji per sentence.");
-            _context28.n = 3;
+            _context30.n = 3;
             return callAI(prompt, 200);
           case 3:
-            t = _context28.v;
+            t = _context30.v;
             r = refreshes + 1;
             newHistory = [].concat(_toConsumableArray(history), [t]).slice(-3);
             setTip(t);
             setRefreshes(r);
             setHistory(newHistory);
-            _context28.n = 4;
+            _context30.n = 4;
             return ss("coach__" + todayKey(), JSON.stringify({
               tip: t,
               r: r,
               history: newHistory
             }));
           case 4:
-            _context28.n = 6;
+            _context30.n = 6;
             break;
           case 5:
-            _context28.p = 5;
-            _t29 = _context28.v;
+            _context30.p = 5;
+            _t35 = _context30.v;
           case 6:
             setLoading(false);
           case 7:
-            return _context28.a(2);
+            return _context30.a(2);
         }
-      }, _callee28, null, [[2, 5]]);
+      }, _callee30, null, [[2, 5]]);
     }));
     return function gen() {
-      return _ref56.apply(this, arguments);
+      return _ref58.apply(this, arguments);
     };
   }();
   if (totals.kcal < 200 && !tip) return null;
@@ -5758,14 +5954,14 @@ function CoachCard(_ref55) {
 // ── Tag input (feature #8) ────────────────────────────────────
 // A hybrid combobox: free-text that surfaces selectable suggestions and also
 // lets the user commit a CUSTOM tag the app didn't suggest. Tags are removable pills.
-function TagField(_ref57) {
-  var label = _ref57.label,
-    tags = _ref57.tags,
-    suggestions = _ref57.suggestions,
-    onChange = _ref57.onChange,
-    _ref57$accent = _ref57.accent,
-    accent = _ref57$accent === void 0 ? A : _ref57$accent,
-    placeholder = _ref57.placeholder;
+function TagField(_ref59) {
+  var label = _ref59.label,
+    tags = _ref59.tags,
+    suggestions = _ref59.suggestions,
+    onChange = _ref59.onChange,
+    _ref59$accent = _ref59.accent,
+    accent = _ref59$accent === void 0 ? A : _ref59$accent,
+    placeholder = _ref59.placeholder;
   var _useState31 = useState(""),
     _useState32 = _slicedToArray(_useState31, 2),
     input = _useState32[0],
@@ -5935,9 +6131,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kg)];
     },
-    build: function build(_ref58) {
-      var _ref59 = _slicedToArray(_ref58, 1),
-        a = _ref59[0];
+    build: function build(_ref60) {
+      var _ref61 = _slicedToArray(_ref60, 1),
+        a = _ref61[0];
       return a;
     }
   },
@@ -5946,9 +6142,9 @@ var MEASURE_CFG = {
     seed: function seed(kg) {
       return emptyMetric(kg) ? [""] : [String(kgToLb(kg))];
     },
-    build: function build(_ref60) {
-      var _ref61 = _slicedToArray(_ref60, 1),
-        a = _ref61[0];
+    build: function build(_ref62) {
+      var _ref63 = _slicedToArray(_ref62, 1),
+        a = _ref63[0];
       return lbToKg(a);
     }
   },
@@ -5959,10 +6155,10 @@ var MEASURE_CFG = {
       var x = kgToStLb(kg);
       return [String(x.st), String(x.lb)];
     },
-    build: function build(_ref62) {
-      var _ref63 = _slicedToArray(_ref62, 2),
-        s = _ref63[0],
-        p = _ref63[1];
+    build: function build(_ref64) {
+      var _ref65 = _slicedToArray(_ref64, 2),
+        s = _ref65[0],
+        p = _ref65[1];
       return stLbToKg(s, p);
     }
   },
@@ -5971,9 +6167,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cm)];
     },
-    build: function build(_ref64) {
-      var _ref65 = _slicedToArray(_ref64, 1),
-        a = _ref65[0];
+    build: function build(_ref66) {
+      var _ref67 = _slicedToArray(_ref66, 1),
+        a = _ref67[0];
       return a;
     }
   },
@@ -5982,9 +6178,9 @@ var MEASURE_CFG = {
     seed: function seed(cm) {
       return emptyMetric(cm) ? [""] : [String(cmToInch(cm))];
     },
-    build: function build(_ref66) {
-      var _ref67 = _slicedToArray(_ref66, 1),
-        a = _ref67[0];
+    build: function build(_ref68) {
+      var _ref69 = _slicedToArray(_ref68, 1),
+        a = _ref69[0];
       return inchToCm(a);
     }
   },
@@ -5995,18 +6191,18 @@ var MEASURE_CFG = {
       var x = cmToFtIn(cm);
       return [String(x.ft), String(x["in"])];
     },
-    build: function build(_ref68) {
-      var _ref69 = _slicedToArray(_ref68, 2),
-        ft = _ref69[0],
-        i = _ref69[1];
+    build: function build(_ref70) {
+      var _ref71 = _slicedToArray(_ref70, 2),
+        ft = _ref71[0],
+        i = _ref71[1];
       return ftInToCm(ft, i);
     }
   }
 };
-function MeasureField(_ref70) {
-  var metric = _ref70.metric,
-    unit = _ref70.unit,
-    onChange = _ref70.onChange;
+function MeasureField(_ref72) {
+  var metric = _ref72.metric,
+    unit = _ref72.unit,
+    onChange = _ref72.onChange;
   var cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
   var _useState33 = useState(function () {
       return cfg.seed(metric);
@@ -6064,11 +6260,11 @@ function ThemeToggle() {
       borderRadius: 12,
       padding: 4
     }
-  }, opts.map(function (_ref71) {
-    var _ref72 = _slicedToArray(_ref71, 3),
-      v = _ref72[0],
-      icon = _ref72[1],
-      lbl = _ref72[2];
+  }, opts.map(function (_ref73) {
+    var _ref74 = _slicedToArray(_ref73, 3),
+      v = _ref74[0],
+      icon = _ref74[1],
+      lbl = _ref74[2];
     var on = choice === v;
     return /*#__PURE__*/React.createElement("button", {
       key: v,
@@ -6107,10 +6303,10 @@ function ThemeToggle() {
     }, lbl));
   }));
 }
-function UnitSwitch(_ref73) {
-  var value = _ref73.value,
-    options = _ref73.options,
-    onChange = _ref73.onChange;
+function UnitSwitch(_ref75) {
+  var value = _ref75.value,
+    options = _ref75.options,
+    onChange = _ref75.onChange;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -6120,10 +6316,10 @@ function UnitSwitch(_ref73) {
       borderRadius: 999,
       padding: 2
     }
-  }, options.map(function (_ref74) {
-    var _ref75 = _slicedToArray(_ref74, 2),
-      v = _ref75[0],
-      lbl = _ref75[1];
+  }, options.map(function (_ref76) {
+    var _ref77 = _slicedToArray(_ref76, 2),
+      v = _ref77[0],
+      lbl = _ref77[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -6144,30 +6340,30 @@ function UnitSwitch(_ref73) {
     }, lbl);
   }));
 }
-function ProfileScreen(_ref76) {
-  var profile = _ref76.profile,
-    onSave = _ref76.onSave,
-    onBack = _ref76.onBack,
-    _ref76$tdeeAdj = _ref76.tdeeAdj,
-    tdeeAdj = _ref76$tdeeAdj === void 0 ? 0 : _ref76$tdeeAdj,
-    _ref76$weighIns = _ref76.weighIns,
-    weighIns = _ref76$weighIns === void 0 ? [] : _ref76$weighIns,
-    _ref76$aggressiveCutA = _ref76.aggressiveCutAcked,
-    aggressiveCutAcked = _ref76$aggressiveCutA === void 0 ? false : _ref76$aggressiveCutA,
-    _ref76$onResetAdjustm = _ref76.onResetAdjustment,
-    onResetAdjustment = _ref76$onResetAdjustm === void 0 ? function () {} : _ref76$onResetAdjustm,
-    _ref76$bodyMeasuremen = _ref76.bodyMeasurements,
-    bodyMeasurements = _ref76$bodyMeasuremen === void 0 ? [] : _ref76$bodyMeasuremen,
-    _ref76$onMeasurement = _ref76.onMeasurement,
-    onMeasurement = _ref76$onMeasurement === void 0 ? function () {} : _ref76$onMeasurement,
-    _ref76$measurementNot = _ref76.measurementNote,
-    measurementNote = _ref76$measurementNot === void 0 ? "" : _ref76$measurementNot,
-    _ref76$onSaveMeasurem = _ref76.onSaveMeasurementNote,
-    onSaveMeasurementNote = _ref76$onSaveMeasurem === void 0 ? function () {} : _ref76$onSaveMeasurem,
-    _ref76$muteMeasuremen = _ref76.muteMeasurements,
-    muteMeasurements = _ref76$muteMeasuremen === void 0 ? false : _ref76$muteMeasuremen,
-    _ref76$onToggleMuteMe = _ref76.onToggleMuteMeasurements,
-    onToggleMuteMeasurements = _ref76$onToggleMuteMe === void 0 ? function () {} : _ref76$onToggleMuteMe;
+function ProfileScreen(_ref78) {
+  var profile = _ref78.profile,
+    onSave = _ref78.onSave,
+    onBack = _ref78.onBack,
+    _ref78$tdeeAdj = _ref78.tdeeAdj,
+    tdeeAdj = _ref78$tdeeAdj === void 0 ? 0 : _ref78$tdeeAdj,
+    _ref78$weighIns = _ref78.weighIns,
+    weighIns = _ref78$weighIns === void 0 ? [] : _ref78$weighIns,
+    _ref78$aggressiveCutA = _ref78.aggressiveCutAcked,
+    aggressiveCutAcked = _ref78$aggressiveCutA === void 0 ? false : _ref78$aggressiveCutA,
+    _ref78$onResetAdjustm = _ref78.onResetAdjustment,
+    onResetAdjustment = _ref78$onResetAdjustm === void 0 ? function () {} : _ref78$onResetAdjustm,
+    _ref78$bodyMeasuremen = _ref78.bodyMeasurements,
+    bodyMeasurements = _ref78$bodyMeasuremen === void 0 ? [] : _ref78$bodyMeasuremen,
+    _ref78$onMeasurement = _ref78.onMeasurement,
+    onMeasurement = _ref78$onMeasurement === void 0 ? function () {} : _ref78$onMeasurement,
+    _ref78$measurementNot = _ref78.measurementNote,
+    measurementNote = _ref78$measurementNot === void 0 ? "" : _ref78$measurementNot,
+    _ref78$onSaveMeasurem = _ref78.onSaveMeasurementNote,
+    onSaveMeasurementNote = _ref78$onSaveMeasurem === void 0 ? function () {} : _ref78$onSaveMeasurem,
+    _ref78$muteMeasuremen = _ref78.muteMeasurements,
+    muteMeasurements = _ref78$muteMeasuremen === void 0 ? false : _ref78$muteMeasuremen,
+    _ref78$onToggleMuteMe = _ref78.onToggleMuteMeasurements,
+    onToggleMuteMeasurements = _ref78$onToggleMuteMe === void 0 ? function () {} : _ref78$onToggleMuteMe;
   var _useState37 = useState(_objectSpread(_objectSpread({}, DEF_PROFILE), profile)),
     _useState38 = _slicedToArray(_useState37, 2),
     f = _useState38[0],
@@ -6953,10 +7149,10 @@ function ProfileScreen(_ref76) {
     mode: "bulk",
     label: "BULK",
     color: "var(--bulk)"
-  }].map(function (_ref77) {
-    var mode = _ref77.mode,
-      label = _ref77.label,
-      color = _ref77.color;
+  }].map(function (_ref79) {
+    var mode = _ref79.mode,
+      label = _ref79.label,
+      color = _ref79.color;
     var t = calcTargets(f, mode, 0, tdeeAdj);
     return /*#__PURE__*/React.createElement("div", {
       key: mode,
@@ -6979,11 +7175,11 @@ function ProfileScreen(_ref76) {
         display: "flex",
         gap: 8
       }
-    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref78) {
-      var _ref79 = _slicedToArray(_ref78, 3),
-        k = _ref79[0],
-        key = _ref79[1],
-        u = _ref79[2];
+    }, [["KCAL", "kcal", ""], ["P", "protein", "g"], ["C", "carbs", "g"], ["F", "fat", "g"]].map(function (_ref80) {
+      var _ref81 = _slicedToArray(_ref80, 3),
+        k = _ref81[0],
+        key = _ref81[1],
+        u = _ref81[2];
       return /*#__PURE__*/React.createElement("div", {
         key: k,
         style: {
@@ -7059,14 +7255,14 @@ function ProfileScreen(_ref76) {
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm(_ref80) {
-  var meal = _ref80.meal,
-    onSave = _ref80.onSave,
-    onCancel = _ref80.onCancel,
-    _ref80$isPremium = _ref80.isPremium,
-    isPremium = _ref80$isPremium === void 0 ? false : _ref80$isPremium,
-    _ref80$onPremiumGate = _ref80.onPremiumGate,
-    onPremiumGate = _ref80$onPremiumGate === void 0 ? function () {} : _ref80$onPremiumGate;
+function MealForm(_ref82) {
+  var meal = _ref82.meal,
+    onSave = _ref82.onSave,
+    onCancel = _ref82.onCancel,
+    _ref82$isPremium = _ref82.isPremium,
+    isPremium = _ref82$isPremium === void 0 ? false : _ref82$isPremium,
+    _ref82$onPremiumGate = _ref82.onPremiumGate,
+    onPremiumGate = _ref82$onPremiumGate === void 0 ? function () {} : _ref82$onPremiumGate;
   var blank = {
     name: "",
     kcal: "",
@@ -7104,26 +7300,26 @@ function MealForm(_ref80) {
   // (Until 2026-09-15 an Open Food Facts free-text search ran afterwards and overwrote these
   // fields with whatever product it hit first — see features/logging/07.)
   var estimate = /*#__PURE__*/function () {
-    var _ref81 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee29() {
-      var fill, upd, _t30;
-      return _regenerator().w(function (_context29) {
-        while (1) switch (_context29.p = _context29.n) {
+    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
+      var fill, upd, _t36;
+      return _regenerator().w(function (_context31) {
+        while (1) switch (_context31.p = _context31.n) {
           case 0:
             if (isPremium) {
-              _context29.n = 1;
+              _context31.n = 1;
               break;
             }
             onPremiumGate({
               emoji: "✨",
               name: "AI estimate"
             });
-            return _context29.a(2);
+            return _context31.a(2);
           case 1:
             if (!(!f.name.trim() || reest)) {
-              _context29.n = 2;
+              _context31.n = 2;
               break;
             }
-            return _context29.a(2);
+            return _context31.a(2);
           case 2:
             setReest(true);
             setReestMsg("");
@@ -7137,38 +7333,38 @@ function MealForm(_ref80) {
                 });
               });
             };
-            _context29.p = 3;
-            _context29.n = 4;
+            _context31.p = 3;
+            _context31.n = 4;
             return callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
           case 4:
-            upd = _context29.v;
-            _context29.n = 6;
+            upd = _context31.v;
+            _context31.n = 6;
             break;
           case 5:
-            _context29.p = 5;
-            _t30 = _context29.v;
+            _context31.p = 5;
+            _t36 = _context31.v;
             setReestMsg("Couldn't reach the AI — check your connection and try again.");
             setReest(false);
-            return _context29.a(2);
+            return _context31.a(2);
           case 6:
             if (!(!upd || !isFinite(Number(upd.kcal)))) {
-              _context29.n = 7;
+              _context31.n = 7;
               break;
             }
             setReestMsg("Couldn't estimate that — try rephrasing the name.");
             setReest(false);
-            return _context29.a(2);
+            return _context31.a(2);
           case 7:
             fill(upd);
             setReestMsg("done");
             setReest(false);
           case 8:
-            return _context29.a(2);
+            return _context31.a(2);
         }
-      }, _callee29, null, [[3, 5]]);
+      }, _callee31, null, [[3, 5]]);
     }));
     return function estimate() {
-      return _ref81.apply(this, arguments);
+      return _ref83.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -7331,14 +7527,14 @@ function MealForm(_ref80) {
 // A quiet status line is always-on (any gap); the nudge is a SEPARATE, dismissible
 // mechanism layered on top, not a second copy-branch of the same line — this is what
 // lets the nudge carry its own opt-out/cooldown state independent of the status line.
-function MeasurementRow(_ref82) {
-  var measurements = _ref82.measurements,
-    sex = _ref82.sex,
-    note = _ref82.note,
-    onSave = _ref82.onSave,
-    onSaveNote = _ref82.onSaveNote,
-    showNudge = _ref82.showNudge,
-    onNudgeDismiss = _ref82.onNudgeDismiss;
+function MeasurementRow(_ref84) {
+  var measurements = _ref84.measurements,
+    sex = _ref84.sex,
+    note = _ref84.note,
+    onSave = _ref84.onSave,
+    onSaveNote = _ref84.onSaveNote,
+    showNudge = _ref84.showNudge,
+    onNudgeDismiss = _ref84.onNudgeDismiss;
   var _useState57 = useState(false),
     _useState58 = _slicedToArray(_useState57, 2),
     expanded = _useState58[0],
@@ -7390,16 +7586,16 @@ function MeasurementRow(_ref82) {
   }();
   var prevDaysAgo = prevReading ? Math.max(0, Math.floor((Date.now() - new Date(prevReading.date + "T00:00:00").getTime()) / 86400000)) : null;
   var save = /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee30() {
+    var _ref85 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
       var before, entered, bf, _bodyFatWindowRows, after;
-      return _regenerator().w(function (_context30) {
-        while (1) switch (_context30.n) {
+      return _regenerator().w(function (_context32) {
+        while (1) switch (_context32.n) {
           case 0:
             if (canSave) {
-              _context30.n = 1;
+              _context32.n = 1;
               break;
             }
-            return _context30.a(2);
+            return _context32.a(2);
           case 1:
             before = prevReading;
             entered = {
@@ -7407,10 +7603,10 @@ function MeasurementRow(_ref82) {
               waist: waistNum,
               hip: formula === "female" ? hipNum : null
             };
-            _context30.n = 2;
+            _context32.n = 2;
             return onSave(entered);
           case 2:
-            bf = _context30.v;
+            bf = _context32.v;
             if (isFirstEver && localNote.trim()) onSaveNote(localNote.trim());
             if (bf != null) {
               // The window figure is computed against the list as it will be AFTER this save — the
@@ -7439,12 +7635,12 @@ function MeasurementRow(_ref82) {
             setHip("");
             setLocalNote("");
           case 3:
-            return _context30.a(2);
+            return _context32.a(2);
         }
-      }, _callee30);
+      }, _callee32);
     }));
     return function save() {
-      return _ref83.apply(this, arguments);
+      return _ref85.apply(this, arguments);
     };
   }();
   if (!expanded) {
@@ -7724,29 +7920,29 @@ function MeasurementRow(_ref82) {
     }
   }, "Close")));
 }
-function WeighInWidget(_ref84) {
-  var weighIns = _ref84.weighIns,
-    onWeighIn = _ref84.onWeighIn,
-    tdeeAdj = _ref84.tdeeAdj,
-    baseTDEE = _ref84.baseTDEE,
-    _ref84$tdeeFloor = _ref84.tdeeFloor,
-    tdeeFloor = _ref84$tdeeFloor === void 0 ? baseTDEE : _ref84$tdeeFloor,
-    _ref84$correctionHeld = _ref84.correctionHeld,
-    correctionHeld = _ref84$correctionHeld === void 0 ? false : _ref84$correctionHeld,
-    _ref84$sex = _ref84.sex,
-    sex = _ref84$sex === void 0 ? null : _ref84$sex,
-    _ref84$bodyMeasuremen = _ref84.bodyMeasurements,
-    bodyMeasurements = _ref84$bodyMeasuremen === void 0 ? [] : _ref84$bodyMeasuremen,
-    _ref84$onMeasurement = _ref84.onMeasurement,
-    onMeasurement = _ref84$onMeasurement === void 0 ? function () {} : _ref84$onMeasurement,
-    _ref84$measurementNot = _ref84.measurementNote,
-    measurementNote = _ref84$measurementNot === void 0 ? "" : _ref84$measurementNot,
-    _ref84$onSaveMeasurem = _ref84.onSaveMeasurementNote,
-    onSaveMeasurementNote = _ref84$onSaveMeasurem === void 0 ? function () {} : _ref84$onSaveMeasurem,
-    _ref84$showMeasuremen = _ref84.showMeasurementNudge,
-    showMeasurementNudge = _ref84$showMeasuremen === void 0 ? false : _ref84$showMeasuremen,
-    _ref84$onMeasurementN = _ref84.onMeasurementNudgeDismiss,
-    onMeasurementNudgeDismiss = _ref84$onMeasurementN === void 0 ? function () {} : _ref84$onMeasurementN;
+function WeighInWidget(_ref86) {
+  var weighIns = _ref86.weighIns,
+    onWeighIn = _ref86.onWeighIn,
+    tdeeAdj = _ref86.tdeeAdj,
+    baseTDEE = _ref86.baseTDEE,
+    _ref86$tdeeFloor = _ref86.tdeeFloor,
+    tdeeFloor = _ref86$tdeeFloor === void 0 ? baseTDEE : _ref86$tdeeFloor,
+    _ref86$correctionHeld = _ref86.correctionHeld,
+    correctionHeld = _ref86$correctionHeld === void 0 ? false : _ref86$correctionHeld,
+    _ref86$sex = _ref86.sex,
+    sex = _ref86$sex === void 0 ? null : _ref86$sex,
+    _ref86$bodyMeasuremen = _ref86.bodyMeasurements,
+    bodyMeasurements = _ref86$bodyMeasuremen === void 0 ? [] : _ref86$bodyMeasuremen,
+    _ref86$onMeasurement = _ref86.onMeasurement,
+    onMeasurement = _ref86$onMeasurement === void 0 ? function () {} : _ref86$onMeasurement,
+    _ref86$measurementNot = _ref86.measurementNote,
+    measurementNote = _ref86$measurementNot === void 0 ? "" : _ref86$measurementNot,
+    _ref86$onSaveMeasurem = _ref86.onSaveMeasurementNote,
+    onSaveMeasurementNote = _ref86$onSaveMeasurem === void 0 ? function () {} : _ref86$onSaveMeasurem,
+    _ref86$showMeasuremen = _ref86.showMeasurementNudge,
+    showMeasurementNudge = _ref86$showMeasuremen === void 0 ? false : _ref86$showMeasuremen,
+    _ref86$onMeasurementN = _ref86.onMeasurementNudgeDismiss,
+    onMeasurementNudgeDismiss = _ref86$onMeasurementN === void 0 ? function () {} : _ref86$onMeasurementN;
   var _useState71 = useState(""),
     _useState72 = _slicedToArray(_useState71, 2),
     val = _useState72[0],
@@ -8028,15 +8224,15 @@ function WeighInWidget(_ref84) {
 
 // ── Workout Logger ────────────────────────────────────────────
 
-function WorkoutLogger(_ref85) {
-  var workouts = _ref85.workouts,
-    onAdd = _ref85.onAdd,
-    onRemove = _ref85.onRemove,
-    prof = _ref85.prof,
-    _ref85$earnedToday = _ref85.earnedToday,
-    earnedToday = _ref85$earnedToday === void 0 ? 0 : _ref85$earnedToday,
-    isPremium = _ref85.isPremium,
-    onPremiumGate = _ref85.onPremiumGate;
+function WorkoutLogger(_ref87) {
+  var workouts = _ref87.workouts,
+    onAdd = _ref87.onAdd,
+    onRemove = _ref87.onRemove,
+    prof = _ref87.prof,
+    _ref87$earnedToday = _ref87.earnedToday,
+    earnedToday = _ref87$earnedToday === void 0 ? 0 : _ref87$earnedToday,
+    isPremium = _ref87.isPremium,
+    onPremiumGate = _ref87.onPremiumGate;
   var _useState77 = useState("legs"),
     _useState78 = _slicedToArray(_useState77, 2),
     type = _useState78[0],
@@ -8084,43 +8280,43 @@ function WorkoutLogger(_ref85) {
     });
   };
   var parseWorkout = /*#__PURE__*/function () {
-    var _ref86 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee31() {
-      var prompt, _t31, _t32;
-      return _regenerator().w(function (_context31) {
-        while (1) switch (_context31.p = _context31.n) {
+    var _ref88 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33() {
+      var prompt, _t37, _t38;
+      return _regenerator().w(function (_context33) {
+        while (1) switch (_context33.p = _context33.n) {
           case 0:
             if (!(!hevyText.trim() || hevyLoading)) {
-              _context31.n = 1;
+              _context33.n = 1;
               break;
             }
-            return _context31.a(2);
+            return _context33.a(2);
           case 1:
             setHevyLoading(true);
             setHevyResult(null);
-            _context31.p = 2;
+            _context33.p = 2;
             prompt = "Parse this workout log and estimate calories burned. User: ".concat(p.weight, "kg bodyweight, ").concat(p.bodyFat, "% body fat.\n\nWorkout:\n").concat(hevyText, "\n\nReturn ONLY valid JSON: {\"estimatedKcal\":number,\"type\":\"legs|push|pull|fullbody|cardio\",\"intensity\":\"light|moderate|heavy\",\"summary\":\"brief 1 line description\"}");
-            _t31 = setHevyResult;
-            _context31.n = 3;
+            _t37 = setHevyResult;
+            _context33.n = 3;
             return callAIJson(prompt, 200);
           case 3:
-            _t31(_context31.v);
-            _context31.n = 5;
+            _t37(_context33.v);
+            _context33.n = 5;
             break;
           case 4:
-            _context31.p = 4;
-            _t32 = _context31.v;
+            _context33.p = 4;
+            _t38 = _context33.v;
             setHevyResult({
               error: "Parse failed — Cloudflare Worker required."
             });
           case 5:
             setHevyLoading(false);
           case 6:
-            return _context31.a(2);
+            return _context33.a(2);
         }
-      }, _callee31, null, [[2, 4]]);
+      }, _callee33, null, [[2, 4]]);
     }));
     return function parseWorkout() {
-      return _ref86.apply(this, arguments);
+      return _ref88.apply(this, arguments);
     };
   }();
   var logParsed = function logParsed() {
@@ -8442,10 +8638,10 @@ function WorkoutLogger(_ref85) {
 // Google profile pic with graceful fallback to the user's initial.
 // referrerPolicy="no-referrer" stops googleusercontent from rejecting
 // the request (403/429) when a cross-origin referrer is sent.
-function Avatar(_ref87) {
-  var user = _ref87.user,
-    _ref87$size = _ref87.size,
-    size = _ref87$size === void 0 ? 34 : _ref87$size;
+function Avatar(_ref89) {
+  var user = _ref89.user,
+    _ref89$size = _ref89.size,
+    size = _ref89$size === void 0 ? 34 : _ref89$size;
   var _useState91 = useState(false),
     _useState92 = _slicedToArray(_useState91, 2),
     failed = _useState92[0],
@@ -8482,12 +8678,12 @@ function Avatar(_ref87) {
 // today-list and the History day view. Every field is editable by all users;
 // the ✨ AI re-estimate button is premium-gated (mirrors AI Meal Log) and
 // reuses the same AI_REESTIMATE_PROMPT + Open Food Facts cross-check.
-function EntryEditor(_ref88) {
-  var entry = _ref88.entry,
-    onSave = _ref88.onSave,
-    onCancel = _ref88.onCancel,
-    isPremium = _ref88.isPremium,
-    onPremiumGate = _ref88.onPremiumGate;
+function EntryEditor(_ref90) {
+  var entry = _ref90.entry,
+    onSave = _ref90.onSave,
+    onCancel = _ref90.onCancel,
+    isPremium = _ref90.isPremium,
+    onPremiumGate = _ref90.onPremiumGate;
   var _useState93 = useState({
       name: entry.name,
       kcal: String(entry.kcal),
@@ -8513,26 +8709,26 @@ function EntryEditor(_ref88) {
     setReestMsg("");
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref89 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee32() {
-      var fill, upd, _t33;
-      return _regenerator().w(function (_context32) {
-        while (1) switch (_context32.p = _context32.n) {
+    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34() {
+      var fill, upd, _t39;
+      return _regenerator().w(function (_context34) {
+        while (1) switch (_context34.p = _context34.n) {
           case 0:
             if (isPremium) {
-              _context32.n = 1;
+              _context34.n = 1;
               break;
             }
             onPremiumGate({
               emoji: "✨",
               name: "AI re-estimate"
             });
-            return _context32.a(2);
+            return _context34.a(2);
           case 1:
             if (!(!f.name.trim() || reest)) {
-              _context32.n = 2;
+              _context34.n = 2;
               break;
             }
-            return _context32.a(2);
+            return _context34.a(2);
           case 2:
             setReest(true);
             setReestMsg("");
@@ -8546,27 +8742,27 @@ function EntryEditor(_ref88) {
                 });
               });
             };
-            _context32.p = 3;
-            _context32.n = 4;
+            _context34.p = 3;
+            _context34.n = 4;
             return callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300);
           case 4:
-            upd = _context32.v;
-            _context32.n = 6;
+            upd = _context34.v;
+            _context34.n = 6;
             break;
           case 5:
-            _context32.p = 5;
-            _t33 = _context32.v;
+            _context34.p = 5;
+            _t39 = _context34.v;
             setReestMsg("Couldn't reach the AI — check your connection and try again.");
             setReest(false);
-            return _context32.a(2);
+            return _context34.a(2);
           case 6:
             if (!(!upd || !isFinite(Number(upd.kcal)))) {
-              _context32.n = 7;
+              _context34.n = 7;
               break;
             }
             setReestMsg("Couldn't estimate that — try rephrasing the name.");
             setReest(false);
-            return _context32.a(2);
+            return _context34.a(2);
           case 7:
             // The AI's answer is the answer. Until 2026-09-15 an Open Food Facts free-text search
             // ran after this and overwrote the fields with its first hit's label figures at a fixed
@@ -8575,12 +8771,12 @@ function EntryEditor(_ref88) {
             setReestMsg("done");
             setReest(false);
           case 8:
-            return _context32.a(2);
+            return _context34.a(2);
         }
-      }, _callee32, null, [[3, 5]]);
+      }, _callee34, null, [[3, 5]]);
     }));
     return function reestimate() {
-      return _ref89.apply(this, arguments);
+      return _ref91.apply(this, arguments);
     };
   }();
   var save = function save() {
@@ -8745,85 +8941,85 @@ function EntryEditor(_ref88) {
     }
   }, "Save")));
 }
-function Dashboard(_ref90) {
-  var logs = _ref90.logs,
-    totals = _ref90.totals,
-    targets = _ref90.targets,
-    remaining = _ref90.remaining,
-    water = _ref90.water,
-    setWater = _ref90.setWater,
-    _ref90$hist = _ref90.hist,
-    hist = _ref90$hist === void 0 ? [] : _ref90$hist,
-    mode = _ref90.mode,
-    setMode = _ref90.setMode,
-    setView = _ref90.setView,
-    removeLog = _ref90.removeLog,
-    updateLog = _ref90.updateLog,
-    addToQA = _ref90.addToQA,
-    hasProfile = _ref90.hasProfile,
-    streak = _ref90.streak,
-    streakPop = _ref90.streakPop,
-    badgeGlow = _ref90.badgeGlow,
-    prof = _ref90.prof,
-    weighIns = _ref90.weighIns,
-    onWeighIn = _ref90.onWeighIn,
-    tdeeAdj = _ref90.tdeeAdj,
-    baseTDEE = _ref90.baseTDEE,
-    _ref90$tdeeFloor = _ref90.tdeeFloor,
-    tdeeFloor = _ref90$tdeeFloor === void 0 ? baseTDEE : _ref90$tdeeFloor,
-    _ref90$showWeighNudge = _ref90.showWeighNudge,
-    showWeighNudge = _ref90$showWeighNudge === void 0 ? false : _ref90$showWeighNudge,
-    _ref90$onNudgeDismiss = _ref90.onNudgeDismiss,
-    onNudgeDismiss = _ref90$onNudgeDismiss === void 0 ? function () {} : _ref90$onNudgeDismiss,
-    _ref90$onNudgeMute = _ref90.onNudgeMute,
-    onNudgeMute = _ref90$onNudgeMute === void 0 ? function () {} : _ref90$onNudgeMute,
-    coachKey = _ref90.coachKey,
-    _ref90$bodyMeasuremen = _ref90.bodyMeasurements,
-    bodyMeasurements = _ref90$bodyMeasuremen === void 0 ? [] : _ref90$bodyMeasuremen,
-    _ref90$onMeasurement = _ref90.onMeasurement,
-    onMeasurement = _ref90$onMeasurement === void 0 ? function () {} : _ref90$onMeasurement,
-    _ref90$measurementNot = _ref90.measurementNote,
-    measurementNote = _ref90$measurementNot === void 0 ? "" : _ref90$measurementNot,
-    _ref90$onSaveMeasurem = _ref90.onSaveMeasurementNote,
-    onSaveMeasurementNote = _ref90$onSaveMeasurem === void 0 ? function () {} : _ref90$onSaveMeasurem,
-    _ref90$showMeasuremen = _ref90.showMeasurementNudge,
-    showMeasurementNudge = _ref90$showMeasuremen === void 0 ? false : _ref90$showMeasuremen,
-    _ref90$onMeasurementN = _ref90.onMeasurementNudgeDismiss,
-    onMeasurementNudgeDismiss = _ref90$onMeasurementN === void 0 ? function () {} : _ref90$onMeasurementN,
-    _ref90$cutPrompt = _ref90.cutPrompt,
-    cutPrompt = _ref90$cutPrompt === void 0 ? null : _ref90$cutPrompt,
-    _ref90$onCutNudgeDism = _ref90.onCutNudgeDismiss,
-    onCutNudgeDismiss = _ref90$onCutNudgeDism === void 0 ? function () {} : _ref90$onCutNudgeDism,
-    _ref90$onCutPromptSno = _ref90.onCutPromptSnooze,
-    onCutPromptSnooze = _ref90$onCutPromptSno === void 0 ? function () {} : _ref90$onCutPromptSno,
-    _ref90$onStartDietBre = _ref90.onStartDietBreak,
-    onStartDietBreak = _ref90$onStartDietBre === void 0 ? function () {} : _ref90$onStartDietBre,
-    _ref90$cutBar = _ref90.cutBar,
-    cutBar = _ref90$cutBar === void 0 ? null : _ref90$cutBar,
-    _ref90$cutGuard = _ref90.cutGuard,
-    cutGuard = _ref90$cutGuard === void 0 ? null : _ref90$cutGuard,
-    _ref90$showRecharged = _ref90.showRecharged,
-    showRecharged = _ref90$showRecharged === void 0 ? false : _ref90$showRecharged,
-    _ref90$onDismissRecha = _ref90.onDismissRecharged,
-    onDismissRecharged = _ref90$onDismissRecha === void 0 ? function () {} : _ref90$onDismissRecha,
-    _ref90$showGainWhileC = _ref90.showGainWhileCutting,
-    showGainWhileCutting = _ref90$showGainWhileC === void 0 ? false : _ref90$showGainWhileC,
-    _ref90$correctionHeld = _ref90.correctionHeld,
-    correctionHeld = _ref90$correctionHeld === void 0 ? false : _ref90$correctionHeld,
-    workouts = _ref90.workouts,
-    onAddWorkout = _ref90.onAddWorkout,
-    onRemoveWorkout = _ref90.onRemoveWorkout,
-    customKcal = _ref90.customKcal,
-    onSetCustomKcal = _ref90.onSetCustomKcal,
-    isCustomMode = _ref90.isCustomMode,
-    aggressiveCutAcked = _ref90.aggressiveCutAcked,
-    onAckAggressiveCut = _ref90.onAckAggressiveCut,
-    authState = _ref90.authState,
-    authUser = _ref90.authUser,
-    onPremiumGate = _ref90.onPremiumGate,
-    onSignOut = _ref90.onSignOut,
-    isOnline = _ref90.isOnline,
-    syncMsg = _ref90.syncMsg;
+function Dashboard(_ref92) {
+  var logs = _ref92.logs,
+    totals = _ref92.totals,
+    targets = _ref92.targets,
+    remaining = _ref92.remaining,
+    water = _ref92.water,
+    setWater = _ref92.setWater,
+    _ref92$hist = _ref92.hist,
+    hist = _ref92$hist === void 0 ? [] : _ref92$hist,
+    mode = _ref92.mode,
+    setMode = _ref92.setMode,
+    setView = _ref92.setView,
+    removeLog = _ref92.removeLog,
+    updateLog = _ref92.updateLog,
+    addToQA = _ref92.addToQA,
+    hasProfile = _ref92.hasProfile,
+    streak = _ref92.streak,
+    streakPop = _ref92.streakPop,
+    badgeGlow = _ref92.badgeGlow,
+    prof = _ref92.prof,
+    weighIns = _ref92.weighIns,
+    onWeighIn = _ref92.onWeighIn,
+    tdeeAdj = _ref92.tdeeAdj,
+    baseTDEE = _ref92.baseTDEE,
+    _ref92$tdeeFloor = _ref92.tdeeFloor,
+    tdeeFloor = _ref92$tdeeFloor === void 0 ? baseTDEE : _ref92$tdeeFloor,
+    _ref92$showWeighNudge = _ref92.showWeighNudge,
+    showWeighNudge = _ref92$showWeighNudge === void 0 ? false : _ref92$showWeighNudge,
+    _ref92$onNudgeDismiss = _ref92.onNudgeDismiss,
+    onNudgeDismiss = _ref92$onNudgeDismiss === void 0 ? function () {} : _ref92$onNudgeDismiss,
+    _ref92$onNudgeMute = _ref92.onNudgeMute,
+    onNudgeMute = _ref92$onNudgeMute === void 0 ? function () {} : _ref92$onNudgeMute,
+    coachKey = _ref92.coachKey,
+    _ref92$bodyMeasuremen = _ref92.bodyMeasurements,
+    bodyMeasurements = _ref92$bodyMeasuremen === void 0 ? [] : _ref92$bodyMeasuremen,
+    _ref92$onMeasurement = _ref92.onMeasurement,
+    onMeasurement = _ref92$onMeasurement === void 0 ? function () {} : _ref92$onMeasurement,
+    _ref92$measurementNot = _ref92.measurementNote,
+    measurementNote = _ref92$measurementNot === void 0 ? "" : _ref92$measurementNot,
+    _ref92$onSaveMeasurem = _ref92.onSaveMeasurementNote,
+    onSaveMeasurementNote = _ref92$onSaveMeasurem === void 0 ? function () {} : _ref92$onSaveMeasurem,
+    _ref92$showMeasuremen = _ref92.showMeasurementNudge,
+    showMeasurementNudge = _ref92$showMeasuremen === void 0 ? false : _ref92$showMeasuremen,
+    _ref92$onMeasurementN = _ref92.onMeasurementNudgeDismiss,
+    onMeasurementNudgeDismiss = _ref92$onMeasurementN === void 0 ? function () {} : _ref92$onMeasurementN,
+    _ref92$cutPrompt = _ref92.cutPrompt,
+    cutPrompt = _ref92$cutPrompt === void 0 ? null : _ref92$cutPrompt,
+    _ref92$onCutNudgeDism = _ref92.onCutNudgeDismiss,
+    onCutNudgeDismiss = _ref92$onCutNudgeDism === void 0 ? function () {} : _ref92$onCutNudgeDism,
+    _ref92$onCutPromptSno = _ref92.onCutPromptSnooze,
+    onCutPromptSnooze = _ref92$onCutPromptSno === void 0 ? function () {} : _ref92$onCutPromptSno,
+    _ref92$onStartDietBre = _ref92.onStartDietBreak,
+    onStartDietBreak = _ref92$onStartDietBre === void 0 ? function () {} : _ref92$onStartDietBre,
+    _ref92$cutBar = _ref92.cutBar,
+    cutBar = _ref92$cutBar === void 0 ? null : _ref92$cutBar,
+    _ref92$cutGuard = _ref92.cutGuard,
+    cutGuard = _ref92$cutGuard === void 0 ? null : _ref92$cutGuard,
+    _ref92$showRecharged = _ref92.showRecharged,
+    showRecharged = _ref92$showRecharged === void 0 ? false : _ref92$showRecharged,
+    _ref92$onDismissRecha = _ref92.onDismissRecharged,
+    onDismissRecharged = _ref92$onDismissRecha === void 0 ? function () {} : _ref92$onDismissRecha,
+    _ref92$showGainWhileC = _ref92.showGainWhileCutting,
+    showGainWhileCutting = _ref92$showGainWhileC === void 0 ? false : _ref92$showGainWhileC,
+    _ref92$correctionHeld = _ref92.correctionHeld,
+    correctionHeld = _ref92$correctionHeld === void 0 ? false : _ref92$correctionHeld,
+    workouts = _ref92.workouts,
+    onAddWorkout = _ref92.onAddWorkout,
+    onRemoveWorkout = _ref92.onRemoveWorkout,
+    customKcal = _ref92.customKcal,
+    onSetCustomKcal = _ref92.onSetCustomKcal,
+    isCustomMode = _ref92.isCustomMode,
+    aggressiveCutAcked = _ref92.aggressiveCutAcked,
+    onAckAggressiveCut = _ref92.onAckAggressiveCut,
+    authState = _ref92.authState,
+    authUser = _ref92.authUser,
+    onPremiumGate = _ref92.onPremiumGate,
+    onSignOut = _ref92.onSignOut,
+    isOnline = _ref92.isOnline,
+    syncMsg = _ref92.syncMsg;
   var isPremium = authState === "premium";
   var _useState99 = useState(null),
     _useState100 = _slicedToArray(_useState99, 2),
@@ -9067,11 +9263,11 @@ function Dashboard(_ref90) {
     return null;
   }();
   var handleAddToQA = /*#__PURE__*/function () {
-    var _ref91 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee33(log) {
-      return _regenerator().w(function (_context33) {
-        while (1) switch (_context33.n) {
+    var _ref93 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35(log) {
+      return _regenerator().w(function (_context35) {
+        while (1) switch (_context35.n) {
           case 0:
-            _context33.n = 1;
+            _context35.n = 1;
             return addToQA(log);
           case 1:
             setSavedIds(function (p) {
@@ -9086,12 +9282,12 @@ function Dashboard(_ref90) {
               });
             }, 1800);
           case 2:
-            return _context33.a(2);
+            return _context35.a(2);
         }
-      }, _callee33);
+      }, _callee35);
     }));
-    return function handleAddToQA(_x46) {
-      return _ref91.apply(this, arguments);
+    return function handleAddToQA(_x50) {
+      return _ref93.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -9239,10 +9435,10 @@ function Dashboard(_ref90) {
       gap: 6,
       marginBottom: 12
     }
-  }, Object.entries(MODES).map(function (_ref92) {
-    var _ref93 = _slicedToArray(_ref92, 2),
-      k = _ref93[0],
-      v = _ref93[1];
+  }, Object.entries(MODES).map(function (_ref94) {
+    var _ref95 = _slicedToArray(_ref94, 2),
+      k = _ref95[0],
+      v = _ref95[1];
     var active = !isCustomMode && mode === k;
     return /*#__PURE__*/React.createElement("button", {
       key: k,
@@ -10938,10 +11134,10 @@ var reportEstimate = function reportEstimate(desc, items, totals) {
   var body = "I think this AI estimate is wrong.\n\nMy description:\n" + (desc ? desc : "(photo only)") + "\n\nEstimate:\n" + lines + "\n\nTotal: " + Math.round(totals && totals.kcal || 0) + " kcal" + "\n\nWhat was off:\n";
   window.location.href = "mailto:fuellogadmin@gmail.com?subject=" + encodeURIComponent("Fuel Log — inaccurate AI estimate") + "&body=" + encodeURIComponent(body);
 };
-function ItemRow(_ref94) {
-  var item = _ref94.item,
-    onReestimate = _ref94.onReestimate,
-    reestimating = _ref94.reestimating;
+function ItemRow(_ref96) {
+  var item = _ref96.item,
+    onReestimate = _ref96.onReestimate,
+    reestimating = _ref96.reestimating;
   var _useState111 = useState(false),
     _useState112 = _slicedToArray(_useState111, 2),
     editing = _useState112[0],
@@ -11064,9 +11260,9 @@ function ItemRow(_ref94) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref95) {
-  var onAdd = _ref95.onAdd,
-    onBack = _ref95.onBack;
+function AILog(_ref97) {
+  var onAdd = _ref97.onAdd,
+    onBack = _ref97.onBack;
   var _useState115 = useState(""),
     _useState116 = _slicedToArray(_useState115, 2),
     desc = _useState116[0],
@@ -11212,52 +11408,52 @@ function AILog(_ref95) {
     setListening(false);
   };
   var onPickPhoto = /*#__PURE__*/function () {
-    var _ref96 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee34(e) {
-      var file, _t34, _t35;
-      return _regenerator().w(function (_context34) {
-        while (1) switch (_context34.p = _context34.n) {
+    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(e) {
+      var file, _t40, _t41;
+      return _regenerator().w(function (_context36) {
+        while (1) switch (_context36.p = _context36.n) {
           case 0:
             file = e.target.files && e.target.files[0];
             e.target.value = ""; // let the same file be re-picked
             if (file) {
-              _context34.n = 1;
+              _context36.n = 1;
               break;
             }
-            return _context34.a(2);
+            return _context36.a(2);
           case 1:
-            _context34.p = 1;
-            _t34 = setPhoto;
-            _context34.n = 2;
+            _context36.p = 1;
+            _t40 = setPhoto;
+            _context36.n = 2;
             return fileToImage(file);
           case 2:
-            _t34(_context34.v);
+            _t40(_context36.v);
             setError("");
-            _context34.n = 4;
+            _context36.n = 4;
             break;
           case 3:
-            _context34.p = 3;
-            _t35 = _context34.v;
+            _context36.p = 3;
+            _t41 = _context36.v;
             setError("Couldn't read that image — try another photo.");
           case 4:
-            return _context34.a(2);
+            return _context36.a(2);
         }
-      }, _callee34, null, [[1, 3]]);
+      }, _callee36, null, [[1, 3]]);
     }));
-    return function onPickPhoto(_x47) {
-      return _ref96.apply(this, arguments);
+    return function onPickPhoto(_x51) {
+      return _ref98.apply(this, arguments);
     };
   }();
   var estimate = /*#__PURE__*/function () {
-    var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee35() {
-      var stated, parsed, aiItems, merged, k, wConf, _t36, _t37;
-      return _regenerator().w(function (_context35) {
-        while (1) switch (_context35.p = _context35.n) {
+    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
+      var stated, parsed, aiItems, merged, k, wConf, _t42, _t43;
+      return _regenerator().w(function (_context37) {
+        while (1) switch (_context37.p = _context37.n) {
           case 0:
             if (!(!desc.trim() && !photo)) {
-              _context35.n = 1;
+              _context37.n = 1;
               break;
             }
-            return _context35.a(2);
+            return _context37.a(2);
           case 1:
             setLoading(true);
             setError("");
@@ -11272,19 +11468,19 @@ function AILog(_ref95) {
             // questions (features/logging/06). Only for typed text: a photo is always estimated.
             stated = photo ? null : parseStatedTotals(desc);
             if (!stated) {
-              _context35.n = 2;
+              _context37.n = 2;
               break;
             }
             setItems([statedTotalsItem(stated)]);
             setLoading(false);
-            return _context35.a(2);
+            return _context37.a(2);
           case 2:
-            _context35.p = 2;
+            _context37.p = 2;
             if (!photo) {
-              _context35.n = 4;
+              _context37.n = 4;
               break;
             }
-            _context35.n = 3;
+            _context37.n = 3;
             return callAIJson([{
               type: "image",
               source: {
@@ -11297,16 +11493,16 @@ function AILog(_ref95) {
               text: AI_PHOTO_PROMPT(desc)
             }], 2000);
           case 3:
-            _t36 = _context35.v;
-            _context35.n = 6;
+            _t42 = _context37.v;
+            _context37.n = 6;
             break;
           case 4:
-            _context35.n = 5;
+            _context37.n = 5;
             return callAIJson(AI_PROMPT(desc), 2000);
           case 5:
-            _t36 = _context35.v;
+            _t42 = _context37.v;
           case 6:
-            parsed = _t36;
+            parsed = _t42;
             aiItems = parsed.items || [];
             if (photo) setMealName(parsed.meal || "");
 
@@ -11331,21 +11527,21 @@ function AILog(_ref95) {
               return a + it.confidence * (it.kcal || 0);
             }, 0) / k) : 100;
             setFollowups(wConf < FOLLOWUP_BELOW ? pickFollowups(merged) : []);
-            _context35.n = 8;
+            _context37.n = 8;
             break;
           case 7:
-            _context35.p = 7;
-            _t37 = _context35.v;
-            setError("Estimation failed: " + _t37.message);
+            _context37.p = 7;
+            _t43 = _context37.v;
+            setError("Estimation failed: " + _t43.message);
           case 8:
             setLoading(false);
           case 9:
-            return _context35.a(2);
+            return _context37.a(2);
         }
-      }, _callee35, null, [[2, 7]]);
+      }, _callee37, null, [[2, 7]]);
     }));
     return function estimate() {
-      return _ref97.apply(this, arguments);
+      return _ref99.apply(this, arguments);
     };
   }();
 
@@ -11376,17 +11572,17 @@ function AILog(_ref95) {
     }
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(idx, newName) {
-      var updated, _final, _t38;
-      return _regenerator().w(function (_context36) {
-        while (1) switch (_context36.p = _context36.n) {
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(idx, newName) {
+      var updated, _final, _t44;
+      return _regenerator().w(function (_context38) {
+        while (1) switch (_context38.p = _context38.n) {
           case 0:
             setReestIdx(idx);
-            _context36.p = 1;
-            _context36.n = 2;
+            _context38.p = 1;
+            _context38.n = 2;
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            updated = _context36.v;
+            updated = _context38.v;
             _final = _objectSpread(_objectSpread({}, updated), {}, {
               confidence: normConf(updated.confidence),
               name: newName
@@ -11396,20 +11592,20 @@ function AILog(_ref95) {
                 return i === idx ? _final : it;
               });
             });
-            _context36.n = 4;
+            _context38.n = 4;
             break;
           case 3:
-            _context36.p = 3;
-            _t38 = _context36.v;
+            _context38.p = 3;
+            _t44 = _context38.v;
           case 4:
             setReestIdx(null);
           case 5:
-            return _context36.a(2);
+            return _context38.a(2);
         }
-      }, _callee36, null, [[1, 3]]);
+      }, _callee38, null, [[1, 3]]);
     }));
-    return function reestimate(_x48, _x49) {
-      return _ref98.apply(this, arguments);
+    return function reestimate(_x52, _x53) {
+      return _ref100.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -11853,17 +12049,17 @@ function AILog(_ref95) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref99) {
-  var onAdd = _ref99.onAdd,
-    onBack = _ref99.onBack,
-    meals = _ref99.meals,
-    setMeals = _ref99.setMeals,
-    _ref99$onForget = _ref99.onForget,
-    onForget = _ref99$onForget === void 0 ? function () {} : _ref99$onForget,
-    _ref99$isPremium = _ref99.isPremium,
-    isPremium = _ref99$isPremium === void 0 ? false : _ref99$isPremium,
-    _ref99$onPremiumGate = _ref99.onPremiumGate,
-    onPremiumGate = _ref99$onPremiumGate === void 0 ? function () {} : _ref99$onPremiumGate;
+function QuickAdd(_ref101) {
+  var onAdd = _ref101.onAdd,
+    onBack = _ref101.onBack,
+    meals = _ref101.meals,
+    setMeals = _ref101.setMeals,
+    _ref101$onForget = _ref101.onForget,
+    onForget = _ref101$onForget === void 0 ? function () {} : _ref101$onForget,
+    _ref101$isPremium = _ref101.isPremium,
+    isPremium = _ref101$isPremium === void 0 ? false : _ref101$isPremium,
+    _ref101$onPremiumGate = _ref101.onPremiumGate,
+    onPremiumGate = _ref101$onPremiumGate === void 0 ? function () {} : _ref101$onPremiumGate;
   var _useState145 = useState(""),
     _useState146 = _slicedToArray(_useState145, 2),
     search = _useState146[0],
@@ -11873,20 +12069,20 @@ function QuickAdd(_ref99) {
     modal = _useState148[0],
     setModal = _useState148[1];
   var save = /*#__PURE__*/function () {
-    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(m) {
-      return _regenerator().w(function (_context37) {
-        while (1) switch (_context37.n) {
+    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
+      return _regenerator().w(function (_context39) {
+        while (1) switch (_context39.n) {
           case 0:
             setMeals(m);
-            _context37.n = 1;
+            _context39.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context37.a(2);
+            return _context39.a(2);
         }
-      }, _callee37);
+      }, _callee39);
     }));
-    return function save(_x50) {
-      return _ref100.apply(this, arguments);
+    return function save(_x54) {
+      return _ref102.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -12052,9 +12248,9 @@ function QuickAdd(_ref99) {
 
 // ── Food Search ───────────────────────────────────────────────
 
-function FoodSearch(_ref101) {
-  var onAdd = _ref101.onAdd,
-    onBack = _ref101.onBack;
+function FoodSearch(_ref103) {
+  var onAdd = _ref103.onAdd,
+    onBack = _ref103.onBack;
   var _useState149 = useState(""),
     _useState150 = _slicedToArray(_useState149, 2),
     q = _useState150[0],
@@ -12076,36 +12272,36 @@ function FoodSearch(_ref101) {
     done = _useState158[0],
     setDone = _useState158[1];
   var search = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38() {
-      var res, data, parseServing, parseKcal, valid, _t39;
-      return _regenerator().w(function (_context38) {
-        while (1) switch (_context38.p = _context38.n) {
+    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
+      var res, data, parseServing, parseKcal, valid, _t45;
+      return _regenerator().w(function (_context40) {
+        while (1) switch (_context40.p = _context40.n) {
           case 0:
             if (q.trim()) {
-              _context38.n = 1;
+              _context40.n = 1;
               break;
             }
-            return _context38.a(2);
+            return _context40.a(2);
           case 1:
             setLoading(true);
             setError("");
             setResults([]);
             setDone(true);
-            _context38.p = 2;
-            _context38.n = 3;
+            _context40.p = 2;
+            _context40.n = 3;
             return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
           case 3:
-            res = _context38.v;
+            res = _context40.v;
             if (res.ok) {
-              _context38.n = 4;
+              _context40.n = 4;
               break;
             }
             throw new Error("Network error");
           case 4:
-            _context38.n = 5;
+            _context40.n = 5;
             return res.json();
           case 5:
-            data = _context38.v;
+            data = _context40.v;
             parseServing = function parseServing(raw) {
               if (!raw) return 100;
               var n = parseFloat(raw);
@@ -12121,12 +12317,12 @@ function FoodSearch(_ref101) {
               return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
             });
             if (valid.length) {
-              _context38.n = 6;
+              _context40.n = 6;
               break;
             }
             setError("No results — try a brand name or simpler search term.");
             setLoading(false);
-            return _context38.a(2);
+            return _context40.a(2);
           case 6:
             setResults(valid.slice(0, 12).map(function (p) {
               var _p$brands;
@@ -12144,21 +12340,21 @@ function FoodSearch(_ref101) {
                 notes: "Per serving (~".concat(Math.round(sg2), "g)")
               };
             }));
-            _context38.n = 8;
+            _context40.n = 8;
             break;
           case 7:
-            _context38.p = 7;
-            _t39 = _context38.v;
+            _context40.p = 7;
+            _t45 = _context40.v;
             setError("Search failed — check your internet connection.");
           case 8:
             setLoading(false);
           case 9:
-            return _context38.a(2);
+            return _context40.a(2);
         }
-      }, _callee38, null, [[2, 7]]);
+      }, _callee40, null, [[2, 7]]);
     }));
     return function search() {
-      return _ref102.apply(this, arguments);
+      return _ref104.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -12322,9 +12518,9 @@ var TAPE_SERIES = [{
 //
 // At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
 // can land under the thumb, so a taller card would cover the point being inspected.
-function BodyFatTooltip(_ref103) {
-  var active = _ref103.active,
-    payload = _ref103.payload;
+function BodyFatTooltip(_ref105) {
+  var active = _ref105.active,
+    payload = _ref105.payload;
   if (!active || !payload || !payload.length) return null;
   var r = payload[0].payload || {};
   return /*#__PURE__*/React.createElement("div", {
@@ -12355,31 +12551,31 @@ function BodyFatTooltip(_ref103) {
     }
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
-function History(_ref104) {
+function History(_ref106) {
   var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref104.history,
-    onBack = _ref104.onBack,
-    onUpdateDay = _ref104.onUpdateDay,
-    _ref104$weighIns = _ref104.weighIns,
-    weighIns = _ref104$weighIns === void 0 ? [] : _ref104$weighIns,
-    _ref104$bodyMeasureme = _ref104.bodyMeasurements,
-    bodyMeasurements = _ref104$bodyMeasureme === void 0 ? [] : _ref104$bodyMeasureme,
-    _ref104$sex = _ref104.sex,
-    sex = _ref104$sex === void 0 ? null : _ref104$sex,
-    _ref104$profile = _ref104.profile,
-    profile = _ref104$profile === void 0 ? {} : _ref104$profile,
-    _ref104$tdeeAdj = _ref104.tdeeAdj,
-    tdeeAdj = _ref104$tdeeAdj === void 0 ? 0 : _ref104$tdeeAdj,
-    _ref104$meals = _ref104.meals,
-    meals = _ref104$meals === void 0 ? DEF_MEALS : _ref104$meals,
-    _ref104$setMeals = _ref104.setMeals,
-    setMeals = _ref104$setMeals === void 0 ? function () {} : _ref104$setMeals,
-    _ref104$onForget = _ref104.onForget,
-    onForget = _ref104$onForget === void 0 ? function () {} : _ref104$onForget,
-    _ref104$isPremium = _ref104.isPremium,
-    isPremium = _ref104$isPremium === void 0 ? false : _ref104$isPremium,
-    _ref104$onPremiumGate = _ref104.onPremiumGate,
-    onPremiumGate = _ref104$onPremiumGate === void 0 ? function () {} : _ref104$onPremiumGate;
+  var history = _ref106.history,
+    onBack = _ref106.onBack,
+    onUpdateDay = _ref106.onUpdateDay,
+    _ref106$weighIns = _ref106.weighIns,
+    weighIns = _ref106$weighIns === void 0 ? [] : _ref106$weighIns,
+    _ref106$bodyMeasureme = _ref106.bodyMeasurements,
+    bodyMeasurements = _ref106$bodyMeasureme === void 0 ? [] : _ref106$bodyMeasureme,
+    _ref106$sex = _ref106.sex,
+    sex = _ref106$sex === void 0 ? null : _ref106$sex,
+    _ref106$profile = _ref106.profile,
+    profile = _ref106$profile === void 0 ? {} : _ref106$profile,
+    _ref106$tdeeAdj = _ref106.tdeeAdj,
+    tdeeAdj = _ref106$tdeeAdj === void 0 ? 0 : _ref106$tdeeAdj,
+    _ref106$meals = _ref106.meals,
+    meals = _ref106$meals === void 0 ? DEF_MEALS : _ref106$meals,
+    _ref106$setMeals = _ref106.setMeals,
+    setMeals = _ref106$setMeals === void 0 ? function () {} : _ref106$setMeals,
+    _ref106$onForget = _ref106.onForget,
+    onForget = _ref106$onForget === void 0 ? function () {} : _ref106$onForget,
+    _ref106$isPremium = _ref106.isPremium,
+    isPremium = _ref106$isPremium === void 0 ? false : _ref106$isPremium,
+    _ref106$onPremiumGate = _ref106.onPremiumGate,
+    onPremiumGate = _ref106$onPremiumGate === void 0 ? function () {} : _ref106$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -13200,11 +13396,11 @@ function History(_ref104) {
         fontWeight: 800,
         marginBottom: 4
       }
-    }, "BODY"), bodyRows.map(function (_ref105, i) {
-      var _ref106 = _slicedToArray(_ref105, 3),
-        label = _ref106[0],
-        value = _ref106[1],
-        color = _ref106[2];
+    }, "BODY"), bodyRows.map(function (_ref107, i) {
+      var _ref108 = _slicedToArray(_ref107, 3),
+        label = _ref108[0],
+        value = _ref108[1],
+        color = _ref108[2];
       return /*#__PURE__*/React.createElement("div", {
         key: label,
         style: {
@@ -13394,10 +13590,10 @@ function History(_ref104) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref107) {
-    var _ref108 = _slicedToArray(_ref107, 2),
-      k = _ref108[0],
-      m = _ref108[1];
+  }, Object.entries(MM).map(function (_ref109) {
+    var _ref110 = _slicedToArray(_ref109, 2),
+      k = _ref110[0],
+      m = _ref110[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -13473,10 +13669,10 @@ function History(_ref104) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref109) {
-    var _ref110 = _slicedToArray(_ref109, 2),
-      t = _ref110[0],
-      e = _ref110[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref111) {
+    var _ref112 = _slicedToArray(_ref111, 2),
+      t = _ref112[0],
+      e = _ref112[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -13766,10 +13962,10 @@ function History(_ref104) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref111) {
-    var _ref112 = _slicedToArray(_ref111, 2),
-      k = _ref112[0],
-      m = _ref112[1];
+  }, Object.entries(MM).map(function (_ref113) {
+    var _ref114 = _slicedToArray(_ref113, 2),
+      k = _ref114[0],
+      m = _ref114[1];
     var avg = avgRows.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / avgRows.length;
@@ -13957,9 +14153,9 @@ function History(_ref104) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref113) {
-  var earnedBdgs = _ref113.earnedBdgs,
-    onBack = _ref113.onBack;
+function Achievements(_ref115) {
+  var earnedBdgs = _ref115.earnedBdgs,
+    onBack = _ref115.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -14058,9 +14254,9 @@ function Achievements(_ref113) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref114) {
-  var badge = _ref114.badge,
-    onDone = _ref114.onDone;
+function BadgeFanfare(_ref116) {
+  var badge = _ref116.badge,
+    onDone = _ref116.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
@@ -14181,9 +14377,9 @@ function BadgeFanfare(_ref114) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref115) {
-  var streak = _ref115.streak,
-    onDone = _ref115.onDone;
+function StreakPip(_ref117) {
+  var streak = _ref117.streak,
+    onDone = _ref117.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -14234,9 +14430,9 @@ function StreakPip(_ref115) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref116) {
-  var badge = _ref116.badge,
-    onDone = _ref116.onDone;
+function BadgeToast(_ref118) {
+  var badge = _ref118.badge,
+    onDone = _ref118.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -14298,9 +14494,9 @@ function BadgeToast(_ref116) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref117) {
-  var text = _ref117.text,
-    onDone = _ref117.onDone;
+function NoteToast(_ref119) {
+  var text = _ref119.text,
+    onDone = _ref119.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -14573,206 +14769,206 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39() {
-        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t40, _t41;
-        return _regenerator().w(function (_context39) {
-          while (1) switch (_context39.p = _context39.n) {
+      var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
+        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t46, _t47;
+        return _regenerator().w(function (_context41) {
+          while (1) switch (_context41.p = _context41.n) {
             case 0:
-              _context39.n = 1;
+              _context41.n = 1;
               return runMigrations();
             case 1:
               k = todayKey();
-              _context39.n = 2;
+              _context41.n = 2;
               return sg("logs__" + k);
             case 2:
-              lv = _context39.v;
+              lv = _context41.v;
               if (lv) setLogs(JSON.parse(lv));
-              _context39.n = 3;
+              _context41.n = 3;
               return sg("water__" + k);
             case 3:
-              wv = _context39.v;
+              wv = _context41.v;
               if (wv) setWater(parseInt(wv) || 0);
               // A new day has no stored mode yet. It CARRIES the last one forward — "mode persists until
               // the user changes it" (energy-safety/02). It used to fall back to the useState default,
               // "cut": every morning opened in Cut, the once-a-day break accrual counted that day as a
               // cut day and reset the break to zero, and only then did a cloud pull restore Maintain on
               // screen — so a week-long break sat at "about 14 days to fully recharged". Fixed 2026-10-11.
-              _context39.n = 4;
+              _context41.n = 4;
               return sg("mode__" + k);
             case 4:
-              mv = _context39.v;
+              mv = _context41.v;
               if (!mv) {
-                _context39.n = 5;
+                _context41.n = 5;
                 break;
               }
               setMode(mv);
-              _context39.n = 10;
+              _context41.n = 10;
               break;
             case 5:
               _prior = null;
-              _context39.p = 6;
-              _context39.n = 7;
+              _context41.p = 6;
+              _context41.n = 7;
               return sg("history");
             case 7:
-              hv0 = _context39.v;
+              hv0 = _context41.v;
               before = (hv0 ? JSON.parse(hv0) : []).filter(function (h) {
                 return h && h.date <= k && MODES[h.mode];
               });
               if (before.length) _prior = before.reduce(function (a, b) {
                 return b.date > a.date ? b : a;
               }).mode;
-              _context39.n = 9;
+              _context41.n = 9;
               break;
             case 8:
-              _context39.p = 8;
-              _t40 = _context39.v;
+              _context41.p = 8;
+              _t46 = _context41.v;
             case 9:
               if (!_prior) {
-                _context39.n = 10;
+                _context41.n = 10;
                 break;
               }
               setMode(_prior);
-              _context39.n = 10;
+              _context41.n = 10;
               return ss("mode__" + k, _prior);
             case 10:
-              _context39.n = 11;
+              _context41.n = 11;
               return sg("profile");
             case 11:
-              pv = _context39.v;
+              pv = _context41.v;
               if (pv) {
                 pp = JSON.parse(pv);
                 setProf(pp);
                 setDietaryCache(pp.dietary);
               }
               loadedMeals = [].concat(DEF_MEALS);
-              _context39.n = 12;
+              _context41.n = 12;
               return sg("meals");
             case 12:
-              mv2 = _context39.v;
+              mv2 = _context41.v;
               if (mv2) {
                 loadedMeals = JSON.parse(mv2);
                 setMeals(loadedMeals);
               }
-              _context39.n = 13;
+              _context41.n = 13;
               return sg("workouts__" + k);
             case 13:
-              wkv = _context39.v;
+              wkv = _context41.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
               // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
               prior = [];
               d = 1;
             case 14:
               if (!(d <= 2)) {
-                _context39.n = 17;
+                _context41.n = 17;
                 break;
               }
-              _context39.n = 15;
+              _context41.n = 15;
               return sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
             case 15:
-              pwv = _context39.v;
+              pwv = _context41.v;
               prior.push(pwv ? JSON.parse(pwv).reduce(function (s, w) {
                 return s + (w.kcal || 0);
               }, 0) : 0);
             case 16:
               d++;
-              _context39.n = 14;
+              _context41.n = 14;
               break;
             case 17:
               setPriorWorkoutKcal(prior);
-              _context39.n = 18;
+              _context41.n = 18;
               return sg("badges");
             case 18:
-              bv = _context39.v;
+              bv = _context41.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context39.n = 19;
+              _context41.n = 19;
               return sg("history");
             case 19:
-              hv = _context39.v;
+              hv = _context41.v;
               if (hv) setHist(JSON.parse(hv));
-              _context39.n = 20;
+              _context41.n = 20;
               return sg("weighins");
             case 20:
-              wiv = _context39.v;
+              wiv = _context41.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context39.n = 21;
+              _context41.n = 21;
               return sg("bodymeasurements");
             case 21:
-              bmv = _context39.v;
+              bmv = _context41.v;
               if (bmv) {
                 try {
                   setBodyMeasurements(JSON.parse(bmv) || []);
                 } catch (e) {}
               }
-              _context39.n = 22;
+              _context41.n = 22;
               return sg("mute_body_measurements");
             case 22:
-              mmv = _context39.v;
+              mmv = _context41.v;
               if (mmv) setMuteMeasurements(mmv === "1");
-              _context39.n = 23;
+              _context41.n = 23;
               return sg("body_measurement_note");
             case 23:
-              mnv = _context39.v;
+              mnv = _context41.v;
               if (mnv) setMeasurementNote(mnv);
-              _context39.n = 24;
+              _context41.n = 24;
               return sg("body_measurement_nudge_dismissed");
             case 24:
-              mnav = _context39.v;
+              mnav = _context41.v;
               if (mnav) setMeasurementNudgeAt(parseInt(mnav) || null);
-              _context39.n = 25;
+              _context41.n = 25;
               return sg("tdee_adj");
             case 25:
-              tav = _context39.v;
+              tav = _context41.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context39.n = 26;
+              _context41.n = 26;
               return sg("tdee_adj_log");
             case 26:
-              alv = _context39.v;
+              alv = _context41.v;
               if (alv) {
                 try {
                   setAdjLog(JSON.parse(alv) || []);
                 } catch (e) {}
               }
-              _context39.n = 27;
+              _context41.n = 27;
               return sg("weigh_nudge_dismissed");
             case 27:
-              wnv = _context39.v;
+              wnv = _context41.v;
               if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
-              _context39.n = 28;
+              _context41.n = 28;
               return sg("cut_block");
             case 28:
-              cbv = _context39.v;
+              cbv = _context41.v;
               if (cbv) {
                 try {
                   setCutBlock(_objectSpread(_objectSpread({}, EMPTY_CUT_BLOCK), JSON.parse(cbv)));
                 } catch (e) {}
               }
-              _context39.n = 29;
+              _context41.n = 29;
               return sg(BREAK_REBUILT_KEY);
             case 29:
-              breakRebuilt.current = !!_context39.v;
-              _context39.n = 30;
+              breakRebuilt.current = !!_context41.v;
+              _context41.n = 30;
               return sg("target_kcal");
             case 30:
-              ckv = _context39.v;
+              ckv = _context41.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context39.n = 31;
+              _context41.n = 31;
               return sg("aggressive_cut_acked");
             case 31:
-              acv = _context39.v;
+              acv = _context41.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context39.n = 32;
+              _context41.n = 32;
               return sg("auth_state");
             case 32:
-              asv = _context39.v;
-              _context39.n = 33;
+              asv = _context41.v;
+              _context41.n = 33;
               return sg("auth_user");
             case 33:
-              auv = _context39.v;
+              auv = _context41.v;
               premiumUid = null; // The background pull below and the revive further down both write the meal list.
               // The revive's is the union of the two, so it wins whichever order they land in.
               revive = {
@@ -14780,19 +14976,19 @@ function App() {
               };
               pulling = false;
               if (!(asv === "premium" && auv)) {
-                _context39.n = 37;
+                _context41.n = 37;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context39.n = 35;
+                _context41.n = 35;
                 break;
               }
-              _context39.n = 34;
+              _context41.n = 34;
               return ss("auth_state", "anonymous");
             case 34:
               setShowLapsed(true);
-              _context39.n = 37;
+              _context41.n = 37;
               break;
             case 35:
               premiumUid = u.id || null;
@@ -14800,10 +14996,10 @@ function App() {
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context39.n = 36;
+              _context41.n = 36;
               return sg("health_consent");
             case 36:
-              hc = _context39.v;
+              hc = _context41.v;
               hcParsed = null;
               try {
                 hcParsed = hc ? JSON.parse(hc) : null;
@@ -14856,29 +15052,29 @@ function App() {
               if (!pulling) setCloudSettled(true);
 
               // One-time recovery for lists the old "Reset to defaults" button wiped.
-              _context39.p = 38;
-              _context39.n = 39;
+              _context41.p = 38;
+              _context41.n = 39;
               return reviveMeals(premiumUid, loadedMeals);
             case 39:
-              revived = _context39.v;
+              revived = _context41.v;
               if (revived) {
                 revive.done = true;
                 setMeals(revived);
               }
-              _context39.n = 41;
+              _context41.n = 41;
               break;
             case 40:
-              _context39.p = 40;
-              _t41 = _context39.v;
+              _context41.p = 40;
+              _t47 = _context41.v;
             case 41:
               setReady(true);
             case 42:
-              return _context39.a(2);
+              return _context41.a(2);
           }
-        }, _callee39, null, [[38, 40], [6, 8]]);
+        }, _callee41, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref118.apply(this, arguments);
+        return _ref120.apply(this, arguments);
       };
     }();
     load();
@@ -14932,99 +15128,99 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(l) {
-      return _regenerator().w(function (_context40) {
-        while (1) switch (_context40.n) {
-          case 0:
-            setLogs(l);
-            _context40.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogs(authUser.id, todayKey(), l)["catch"](function () {});
-          case 2:
-            return _context40.a(2);
-        }
-      }, _callee40);
-    }));
-    return function saveLogs(_x51) {
-      return _ref119.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(w) {
-      return _regenerator().w(function (_context41) {
-        while (1) switch (_context41.n) {
-          case 0:
-            setWater(w);
-            _context41.n = 1;
-            return ss("water__" + todayKey(), String(w));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
-          case 2:
-            return _context41.a(2);
-        }
-      }, _callee41);
-    }));
-    return function saveWater(_x52) {
-      return _ref120.apply(this, arguments);
-    };
-  }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(m) {
+    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
-            setMode(m);
+            setLogs(l);
             _context42.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogsTracked(authUser.id, todayKey(), l)["catch"](function () {});
           case 2:
             return _context42.a(2);
         }
       }, _callee42);
     }));
-    return function saveMode(_x53) {
+    return function saveLogs(_x55) {
       return _ref121.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(p) {
+  var saveWater = /*#__PURE__*/function () {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
-            setProf(p);
-            setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
+            setWater(w);
             _context43.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("water__" + todayKey(), String(w));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
           case 2:
             return _context43.a(2);
         }
       }, _callee43);
     }));
-    return function saveProf(_x54) {
+    return function saveWater(_x56) {
       return _ref122.apply(this, arguments);
     };
   }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(w) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
-            setWorkouts(w);
+            setMode(m);
             _context44.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("mode__" + todayKey(), m);
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 2:
             return _context44.a(2);
         }
       }, _callee44);
     }));
-    return function saveWorkouts(_x55) {
+    return function saveMode(_x57) {
       return _ref123.apply(this, arguments);
+    };
+  }();
+  var saveProf = /*#__PURE__*/function () {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
+      return _regenerator().w(function (_context45) {
+        while (1) switch (_context45.n) {
+          case 0:
+            setProf(p);
+            setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
+            _context45.n = 1;
+            return ss("profile", JSON.stringify(p));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
+          case 2:
+            return _context45.a(2);
+        }
+      }, _callee45);
+    }));
+    return function saveProf(_x58) {
+      return _ref124.apply(this, arguments);
+    };
+  }();
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
+      return _regenerator().w(function (_context46) {
+        while (1) switch (_context46.n) {
+          case 0:
+            setWorkouts(w);
+            _context46.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+          case 2:
+            return _context46.a(2);
+        }
+      }, _callee46);
+    }));
+    return function saveWorkouts(_x59) {
+      return _ref125.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15038,14 +15234,14 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(e) {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
-      return _regenerator().w(function (_context45) {
-        while (1) switch (_context45.n) {
+      return _regenerator().w(function (_context47) {
+        while (1) switch (_context47.n) {
           case 0:
             haptic();
             isFirstToday = logs.length === 0;
-            _context45.n = 1;
+            _context47.n = 1;
             return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
               id: Date.now(),
               time: new Date().toLocaleTimeString([], {
@@ -15073,12 +15269,12 @@ function App() {
               }
             }
           case 2:
-            return _context45.a(2);
+            return _context47.a(2);
         }
-      }, _callee45);
+      }, _callee47);
     }));
-    return function addLog(_x56) {
-      return _ref124.apply(this, arguments);
+    return function addLog(_x60) {
+      return _ref126.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15104,92 +15300,92 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(kcal) {
-      return _regenerator().w(function (_context46) {
-        while (1) switch (_context46.n) {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
+      return _regenerator().w(function (_context48) {
+        while (1) switch (_context48.n) {
           case 0:
             setCustomKcal(kcal);
             if (!(kcal == null)) {
-              _context46.n = 2;
+              _context48.n = 2;
               break;
             }
-            _context46.n = 1;
+            _context48.n = 1;
             return ss("target_kcal", "");
           case 1:
-            _context46.n = 3;
+            _context48.n = 3;
             break;
           case 2:
-            _context46.n = 3;
+            _context48.n = 3;
             return ss("target_kcal", String(kcal));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context46.a(2);
+            return _context48.a(2);
         }
-      }, _callee46);
+      }, _callee48);
     }));
-    return function saveCustomKcal(_x57) {
-      return _ref125.apply(this, arguments);
+    return function saveCustomKcal(_x61) {
+      return _ref127.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(m) {
-      return _regenerator().w(function (_context47) {
-        while (1) switch (_context47.n) {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
+      return _regenerator().w(function (_context49) {
+        while (1) switch (_context49.n) {
           case 0:
-            _context47.n = 1;
+            _context49.n = 1;
             return saveMode(m);
           case 1:
-            _context47.n = 2;
+            _context49.n = 2;
             return saveCustomKcal(null);
           case 2:
             // Sync once more with correct (m, null) pair to resolve any stale-closure race
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked)["catch"](function () {});
           case 3:
-            return _context47.a(2);
-        }
-      }, _callee47);
-    }));
-    return function handleSetMode(_x58) {
-      return _ref126.apply(this, arguments);
-    };
-  }();
-  var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48() {
-      return _regenerator().w(function (_context48) {
-        while (1) switch (_context48.n) {
-          case 0:
-            setAggressiveCutAcked(true);
-            _context48.n = 1;
-            return ss("aggressive_cut_acked", "1");
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
-          case 2:
-            return _context48.a(2);
-        }
-      }, _callee48);
-    }));
-    return function handleAckAggressiveCut() {
-      return _ref127.apply(this, arguments);
-    };
-  }();
-  var saveMeals = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(updated) {
-      return _regenerator().w(function (_context49) {
-        while (1) switch (_context49.n) {
-          case 0:
-            setMeals(updated);
-            _context49.n = 1;
-            return ss("meals", JSON.stringify(updated));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
-          case 2:
             return _context49.a(2);
         }
       }, _callee49);
     }));
-    return function saveMeals(_x59) {
+    return function handleSetMode(_x62) {
       return _ref128.apply(this, arguments);
+    };
+  }();
+  var handleAckAggressiveCut = /*#__PURE__*/function () {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
+      return _regenerator().w(function (_context50) {
+        while (1) switch (_context50.n) {
+          case 0:
+            setAggressiveCutAcked(true);
+            _context50.n = 1;
+            return ss("aggressive_cut_acked", "1");
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
+          case 2:
+            return _context50.a(2);
+        }
+      }, _callee50);
+    }));
+    return function handleAckAggressiveCut() {
+      return _ref129.apply(this, arguments);
+    };
+  }();
+  var saveMeals = /*#__PURE__*/function () {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
+      return _regenerator().w(function (_context51) {
+        while (1) switch (_context51.n) {
+          case 0:
+            setMeals(updated);
+            _context51.n = 1;
+            return ss("meals", JSON.stringify(updated));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
+          case 2:
+            return _context51.a(2);
+        }
+      }, _callee51);
+    }));
+    return function saveMeals(_x63) {
+      return _ref130.apply(this, arguments);
     };
   }();
 
@@ -15199,19 +15395,19 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(entry) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
       var name, clean;
-      return _regenerator().w(function (_context50) {
-        while (1) switch (_context50.n) {
+      return _regenerator().w(function (_context52) {
+        while (1) switch (_context52.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context50.n = 1;
+              _context52.n = 1;
               break;
             }
-            return _context50.a(2);
+            return _context52.a(2);
           case 1:
             haptic();
             clean = {
@@ -15221,25 +15417,25 @@ function App() {
               carbs: Math.round(entry.carbs * 10) / 10,
               fat: Math.round(entry.fat * 10) / 10
             };
-            _context50.n = 2;
+            _context52.n = 2;
             return saveMeals([].concat(_toConsumableArray(meals), [clean]));
           case 2:
-            return _context50.a(2);
+            return _context52.a(2);
         }
-      }, _callee50);
+      }, _callee52);
     }));
-    return function addToQA(_x60) {
-      return _ref129.apply(this, arguments);
+    return function addToQA(_x64) {
+      return _ref131.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t42;
-      return _regenerator().w(function (_context51) {
-        while (1) switch (_context51.p = _context51.n) {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
+      var user, rec, pulled, tod, snap, _t48;
+      return _regenerator().w(function (_context53) {
+        while (1) switch (_context53.p = _context53.n) {
           case 0:
             user = {
               id: googleUser.id || null,
@@ -15253,20 +15449,20 @@ function App() {
             };
             setAuthUser(user);
             setAuthState("premium");
-            _context51.n = 1;
+            _context53.n = 1;
             return ss("auth_state", "premium");
           case 1:
-            _context51.n = 2;
+            _context53.n = 2;
             return ss("auth_user", JSON.stringify(user));
           case 2:
             if (!consentMeta) {
-              _context51.n = 4;
+              _context53.n = 4;
               break;
             }
             rec = _objectSpread(_objectSpread({}, consentMeta), {}, {
               version: consentMeta.policyVersion
             });
-            _context51.n = 3;
+            _context53.n = 3;
             return ss("health_consent", JSON.stringify(rec));
           case 3:
             setConsentInfo(rec);
@@ -15274,25 +15470,25 @@ function App() {
             setShowSignIn(false);
             setPremiumGate(null);
             if (!(user.id && navigator.onLine)) {
-              _context51.n = 11;
+              _context53.n = 11;
               break;
             }
             setSyncMsg("Syncing your data…");
-            _context51.p = 5;
+            _context53.p = 5;
             if (!consentMeta) {
-              _context51.n = 6;
+              _context53.n = 6;
               break;
             }
-            _context51.n = 6;
+            _context53.n = 6;
             return syncConsent(user.id, consentMeta);
           case 6:
-            _context51.n = 7;
+            _context53.n = 7;
             return migrateLocalToSupabase(user.id);
           case 7:
-            _context51.n = 8;
+            _context53.n = 8;
             return pullFromSupabase(user.id);
           case 8:
-            pulled = _context51.v;
+            pulled = _context53.v;
             if (pulled.profile) {
               setProf(pulled.profile);
               setDietaryCache(pulled.profile.dietary);
@@ -15323,29 +15519,29 @@ function App() {
               setWorkouts(pulled.workouts[todayKey()] || []);
               setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
             }
-            _context51.n = 10;
+            _context53.n = 10;
             break;
           case 9:
-            _context51.p = 9;
-            _t42 = _context51.v;
+            _context53.p = 9;
+            _t48 = _context53.v;
           case 10:
             setSyncMsg("");
           case 11:
-            return _context51.a(2);
+            return _context53.a(2);
         }
-      }, _callee51, null, [[5, 9]]);
+      }, _callee53, null, [[5, 9]]);
     }));
-    return function handleSignInSuccess(_x61, _x62, _x63) {
-      return _ref130.apply(this, arguments);
+    return function handleSignInSuccess(_x65, _x66, _x67) {
+      return _ref132.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52() {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       var meta, rec;
-      return _regenerator().w(function (_context52) {
-        while (1) switch (_context52.n) {
+      return _regenerator().w(function (_context54) {
+        while (1) switch (_context54.n) {
           case 0:
             meta = {
               ageConfirmedAt: null,
@@ -15355,66 +15551,66 @@ function App() {
             rec = _objectSpread(_objectSpread({}, meta), {}, {
               version: POLICY_VERSION
             });
-            _context52.n = 1;
+            _context54.n = 1;
             return ss("health_consent", JSON.stringify(rec));
           case 1:
             setConsentInfo(rec);
             if (!(authUser !== null && authUser !== void 0 && authUser.id)) {
-              _context52.n = 2;
+              _context54.n = 2;
               break;
             }
-            _context52.n = 2;
+            _context54.n = 2;
             return syncConsent(authUser.id, meta);
           case 2:
             setNeedsConsent(false);
           case 3:
-            return _context52.a(2);
+            return _context54.a(2);
         }
-      }, _callee52);
+      }, _callee54);
     }));
     return function handleConsent() {
-      return _ref131.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
-      var clearKeys, _i4, _clearKeys, k, i, key, _t43;
-      return _regenerator().w(function (_context53) {
-        while (1) switch (_context53.p = _context53.n) {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+      var clearKeys, _i4, _clearKeys, k, i, key, _t49;
+      return _regenerator().w(function (_context55) {
+        while (1) switch (_context55.p = _context55.n) {
           case 0:
             if (!sb()) {
-              _context53.n = 4;
+              _context55.n = 4;
               break;
             }
-            _context53.p = 1;
-            _context53.n = 2;
+            _context55.p = 1;
+            _context55.n = 2;
             return sb().auth.signOut();
           case 2:
-            _context53.n = 4;
+            _context55.n = 4;
             break;
           case 3:
-            _context53.p = 3;
-            _t43 = _context53.v;
+            _context55.p = 3;
+            _t49 = _context55.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "tdee_adj_log", "weigh_nudge_dismissed", "cut_block", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i4 = 0, _clearKeys = clearKeys;
           case 5:
             if (!(_i4 < _clearKeys.length)) {
-              _context53.n = 7;
+              _context55.n = 7;
               break;
             }
             k = _clearKeys[_i4];
-            _context53.n = 6;
+            _context55.n = 6;
             return ss(k, "");
           case 6:
             _i4++;
-            _context53.n = 5;
+            _context55.n = 5;
             break;
           case 7:
             try {
               for (i = localStorage.length - 1; i >= 0; i--) {
                 key = localStorage.key(i);
-                if (key && (key.startsWith("logs__") || key.startsWith("water__") || key.startsWith("workouts__") || key.startsWith("mode__") || key.startsWith("coach__") || key.startsWith("streak_pop__") || key.startsWith("sync_migrated__"))) {
+                if (key && (key.startsWith("logs__") || key.startsWith(PENDING_LOGS) || key.startsWith("water__") || key.startsWith("workouts__") || key.startsWith("mode__") || key.startsWith("coach__") || key.startsWith("streak_pop__") || key.startsWith("sync_migrated__"))) {
                   localStorage.removeItem(key);
                 }
               }
@@ -15444,12 +15640,12 @@ function App() {
             setShowSignOut(false);
             setView("dashboard");
           case 8:
-            return _context53.a(2);
+            return _context55.a(2);
         }
-      }, _callee53, null, [[1, 3]]);
+      }, _callee55, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref132.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
 
@@ -15459,27 +15655,27 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
-      return _regenerator().w(function (_context54) {
-        while (1) switch (_context54.n) {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+      return _regenerator().w(function (_context56) {
+        while (1) switch (_context56.n) {
           case 0:
             setTdeeAdj(0);
             setAdjLog([]);
-            _context54.n = 1;
+            _context56.n = 1;
             return ss("tdee_adj", "0");
           case 1:
-            _context54.n = 2;
+            _context56.n = 2;
             return ss("tdee_adj_log", JSON.stringify([]));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, 0, customKcal, aggressiveCutAcked)["catch"](function () {});
             setNoteToast("Adjustment reset — the app will re-learn from your weigh-ins");
           case 3:
-            return _context54.a(2);
+            return _context56.a(2);
         }
-      }, _callee54);
+      }, _callee56);
     }));
     return function resetTdeeAdj() {
-      return _ref133.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -15534,29 +15730,29 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
-      return _regenerator().w(function (_context55) {
-        while (1) switch (_context55.n) {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
+      return _regenerator().w(function (_context57) {
+        while (1) switch (_context57.n) {
           case 0:
-            _context55.n = 1;
+            _context57.n = 1;
             return deleteAccountRequest();
           case 1:
-            _context55.n = 2;
+            _context57.n = 2;
             return handleSignOut();
           case 2:
-            return _context55.a(2);
+            return _context57.a(2);
         }
-      }, _callee55);
+      }, _callee57);
     }));
     return function handleDeleteAccount() {
-      return _ref134.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56(upd) {
+    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
       var nh;
-      return _regenerator().w(function (_context56) {
-        while (1) switch (_context56.n) {
+      return _regenerator().w(function (_context58) {
+        while (1) switch (_context58.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -15564,27 +15760,34 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context56.n = 1;
+            _context58.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
+            if (!upd.logs) {
+              _context58.n = 2;
+              break;
+            }
+            _context58.n = 2;
+            return ss("logs__" + upd.date, JSON.stringify(upd.logs));
+          case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) {
               syncHistory(authUser.id, nh)["catch"](function () {});
-              if (upd.logs) syncFoodLogs(authUser.id, upd.date, upd.logs)["catch"](function () {});
+              if (upd.logs) syncFoodLogsTracked(authUser.id, upd.date, upd.logs)["catch"](function () {});
             }
-          case 2:
-            return _context56.a(2);
+          case 3:
+            return _context58.a(2);
         }
-      }, _callee56);
+      }, _callee58);
     }));
-    return function updateDay(_x64) {
-      return _ref135.apply(this, arguments);
+    return function updateDay(_x68) {
+      return _ref137.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(weight) {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
-      return _regenerator().w(function (_context57) {
-        while (1) switch (_context57.n) {
+      return _regenerator().w(function (_context59) {
+        while (1) switch (_context59.n) {
           case 0:
             haptic();
             entry = {
@@ -15597,7 +15800,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context57.n = 1;
+            _context59.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWeighIns(authUser.id, updated)["catch"](function () {});
@@ -15606,7 +15809,7 @@ function App() {
             updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
               weight: weight
             });
-            _context57.n = 2;
+            _context59.n = 2;
             return saveProf(updatedProf);
           case 2:
             // Run calibration whenever a new weigh-in arrives — measure the deficit against the
@@ -15634,17 +15837,17 @@ function App() {
               settledAdj: settledAdj
             });
             if (!(result && Math.abs(result.adj) >= CAL_MIN_STEP)) {
-              _context57.n = 5;
+              _context59.n = 5;
               break;
             }
             newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
             applied = newAdj - tdeeAdj;
             if (!(applied !== 0)) {
-              _context57.n = 5;
+              _context59.n = 5;
               break;
             }
             setTdeeAdj(newAdj);
-            _context57.n = 3;
+            _context59.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
             // Retention bumped 14→30 (file 09): raiseContext looks back RAISE_REVERSAL_WINDOW_DAYS
@@ -15656,17 +15859,17 @@ function App() {
               adj: applied
             }]).slice(-30);
             setAdjLog(nextLog);
-            _context57.n = 4;
+            _context59.n = 4;
             return ss("tdee_adj_log", JSON.stringify(nextLog));
           case 4:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 5:
-            return _context57.a(2);
+            return _context59.a(2);
         }
-      }, _callee57);
+      }, _callee59);
     }));
-    return function onWeighIn(_x65) {
-      return _ref136.apply(this, arguments);
+    return function onWeighIn(_x69) {
+      return _ref138.apply(this, arguments);
     };
   }();
 
@@ -15675,12 +15878,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(_ref137) {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref139) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
-      return _regenerator().w(function (_context58) {
-        while (1) switch (_context58.n) {
+      return _regenerator().w(function (_context60) {
+        while (1) switch (_context60.n) {
           case 0:
-            neck = _ref137.neck, waist = _ref137.waist, hip = _ref137.hip;
+            neck = _ref139.neck, waist = _ref139.waist, hip = _ref139.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -15693,10 +15896,10 @@ function App() {
               hipCm: hip
             });
             if (!(computed_bf == null)) {
-              _context58.n = 1;
+              _context60.n = 1;
               break;
             }
-            return _context58.a(2);
+            return _context60.a(2);
           case 1:
             // hard-blocked domain — UI should already have refused this
             entry = {
@@ -15713,7 +15916,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setBodyMeasurements(updated);
-            _context58.n = 2;
+            _context60.n = 2;
             return ss("bodymeasurements", JSON.stringify(updated));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncBodyMeasurements(authUser.id, updated)["catch"](function () {});
@@ -15729,54 +15932,54 @@ function App() {
               cutting: effectiveMode === "cut"
             });
             if (!(next != null)) {
-              _context58.n = 3;
+              _context60.n = 3;
               break;
             }
-            _context58.n = 3;
+            _context60.n = 3;
             return saveProf(_objectSpread(_objectSpread({}, measureProf), {}, {
               bodyFat: next
             }));
           case 3:
-            return _context58.a(2, computed_bf);
-        }
-      }, _callee58);
-    }));
-    return function onMeasurement(_x66) {
-      return _ref138.apply(this, arguments);
-    };
-  }();
-  var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(on) {
-      return _regenerator().w(function (_context59) {
-        while (1) switch (_context59.n) {
-          case 0:
-            setMuteMeasurements(on);
-            _context59.n = 1;
-            return ss("mute_body_measurements", on ? "1" : "");
-          case 1:
-            return _context59.a(2);
-        }
-      }, _callee59);
-    }));
-    return function toggleMuteMeasurements(_x67) {
-      return _ref139.apply(this, arguments);
-    };
-  }();
-  var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(note) {
-      return _regenerator().w(function (_context60) {
-        while (1) switch (_context60.n) {
-          case 0:
-            setMeasurementNote(note);
-            _context60.n = 1;
-            return ss("body_measurement_note", note);
-          case 1:
-            return _context60.a(2);
+            return _context60.a(2, computed_bf);
         }
       }, _callee60);
     }));
-    return function saveMeasurementNote(_x68) {
+    return function onMeasurement(_x70) {
       return _ref140.apply(this, arguments);
+    };
+  }();
+  var toggleMuteMeasurements = /*#__PURE__*/function () {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
+      return _regenerator().w(function (_context61) {
+        while (1) switch (_context61.n) {
+          case 0:
+            setMuteMeasurements(on);
+            _context61.n = 1;
+            return ss("mute_body_measurements", on ? "1" : "");
+          case 1:
+            return _context61.a(2);
+        }
+      }, _callee61);
+    }));
+    return function toggleMuteMeasurements(_x71) {
+      return _ref141.apply(this, arguments);
+    };
+  }();
+  var saveMeasurementNote = /*#__PURE__*/function () {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
+      return _regenerator().w(function (_context62) {
+        while (1) switch (_context62.n) {
+          case 0:
+            setMeasurementNote(note);
+            _context62.n = 1;
+            return ss("body_measurement_note", note);
+          case 1:
+            return _context62.a(2);
+        }
+      }, _callee62);
+    }));
+    return function saveMeasurementNote(_x72) {
+      return _ref142.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -15819,43 +16022,43 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61() {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       var ts;
-      return _regenerator().w(function (_context61) {
-        while (1) switch (_context61.n) {
+      return _regenerator().w(function (_context63) {
+        while (1) switch (_context63.n) {
           case 0:
             ts = Date.now();
             setWeighNudgeAt(ts);
-            _context61.n = 1;
+            _context63.n = 1;
             return ss("weigh_nudge_dismissed", String(ts));
           case 1:
-            return _context61.a(2);
+            return _context63.a(2);
         }
-      }, _callee61);
+      }, _callee63);
     }));
     return function dismissWeighNudge() {
-      return _ref141.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
-      return _regenerator().w(function (_context62) {
-        while (1) switch (_context62.n) {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+      return _regenerator().w(function (_context64) {
+        while (1) switch (_context64.n) {
           case 0:
-            _context62.n = 1;
+            _context64.n = 1;
             return dismissWeighNudge();
           case 1:
-            _context62.n = 2;
+            _context64.n = 2;
             return saveProf(_objectSpread(_objectSpread({}, p), {}, {
               weighCadence: "off"
             }));
           case 2:
-            return _context62.a(2);
+            return _context64.a(2);
         }
-      }, _callee62);
+      }, _callee64);
     }));
     return function muteWeighNudge() {
-      return _ref142.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
 
@@ -15874,22 +16077,22 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
       var ts;
-      return _regenerator().w(function (_context63) {
-        while (1) switch (_context63.n) {
+      return _regenerator().w(function (_context65) {
+        while (1) switch (_context65.n) {
           case 0:
             ts = Date.now();
             setMeasurementNudgeAt(ts);
-            _context63.n = 1;
+            _context65.n = 1;
             return ss("body_measurement_nudge_dismissed", String(ts));
           case 1:
-            return _context63.a(2);
+            return _context65.a(2);
         }
-      }, _callee63);
+      }, _callee65);
     }));
     return function dismissMeasurementNudge() {
-      return _ref143.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
 
@@ -16051,22 +16254,22 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64(next) {
-      return _regenerator().w(function (_context64) {
-        while (1) switch (_context64.n) {
+    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
+      return _regenerator().w(function (_context66) {
+        while (1) switch (_context66.n) {
           case 0:
             setCutBlock(next);
-            _context64.n = 1;
+            _context66.n = 1;
             return ss("cut_block", JSON.stringify(next));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncCutBlock(authUser.id, next)["catch"](function () {});
           case 2:
-            return _context64.a(2);
+            return _context66.a(2);
         }
-      }, _callee64);
+      }, _callee66);
     }));
-    return function saveCutBlock(_x69) {
-      return _ref144.apply(this, arguments);
+    return function saveCutBlock(_x73) {
+      return _ref146.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16089,14 +16292,14 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
-      return _regenerator().w(function (_context65) {
-        while (1) switch (_context65.n) {
+    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
+      return _regenerator().w(function (_context67) {
+        while (1) switch (_context67.n) {
           case 0:
-            _context65.n = 1;
+            _context67.n = 1;
             return handleSetMode("maintain");
           case 1:
-            _context65.n = 2;
+            _context67.n = 2;
             return saveCutBlock(_objectSpread(_objectSpread({}, cutBlock), {}, {
               nudgeAt: null,
               snoozeAt: null
@@ -16104,12 +16307,12 @@ function App() {
           case 2:
             setNoteToast("Break started — eat at maintenance and recharge");
           case 3:
-            return _context65.a(2);
+            return _context67.a(2);
         }
-      }, _callee65);
+      }, _callee67);
     }));
     return function startDietBreak() {
-      return _ref145.apply(this, arguments);
+      return _ref147.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -16171,10 +16374,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref146) {
-    var _ref147 = _slicedToArray(_ref146, 2),
-      lbl = _ref147[0],
-      fn = _ref147[1];
+  }]].map(function (_ref148) {
+    var _ref149 = _slicedToArray(_ref148, 2),
+      lbl = _ref149[0],
+      fn = _ref149[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
