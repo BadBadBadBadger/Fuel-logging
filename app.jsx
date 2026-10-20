@@ -1727,21 +1727,42 @@ const migrateLocalToSupabase = async uid => {
   } catch(e) {}
 };
 
+// Every row of a query, a page at a time. PostgREST caps a response at the project's max-rows
+// (1000 on Supabase) and says nothing about the rest, so a plain select of a long history comes
+// back silently truncated — oldest rows first, newest missing. Learned the hard way (2026-10-20):
+// once an account passed 1000 food_logs, the pull saw today's snapshot but none of today's
+// entries, and replaced the day's logs with nothing on every launch. Pages advance by what each
+// actually returned and stop on an empty one, so a lower max-rows can't end it early either.
+// `build` makes a fresh, totally-ordered query each time: range() over ties isn't stable.
+const SELECT_PAGE = 1000;
+const selectAll = async build => {
+  const rows = [];
+  for (;;) {
+    const { data, error } = await build().range(rows.length, rows.length + SELECT_PAGE - 1);
+    if (error) return { data: null, error };
+    if (!data?.length) return { data: rows, error: null };
+    rows.push(...data);
+  }
+};
+
 const pullFromSupabase = async uid => {
   if (!uid || !navigator.onLine) return {};
   try {
     const [profR, weighR, bodyMeasR, settR, mealsR, badgesR, histR, foodR, waterR, workR] = await Promise.all([
       sb().from("profiles").select("*").eq("id", uid).maybeSingle(),
-      sb().from("weigh_ins").select("*").eq("user_id", uid).order("date"),
-      sb().from("body_measurements").select("*").eq("user_id", uid).order("date"),
+      selectAll(() => sb().from("weigh_ins").select("*").eq("user_id", uid).order("date").order("id")),
+      selectAll(() => sb().from("body_measurements").select("*").eq("user_id", uid).order("date").order("id")),
       sb().from("settings").select("*").eq("id", uid).maybeSingle(),
-      sb().from("meal_library").select("*").eq("user_id", uid),
-      sb().from("badges").select("badge_key").eq("user_id", uid),
-      sb().from("history_snapshots").select("*").eq("user_id", uid).order("date"),
-      sb().from("food_logs").select("*").eq("user_id", uid).order("date"),
-      sb().from("water_logs").select("*").eq("user_id", uid).order("date"),
-      sb().from("workouts").select("*").eq("user_id", uid).order("date"),
+      selectAll(() => sb().from("meal_library").select("*").eq("user_id", uid).order("id")),
+      selectAll(() => sb().from("badges").select("badge_key").eq("user_id", uid).order("badge_key")),
+      selectAll(() => sb().from("history_snapshots").select("*").eq("user_id", uid).order("date").order("id")),
+      selectAll(() => sb().from("food_logs").select("*").eq("user_id", uid).order("date").order("entry_id")),
+      selectAll(() => sb().from("water_logs").select("*").eq("user_id", uid).order("date").order("id")),
+      selectAll(() => sb().from("workouts").select("*").eq("user_id", uid).order("date").order("entry_id")),
     ]);
+    // The day's entries are stitched onto the snapshots below, so a failed read of either half
+    // would write every day's logs back as empty. Apply nothing rather than half a pull.
+    if (histR.error || foodR.error || waterR.error || workR.error) return {};
     const result = {};
     if (profR.data) {
       // Preserve local-only profile fields the profiles table doesn't carry (weighCadence,
