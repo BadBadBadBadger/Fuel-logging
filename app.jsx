@@ -1545,39 +1545,70 @@ const syncFoodLogs = async (uid, date, logs) => {
   } catch(e) { return false; }
 };
 
-// A day's logs the cloud hasn't confirmed yet. Learned the hard way (2026-10-20): during a
-// Supabase outage the writes failed silently, the next launch's pull read the cloud's older copy
-// of the day, and replaced the meals just logged with it. Now every log write is marked pending
-// here first and only cleared once syncFoodLogs confirms — and the pull never overwrites a pending
-// day: it keeps the phone's copy and retries the upload instead. The marker holds the exact list
-// being synced, so a confirm for an older write can't clear a newer one still in flight.
-const PENDING_LOGS = "logs_pending__";
-const syncFoodLogsTracked = async (uid, date, logs) => {
-  const sent = JSON.stringify(logs);
-  await ss(PENDING_LOGS + date, sent);
-  if (!(await syncFoodLogs(uid, date, logs))) return false;
-  if ((await sg(PENDING_LOGS + date)) === sent) {
-    try { await window.storage.delete(PENDING_LOGS + date); } catch(e) {}
-  }
-  return true;
-};
-
 const syncWater = async (uid, date, glasses) => {
-  if (!uid || !navigator.onLine) return;
-  await syncUpsert("water_logs",
-    [{ user_id:uid, date, glasses, updated_at:new Date().toISOString() }], "user_id,date");
+  if (!uid || !navigator.onLine || !sb()) return false;
+  try {
+    const up = await sb().from("water_logs").upsert(
+      [{ user_id:uid, date, glasses, updated_at:new Date().toISOString() }], { onConflict: "user_id,date" });
+    return !up?.error;
+  } catch(e) { return false; }
 };
 
 const syncWorkouts = async (uid, date, ws) => {
-  if (!uid || !navigator.onLine) return;
-  try { await sb().from("workouts").delete().eq("user_id", uid).eq("date", date); } catch(e) {}
-  if (!ws.length) return;
-  const now = new Date().toISOString();
-  await syncUpsert("workouts",
-    ws.map(w => ({ user_id:uid, date, entry_id:w.id, type:w.type,
-      duration:w.duration, intensity:w.intensity, kcal:w.kcal||0,
-      time:w.time||null, notes:w.notes||null, updated_at:now })),
-    "user_id,entry_id");
+  if (!uid || !navigator.onLine || !sb()) return false;
+  try {
+    const del = await sb().from("workouts").delete().eq("user_id", uid).eq("date", date);
+    if (del?.error) return false;
+    if (!ws.length) return true;
+    const now = new Date().toISOString();
+    const up = await sb().from("workouts").upsert(
+      ws.map(w => ({ user_id:uid, date, entry_id:w.id, type:w.type,
+        duration:w.duration, intensity:w.intensity, kcal:w.kcal||0,
+        time:w.time||null, notes:w.notes||null, updated_at:now })),
+      { onConflict: "user_id,entry_id" });
+    return !up?.error;
+  } catch(e) { return false; }
+};
+
+// A day's entries the cloud hasn't confirmed yet. Learned the hard way (2026-10-20): during a
+// Supabase outage the writes failed silently, the next launch's pull read the cloud's older copy
+// of the day, and replaced the meals just logged with it. Now every food, water and workout write
+// is marked pending here first and only cleared once the sync confirms — and the pull never
+// overwrites a pending day: it keeps the phone's copy and retries the upload instead. The marker
+// holds the exact value being synced, so a confirm for an older write can't clear a newer one
+// still in flight.
+const PENDING = { logs: "logs_pending__", water: "water_pending__", workouts: "workouts_pending__" };
+const syncTracked = async (prefix, date, value, sync) => {
+  const sent = JSON.stringify(value);
+  await ss(prefix + date, sent);
+  if (!(await sync())) return false;
+  if ((await sg(prefix + date)) === sent) {
+    try { await window.storage.delete(prefix + date); } catch(e) {}
+  }
+  return true;
+};
+const syncFoodLogsTracked = (uid, date, logs) =>
+  syncTracked(PENDING.logs, date, logs, () => syncFoodLogs(uid, date, logs));
+const syncWaterTracked = (uid, date, glasses) =>
+  syncTracked(PENDING.water, date, glasses, () => syncWater(uid, date, glasses));
+const syncWorkoutsTracked = (uid, date, ws) =>
+  syncTracked(PENDING.workouts, date, ws, () => syncWorkouts(uid, date, ws));
+
+// Each pending day for one kind, with the phone's copy of it (null where that copy is unreadable).
+const pendingDays = async (prefix, localKey) => {
+  const dates = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(prefix)) dates.push(k.slice(prefix.length));
+    }
+  } catch(e) {}
+  const out = [];
+  for (const date of dates) {
+    let local = null; try { local = JSON.parse(await sg(localKey + date)); } catch(e) {}
+    out.push({ date, local });
+  }
+  return out;
 };
 
 const syncProfile = async (uid, p) => {
@@ -1860,6 +1891,18 @@ const pullFromSupabase = async uid => {
     }
     const waterByDate = {};
     if (waterR.data) for (const w of waterR.data) waterByDate[w.date] = w.glasses;
+    // A day whose last write the cloud never confirmed keeps the phone's copy, and gets another
+    // go at the upload — see PENDING.
+    for (const { date, local } of await pendingDays(PENDING.logs, "logs__")) {
+      if (!Array.isArray(local)) continue;
+      foodByDate[date] = local;
+      syncFoodLogsTracked(uid, date, local).catch(() => {});
+    }
+    for (const { date, local } of await pendingDays(PENDING.water, "water__")) {
+      if (typeof local !== "number") continue;
+      waterByDate[date] = local;
+      syncWaterTracked(uid, date, local).catch(() => {});
+    }
     if (histR.data?.length) {
       const fullHist = histR.data.map(h => ({
         date:h.date, mode:h.mode, kcal:h.kcal, protein:h.protein,
@@ -1874,15 +1917,6 @@ const pullFromSupabase = async uid => {
         floored: h.floored ?? null,
         workoutBonus: h.workout_bonus ?? null,
       }));
-      // A day whose last write the cloud never confirmed keeps the phone's logs, and gets
-      // another go at the upload — see PENDING_LOGS.
-      for (const snap of fullHist) {
-        if (!(await sg(PENDING_LOGS + snap.date))) continue;
-        let local = null; try { local = JSON.parse(await sg("logs__" + snap.date)); } catch(e) {}
-        if (!Array.isArray(local)) continue;
-        snap.logs = local;
-        syncFoodLogsTracked(uid, snap.date, local).catch(() => {});
-      }
       await ss("history", JSON.stringify(fullHist));
       for (const snap of fullHist) {
         await ss("logs__"  + snap.date, JSON.stringify(snap.logs || []));
@@ -1890,14 +1924,19 @@ const pullFromSupabase = async uid => {
       }
       result.history = fullHist;
     }
-    if (workR.data?.length) {
-      const byDate = {};
-      for (const w of workR.data) {
-        if (!byDate[w.date]) byDate[w.date] = [];
-        byDate[w.date].push({ id:w.entry_id, type:w.type,
-          duration:w.duration, intensity:w.intensity, kcal:w.kcal,
-          time:w.time, notes:w.notes });
-      }
+    const byDate = {};
+    for (const w of workR.data || []) {
+      if (!byDate[w.date]) byDate[w.date] = [];
+      byDate[w.date].push({ id:w.entry_id, type:w.type,
+        duration:w.duration, intensity:w.intensity, kcal:w.kcal,
+        time:w.time, notes:w.notes });
+    }
+    for (const { date, local } of await pendingDays(PENDING.workouts, "workouts__")) {
+      if (!Array.isArray(local)) continue;
+      byDate[date] = local;
+      syncWorkoutsTracked(uid, date, local).catch(() => {});
+    }
+    if (Object.keys(byDate).length) {
       for (const [d, ws] of Object.entries(byDate)) await ss("workouts__" + d, JSON.stringify(ws));
       result.workouts = byDate;
     }
@@ -7102,7 +7141,7 @@ function App() {
     setWater(w);
     await ss("water__" + todayKey(), String(w));
     if (authState === "premium" && authUser?.id)
-      syncWater(authUser.id, todayKey(), w).catch(() => {});
+      syncWaterTracked(authUser.id, todayKey(), w).catch(() => {});
   };
   const saveMode = async m => {
     setMode(m);
@@ -7121,7 +7160,7 @@ function App() {
     setWorkouts(w);
     await ss("workouts__" + todayKey(), JSON.stringify(w));
     if (authState === "premium" && authUser?.id)
-      syncWorkouts(authUser.id, todayKey(), w).catch(() => {});
+      syncWorkoutsTracked(authUser.id, todayKey(), w).catch(() => {});
   };
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
   // earn-to-eat window, Step 3). Used on sync pulls where we have the whole byDate map.
@@ -7281,7 +7320,8 @@ function App() {
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith("logs__") || key.startsWith(PENDING_LOGS) || key.startsWith("water__") ||
+        if (key && (key.startsWith("logs__") ||
+            Object.values(PENDING).some(pre => key.startsWith(pre)) || key.startsWith("water__") ||
             key.startsWith("workouts__") || key.startsWith("mode__") ||
             key.startsWith("coach__")    || key.startsWith("streak_pop__") ||
             key.startsWith("sync_migrated__"))) {
