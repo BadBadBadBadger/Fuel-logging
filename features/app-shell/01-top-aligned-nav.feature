@@ -2,7 +2,7 @@ Feature: Top-aligned navigation — pages open at the top
 
   Scenario: Opening a screen scrolls it to the top
     Given I have scrolled down on the dashboard
-    When I navigate to any other screen (Profile, History, Achievements, AI Log, Quick Add, Food Search)
+    When I navigate to any other screen (Profile, History, Achievements, AI Log, Quick Add)
     Then the new screen is shown scrolled to the very top
     And I do not have to scroll up to see its header
 

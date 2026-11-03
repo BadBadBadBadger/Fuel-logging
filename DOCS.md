@@ -56,7 +56,7 @@ Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalis
 | Charts | Recharts 2.12.7 (vendored) |
 | Styling | Inline React styles only |
 | Storage | `localStorage` via `window.storage` bridge in `index.html` |
-| Food API | Open Food Facts (free, no key required) — **Food Search only** (§16); no longer consulted by the AI Log or re-estimates since 2026-09-15 |
+| Food API | None. Open Food Facts was dropped from the AI Log and re-estimates on 2026-09-15 and the Food Search screen was removed in Nov 2026 (§16) — the AI Log is the lookup |
 | AI API | Anthropic `claude-sonnet-4-6` via Cloudflare Worker proxy |
 | Hosting | GitHub Pages |
 | Android | PWABuilder.com → APK |
@@ -72,7 +72,7 @@ npx babel app.jsx --out-file app.js   # babel.config.json handles presets
 - No `<form>` tags — use `<div>` + onClick.
 - `BackHdr` must be `position:sticky` so back button stays visible on scroll.
 - All AI calls must go through `callAI` / `callAIJson` helpers — never call `fetch(AI_ENDPOINT)` directly.
-- Service worker bypasses (current `sw.js` list): `api.anthropic.com`, `workers.dev`, `openfoodfacts.org`, `unpkg.com`, `accounts.google.com`, `googleapis.com`, `supabase.co`. Any new external API must be added to this bypass list, otherwise POST responses get cached incorrectly and the feature silently returns HTML instead of JSON.
+- Service worker bypasses (current `sw.js` list): `api.anthropic.com`, `workers.dev`, `unpkg.com`, `accounts.google.com`, `googleapis.com`, `supabase.co`. Any new external API must be added to this bypass list, otherwise POST responses get cached incorrectly and the feature silently returns HTML instead of JSON.
 - The service worker only registers in **production**. On `localhost`/`127.0.0.1`/`file://` it is skipped and any existing registration is unregistered, so local dev never serves a stale bundle (see §36).
 - Only `useState` and `useEffect` are destructured from React as globals. `useMemo`, `useCallback`, etc. are **not** available as globals — access them via `React.useMemo(...)` if needed, or use the `useState` initialiser pattern for stable values.
 - Colours come from four central constants (`A`, `BG`, `CARD`, `BD`) plus a hard-coded cream-grey text/surface scale — see §35 before changing any colour.
@@ -310,7 +310,6 @@ All state in Root. `meals` lifted to Root so `addToQA` (Dashboard) and `QuickAdd
 | `AILog` | `onAdd` | AI-powered meal breakdown; only reachable when premium (view is never set to `"ai"` for anonymous) |
 | `EntryEditor` | `entry, onSave, onCancel, isPremium, onPremiumGate` | Inline editor for an already-logged entry; shared by Dashboard today-list + History day view. Manual edit for all; ✨ AI re-estimate (`AI_REESTIMATE_PROMPT` + OFF) is premium-gated |
 | `QuickAdd` | `meals, setMeals` | Available to all users |
-| `FoodSearch` | `onAdd` | Available to all users |
 | `History` | `history, onUpdateDay, weighIns` | Available to all users |
 | `Achievements` | `earnedBdgs` | Available to all users |
 | `PremiumModal` | `feature, onUpgrade, onDismiss` | `feature`: `{emoji, name}` of the locked feature tapped, or `null` for generic. "Start Free Trial" → `onUpgrade`. "Maybe Later" → `onDismiss` |
@@ -541,12 +540,12 @@ callAIJson(prompt, maxTokens) // → parsed object (strips ```json fences automa
 
 ---
 
-## 16. Food Search
+## 16. Food Search (removed, Nov 2026)
 
-Searches Open Food Facts (millions of products, no API key). Parsing:
-- Tries `energy-kcal_100g` first, falls back to `energy_100g` ÷ 4.184 (kJ → kcal)
-- `serving_size` parsed with `parseFloat` — falls back to 100g if non-numeric or out of range (5–2000g)
-- Returns up to 12 results filtered to products with valid kcal data
+The Open Food Facts search screen (`FoodSearch`, dashboard **🔍 SEARCH** button) was removed: it
+rarely returned a usable product, and the AI Log gets the same information faster. The dashboard's
+add-food row is now two buttons (AI LOG, QUICK ADD). `openfoodfacts.org` is gone from the `sw.js`
+bypass list; nothing in the app contacts it.
 
 ---
 
@@ -830,7 +829,6 @@ Then resets all React state to defaults (`anonymous`, empty logs, default meals,
 | WorkoutLogger paste button | `onClick`: if `!isPremium` → `onPremiumGate({emoji:"🏋️", name:"Workout AI Parser"})`. If premium → `setHevyMode(true)` |
 | CoachCard | Wrapped: `{isPremium && <CoachCard .../>}` — not rendered at all for anonymous |
 | Quick Add | No gate — available to all |
-| Food Search | No gate — available to all |
 
 `isPremium` is derived locally inside Dashboard: `const isPremium = authState === "premium";`
 
@@ -924,7 +922,6 @@ During Phase 1, subscriptions are not yet wired to payment. Users can access pre
 | Feature | Anonymous | Premium |
 |---|---|---|
 | Quick Add | ✅ | ✅ |
-| Food Search | ✅ | ✅ |
 | History | ✅ | ✅ |
 | Achievements | ✅ | ✅ |
 | Profile / targets | ✅ | ✅ |
@@ -1523,6 +1520,12 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Food Search removed (Nov 2026)
+- The **Food Search** screen (Open Food Facts product lookup) is gone — it hardly ever worked, and the
+  AI Log returns the same numbers quicker. Dashboard add-food row is now AI LOG + QUICK ADD.
+- `openfoodfacts.org` dropped from the `sw.js` bypass list; sw `v102→v103`.
+- `__tests__/ai-log.test.js` now guards that no code references Open Food Facts at all.
 
 ### Plain words from the coach; photo meals named after the food (Sep 2026, v6.9.3)
 Two small asks from the founder, one cloud session, branch `claude/ai-coach-jargon-guard-ey4ze7`.

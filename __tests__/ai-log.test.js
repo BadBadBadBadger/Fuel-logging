@@ -111,11 +111,10 @@ describe("The model's numbers are the numbers (logging/07)", () => {
     const hits = codeLines().filter(l => /searchOFT/.test(l.text));
     expect(hits).toEqual([]);
   });
-  test("the AI Log never calls Open Food Facts — only FoodSearch, where the user picks from a list, may", () => {
+  test("nothing calls Open Food Facts — the Food Search screen was removed too", () => {
     const off = codeLines().filter(l => /openfoodfacts/.test(l.text));
-    expect(off.length).toBe(1);
-    expect(fnBody("function FoodSearch(")).toContain("openfoodfacts");
-    expect(fnBody("function AILog(")).not.toContain("openfoodfacts");
+    expect(off).toEqual([]);
+    expect(src).not.toContain("function FoodSearch(");
   });
   test("no row is shown at a confidence the model did not give it", () => {
     // The old swap stamped every replaced row `confidence: 98`. Nothing may hard-code that now.
