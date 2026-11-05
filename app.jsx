@@ -5009,9 +5009,13 @@ Return ONLY valid JSON (no markdown, no preamble):
   ]
 }`;
 
-// Vision variant — same contract, but the meal is in the attached photo. Any
-// typed text is optional extra context (brand, restaurant, portion the user knows).
-const AI_PHOTO_PROMPT = (desc) => `You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL.
+// Vision variant — same contract, but the meal is in the attached photo. Any text typed
+// alongside the photo is the user's GUIDANCE (features/logging/08): weights, brands, cooking
+// method, what's hidden under the sauce, how much of it they actually ate. It outranks what the
+// photo suggests, and gets the same weight/fat/number rules the text prompt has (logging/07).
+const AI_PHOTO_PROMPT = (desc) => {
+  const notes = desc && desc.trim() ? desc.trim() : "";
+  return `You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL.
 
 A photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.
 
@@ -5019,11 +5023,26 @@ Rules:
 - Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).
 - Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.
 - Hidden cooking fat and exact portion are the usual photo blind spots — reflect that in confidence and in "ask".
+- Arithmetic: check kcal against the macros — kcal ≈ 4×protein + 4×carbs + 9×fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.
 - For ANY component with confidence below 80, set "ask" to the single highest-leverage unknown: "fat", "portion", or "version" (see below). Otherwise null.
-${desc && desc.trim() ? `\nThe user added this context: "${desc.trim()}" — use it to disambiguate.\n` : ""}
+${notes ? `
+USER'S NOTES about this photo: "${notes}"
+
+The notes are the user's own knowledge of the meal and are GUIDANCE for your estimate. Where the notes and the photo disagree, the NOTES WIN — the user knows things a photo cannot show. Use the photo for everything the notes do not cover. Specifically:
+- A weight, count or size in the notes IS that item's portion — use it instead of your visual estimate and scale every macro in proportion (150 g is 60% of 250 g, in every macro).
+- A brand, restaurant, shop or product name in the notes identifies the food — use that product's ACTUAL menu/label nutrition, not a generic equivalent.
+- Cooking method in the notes sets the fat: "dry", "no oil", "zero added fat", "no butter", "air-fried without oil", "grilled", "boiled", "poached", "steamed" mean NO cooking fat was added; "fried", "with butter", "a tablespoon of oil" etc. mean that fat IS there even if it is not visible.
+- Ingredients the notes mention that the photo cannot show (oil, butter, sauce or dressing, sugar in a drink, a filling, something under other food, a side not in shot) are part of the meal — include them as their own component.
+- A recipe variant in the notes (vegan, low-fat, skinless, diet/zero-sugar, semi-skimmed, wholemeal, etc.) is the version to estimate.
+- If the notes say only part was eaten ("ate half", "left the chips", "shared with two"), estimate what was EATEN, not what is on the plate, and say so in reasoning.
+- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.
+- Confidence: raise it for any component the notes pin down (a stated weight, a named product, a stated cooking method) — the remaining uncertainty is only what the notes leave open.
+- If the notes already answer a question — they say dry, or give a weight, or name the version — do not set "ask" to that question.
+- Mention in each affected item's reasoning that the user's notes were used.
+` : ""}
 "ask" meanings: "fat" = hidden cooking fat (oil/butter vs dry/grilled); "portion" = ambiguous amount/size; "version" = animal-vs-plant or major recipe variant.
 
-"meal" is a short, natural name for the whole photo, 2–6 words, the way a person would write it in a food diary — e.g. "Chicken Caesar salad", "Full English breakfast", "Pret tuna baguette". If a brand or product name is visible on packaging, use it (e.g. "Müller Corner strawberry yogurt"). No portions, weights or numbers in it.
+"meal" is a short, natural name for the whole photo, 2–6 words, the way a person would write it in a food diary — e.g. "Chicken Caesar salad", "Full English breakfast", "Pret tuna baguette". If a brand or product name is visible on packaging${notes ? " or given in the notes" : ""}, use it (e.g. "Müller Corner strawberry yogurt"). No portions, weights or numbers in it.
 
 Return ONLY valid JSON (no markdown, no preamble):
 {
@@ -5032,6 +5051,7 @@ Return ONLY valid JSON (no markdown, no preamble):
     { "name": "specific food with estimated portion", "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": number, "ask": "fat" | "portion" | "version" | null, "reasoning": "one sentence" }
   ]
 }`;
+};
 
 const AI_REESTIMATE_PROMPT = (item) => `You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.
 
@@ -5527,11 +5547,20 @@ function AILog({ onAdd, onBack }) {
       </p>
 
       <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={4}
-        placeholder={"e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
+        aria-label={photo ? "Notes for the photo" : "Describe your meal"}
+        placeholder={photo
+          ? "Optional notes to sharpen the estimate — e.g. '200g chicken, cooked in 1 tbsp olive oil, rice is about 150g, only ate half the chips'"
+          : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
         style={{ width:"100%", boxSizing:"border-box", background:CARD,
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
+      {photo && (
+        <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
+          📝 Anything you type here guides the photo estimate — weights, brands, cooking oil,
+          hidden sauces or how much you actually ate. Your notes win where the photo can't tell.
+        </div>
+      )}
       <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:6 }}>
         Just the food — no personal details needed. Dictation runs on your device; only the
         text is sent. A photo is used once to estimate the meal and is never stored.

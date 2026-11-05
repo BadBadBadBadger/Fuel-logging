@@ -340,6 +340,7 @@ Feature: AI meal capture via text, voice, or photo with confidence-gated follow-
     And it is only called "Photo meal" when there is nothing else to go on
 
   @photo
+  # What I type with a photo also GUIDES the estimate itself — features/logging/08.
   Scenario: What I type with a photo is a hint, not the name
     Given I have photographed a baguette and typed "from Pret"
     When the AI names the meal "Pret tuna baguette"

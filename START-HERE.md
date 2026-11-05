@@ -1,7 +1,16 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-10-12 (cloud). **Jest 461/461 · Playwright 160/160 · sw v101 · `main` @ `33a8e8f`
-(PR #11) — merged, live on Pages (deploy run succeeded 2026-10-12 16:29 UTC).**
+**Updated:** 2026-11-05 (cloud). **Jest 469/469 · Playwright 163/163 · sw v104 on branch
+`ccr-4f9a195a-6yc3cl` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
+(PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v103 merged to `main` since.
+
+> **v104 (2026-11-05, cloud, on a branch): what you type with a photo guides the estimate.** Text in
+> the AI Log box was already sent with a photo, but only as a weak *"disambiguate"* hint. It is now
+> the user's **notes** in `AI_PHOTO_PROMPT` and wins over the photo: weights are portions, named
+> brands use real nutrition, oil/dry sets the fat, unseen ingredients become items, *"ate half"*
+> counts what was eaten, and answered questions aren't asked. Placeholder + hint change when a photo
+> is attached. Spec: `features/logging/08`. Device check: `DEVICE-TEST.md` → *New in v104*.
+> Detail: `DOCS.md` §15 and §37.
 
 > **v99–v101 (2026-10-11/12, cloud, PRs #10–#11): a synced user's diet break never counted.** On
 > Maintain since 2 Oct, the founder's break card read *"ON A BREAK · STARTING TODAY · about 14 days"*

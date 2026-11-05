@@ -1,6 +1,6 @@
 # FUEL LOG — Product Documentation
 **Version:** 6.9.3 (the coach and three on-screen notes lose the maths jargon; photo meals are named after the food) — **live**, sw v94 (PR #3, `ceb9c34`)
-**Last Updated:** 26 September 2026
+**Last Updated:** 5 November 2026
 
 > **What's new** — **the weekly average was wrong on the screen whose job is to show it.** The
 > seven-day average divided by eight, because a part-finished today was counted as a whole day:
@@ -504,6 +504,7 @@ Describes a meal in plain English. AI breaks it into individual components with:
 - Reasoning explaining the source of data
 - **The model's numbers are the numbers.** Until 2026-09-15 an Open Food Facts free-text search ran after every reply and replaced any row it found a product for (see the changelog). Removed — `features/logging/07`.
 - **A photo is named after the food.** The photo prompt also asks for a short diary-style `"meal"` name (2–6 words, the brand off the packaging when visible, no weights). `LOG ALL AS ONE ENTRY` on a photo uses `photoMealName`: the model's name → what you typed → the single item's name → *"Photo meal"* only if there is nothing else. Typed text with a photo is a hint to the model, not the name. `features/logging/05`.
+- **Text typed with a photo guides the estimate.** The box's text goes to `AI_PHOTO_PROMPT` as the user's *notes*, and where notes and photo disagree the notes win: a weight/count is the portion (every macro scales), a named brand/restaurant uses its real nutrition, stated cooking method sets the fat (dry → none; oil/butter/fried → added even if not visible), ingredients the camera can't see become their own item, a stated version (vegan, skinless…) is the one estimated, and *"ate half"* estimates what was eaten. A typed number is a fact about its item, never a row; confidence rises for what the notes pin down and a follow-up they already answer is not asked. The kcal ≈ 4P + 4C + 9F check applies to photos too. With a photo attached the placeholder and a hint say so. No notes → photo alone, as before. `features/logging/08`.
 - **A full typed totals line is the meal** — all four of kcal, `P:`/protein, `C:`/carbs, `F:`/fat present → one row, at once, exactly those figures at 100%, no model call, no follow-ups; `LOG ALL AS ONE ENTRY` logs it named after the food. `parseStatedTotals` / `statedTotalsItem` in `app.jsx`; `features/logging/06`.
 - Individual item or all-at-once logging
 - Re-estimate any item by tapping ✏️ and correcting the name
@@ -1520,6 +1521,19 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### Photo meals: typed notes guide the estimate (Nov 2026)
+- Founder's ask: whatever is typed with a photo should help the AI produce a more realistic macro split.
+  It was already sent, but only as a one-line *"use it to disambiguate"* — weights, oil, brands and
+  *"ate half"* rarely changed the numbers, and none of the `logging/07` text-prompt rules reached the
+  photo prompt.
+- `AI_PHOTO_PROMPT` now gives the text a **USER'S NOTES** section that outranks the photo (rules in §15),
+  and the kcal-vs-macros check for every photo. The photo is still never stored; the entry name rule
+  (`photoMealName`) is unchanged.
+- UI: with a photo attached, the box placeholder suggests example notes and a one-line hint explains them.
+- Spec `features/logging/08` (new). Jest lifts and runs the real prompt with and without notes; new
+  Playwright 44c checks the notes reach the worker with the image. Jest **469/469**, Playwright
+  **163/163**, sw `v103→v104`. **No DB change, no data-flow change** (typed text was already sent).
 
 ### Food Search removed (Nov 2026)
 - The **Food Search** screen (Open Food Facts product lookup) is gone — it hardly ever worked, and the

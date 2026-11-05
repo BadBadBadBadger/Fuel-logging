@@ -68,6 +68,21 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v104 — what you type with a photo guides the estimate (2026-11-05)
+
+Fully close and reopen the installed PWA first — you must be on **v104**. The suites stub the worker,
+so this is the only check of what the real model does with the notes.
+
+- [ ] **AI Log → 📷 a plate** → the box's placeholder changes to *"Optional notes to sharpen the
+      estimate…"* and a 📝 hint appears under it. Remove the photo (✕) → both go back to normal.
+- [ ] **Same plate twice:** once with nothing typed, once typing a weight (e.g. *"200g chicken"*).
+      The second run's chicken row says ~200 g and its macros match 200 g, not the visual guess.
+- [ ] **Hidden fat:** type *"cooked in 1 tbsp olive oil"* → the fat goes up (≈ +14 g / +120 kcal,
+      as its own item or on the cooked food) and you are **not** asked *"Any oil or butter?"*.
+- [ ] **Part eaten:** type *"only ate half the chips"* → the chips row is roughly half a portion and
+      its reasoning says so.
+- [ ] The logged entry is still named after the food (e.g. *"Chicken and chips"*), **not** what you typed.
+
 ### New in v96–v101 — the diet break counts for a synced account, the weekly card, weigh-in (2026-10-12)
 
 Fully close and reopen the installed PWA. On the first launch after a deploy it runs the old
