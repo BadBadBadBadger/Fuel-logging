@@ -415,6 +415,7 @@ Both tests fail on the pre-change build with `Received: "Photo meal"`.
 |---|---|---|
 | 44a | The model's `meal` name is what `LOG ALL AS ONE ENTRY` stores; the items stay underneath | ✅ |
 | 44b | No `meal` in the reply and one item → the entry takes that item's name | ✅ |
+| 44c | Text typed with the photo reaches the worker with the image, as the prompt's *USER'S NOTES* (`features/logging/08`, 2026-11-05) | ✅ |
 
 ---
 
