@@ -16,7 +16,6 @@ Feature: Haptic feedback on every Create, Update and Delete
       | create action                   |
       | log an AI Log item              |
       | tap a ⚡ quick-add chip          |
-      | add a Food Search result        |
       | add a new meal in the meal form |
       | log a weigh-in                  |
       | log a workout                   |
@@ -48,7 +47,7 @@ Feature: Haptic feedback on every Create, Update and Delete
 
   Scenario: Read actions do not buzz
     Given my device supports the Vibration API
-    When I run a Food Search, open a screen, page between History days, or view a chart
+    When I open a screen, page between History days, or view a chart
     Then no vibration is given
 
   Scenario: The vibration is brief, not buzzy

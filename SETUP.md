@@ -204,10 +204,6 @@ The adjustment is capped at ±150 kcal per calibration run and ±600 kcal lifeti
 → Check `AI_ENDPOINT` in `app.jsx` points to your worker URL
 → Check `workers.dev` is in the bypass list in `sw.js`
 
-**Food Search returns no results**
-→ Try a simpler search term (brand name or generic food)
-→ Open Food Facts coverage varies by region — UK/EU products have better data
-
 **Old version showing after push (production only)**
 → Bump `CACHE = "fuel-log-vN"` in `sw.js` to force service worker refresh
 → On mobile: hold the refresh button → Hard Reload

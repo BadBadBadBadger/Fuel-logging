@@ -1,4 +1,4 @@
-const CACHE = "fuel-log-v102";
+const CACHE = "fuel-log-v103";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./app.js",
   "./icon-192.png", "./icon-512.png", "./icon-192-maskable.png", "./icon-512-maskable.png",
   "./vendor/react.js", "./vendor/react-dom.js",
@@ -21,7 +21,6 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.url.includes("api.anthropic.com") ||
       e.request.url.includes("workers.dev") ||
-      e.request.url.includes("openfoodfacts.org") ||
       e.request.url.includes("unpkg.com") ||
       e.request.url.includes("accounts.google.com") ||
       e.request.url.includes("googleapis.com") ||

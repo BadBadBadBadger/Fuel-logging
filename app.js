@@ -10537,7 +10537,7 @@ function Dashboard(_ref92) {
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr",
+      gridTemplateColumns: "1fr 1fr",
       gap: 10,
       marginBottom: 20
     }
@@ -10552,12 +10552,6 @@ function Dashboard(_ref92) {
     l: "QUICK ADD",
     s: "preset meals",
     v: "quick",
-    premium: false
-  }, {
-    e: "🔍",
-    l: "SEARCH",
-    s: "food database",
-    v: "search",
     premium: false
   }].map(function (b) {
     return /*#__PURE__*/React.createElement("button", {
@@ -12246,242 +12240,6 @@ function QuickAdd(_ref101) {
   }, "No meals found")));
 }
 
-// ── Food Search ───────────────────────────────────────────────
-
-function FoodSearch(_ref103) {
-  var onAdd = _ref103.onAdd,
-    onBack = _ref103.onBack;
-  var _useState149 = useState(""),
-    _useState150 = _slicedToArray(_useState149, 2),
-    q = _useState150[0],
-    setQ = _useState150[1];
-  var _useState151 = useState([]),
-    _useState152 = _slicedToArray(_useState151, 2),
-    results = _useState152[0],
-    setResults = _useState152[1];
-  var _useState153 = useState(false),
-    _useState154 = _slicedToArray(_useState153, 2),
-    loading = _useState154[0],
-    setLoading = _useState154[1];
-  var _useState155 = useState(""),
-    _useState156 = _slicedToArray(_useState155, 2),
-    error = _useState156[0],
-    setError = _useState156[1];
-  var _useState157 = useState(false),
-    _useState158 = _slicedToArray(_useState157, 2),
-    done = _useState158[0],
-    setDone = _useState158[1];
-  var search = /*#__PURE__*/function () {
-    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
-      var res, data, parseServing, parseKcal, valid, _t45;
-      return _regenerator().w(function (_context40) {
-        while (1) switch (_context40.p = _context40.n) {
-          case 0:
-            if (q.trim()) {
-              _context40.n = 1;
-              break;
-            }
-            return _context40.a(2);
-          case 1:
-            setLoading(true);
-            setError("");
-            setResults([]);
-            setDone(true);
-            _context40.p = 2;
-            _context40.n = 3;
-            return fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=".concat(encodeURIComponent(q), "&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands"));
-          case 3:
-            res = _context40.v;
-            if (res.ok) {
-              _context40.n = 4;
-              break;
-            }
-            throw new Error("Network error");
-          case 4:
-            _context40.n = 5;
-            return res.json();
-          case 5:
-            data = _context40.v;
-            parseServing = function parseServing(raw) {
-              if (!raw) return 100;
-              var n = parseFloat(raw);
-              return isFinite(n) && n > 5 && n < 2000 ? n : 100;
-            };
-            parseKcal = function parseKcal(n) {
-              if (n["energy-kcal_100g"] != null) return n["energy-kcal_100g"];
-              if (n["energy_100g"] != null) return n["energy_100g"] / 4.184;
-              return null;
-            };
-            valid = (data.products || []).filter(function (p) {
-              var _p$product_name;
-              return ((_p$product_name = p.product_name) === null || _p$product_name === void 0 ? void 0 : _p$product_name.trim()) && parseKcal(p.nutriments || {}) != null;
-            });
-            if (valid.length) {
-              _context40.n = 6;
-              break;
-            }
-            setError("No results — try a brand name or simpler search term.");
-            setLoading(false);
-            return _context40.a(2);
-          case 6:
-            setResults(valid.slice(0, 12).map(function (p) {
-              var _p$brands;
-              var n = p.nutriments,
-                sg2 = parseServing(p.serving_size),
-                f = sg2 / 100;
-              var kcal100 = parseKcal(n);
-              var brand = (_p$brands = p.brands) === null || _p$brands === void 0 || (_p$brands = _p$brands.split(",")[0]) === null || _p$brands === void 0 ? void 0 : _p$brands.trim();
-              return {
-                name: [p.product_name.trim(), brand].filter(Boolean).join(" – "),
-                kcal: Math.round(kcal100 * f),
-                protein: Math.round((n["proteins_100g"] || 0) * f * 10) / 10,
-                carbs: Math.round((n["carbohydrates_100g"] || 0) * f * 10) / 10,
-                fat: Math.round((n["fat_100g"] || 0) * f * 10) / 10,
-                notes: "Per serving (~".concat(Math.round(sg2), "g)")
-              };
-            }));
-            _context40.n = 8;
-            break;
-          case 7:
-            _context40.p = 7;
-            _t45 = _context40.v;
-            setError("Search failed — check your internet connection.");
-          case 8:
-            setLoading(false);
-          case 9:
-            return _context40.a(2);
-        }
-      }, _callee40, null, [[2, 7]]);
-    }));
-    return function search() {
-      return _ref104.apply(this, arguments);
-    };
-  }();
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: "20px 16px 40px",
-      maxWidth: 500,
-      margin: "0 auto"
-    }
-  }, /*#__PURE__*/React.createElement(BackHdr, {
-    title: "FOOD SEARCH",
-    onBack: onBack
-  }), /*#__PURE__*/React.createElement("p", {
-    style: {
-      color: "var(--text-mid)",
-      fontSize: 13,
-      lineHeight: 1.6,
-      marginBottom: 16
-    }
-  }, "Search millions of products via Open Food Facts."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 10,
-      marginBottom: 20
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    value: q,
-    onChange: function onChange(e) {
-      return setQ(e.target.value);
-    },
-    onKeyDown: function onKeyDown(e) {
-      return e.key === "Enter" && search();
-    },
-    placeholder: "e.g. 'Grenade bar', 'Weetabix'...",
-    style: _objectSpread(_objectSpread({}, INP), {}, {
-      flex: 1,
-      padding: "13px 16px"
-    })
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: search,
-    disabled: loading || !q.trim(),
-    style: {
-      padding: "13px 16px",
-      background: q.trim() && !loading ? A : "var(--surface-2)",
-      color: q.trim() && !loading ? "var(--bg)" : "var(--border-strong)",
-      border: "none",
-      borderRadius: 12,
-      fontWeight: 900,
-      fontSize: 13,
-      flexShrink: 0,
-      letterSpacing: "0.06em"
-    }
-  }, loading ? "..." : "SEARCH")), loading && /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: "center",
-      color: "var(--text-label)",
-      padding: 24,
-      fontSize: 14
-    }
-  }, "\uD83D\uDD0D Searching..."), error && /*#__PURE__*/React.createElement("p", {
-    style: {
-      color: "var(--over)",
-      fontSize: 13,
-      textAlign: "center",
-      marginBottom: 10
-    }
-  }, error), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 8
-    }
-  }, results.map(function (r, i) {
-    return /*#__PURE__*/React.createElement("button", {
-      key: i,
-      onClick: function onClick() {
-        onAdd(r);
-        onBack();
-      },
-      style: {
-        background: CARD,
-        border: "1px solid ".concat(BD),
-        borderRadius: 14,
-        padding: "14px 16px",
-        textAlign: "left",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        width: "100%"
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        flex: 1,
-        minWidth: 0,
-        paddingRight: 10
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 13,
-        fontWeight: 600,
-        color: "var(--text-hi)",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap"
-      }
-    }, r.name), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 11,
-        color: "var(--text-lo)",
-        marginTop: 3
-      }
-    }, r.notes, " \xB7 P:", r.protein, "g \xB7 C:", r.carbs, "g \xB7 F:", r.fat, "g")), /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 16,
-        fontWeight: 900,
-        color: A,
-        flexShrink: 0
-      }
-    }, r.kcal));
-  })), done && !results.length && !loading && !error && /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: "center",
-      color: "var(--text-faint-2)",
-      padding: "30px 0"
-    }
-  }, "No results"));
-}
-
 // ── History ───────────────────────────────────────────────────
 
 var chartsAvailable = typeof ResponsiveContainer !== "undefined";
@@ -12518,9 +12276,9 @@ var TAPE_SERIES = [{
 //
 // At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
 // can land under the thumb, so a taller card would cover the point being inspected.
-function BodyFatTooltip(_ref105) {
-  var active = _ref105.active,
-    payload = _ref105.payload;
+function BodyFatTooltip(_ref103) {
+  var active = _ref103.active,
+    payload = _ref103.payload;
   if (!active || !payload || !payload.length) return null;
   var r = payload[0].payload || {};
   return /*#__PURE__*/React.createElement("div", {
@@ -12551,31 +12309,31 @@ function BodyFatTooltip(_ref105) {
     }
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
-function History(_ref106) {
+function History(_ref104) {
   var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref106.history,
-    onBack = _ref106.onBack,
-    onUpdateDay = _ref106.onUpdateDay,
-    _ref106$weighIns = _ref106.weighIns,
-    weighIns = _ref106$weighIns === void 0 ? [] : _ref106$weighIns,
-    _ref106$bodyMeasureme = _ref106.bodyMeasurements,
-    bodyMeasurements = _ref106$bodyMeasureme === void 0 ? [] : _ref106$bodyMeasureme,
-    _ref106$sex = _ref106.sex,
-    sex = _ref106$sex === void 0 ? null : _ref106$sex,
-    _ref106$profile = _ref106.profile,
-    profile = _ref106$profile === void 0 ? {} : _ref106$profile,
-    _ref106$tdeeAdj = _ref106.tdeeAdj,
-    tdeeAdj = _ref106$tdeeAdj === void 0 ? 0 : _ref106$tdeeAdj,
-    _ref106$meals = _ref106.meals,
-    meals = _ref106$meals === void 0 ? DEF_MEALS : _ref106$meals,
-    _ref106$setMeals = _ref106.setMeals,
-    setMeals = _ref106$setMeals === void 0 ? function () {} : _ref106$setMeals,
-    _ref106$onForget = _ref106.onForget,
-    onForget = _ref106$onForget === void 0 ? function () {} : _ref106$onForget,
-    _ref106$isPremium = _ref106.isPremium,
-    isPremium = _ref106$isPremium === void 0 ? false : _ref106$isPremium,
-    _ref106$onPremiumGate = _ref106.onPremiumGate,
-    onPremiumGate = _ref106$onPremiumGate === void 0 ? function () {} : _ref106$onPremiumGate;
+  var history = _ref104.history,
+    onBack = _ref104.onBack,
+    onUpdateDay = _ref104.onUpdateDay,
+    _ref104$weighIns = _ref104.weighIns,
+    weighIns = _ref104$weighIns === void 0 ? [] : _ref104$weighIns,
+    _ref104$bodyMeasureme = _ref104.bodyMeasurements,
+    bodyMeasurements = _ref104$bodyMeasureme === void 0 ? [] : _ref104$bodyMeasureme,
+    _ref104$sex = _ref104.sex,
+    sex = _ref104$sex === void 0 ? null : _ref104$sex,
+    _ref104$profile = _ref104.profile,
+    profile = _ref104$profile === void 0 ? {} : _ref104$profile,
+    _ref104$tdeeAdj = _ref104.tdeeAdj,
+    tdeeAdj = _ref104$tdeeAdj === void 0 ? 0 : _ref104$tdeeAdj,
+    _ref104$meals = _ref104.meals,
+    meals = _ref104$meals === void 0 ? DEF_MEALS : _ref104$meals,
+    _ref104$setMeals = _ref104.setMeals,
+    setMeals = _ref104$setMeals === void 0 ? function () {} : _ref104$setMeals,
+    _ref104$onForget = _ref104.onForget,
+    onForget = _ref104$onForget === void 0 ? function () {} : _ref104$onForget,
+    _ref104$isPremium = _ref104.isPremium,
+    isPremium = _ref104$isPremium === void 0 ? false : _ref104$isPremium,
+    _ref104$onPremiumGate = _ref104.onPremiumGate,
+    onPremiumGate = _ref104$onPremiumGate === void 0 ? function () {} : _ref104$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -12611,46 +12369,46 @@ function History(_ref106) {
       unit: "g"
     }
   };
-  var _useState159 = useState("30D"),
+  var _useState149 = useState("30D"),
+    _useState150 = _slicedToArray(_useState149, 2),
+    range = _useState150[0],
+    setRange = _useState150[1];
+  var _useState151 = useState(["KCAL"]),
+    _useState152 = _slicedToArray(_useState151, 2),
+    metrics = _useState152[0],
+    setMetrics = _useState152[1];
+  var _useState153 = useState(false),
+    _useState154 = _slicedToArray(_useState153, 2),
+    showWeight = _useState154[0],
+    setShowWeight = _useState154[1];
+  var _useState155 = useState(false),
+    _useState156 = _slicedToArray(_useState155, 2),
+    showBodyFat = _useState156[0],
+    setShowBodyFat = _useState156[1];
+  var _useState157 = useState(false),
+    _useState158 = _slicedToArray(_useState157, 2),
+    showTape = _useState158[0],
+    setShowTape = _useState158[1];
+  var _useState159 = useState("line"),
     _useState160 = _slicedToArray(_useState159, 2),
-    range = _useState160[0],
-    setRange = _useState160[1];
-  var _useState161 = useState(["KCAL"]),
+    chartType = _useState160[0],
+    setChartType = _useState160[1];
+  var _useState161 = useState(Math.max(0, history.length - 1)),
     _useState162 = _slicedToArray(_useState161, 2),
-    metrics = _useState162[0],
-    setMetrics = _useState162[1];
-  var _useState163 = useState(false),
+    dayIdx = _useState162[0],
+    setDayIdx = _useState162[1];
+  var _useState163 = useState(null),
     _useState164 = _slicedToArray(_useState163, 2),
-    showWeight = _useState164[0],
-    setShowWeight = _useState164[1];
-  var _useState165 = useState(false),
+    addCtx = _useState164[0],
+    setAddCtx = _useState164[1];
+  var _useState165 = useState(null),
     _useState166 = _slicedToArray(_useState165, 2),
-    showBodyFat = _useState166[0],
-    setShowBodyFat = _useState166[1];
-  var _useState167 = useState(false),
+    editId = _useState166[0],
+    setEditId = _useState166[1];
+  var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    showTape = _useState168[0],
-    setShowTape = _useState168[1];
-  var _useState169 = useState("line"),
-    _useState170 = _slicedToArray(_useState169, 2),
-    chartType = _useState170[0],
-    setChartType = _useState170[1];
-  var _useState171 = useState(Math.max(0, history.length - 1)),
-    _useState172 = _slicedToArray(_useState171, 2),
-    dayIdx = _useState172[0],
-    setDayIdx = _useState172[1];
-  var _useState173 = useState(null),
-    _useState174 = _slicedToArray(_useState173, 2),
-    addCtx = _useState174[0],
-    setAddCtx = _useState174[1];
-  var _useState175 = useState(null),
-    _useState176 = _slicedToArray(_useState175, 2),
-    editId = _useState176[0],
-    setEditId = _useState176[1];
-  var _useState177 = useState(null),
-    _useState178 = _slicedToArray(_useState177, 2),
-    tgtDraft = _useState178[0],
-    setTgtDraft = _useState178[1]; // past-day target being typed, or null
+    tgtDraft = _useState168[0],
+    setTgtDraft = _useState168[1]; // past-day target being typed, or null
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -13396,11 +13154,11 @@ function History(_ref106) {
         fontWeight: 800,
         marginBottom: 4
       }
-    }, "BODY"), bodyRows.map(function (_ref107, i) {
-      var _ref108 = _slicedToArray(_ref107, 3),
-        label = _ref108[0],
-        value = _ref108[1],
-        color = _ref108[2];
+    }, "BODY"), bodyRows.map(function (_ref105, i) {
+      var _ref106 = _slicedToArray(_ref105, 3),
+        label = _ref106[0],
+        value = _ref106[1],
+        color = _ref106[2];
       return /*#__PURE__*/React.createElement("div", {
         key: label,
         style: {
@@ -13590,10 +13348,10 @@ function History(_ref106) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref109) {
-    var _ref110 = _slicedToArray(_ref109, 2),
-      k = _ref110[0],
-      m = _ref110[1];
+  }, Object.entries(MM).map(function (_ref107) {
+    var _ref108 = _slicedToArray(_ref107, 2),
+      k = _ref108[0],
+      m = _ref108[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -13669,10 +13427,10 @@ function History(_ref106) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref111) {
-    var _ref112 = _slicedToArray(_ref111, 2),
-      t = _ref112[0],
-      e = _ref112[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref109) {
+    var _ref110 = _slicedToArray(_ref109, 2),
+      t = _ref110[0],
+      e = _ref110[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -13962,10 +13720,10 @@ function History(_ref106) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref113) {
-    var _ref114 = _slicedToArray(_ref113, 2),
-      k = _ref114[0],
-      m = _ref114[1];
+  }, Object.entries(MM).map(function (_ref111) {
+    var _ref112 = _slicedToArray(_ref111, 2),
+      k = _ref112[0],
+      m = _ref112[1];
     var avg = avgRows.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / avgRows.length;
@@ -14153,9 +13911,9 @@ function History(_ref106) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref115) {
-  var earnedBdgs = _ref115.earnedBdgs,
-    onBack = _ref115.onBack;
+function Achievements(_ref113) {
+  var earnedBdgs = _ref113.earnedBdgs,
+    onBack = _ref113.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -14254,17 +14012,17 @@ function Achievements(_ref115) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref116) {
-  var badge = _ref116.badge,
-    onDone = _ref116.onDone;
+function BadgeFanfare(_ref114) {
+  var badge = _ref114.badge,
+    onDone = _ref114.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState179 = useState(0),
-    _useState180 = _slicedToArray(_useState179, 2),
-    count = _useState180[0],
-    setCount = _useState180[1];
-  var _useState181 = useState(function () {
+  var _useState169 = useState(0),
+    _useState170 = _slicedToArray(_useState169, 2),
+    count = _useState170[0],
+    setCount = _useState170[1];
+  var _useState171 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -14278,8 +14036,8 @@ function BadgeFanfare(_ref116) {
         };
       });
     }),
-    _useState182 = _slicedToArray(_useState181, 1),
-    floaters = _useState182[0];
+    _useState172 = _slicedToArray(_useState171, 1),
+    floaters = _useState172[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -14377,9 +14135,9 @@ function BadgeFanfare(_ref116) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref117) {
-  var streak = _ref117.streak,
-    onDone = _ref117.onDone;
+function StreakPip(_ref115) {
+  var streak = _ref115.streak,
+    onDone = _ref115.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -14430,9 +14188,9 @@ function StreakPip(_ref117) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref118) {
-  var badge = _ref118.badge,
-    onDone = _ref118.onDone;
+function BadgeToast(_ref116) {
+  var badge = _ref116.badge,
+    onDone = _ref116.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -14494,9 +14252,9 @@ function BadgeToast(_ref118) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref119) {
-  var text = _ref119.text,
-    onDone = _ref119.onDone;
+function NoteToast(_ref117) {
+  var text = _ref117.text,
+    onDone = _ref117.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -14537,134 +14295,134 @@ function NoteToast(_ref119) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState183 = useState("dashboard"),
+  var _useState173 = useState("dashboard"),
+    _useState174 = _slicedToArray(_useState173, 2),
+    view = _useState174[0],
+    setView = _useState174[1];
+  var _useState175 = useState([]),
+    _useState176 = _slicedToArray(_useState175, 2),
+    logs = _useState176[0],
+    setLogs = _useState176[1];
+  var _useState177 = useState(0),
+    _useState178 = _slicedToArray(_useState177, 2),
+    water = _useState178[0],
+    setWater = _useState178[1];
+  var _useState179 = useState("cut"),
+    _useState180 = _slicedToArray(_useState179, 2),
+    mode = _useState180[0],
+    setMode = _useState180[1];
+  var _useState181 = useState(null),
+    _useState182 = _slicedToArray(_useState181, 2),
+    prof = _useState182[0],
+    setProf = _useState182[1];
+  var _useState183 = useState([]),
     _useState184 = _slicedToArray(_useState183, 2),
-    view = _useState184[0],
-    setView = _useState184[1];
-  var _useState185 = useState([]),
+    hist = _useState184[0],
+    setHist = _useState184[1];
+  var _useState185 = useState([].concat(DEF_MEALS)),
     _useState186 = _slicedToArray(_useState185, 2),
-    logs = _useState186[0],
-    setLogs = _useState186[1];
-  var _useState187 = useState(0),
+    meals = _useState186[0],
+    setMeals = _useState186[1];
+  var _useState187 = useState([]),
     _useState188 = _slicedToArray(_useState187, 2),
-    water = _useState188[0],
-    setWater = _useState188[1];
-  var _useState189 = useState("cut"),
-    _useState190 = _slicedToArray(_useState189, 2),
-    mode = _useState190[0],
-    setMode = _useState190[1];
-  var _useState191 = useState(null),
-    _useState192 = _slicedToArray(_useState191, 2),
-    prof = _useState192[0],
-    setProf = _useState192[1];
-  var _useState193 = useState([]),
-    _useState194 = _slicedToArray(_useState193, 2),
-    hist = _useState194[0],
-    setHist = _useState194[1];
-  var _useState195 = useState([].concat(DEF_MEALS)),
-    _useState196 = _slicedToArray(_useState195, 2),
-    meals = _useState196[0],
-    setMeals = _useState196[1];
-  var _useState197 = useState([]),
-    _useState198 = _slicedToArray(_useState197, 2),
-    workouts = _useState198[0],
-    setWorkouts = _useState198[1];
+    workouts = _useState188[0],
+    setWorkouts = _useState188[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState199 = useState([0, 0]),
-    _useState200 = _slicedToArray(_useState199, 2),
-    priorWorkoutKcal = _useState200[0],
-    setPriorWorkoutKcal = _useState200[1];
-  var _useState201 = useState([]),
-    _useState202 = _slicedToArray(_useState201, 2),
-    earnedBdgs = _useState202[0],
-    setEarnedBdgs = _useState202[1];
-  var _useState203 = useState(null),
-    _useState204 = _slicedToArray(_useState203, 2),
-    newBadge = _useState204[0],
-    setNewBadge = _useState204[1];
-  var _useState205 = useState(false),
-    _useState206 = _slicedToArray(_useState205, 2),
-    ready = _useState206[0],
-    setReady = _useState206[1];
+  var _useState189 = useState([0, 0]),
+    _useState190 = _slicedToArray(_useState189, 2),
+    priorWorkoutKcal = _useState190[0],
+    setPriorWorkoutKcal = _useState190[1];
+  var _useState191 = useState([]),
+    _useState192 = _slicedToArray(_useState191, 2),
+    earnedBdgs = _useState192[0],
+    setEarnedBdgs = _useState192[1];
+  var _useState193 = useState(null),
+    _useState194 = _slicedToArray(_useState193, 2),
+    newBadge = _useState194[0],
+    setNewBadge = _useState194[1];
+  var _useState195 = useState(false),
+    _useState196 = _slicedToArray(_useState195, 2),
+    ready = _useState196[0],
+    setReady = _useState196[1];
   // True once the startup cloud pull has landed or failed (or was never started). The daily
   // cut-block accrual waits for it — see that effect.
-  var _useState207 = useState(false),
-    _useState208 = _slicedToArray(_useState207, 2),
-    cloudSettled = _useState208[0],
-    setCloudSettled = _useState208[1];
-  var _useState209 = useState([]),
-    _useState210 = _slicedToArray(_useState209, 2),
-    weighIns = _useState210[0],
-    setWeighIns = _useState210[1];
-  var _useState211 = useState(0),
-    _useState212 = _slicedToArray(_useState211, 2),
-    tdeeAdj = _useState212[0],
-    setTdeeAdj = _useState212[1];
-  var _useState213 = useState([]),
-    _useState214 = _slicedToArray(_useState213, 2),
-    adjLog = _useState214[0],
-    setAdjLog = _useState214[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState215 = useState(null),
-    _useState216 = _slicedToArray(_useState215, 2),
-    weighNudgeAt = _useState216[0],
-    setWeighNudgeAt = _useState216[1]; // last weigh-in-nudge dismissal (ms; local-only)
+  var _useState197 = useState(false),
+    _useState198 = _slicedToArray(_useState197, 2),
+    cloudSettled = _useState198[0],
+    setCloudSettled = _useState198[1];
+  var _useState199 = useState([]),
+    _useState200 = _slicedToArray(_useState199, 2),
+    weighIns = _useState200[0],
+    setWeighIns = _useState200[1];
+  var _useState201 = useState(0),
+    _useState202 = _slicedToArray(_useState201, 2),
+    tdeeAdj = _useState202[0],
+    setTdeeAdj = _useState202[1];
+  var _useState203 = useState([]),
+    _useState204 = _slicedToArray(_useState203, 2),
+    adjLog = _useState204[0],
+    setAdjLog = _useState204[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState205 = useState(null),
+    _useState206 = _slicedToArray(_useState205, 2),
+    weighNudgeAt = _useState206[0],
+    setWeighNudgeAt = _useState206[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState217 = useState([]),
-    _useState218 = _slicedToArray(_useState217, 2),
-    bodyMeasurements = _useState218[0],
-    setBodyMeasurements = _useState218[1];
-  var _useState219 = useState(false),
-    _useState220 = _slicedToArray(_useState219, 2),
-    muteMeasurements = _useState220[0],
-    setMuteMeasurements = _useState220[1];
-  var _useState221 = useState(""),
-    _useState222 = _slicedToArray(_useState221, 2),
-    measurementNote = _useState222[0],
-    setMeasurementNote = _useState222[1];
-  var _useState223 = useState(null),
-    _useState224 = _slicedToArray(_useState223, 2),
-    measurementNudgeAt = _useState224[0],
-    setMeasurementNudgeAt = _useState224[1];
-  var _useState225 = useState(EMPTY_CUT_BLOCK),
-    _useState226 = _slicedToArray(_useState225, 2),
-    cutBlock = _useState226[0],
-    setCutBlock = _useState226[1]; // cut-cycling state (Step 5); 4 fields sync
+  var _useState207 = useState([]),
+    _useState208 = _slicedToArray(_useState207, 2),
+    bodyMeasurements = _useState208[0],
+    setBodyMeasurements = _useState208[1];
+  var _useState209 = useState(false),
+    _useState210 = _slicedToArray(_useState209, 2),
+    muteMeasurements = _useState210[0],
+    setMuteMeasurements = _useState210[1];
+  var _useState211 = useState(""),
+    _useState212 = _slicedToArray(_useState211, 2),
+    measurementNote = _useState212[0],
+    setMeasurementNote = _useState212[1];
+  var _useState213 = useState(null),
+    _useState214 = _slicedToArray(_useState213, 2),
+    measurementNudgeAt = _useState214[0],
+    setMeasurementNudgeAt = _useState214[1];
+  var _useState215 = useState(EMPTY_CUT_BLOCK),
+    _useState216 = _slicedToArray(_useState215, 2),
+    cutBlock = _useState216[0],
+    setCutBlock = _useState216[1]; // cut-cycling state (Step 5); 4 fields sync
   // Whether rebuildBreakFromHistory has had its one run on this device. A ref, not state: it
   // must not re-trigger the accrual effect that reads it.
   var breakRebuilt = React.useRef(true);
-  var _useState227 = useState(0),
+  var _useState217 = useState(0),
+    _useState218 = _slicedToArray(_useState217, 2),
+    coachKey = _useState218[0],
+    setCoachKey = _useState218[1];
+  var _useState219 = useState(null),
+    _useState220 = _slicedToArray(_useState219, 2),
+    streakPop = _useState220[0],
+    setStreakPop = _useState220[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+  var _useState221 = useState(null),
+    _useState222 = _slicedToArray(_useState221, 2),
+    badgeToast = _useState222[0],
+    setBadgeToast = _useState222[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState223 = useState(null),
+    _useState224 = _slicedToArray(_useState223, 2),
+    noteToast = _useState224[0],
+    setNoteToast = _useState224[1]; // plain one-line confirmations
+  var _useState225 = useState(false),
+    _useState226 = _slicedToArray(_useState225, 2),
+    badgeGlow = _useState226[0],
+    setBadgeGlow = _useState226[1]; // the 🏆 glow paired with the toast
+  var _useState227 = useState(null),
     _useState228 = _slicedToArray(_useState227, 2),
-    coachKey = _useState228[0],
-    setCoachKey = _useState228[1];
-  var _useState229 = useState(null),
+    customKcal = _useState228[0],
+    setCustomKcal = _useState228[1];
+  var _useState229 = useState(false),
     _useState230 = _slicedToArray(_useState229, 2),
-    streakPop = _useState230[0],
-    setStreakPop = _useState230[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
-  var _useState231 = useState(null),
+    aggressiveCutAcked = _useState230[0],
+    setAggressiveCutAcked = _useState230[1];
+  var _useState231 = useState(0),
     _useState232 = _slicedToArray(_useState231, 2),
-    badgeToast = _useState232[0],
-    setBadgeToast = _useState232[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
-  var _useState233 = useState(null),
-    _useState234 = _slicedToArray(_useState233, 2),
-    noteToast = _useState234[0],
-    setNoteToast = _useState234[1]; // plain one-line confirmations
-  var _useState235 = useState(false),
-    _useState236 = _slicedToArray(_useState235, 2),
-    badgeGlow = _useState236[0],
-    setBadgeGlow = _useState236[1]; // the 🏆 glow paired with the toast
-  var _useState237 = useState(null),
-    _useState238 = _slicedToArray(_useState237, 2),
-    customKcal = _useState238[0],
-    setCustomKcal = _useState238[1];
-  var _useState239 = useState(false),
-    _useState240 = _slicedToArray(_useState239, 2),
-    aggressiveCutAcked = _useState240[0],
-    setAggressiveCutAcked = _useState240[1];
-  var _useState241 = useState(0),
-    _useState242 = _slicedToArray(_useState241, 2),
-    setThemeTick = _useState242[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    setThemeTick = _useState232[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -14690,46 +14448,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState243 = useState("anonymous"),
+  var _useState233 = useState("anonymous"),
+    _useState234 = _slicedToArray(_useState233, 2),
+    authState = _useState234[0],
+    setAuthState = _useState234[1];
+  var _useState235 = useState(null),
+    _useState236 = _slicedToArray(_useState235, 2),
+    authUser = _useState236[0],
+    setAuthUser = _useState236[1];
+  var _useState237 = useState(null),
+    _useState238 = _slicedToArray(_useState237, 2),
+    premiumGate = _useState238[0],
+    setPremiumGate = _useState238[1]; // {emoji, name} | null
+  var _useState239 = useState(false),
+    _useState240 = _slicedToArray(_useState239, 2),
+    showSignIn = _useState240[0],
+    setShowSignIn = _useState240[1];
+  var _useState241 = useState(false),
+    _useState242 = _slicedToArray(_useState241, 2),
+    showSignOut = _useState242[0],
+    setShowSignOut = _useState242[1];
+  var _useState243 = useState(false),
     _useState244 = _slicedToArray(_useState243, 2),
-    authState = _useState244[0],
-    setAuthState = _useState244[1];
-  var _useState245 = useState(null),
+    showLapsed = _useState244[0],
+    setShowLapsed = _useState244[1];
+  var _useState245 = useState(false),
     _useState246 = _slicedToArray(_useState245, 2),
-    authUser = _useState246[0],
-    setAuthUser = _useState246[1];
+    needsConsent = _useState246[0],
+    setNeedsConsent = _useState246[1]; // retroactive Art. 9 consent (R2)
   var _useState247 = useState(null),
     _useState248 = _slicedToArray(_useState247, 2),
-    premiumGate = _useState248[0],
-    setPremiumGate = _useState248[1]; // {emoji, name} | null
-  var _useState249 = useState(false),
+    consentInfo = _useState248[0],
+    setConsentInfo = _useState248[1]; // parsed local health_consent for display
+  var _useState249 = useState(navigator.onLine),
     _useState250 = _slicedToArray(_useState249, 2),
-    showSignIn = _useState250[0],
-    setShowSignIn = _useState250[1];
-  var _useState251 = useState(false),
+    isOnline = _useState250[0],
+    setIsOnline = _useState250[1];
+  var _useState251 = useState(""),
     _useState252 = _slicedToArray(_useState251, 2),
-    showSignOut = _useState252[0],
-    setShowSignOut = _useState252[1];
-  var _useState253 = useState(false),
-    _useState254 = _slicedToArray(_useState253, 2),
-    showLapsed = _useState254[0],
-    setShowLapsed = _useState254[1];
-  var _useState255 = useState(false),
-    _useState256 = _slicedToArray(_useState255, 2),
-    needsConsent = _useState256[0],
-    setNeedsConsent = _useState256[1]; // retroactive Art. 9 consent (R2)
-  var _useState257 = useState(null),
-    _useState258 = _slicedToArray(_useState257, 2),
-    consentInfo = _useState258[0],
-    setConsentInfo = _useState258[1]; // parsed local health_consent for display
-  var _useState259 = useState(navigator.onLine),
-    _useState260 = _slicedToArray(_useState259, 2),
-    isOnline = _useState260[0],
-    setIsOnline = _useState260[1];
-  var _useState261 = useState(""),
-    _useState262 = _slicedToArray(_useState261, 2),
-    syncMsg = _useState262[0],
-    setSyncMsg = _useState262[1];
+    syncMsg = _useState252[0],
+    setSyncMsg = _useState252[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -14769,206 +14527,206 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
-        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t46, _t47;
-        return _regenerator().w(function (_context41) {
-          while (1) switch (_context41.p = _context41.n) {
+      var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
+        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t45, _t46;
+        return _regenerator().w(function (_context40) {
+          while (1) switch (_context40.p = _context40.n) {
             case 0:
-              _context41.n = 1;
+              _context40.n = 1;
               return runMigrations();
             case 1:
               k = todayKey();
-              _context41.n = 2;
+              _context40.n = 2;
               return sg("logs__" + k);
             case 2:
-              lv = _context41.v;
+              lv = _context40.v;
               if (lv) setLogs(JSON.parse(lv));
-              _context41.n = 3;
+              _context40.n = 3;
               return sg("water__" + k);
             case 3:
-              wv = _context41.v;
+              wv = _context40.v;
               if (wv) setWater(parseInt(wv) || 0);
               // A new day has no stored mode yet. It CARRIES the last one forward — "mode persists until
               // the user changes it" (energy-safety/02). It used to fall back to the useState default,
               // "cut": every morning opened in Cut, the once-a-day break accrual counted that day as a
               // cut day and reset the break to zero, and only then did a cloud pull restore Maintain on
               // screen — so a week-long break sat at "about 14 days to fully recharged". Fixed 2026-10-11.
-              _context41.n = 4;
+              _context40.n = 4;
               return sg("mode__" + k);
             case 4:
-              mv = _context41.v;
+              mv = _context40.v;
               if (!mv) {
-                _context41.n = 5;
+                _context40.n = 5;
                 break;
               }
               setMode(mv);
-              _context41.n = 10;
+              _context40.n = 10;
               break;
             case 5:
               _prior = null;
-              _context41.p = 6;
-              _context41.n = 7;
+              _context40.p = 6;
+              _context40.n = 7;
               return sg("history");
             case 7:
-              hv0 = _context41.v;
+              hv0 = _context40.v;
               before = (hv0 ? JSON.parse(hv0) : []).filter(function (h) {
                 return h && h.date <= k && MODES[h.mode];
               });
               if (before.length) _prior = before.reduce(function (a, b) {
                 return b.date > a.date ? b : a;
               }).mode;
-              _context41.n = 9;
+              _context40.n = 9;
               break;
             case 8:
-              _context41.p = 8;
-              _t46 = _context41.v;
+              _context40.p = 8;
+              _t45 = _context40.v;
             case 9:
               if (!_prior) {
-                _context41.n = 10;
+                _context40.n = 10;
                 break;
               }
               setMode(_prior);
-              _context41.n = 10;
+              _context40.n = 10;
               return ss("mode__" + k, _prior);
             case 10:
-              _context41.n = 11;
+              _context40.n = 11;
               return sg("profile");
             case 11:
-              pv = _context41.v;
+              pv = _context40.v;
               if (pv) {
                 pp = JSON.parse(pv);
                 setProf(pp);
                 setDietaryCache(pp.dietary);
               }
               loadedMeals = [].concat(DEF_MEALS);
-              _context41.n = 12;
+              _context40.n = 12;
               return sg("meals");
             case 12:
-              mv2 = _context41.v;
+              mv2 = _context40.v;
               if (mv2) {
                 loadedMeals = JSON.parse(mv2);
                 setMeals(loadedMeals);
               }
-              _context41.n = 13;
+              _context40.n = 13;
               return sg("workouts__" + k);
             case 13:
-              wkv = _context41.v;
+              wkv = _context40.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
               // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
               prior = [];
               d = 1;
             case 14:
               if (!(d <= 2)) {
-                _context41.n = 17;
+                _context40.n = 17;
                 break;
               }
-              _context41.n = 15;
+              _context40.n = 15;
               return sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
             case 15:
-              pwv = _context41.v;
+              pwv = _context40.v;
               prior.push(pwv ? JSON.parse(pwv).reduce(function (s, w) {
                 return s + (w.kcal || 0);
               }, 0) : 0);
             case 16:
               d++;
-              _context41.n = 14;
+              _context40.n = 14;
               break;
             case 17:
               setPriorWorkoutKcal(prior);
-              _context41.n = 18;
+              _context40.n = 18;
               return sg("badges");
             case 18:
-              bv = _context41.v;
+              bv = _context40.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context41.n = 19;
+              _context40.n = 19;
               return sg("history");
             case 19:
-              hv = _context41.v;
+              hv = _context40.v;
               if (hv) setHist(JSON.parse(hv));
-              _context41.n = 20;
+              _context40.n = 20;
               return sg("weighins");
             case 20:
-              wiv = _context41.v;
+              wiv = _context40.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context41.n = 21;
+              _context40.n = 21;
               return sg("bodymeasurements");
             case 21:
-              bmv = _context41.v;
+              bmv = _context40.v;
               if (bmv) {
                 try {
                   setBodyMeasurements(JSON.parse(bmv) || []);
                 } catch (e) {}
               }
-              _context41.n = 22;
+              _context40.n = 22;
               return sg("mute_body_measurements");
             case 22:
-              mmv = _context41.v;
+              mmv = _context40.v;
               if (mmv) setMuteMeasurements(mmv === "1");
-              _context41.n = 23;
+              _context40.n = 23;
               return sg("body_measurement_note");
             case 23:
-              mnv = _context41.v;
+              mnv = _context40.v;
               if (mnv) setMeasurementNote(mnv);
-              _context41.n = 24;
+              _context40.n = 24;
               return sg("body_measurement_nudge_dismissed");
             case 24:
-              mnav = _context41.v;
+              mnav = _context40.v;
               if (mnav) setMeasurementNudgeAt(parseInt(mnav) || null);
-              _context41.n = 25;
+              _context40.n = 25;
               return sg("tdee_adj");
             case 25:
-              tav = _context41.v;
+              tav = _context40.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context41.n = 26;
+              _context40.n = 26;
               return sg("tdee_adj_log");
             case 26:
-              alv = _context41.v;
+              alv = _context40.v;
               if (alv) {
                 try {
                   setAdjLog(JSON.parse(alv) || []);
                 } catch (e) {}
               }
-              _context41.n = 27;
+              _context40.n = 27;
               return sg("weigh_nudge_dismissed");
             case 27:
-              wnv = _context41.v;
+              wnv = _context40.v;
               if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
-              _context41.n = 28;
+              _context40.n = 28;
               return sg("cut_block");
             case 28:
-              cbv = _context41.v;
+              cbv = _context40.v;
               if (cbv) {
                 try {
                   setCutBlock(_objectSpread(_objectSpread({}, EMPTY_CUT_BLOCK), JSON.parse(cbv)));
                 } catch (e) {}
               }
-              _context41.n = 29;
+              _context40.n = 29;
               return sg(BREAK_REBUILT_KEY);
             case 29:
-              breakRebuilt.current = !!_context41.v;
-              _context41.n = 30;
+              breakRebuilt.current = !!_context40.v;
+              _context40.n = 30;
               return sg("target_kcal");
             case 30:
-              ckv = _context41.v;
+              ckv = _context40.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context41.n = 31;
+              _context40.n = 31;
               return sg("aggressive_cut_acked");
             case 31:
-              acv = _context41.v;
+              acv = _context40.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context41.n = 32;
+              _context40.n = 32;
               return sg("auth_state");
             case 32:
-              asv = _context41.v;
-              _context41.n = 33;
+              asv = _context40.v;
+              _context40.n = 33;
               return sg("auth_user");
             case 33:
-              auv = _context41.v;
+              auv = _context40.v;
               premiumUid = null; // The background pull below and the revive further down both write the meal list.
               // The revive's is the union of the two, so it wins whichever order they land in.
               revive = {
@@ -14976,19 +14734,19 @@ function App() {
               };
               pulling = false;
               if (!(asv === "premium" && auv)) {
-                _context41.n = 37;
+                _context40.n = 37;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context41.n = 35;
+                _context40.n = 35;
                 break;
               }
-              _context41.n = 34;
+              _context40.n = 34;
               return ss("auth_state", "anonymous");
             case 34:
               setShowLapsed(true);
-              _context41.n = 37;
+              _context40.n = 37;
               break;
             case 35:
               premiumUid = u.id || null;
@@ -14996,10 +14754,10 @@ function App() {
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context41.n = 36;
+              _context40.n = 36;
               return sg("health_consent");
             case 36:
-              hc = _context41.v;
+              hc = _context40.v;
               hcParsed = null;
               try {
                 hcParsed = hc ? JSON.parse(hc) : null;
@@ -15052,29 +14810,29 @@ function App() {
               if (!pulling) setCloudSettled(true);
 
               // One-time recovery for lists the old "Reset to defaults" button wiped.
-              _context41.p = 38;
-              _context41.n = 39;
+              _context40.p = 38;
+              _context40.n = 39;
               return reviveMeals(premiumUid, loadedMeals);
             case 39:
-              revived = _context41.v;
+              revived = _context40.v;
               if (revived) {
                 revive.done = true;
                 setMeals(revived);
               }
-              _context41.n = 41;
+              _context40.n = 41;
               break;
             case 40:
-              _context41.p = 40;
-              _t47 = _context41.v;
+              _context40.p = 40;
+              _t46 = _context40.v;
             case 41:
               setReady(true);
             case 42:
-              return _context41.a(2);
+              return _context40.a(2);
           }
-        }, _callee41, null, [[38, 40], [6, 8]]);
+        }, _callee40, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref120.apply(this, arguments);
+        return _ref118.apply(this, arguments);
       };
     }();
     load();
@@ -15128,99 +14886,99 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
-      return _regenerator().w(function (_context42) {
-        while (1) switch (_context42.n) {
+    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(l) {
+      return _regenerator().w(function (_context41) {
+        while (1) switch (_context41.n) {
           case 0:
             setLogs(l);
-            _context42.n = 1;
+            _context41.n = 1;
             return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogsTracked(authUser.id, todayKey(), l)["catch"](function () {});
+          case 2:
+            return _context41.a(2);
+        }
+      }, _callee41);
+    }));
+    return function saveLogs(_x55) {
+      return _ref119.apply(this, arguments);
+    };
+  }();
+  var saveWater = /*#__PURE__*/function () {
+    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
+      return _regenerator().w(function (_context42) {
+        while (1) switch (_context42.n) {
+          case 0:
+            setWater(w);
+            _context42.n = 1;
+            return ss("water__" + todayKey(), String(w));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
           case 2:
             return _context42.a(2);
         }
       }, _callee42);
     }));
-    return function saveLogs(_x55) {
-      return _ref121.apply(this, arguments);
+    return function saveWater(_x56) {
+      return _ref120.apply(this, arguments);
     };
   }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
-            setWater(w);
+            setMode(m);
             _context43.n = 1;
-            return ss("water__" + todayKey(), String(w));
+            return ss("mode__" + todayKey(), m);
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 2:
             return _context43.a(2);
         }
       }, _callee43);
     }));
-    return function saveWater(_x56) {
-      return _ref122.apply(this, arguments);
+    return function saveMode(_x57) {
+      return _ref121.apply(this, arguments);
     };
   }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
+  var saveProf = /*#__PURE__*/function () {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(p) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
-            setMode(m);
+            setProf(p);
+            setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
             _context44.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("profile", JSON.stringify(p));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
           case 2:
             return _context44.a(2);
         }
       }, _callee44);
     }));
-    return function saveMode(_x57) {
-      return _ref123.apply(this, arguments);
+    return function saveProf(_x58) {
+      return _ref122.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(w) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
-            setProf(p);
-            setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
+            setWorkouts(w);
             _context45.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
           case 2:
             return _context45.a(2);
         }
       }, _callee45);
     }));
-    return function saveProf(_x58) {
-      return _ref124.apply(this, arguments);
-    };
-  }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
-      return _regenerator().w(function (_context46) {
-        while (1) switch (_context46.n) {
-          case 0:
-            setWorkouts(w);
-            _context46.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
-          case 2:
-            return _context46.a(2);
-        }
-      }, _callee46);
-    }));
     return function saveWorkouts(_x59) {
-      return _ref125.apply(this, arguments);
+      return _ref123.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15234,14 +14992,14 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
-      return _regenerator().w(function (_context47) {
-        while (1) switch (_context47.n) {
+      return _regenerator().w(function (_context46) {
+        while (1) switch (_context46.n) {
           case 0:
             haptic();
             isFirstToday = logs.length === 0;
-            _context47.n = 1;
+            _context46.n = 1;
             return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
               id: Date.now(),
               time: new Date().toLocaleTimeString([], {
@@ -15269,12 +15027,12 @@ function App() {
               }
             }
           case 2:
-            return _context47.a(2);
+            return _context46.a(2);
         }
-      }, _callee47);
+      }, _callee46);
     }));
     return function addLog(_x60) {
-      return _ref126.apply(this, arguments);
+      return _ref124.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15300,92 +15058,92 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
-      return _regenerator().w(function (_context48) {
-        while (1) switch (_context48.n) {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(kcal) {
+      return _regenerator().w(function (_context47) {
+        while (1) switch (_context47.n) {
           case 0:
             setCustomKcal(kcal);
             if (!(kcal == null)) {
-              _context48.n = 2;
+              _context47.n = 2;
               break;
             }
-            _context48.n = 1;
+            _context47.n = 1;
             return ss("target_kcal", "");
           case 1:
-            _context48.n = 3;
+            _context47.n = 3;
             break;
           case 2:
-            _context48.n = 3;
+            _context47.n = 3;
             return ss("target_kcal", String(kcal));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context48.a(2);
+            return _context47.a(2);
         }
-      }, _callee48);
+      }, _callee47);
     }));
     return function saveCustomKcal(_x61) {
-      return _ref127.apply(this, arguments);
+      return _ref125.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
-      return _regenerator().w(function (_context49) {
-        while (1) switch (_context49.n) {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(m) {
+      return _regenerator().w(function (_context48) {
+        while (1) switch (_context48.n) {
           case 0:
-            _context49.n = 1;
+            _context48.n = 1;
             return saveMode(m);
           case 1:
-            _context49.n = 2;
+            _context48.n = 2;
             return saveCustomKcal(null);
           case 2:
             // Sync once more with correct (m, null) pair to resolve any stale-closure race
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked)["catch"](function () {});
           case 3:
+            return _context48.a(2);
+        }
+      }, _callee48);
+    }));
+    return function handleSetMode(_x62) {
+      return _ref126.apply(this, arguments);
+    };
+  }();
+  var handleAckAggressiveCut = /*#__PURE__*/function () {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
+      return _regenerator().w(function (_context49) {
+        while (1) switch (_context49.n) {
+          case 0:
+            setAggressiveCutAcked(true);
+            _context49.n = 1;
+            return ss("aggressive_cut_acked", "1");
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
+          case 2:
             return _context49.a(2);
         }
       }, _callee49);
     }));
-    return function handleSetMode(_x62) {
-      return _ref128.apply(this, arguments);
+    return function handleAckAggressiveCut() {
+      return _ref127.apply(this, arguments);
     };
   }();
-  var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
+  var saveMeals = /*#__PURE__*/function () {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(updated) {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
-            setAggressiveCutAcked(true);
+            setMeals(updated);
             _context50.n = 1;
-            return ss("aggressive_cut_acked", "1");
+            return ss("meals", JSON.stringify(updated));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
           case 2:
             return _context50.a(2);
         }
       }, _callee50);
     }));
-    return function handleAckAggressiveCut() {
-      return _ref129.apply(this, arguments);
-    };
-  }();
-  var saveMeals = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
-      return _regenerator().w(function (_context51) {
-        while (1) switch (_context51.n) {
-          case 0:
-            setMeals(updated);
-            _context51.n = 1;
-            return ss("meals", JSON.stringify(updated));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
-          case 2:
-            return _context51.a(2);
-        }
-      }, _callee51);
-    }));
     return function saveMeals(_x63) {
-      return _ref130.apply(this, arguments);
+      return _ref128.apply(this, arguments);
     };
   }();
 
@@ -15395,19 +15153,19 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(entry) {
       var name, clean;
-      return _regenerator().w(function (_context52) {
-        while (1) switch (_context52.n) {
+      return _regenerator().w(function (_context51) {
+        while (1) switch (_context51.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context52.n = 1;
+              _context51.n = 1;
               break;
             }
-            return _context52.a(2);
+            return _context51.a(2);
           case 1:
             haptic();
             clean = {
@@ -15417,25 +15175,25 @@ function App() {
               carbs: Math.round(entry.carbs * 10) / 10,
               fat: Math.round(entry.fat * 10) / 10
             };
-            _context52.n = 2;
+            _context51.n = 2;
             return saveMeals([].concat(_toConsumableArray(meals), [clean]));
           case 2:
-            return _context52.a(2);
+            return _context51.a(2);
         }
-      }, _callee52);
+      }, _callee51);
     }));
     return function addToQA(_x64) {
-      return _ref131.apply(this, arguments);
+      return _ref129.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t48;
-      return _regenerator().w(function (_context53) {
-        while (1) switch (_context53.p = _context53.n) {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(googleUser, grantedBy, consentMeta) {
+      var user, rec, pulled, tod, snap, _t47;
+      return _regenerator().w(function (_context52) {
+        while (1) switch (_context52.p = _context52.n) {
           case 0:
             user = {
               id: googleUser.id || null,
@@ -15449,20 +15207,20 @@ function App() {
             };
             setAuthUser(user);
             setAuthState("premium");
-            _context53.n = 1;
+            _context52.n = 1;
             return ss("auth_state", "premium");
           case 1:
-            _context53.n = 2;
+            _context52.n = 2;
             return ss("auth_user", JSON.stringify(user));
           case 2:
             if (!consentMeta) {
-              _context53.n = 4;
+              _context52.n = 4;
               break;
             }
             rec = _objectSpread(_objectSpread({}, consentMeta), {}, {
               version: consentMeta.policyVersion
             });
-            _context53.n = 3;
+            _context52.n = 3;
             return ss("health_consent", JSON.stringify(rec));
           case 3:
             setConsentInfo(rec);
@@ -15470,25 +15228,25 @@ function App() {
             setShowSignIn(false);
             setPremiumGate(null);
             if (!(user.id && navigator.onLine)) {
-              _context53.n = 11;
+              _context52.n = 11;
               break;
             }
             setSyncMsg("Syncing your data…");
-            _context53.p = 5;
+            _context52.p = 5;
             if (!consentMeta) {
-              _context53.n = 6;
+              _context52.n = 6;
               break;
             }
-            _context53.n = 6;
+            _context52.n = 6;
             return syncConsent(user.id, consentMeta);
           case 6:
-            _context53.n = 7;
+            _context52.n = 7;
             return migrateLocalToSupabase(user.id);
           case 7:
-            _context53.n = 8;
+            _context52.n = 8;
             return pullFromSupabase(user.id);
           case 8:
-            pulled = _context53.v;
+            pulled = _context52.v;
             if (pulled.profile) {
               setProf(pulled.profile);
               setDietaryCache(pulled.profile.dietary);
@@ -15519,29 +15277,29 @@ function App() {
               setWorkouts(pulled.workouts[todayKey()] || []);
               setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
             }
-            _context53.n = 10;
+            _context52.n = 10;
             break;
           case 9:
-            _context53.p = 9;
-            _t48 = _context53.v;
+            _context52.p = 9;
+            _t47 = _context52.v;
           case 10:
             setSyncMsg("");
           case 11:
-            return _context53.a(2);
+            return _context52.a(2);
         }
-      }, _callee53, null, [[5, 9]]);
+      }, _callee52, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x65, _x66, _x67) {
-      return _ref132.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
       var meta, rec;
-      return _regenerator().w(function (_context54) {
-        while (1) switch (_context54.n) {
+      return _regenerator().w(function (_context53) {
+        while (1) switch (_context53.n) {
           case 0:
             meta = {
               ageConfirmedAt: null,
@@ -15551,60 +15309,60 @@ function App() {
             rec = _objectSpread(_objectSpread({}, meta), {}, {
               version: POLICY_VERSION
             });
-            _context54.n = 1;
+            _context53.n = 1;
             return ss("health_consent", JSON.stringify(rec));
           case 1:
             setConsentInfo(rec);
             if (!(authUser !== null && authUser !== void 0 && authUser.id)) {
-              _context54.n = 2;
+              _context53.n = 2;
               break;
             }
-            _context54.n = 2;
+            _context53.n = 2;
             return syncConsent(authUser.id, meta);
           case 2:
             setNeedsConsent(false);
           case 3:
-            return _context54.a(2);
+            return _context53.a(2);
         }
-      }, _callee54);
+      }, _callee53);
     }));
     return function handleConsent() {
-      return _ref133.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
-      var clearKeys, _i4, _clearKeys, k, i, key, _t49;
-      return _regenerator().w(function (_context55) {
-        while (1) switch (_context55.p = _context55.n) {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+      var clearKeys, _i4, _clearKeys, k, i, key, _t48;
+      return _regenerator().w(function (_context54) {
+        while (1) switch (_context54.p = _context54.n) {
           case 0:
             if (!sb()) {
-              _context55.n = 4;
+              _context54.n = 4;
               break;
             }
-            _context55.p = 1;
-            _context55.n = 2;
+            _context54.p = 1;
+            _context54.n = 2;
             return sb().auth.signOut();
           case 2:
-            _context55.n = 4;
+            _context54.n = 4;
             break;
           case 3:
-            _context55.p = 3;
-            _t49 = _context55.v;
+            _context54.p = 3;
+            _t48 = _context54.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "tdee_adj_log", "weigh_nudge_dismissed", "cut_block", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i4 = 0, _clearKeys = clearKeys;
           case 5:
             if (!(_i4 < _clearKeys.length)) {
-              _context55.n = 7;
+              _context54.n = 7;
               break;
             }
             k = _clearKeys[_i4];
-            _context55.n = 6;
+            _context54.n = 6;
             return ss(k, "");
           case 6:
             _i4++;
-            _context55.n = 5;
+            _context54.n = 5;
             break;
           case 7:
             try {
@@ -15640,12 +15398,12 @@ function App() {
             setShowSignOut(false);
             setView("dashboard");
           case 8:
-            return _context55.a(2);
+            return _context54.a(2);
         }
-      }, _callee55, null, [[1, 3]]);
+      }, _callee54, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref134.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
 
@@ -15655,27 +15413,27 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
-      return _regenerator().w(function (_context56) {
-        while (1) switch (_context56.n) {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+      return _regenerator().w(function (_context55) {
+        while (1) switch (_context55.n) {
           case 0:
             setTdeeAdj(0);
             setAdjLog([]);
-            _context56.n = 1;
+            _context55.n = 1;
             return ss("tdee_adj", "0");
           case 1:
-            _context56.n = 2;
+            _context55.n = 2;
             return ss("tdee_adj_log", JSON.stringify([]));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, 0, customKcal, aggressiveCutAcked)["catch"](function () {});
             setNoteToast("Adjustment reset — the app will re-learn from your weigh-ins");
           case 3:
-            return _context56.a(2);
+            return _context55.a(2);
         }
-      }, _callee56);
+      }, _callee55);
     }));
     return function resetTdeeAdj() {
-      return _ref135.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -15730,29 +15488,29 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
-      return _regenerator().w(function (_context57) {
-        while (1) switch (_context57.n) {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+      return _regenerator().w(function (_context56) {
+        while (1) switch (_context56.n) {
           case 0:
-            _context57.n = 1;
+            _context56.n = 1;
             return deleteAccountRequest();
           case 1:
-            _context57.n = 2;
+            _context56.n = 2;
             return handleSignOut();
           case 2:
-            return _context57.a(2);
+            return _context56.a(2);
         }
-      }, _callee57);
+      }, _callee56);
     }));
     return function handleDeleteAccount() {
-      return _ref136.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(upd) {
       var nh;
-      return _regenerator().w(function (_context58) {
-        while (1) switch (_context58.n) {
+      return _regenerator().w(function (_context57) {
+        while (1) switch (_context57.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -15760,14 +15518,14 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context58.n = 1;
+            _context57.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
             if (!upd.logs) {
-              _context58.n = 2;
+              _context57.n = 2;
               break;
             }
-            _context58.n = 2;
+            _context57.n = 2;
             return ss("logs__" + upd.date, JSON.stringify(upd.logs));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) {
@@ -15775,19 +15533,19 @@ function App() {
               if (upd.logs) syncFoodLogsTracked(authUser.id, upd.date, upd.logs)["catch"](function () {});
             }
           case 3:
-            return _context58.a(2);
+            return _context57.a(2);
         }
-      }, _callee58);
+      }, _callee57);
     }));
     return function updateDay(_x68) {
-      return _ref137.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
-      return _regenerator().w(function (_context59) {
-        while (1) switch (_context59.n) {
+      return _regenerator().w(function (_context58) {
+        while (1) switch (_context58.n) {
           case 0:
             haptic();
             entry = {
@@ -15800,7 +15558,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context59.n = 1;
+            _context58.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWeighIns(authUser.id, updated)["catch"](function () {});
@@ -15809,7 +15567,7 @@ function App() {
             updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
               weight: weight
             });
-            _context59.n = 2;
+            _context58.n = 2;
             return saveProf(updatedProf);
           case 2:
             // Run calibration whenever a new weigh-in arrives — measure the deficit against the
@@ -15837,17 +15595,17 @@ function App() {
               settledAdj: settledAdj
             });
             if (!(result && Math.abs(result.adj) >= CAL_MIN_STEP)) {
-              _context59.n = 5;
+              _context58.n = 5;
               break;
             }
             newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
             applied = newAdj - tdeeAdj;
             if (!(applied !== 0)) {
-              _context59.n = 5;
+              _context58.n = 5;
               break;
             }
             setTdeeAdj(newAdj);
-            _context59.n = 3;
+            _context58.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
             // Retention bumped 14→30 (file 09): raiseContext looks back RAISE_REVERSAL_WINDOW_DAYS
@@ -15859,17 +15617,17 @@ function App() {
               adj: applied
             }]).slice(-30);
             setAdjLog(nextLog);
-            _context59.n = 4;
+            _context58.n = 4;
             return ss("tdee_adj_log", JSON.stringify(nextLog));
           case 4:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 5:
-            return _context59.a(2);
+            return _context58.a(2);
         }
-      }, _callee59);
+      }, _callee58);
     }));
     return function onWeighIn(_x69) {
-      return _ref138.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
 
@@ -15878,12 +15636,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref139) {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(_ref137) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
-      return _regenerator().w(function (_context60) {
-        while (1) switch (_context60.n) {
+      return _regenerator().w(function (_context59) {
+        while (1) switch (_context59.n) {
           case 0:
-            neck = _ref139.neck, waist = _ref139.waist, hip = _ref139.hip;
+            neck = _ref137.neck, waist = _ref137.waist, hip = _ref137.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -15896,10 +15654,10 @@ function App() {
               hipCm: hip
             });
             if (!(computed_bf == null)) {
-              _context60.n = 1;
+              _context59.n = 1;
               break;
             }
-            return _context60.a(2);
+            return _context59.a(2);
           case 1:
             // hard-blocked domain — UI should already have refused this
             entry = {
@@ -15916,7 +15674,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setBodyMeasurements(updated);
-            _context60.n = 2;
+            _context59.n = 2;
             return ss("bodymeasurements", JSON.stringify(updated));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncBodyMeasurements(authUser.id, updated)["catch"](function () {});
@@ -15932,54 +15690,54 @@ function App() {
               cutting: effectiveMode === "cut"
             });
             if (!(next != null)) {
-              _context60.n = 3;
+              _context59.n = 3;
               break;
             }
-            _context60.n = 3;
+            _context59.n = 3;
             return saveProf(_objectSpread(_objectSpread({}, measureProf), {}, {
               bodyFat: next
             }));
           case 3:
-            return _context60.a(2, computed_bf);
+            return _context59.a(2, computed_bf);
         }
-      }, _callee60);
+      }, _callee59);
     }));
     return function onMeasurement(_x70) {
-      return _ref140.apply(this, arguments);
+      return _ref138.apply(this, arguments);
     };
   }();
   var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
+    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(on) {
+      return _regenerator().w(function (_context60) {
+        while (1) switch (_context60.n) {
+          case 0:
+            setMuteMeasurements(on);
+            _context60.n = 1;
+            return ss("mute_body_measurements", on ? "1" : "");
+          case 1:
+            return _context60.a(2);
+        }
+      }, _callee60);
+    }));
+    return function toggleMuteMeasurements(_x71) {
+      return _ref139.apply(this, arguments);
+    };
+  }();
+  var saveMeasurementNote = /*#__PURE__*/function () {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(note) {
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
           case 0:
-            setMuteMeasurements(on);
+            setMeasurementNote(note);
             _context61.n = 1;
-            return ss("mute_body_measurements", on ? "1" : "");
+            return ss("body_measurement_note", note);
           case 1:
             return _context61.a(2);
         }
       }, _callee61);
     }));
-    return function toggleMuteMeasurements(_x71) {
-      return _ref141.apply(this, arguments);
-    };
-  }();
-  var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
-      return _regenerator().w(function (_context62) {
-        while (1) switch (_context62.n) {
-          case 0:
-            setMeasurementNote(note);
-            _context62.n = 1;
-            return ss("body_measurement_note", note);
-          case 1:
-            return _context62.a(2);
-        }
-      }, _callee62);
-    }));
     return function saveMeasurementNote(_x72) {
-      return _ref142.apply(this, arguments);
+      return _ref140.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -16022,43 +15780,43 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
       var ts;
-      return _regenerator().w(function (_context63) {
-        while (1) switch (_context63.n) {
+      return _regenerator().w(function (_context62) {
+        while (1) switch (_context62.n) {
           case 0:
             ts = Date.now();
             setWeighNudgeAt(ts);
-            _context63.n = 1;
+            _context62.n = 1;
             return ss("weigh_nudge_dismissed", String(ts));
           case 1:
-            return _context63.a(2);
+            return _context62.a(2);
         }
-      }, _callee63);
+      }, _callee62);
     }));
     return function dismissWeighNudge() {
-      return _ref143.apply(this, arguments);
+      return _ref141.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
-      return _regenerator().w(function (_context64) {
-        while (1) switch (_context64.n) {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+      return _regenerator().w(function (_context63) {
+        while (1) switch (_context63.n) {
           case 0:
-            _context64.n = 1;
+            _context63.n = 1;
             return dismissWeighNudge();
           case 1:
-            _context64.n = 2;
+            _context63.n = 2;
             return saveProf(_objectSpread(_objectSpread({}, p), {}, {
               weighCadence: "off"
             }));
           case 2:
-            return _context64.a(2);
+            return _context63.a(2);
         }
-      }, _callee64);
+      }, _callee63);
     }));
     return function muteWeighNudge() {
-      return _ref144.apply(this, arguments);
+      return _ref142.apply(this, arguments);
     };
   }();
 
@@ -16077,22 +15835,22 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
       var ts;
-      return _regenerator().w(function (_context65) {
-        while (1) switch (_context65.n) {
+      return _regenerator().w(function (_context64) {
+        while (1) switch (_context64.n) {
           case 0:
             ts = Date.now();
             setMeasurementNudgeAt(ts);
-            _context65.n = 1;
+            _context64.n = 1;
             return ss("body_measurement_nudge_dismissed", String(ts));
           case 1:
-            return _context65.a(2);
+            return _context64.a(2);
         }
-      }, _callee65);
+      }, _callee64);
     }));
     return function dismissMeasurementNudge() {
-      return _ref145.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
 
@@ -16254,22 +16012,22 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
-      return _regenerator().w(function (_context66) {
-        while (1) switch (_context66.n) {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(next) {
+      return _regenerator().w(function (_context65) {
+        while (1) switch (_context65.n) {
           case 0:
             setCutBlock(next);
-            _context66.n = 1;
+            _context65.n = 1;
             return ss("cut_block", JSON.stringify(next));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncCutBlock(authUser.id, next)["catch"](function () {});
           case 2:
-            return _context66.a(2);
+            return _context65.a(2);
         }
-      }, _callee66);
+      }, _callee65);
     }));
     return function saveCutBlock(_x73) {
-      return _ref146.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16292,14 +16050,14 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
-      return _regenerator().w(function (_context67) {
-        while (1) switch (_context67.n) {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66() {
+      return _regenerator().w(function (_context66) {
+        while (1) switch (_context66.n) {
           case 0:
-            _context67.n = 1;
+            _context66.n = 1;
             return handleSetMode("maintain");
           case 1:
-            _context67.n = 2;
+            _context66.n = 2;
             return saveCutBlock(_objectSpread(_objectSpread({}, cutBlock), {}, {
               nudgeAt: null,
               snoozeAt: null
@@ -16307,12 +16065,12 @@ function App() {
           case 2:
             setNoteToast("Break started — eat at maintenance and recharge");
           case 3:
-            return _context67.a(2);
+            return _context66.a(2);
         }
-      }, _callee67);
+      }, _callee66);
     }));
     return function startDietBreak() {
-      return _ref147.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -16374,10 +16132,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref148) {
-    var _ref149 = _slicedToArray(_ref148, 2),
-      lbl = _ref149[0],
-      fn = _ref149[1];
+  }]].map(function (_ref146) {
+    var _ref147 = _slicedToArray(_ref146, 2),
+      lbl = _ref147[0],
+      fn = _ref147[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -16536,11 +16294,6 @@ function App() {
     isPremium: authState === "premium",
     onPremiumGate: function onPremiumGate(feature) {
       return setPremiumGate(feature);
-    }
-  }), view === "search" && /*#__PURE__*/React.createElement(FoodSearch, {
-    onAdd: addLog,
-    onBack: function onBack() {
-      return setView("dashboard");
     }
   }), view === "history" && /*#__PURE__*/React.createElement(ErrorBoundary, null, /*#__PURE__*/React.createElement(History, {
     history: hist,

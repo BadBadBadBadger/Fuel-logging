@@ -4904,11 +4904,10 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
         showMeasurementNudge={showMeasurementNudge} onMeasurementNudgeDismiss={onMeasurementNudgeDismiss}/>
 
       {/* Add food */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
         {[
           { e:"🤖", l:"AI LOG",    s: isPremium ? "describe it"   : "premium ⭐", v:"ai",    premium:true  },
           { e:"⚡",  l:"QUICK ADD", s:"preset meals",                              v:"quick", premium:false },
-          { e:"🔍", l:"SEARCH",    s:"food database",                             v:"search",premium:false },
         ].map(b => (
           <button key={b.v}
             onClick={() => b.premium && !isPremium
@@ -5766,97 +5765,6 @@ function QuickAdd({ onAdd, onBack, meals, setMeals, onForget = () => {}, isPremi
           <div style={{ textAlign:"center", color:"var(--text-faint-2)", padding:"30px 0", fontSize:14 }}>No meals found</div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── Food Search ───────────────────────────────────────────────
-
-function FoodSearch({ onAdd, onBack }) {
-  const [q, setQ]             = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const [done, setDone]       = useState(false);
-
-  const search = async () => {
-    if (!q.trim()) return;
-    setLoading(true); setError(""); setResults([]); setDone(true);
-    try {
-      const res  = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,nutriments,serving_size,brands`);
-      if (!res.ok) throw new Error("Network error");
-      const data  = await res.json();
-      const parseServing = raw => {
-        if (!raw) return 100;
-        const n = parseFloat(raw);
-        return (isFinite(n) && n > 5 && n < 2000) ? n : 100;
-      };
-      const parseKcal = n => {
-        if (n["energy-kcal_100g"] != null) return n["energy-kcal_100g"];
-        if (n["energy_100g"] != null) return n["energy_100g"] / 4.184;
-        return null;
-      };
-      const valid = (data.products || []).filter(p =>
-        p.product_name?.trim() && parseKcal(p.nutriments || {}) != null);
-      if (!valid.length) { setError("No results — try a brand name or simpler search term."); setLoading(false); return; }
-      setResults(valid.slice(0, 12).map(p => {
-        const n = p.nutriments, sg2 = parseServing(p.serving_size), f = sg2 / 100;
-        const kcal100 = parseKcal(n);
-        const brand = p.brands?.split(",")[0]?.trim();
-        return {
-          name:    [p.product_name.trim(), brand].filter(Boolean).join(" – "),
-          kcal:    Math.round(kcal100 * f),
-          protein: Math.round((n["proteins_100g"]        || 0) * f * 10) / 10,
-          carbs:   Math.round((n["carbohydrates_100g"]   || 0) * f * 10) / 10,
-          fat:     Math.round((n["fat_100g"]             || 0) * f * 10) / 10,
-          notes:   `Per serving (~${Math.round(sg2)}g)`,
-        };
-      }));
-    } catch(e) { setError("Search failed — check your internet connection."); }
-    setLoading(false);
-  };
-
-  return (
-    <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
-      <BackHdr title="FOOD SEARCH" onBack={onBack}/>
-      <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
-        Search millions of products via Open Food Facts.
-      </p>
-      <div style={{ display:"flex", gap:10, marginBottom:20 }}>
-        <input value={q} onChange={e => setQ(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && search()}
-          placeholder="e.g. 'Grenade bar', 'Weetabix'..."
-          style={{ ...INP, flex:1, padding:"13px 16px" }}/>
-        <button onClick={search} disabled={loading || !q.trim()}
-          style={{ padding:"13px 16px",
-            background: q.trim() && !loading ? A : "var(--surface-2)",
-            color:      q.trim() && !loading ? "var(--bg)" : "var(--border-strong)",
-            border:"none", borderRadius:12, fontWeight:900, fontSize:13,
-            flexShrink:0, letterSpacing:"0.06em" }}>
-          {loading ? "..." : "SEARCH"}
-        </button>
-      </div>
-      {loading && <div style={{ textAlign:"center", color:"var(--text-label)", padding:24, fontSize:14 }}>🔍 Searching...</div>}
-      {error   && <p style={{ color:"var(--over)", fontSize:13, textAlign:"center", marginBottom:10 }}>{error}</p>}
-      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-        {results.map((r, i) => (
-          <button key={i} onClick={() => { onAdd(r); onBack(); }}
-            style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
-              textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%" }}>
-            <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:"var(--text-hi)",
-                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name}</div>
-              <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:3 }}>
-                {r.notes} · P:{r.protein}g · C:{r.carbs}g · F:{r.fat}g
-              </div>
-            </div>
-            <span style={{ fontSize:16, fontWeight:900, color:A, flexShrink:0 }}>{r.kcal}</span>
-          </button>
-        ))}
-      </div>
-      {done && !results.length && !loading && !error && (
-        <div style={{ textAlign:"center", color:"var(--text-faint-2)", padding:"30px 0" }}>No results</div>
-      )}
     </div>
   );
 }
@@ -7764,7 +7672,6 @@ function App() {
           muteMeasurements={muteMeasurements} onToggleMuteMeasurements={toggleMuteMeasurements}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
-      {view === "search"       && <FoodSearch      onAdd={addLog} onBack={() => setView("dashboard")}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
