@@ -222,15 +222,62 @@ describe("A photo meal is named after what the model saw, not \"Photo meal\"", (
 
   const photoPrompt = (() => {
     const start = src.indexOf("const AI_PHOTO_PROMPT");
-    return src.slice(start, src.indexOf("`;", start));
+    return src.slice(start, src.indexOf("const AI_REESTIMATE_PROMPT", start));
   })();
   test("the photo prompt asks for a short meal name, using packaging brand names", () => {
     expect(photoPrompt).toMatch(/"meal": "short name for the whole meal"/);
-    expect(photoPrompt).toMatch(/brand or product name is visible on packaging, use it/);
+    expect(photoPrompt).toMatch(/brand or product name is visible on packaging.*, use it/);
   });
   test("logAll uses it for photo meals", () => {
     expect(src).toMatch(/photo \? photoMealName\(mealName, desc, items\)/);
     expect(src).not.toMatch(/\|\| "Photo meal"\), kcal/);
+  });
+});
+
+describe("Text typed with a photo guides the estimate (logging/08)", () => {
+  /** Lift the real AI_PHOTO_PROMPT out of app.jsx and run it — not a static read. */
+  const AI_PHOTO_PROMPT = (() => {
+    const start = src.indexOf("const AI_PHOTO_PROMPT");
+    const end   = src.indexOf("const AI_REESTIMATE_PROMPT", start);
+    return new Function(src.slice(start, end) + "\nreturn AI_PHOTO_PROMPT;")();
+  })();
+  const notes = "200g chicken, fried in 1 tbsp olive oil, only ate half the rice";
+  const withNotes = AI_PHOTO_PROMPT(notes);
+  const without   = AI_PHOTO_PROMPT("");
+
+  test("the user's notes are in the prompt, verbatim", () => {
+    expect(withNotes).toContain(`USER'S NOTES about this photo: "${notes}"`);
+  });
+  test("the notes outrank the photo where they disagree", () => {
+    expect(withNotes).toMatch(/the NOTES WIN/);
+    expect(withNotes).toMatch(/Use the photo for everything the notes do not cover/);
+  });
+  test("a weight in the notes is the portion and every macro scales to it", () => {
+    expect(withNotes).toMatch(/weight, count or size in the notes IS that item's portion/);
+    expect(withNotes).toMatch(/150 g is 60% of 250 g/);
+  });
+  test("cooking fat, hidden ingredients, versions and part-eaten portions all come from the notes", () => {
+    expect(withNotes).toMatch(/"dry".*"zero added fat".*NO cooking fat/s);
+    expect(withNotes).toMatch(/fat IS there even if it is not visible/);
+    expect(withNotes).toMatch(/photo cannot show .* are part of the meal/s);
+    expect(withNotes).toMatch(/recipe variant in the notes/);
+    expect(withNotes).toMatch(/estimate what was EATEN, not what is on the plate/);
+  });
+  test("a typed number is a fact about its item, never a separate item", () => {
+    expect(withNotes).toMatch(/NEVER return a separate item for a number the user typed/);
+  });
+  test("confidence rises for what the notes pin down, and answered questions are not asked", () => {
+    expect(withNotes).toMatch(/raise it for any component the notes pin down/);
+    expect(withNotes).toMatch(/notes already answer a question.*do not set "ask"/s);
+  });
+  test("no notes → no notes section, and the meal-name and kcal rules still hold", () => {
+    expect(without).not.toMatch(/USER'S NOTES/);
+    expect(AI_PHOTO_PROMPT("   ")).not.toMatch(/USER'S NOTES/);
+    expect(without).toMatch(/"meal": "short name for the whole meal"/);
+    expect(without).toMatch(/kcal ≈ 4×protein \+ 4×carbs \+ 9×fat/);
+  });
+  test("the screen sends what was typed with the photo", () => {
+    expect(src).toMatch(/text: AI_PHOTO_PROMPT\(desc\)/);
   });
 });
 
