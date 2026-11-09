@@ -5136,6 +5136,46 @@ const photoMealName = (meal, desc, items) => {
   return "Photo meal";
 };
 
+// Same meal, logged before (features/logging/09). Typed text that matches a meal already in
+// the user's log is answered from that log — no model call, so no tokens and no wait. The
+// match is on the WHOLE typed line after tidying case, punctuation and spacing, never a fuzzy
+// one: "2 eggs on toast" and "3 eggs on toast" are different meals. Decimals survive
+// ("1.5 bagels" is not "15 bagels").
+const mealKey = s => (typeof s === "string" ? s : "").toLowerCase()
+  .replace(/(\d)[.,](\d)/g, "$1d$2").replace(/['’]/g, "")
+  .replace(/[^a-z0-9]+/g, " ").trim();
+
+// The most recent logged entry whose name matches `desc`, as estimate rows. `days` is
+// [{date, logs:[…]}] in any order. An entry's stored elements are the rows only while they
+// still add up to the entry (an edit in EntryEditor changes the totals, not the elements);
+// otherwise the entry's own totals are one row, so a correction the user made is what's reused.
+// Returns null for no match, a photo-only line, or a 0-kcal entry.
+const findPastMeal = (desc, days) => {
+  const key = mealKey(desc);
+  if (!key || !Array.isArray(days)) return null;
+  const sorted = [...days].filter(d => d && Array.isArray(d.logs))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  for (const day of sorted) {
+    for (let i = day.logs.length - 1; i >= 0; i--) {
+      const e = day.logs[i];
+      if (!e || !(Number(e.kcal) > 0) || mealKey(e.name) !== key) continue;
+      const why = "Same as you logged before.";
+      const els = Array.isArray(e.elements) ? e.elements : [];
+      const sum = els.reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+      const fits = els.length > 0 && Math.abs(sum - e.kcal) <= Math.max(2, e.kcal * 0.02);
+      const rows = fits
+        ? els.map(x => ({ name: x.name, kcal: Number(x.kcal) || 0, protein: Number(x.protein) || 0,
+            carbs: Number(x.carbs) || 0, fat: Number(x.fat) || 0,
+            confidence: x.conf == null ? 100 : x.conf, ask: null, reasoning: why }))
+        : [{ name: e.name, kcal: Number(e.kcal) || 0, protein: Number(e.protein) || 0,
+            carbs: Number(e.carbs) || 0, fat: Number(e.fat) || 0,
+            confidence: e.conf == null ? 100 : e.conf, ask: null, reasoning: why }];
+      return { date: day.date, items: rows, followups: Array.isArray(e.followups) ? e.followups : [] };
+    }
+  }
+  return null;
+};
+
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
@@ -5364,8 +5404,9 @@ function ItemRow({ item, onReestimate, reestimating }) {
   );
 }
 
-function AILog({ onAdd, onBack }) {
+function AILog({ onAdd, onBack, pastDays = [] }) {
   const [desc,         setDesc]         = useState("");
+  const [reused,       setReused]       = useState(null); // date of the past entry reused (logging/09), else null
   const [loading,      setLoading]      = useState(false);
   const [items,        setItems]        = useState(null);
   const [mealName,     setMealName]     = useState(""); // model's short name for a photo meal
@@ -5432,14 +5473,22 @@ function AILog({ onAdd, onBack }) {
     catch(err) { setError("Couldn't read that image — try another photo."); }
   };
 
-  const estimate = async () => {
+  // fresh: true skips the past-meal lookup — the "Re-estimate with AI" button on a reused meal.
+  const estimate = async ({ fresh = false } = {}) => {
     if (!desc.trim() && !photo) return;
     setLoading(true); setError(""); setItems(null); setMealName(""); setLoggedAll(false); setLoggedCount({});
-    setFollowups([]); setFuDone({}); setFuLog([]);
+    setFollowups([]); setFuDone({}); setFuLog([]); setReused(null);
     // A full totals line typed by the user IS the meal — one row, at once, no model call, no
     // questions (features/logging/06). Only for typed text: a photo is always estimated.
     const stated = photo ? null : parseStatedTotals(desc);
     if (stated) { setItems([statedTotalsItem(stated)]); setLoading(false); return; }
+    // Typed text the user has logged before is answered from their log: no model call, no
+    // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
+    const past = photo || fresh ? null : findPastMeal(desc, pastDays);
+    if (past) {
+      setItems(past.items); setFuLog(past.followups); setReused(past.date);
+      setLoading(false); return;
+    }
     try {
       const parsed = photo
         ? await callAIJson([
@@ -5597,7 +5646,7 @@ function AILog({ onAdd, onBack }) {
             fontSize:18, cursor:"pointer" }}>📷</button>
         <input ref={fileRef} type="file" accept="image/*" capture="environment"
           onChange={onPickPhoto} style={{ display:"none" }}/>
-        <button onClick={estimate} disabled={loading || (!desc.trim() && !photo)}
+        <button onClick={() => estimate()} disabled={loading || (!desc.trim() && !photo)}
           style={{ flex:1, padding:"15px",
             background: loading || (!desc.trim() && !photo) ? "var(--surface-2)" : A,
             color:      loading || (!desc.trim() && !photo) ? "var(--border-strong)" : "var(--bg)",
@@ -5626,6 +5675,24 @@ function AILog({ onAdd, onBack }) {
 
       {items && (
         <div style={{ marginTop:20 }}>
+
+          {/* Reused from the log (logging/09) — say so, and offer a fresh estimate */}
+          {reused && (
+            <div role="status" style={{ background:CARD, border:`1px solid ${aA("44")}`, borderRadius:14,
+              padding:"12px 16px", marginBottom:12, fontSize:12, color:"var(--text-mid)", lineHeight:1.5 }}>
+              <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
+                ↺ LOGGED BEFORE
+              </div>
+              You logged this {reused === todayKey() ? "earlier today" : "on " + fmtDay(reused)}, so these are
+              the same numbers — no AI estimate needed.
+              <button onClick={() => estimate({ fresh: true })}
+                style={{ display:"block", marginTop:8, padding:"7px 12px", background:"var(--surface-2)",
+                  border:`1px solid ${aA("44")}`, borderRadius:10, color:A, fontSize:12,
+                  fontWeight:800, cursor:"pointer" }}>
+                Re-estimate with AI
+              </button>
+            </div>
+          )}
 
           {/* Overall confidence banner */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
@@ -6062,7 +6129,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
 
   if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onForget={onForget} onAdd={addEntry} onBack={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
   if (addCtx === "manual") return <MealForm onSave={addEntry} onCancel={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
-  if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)}/>;
+  if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)} pastDays={history}/>;
 
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
@@ -7699,7 +7766,8 @@ function App() {
           bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
           measurementNote={measurementNote} onSaveMeasurementNote={saveMeasurementNote}
           muteMeasurements={muteMeasurements} onToggleMuteMeasurements={toggleMuteMeasurements}/>}
-      {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}/>}
+      {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}
+                                      pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}

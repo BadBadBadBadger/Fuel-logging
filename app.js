@@ -10824,6 +10824,86 @@ var photoMealName = function photoMealName(meal, desc, items) {
   if (items && items.length === 1 && items[0].name) return items[0].name;
   return "Photo meal";
 };
+
+// Same meal, logged before (features/logging/09). Typed text that matches a meal already in
+// the user's log is answered from that log — no model call, so no tokens and no wait. The
+// match is on the WHOLE typed line after tidying case, punctuation and spacing, never a fuzzy
+// one: "2 eggs on toast" and "3 eggs on toast" are different meals. Decimals survive
+// ("1.5 bagels" is not "15 bagels").
+var mealKey = function mealKey(s) {
+  return (typeof s === "string" ? s : "").toLowerCase().replace(/(\d)[.,](\d)/g, "$1d$2").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+};
+
+// The most recent logged entry whose name matches `desc`, as estimate rows. `days` is
+// [{date, logs:[…]}] in any order. An entry's stored elements are the rows only while they
+// still add up to the entry (an edit in EntryEditor changes the totals, not the elements);
+// otherwise the entry's own totals are one row, so a correction the user made is what's reused.
+// Returns null for no match, a photo-only line, or a 0-kcal entry.
+var findPastMeal = function findPastMeal(desc, days) {
+  var key = mealKey(desc);
+  if (!key || !Array.isArray(days)) return null;
+  var sorted = _toConsumableArray(days).filter(function (d) {
+    return d && Array.isArray(d.logs);
+  }).sort(function (a, b) {
+    return String(b.date).localeCompare(String(a.date));
+  });
+  var _iterator0 = _createForOfIteratorHelper(sorted),
+    _step0;
+  try {
+    for (_iterator0.s(); !(_step0 = _iterator0.n()).done;) {
+      var day = _step0.value;
+      var _loop2 = function _loop2() {
+          var e = day.logs[i];
+          if (!e || !(Number(e.kcal) > 0) || mealKey(e.name) !== key) return 0; // continue
+          var why = "Same as you logged before.";
+          var els = Array.isArray(e.elements) ? e.elements : [];
+          var sum = els.reduce(function (a, x) {
+            return a + (Number(x.kcal) || 0);
+          }, 0);
+          var fits = els.length > 0 && Math.abs(sum - e.kcal) <= Math.max(2, e.kcal * 0.02);
+          var rows = fits ? els.map(function (x) {
+            return {
+              name: x.name,
+              kcal: Number(x.kcal) || 0,
+              protein: Number(x.protein) || 0,
+              carbs: Number(x.carbs) || 0,
+              fat: Number(x.fat) || 0,
+              confidence: x.conf == null ? 100 : x.conf,
+              ask: null,
+              reasoning: why
+            };
+          }) : [{
+            name: e.name,
+            kcal: Number(e.kcal) || 0,
+            protein: Number(e.protein) || 0,
+            carbs: Number(e.carbs) || 0,
+            fat: Number(e.fat) || 0,
+            confidence: e.conf == null ? 100 : e.conf,
+            ask: null,
+            reasoning: why
+          }];
+          return {
+            v: {
+              date: day.date,
+              items: rows,
+              followups: Array.isArray(e.followups) ? e.followups : []
+            }
+          };
+        },
+        _ret;
+      for (var i = day.logs.length - 1; i >= 0; i--) {
+        _ret = _loop2();
+        if (_ret === 0) continue;
+        if (_ret) return _ret.v;
+      }
+    }
+  } catch (err) {
+    _iterator0.e(err);
+  } finally {
+    _iterator0.f();
+  }
+  return null;
+};
 var confColor = function confColor(c) {
   return c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 };
@@ -11259,71 +11339,77 @@ function ItemRow(_ref96) {
 }
 function AILog(_ref97) {
   var onAdd = _ref97.onAdd,
-    onBack = _ref97.onBack;
+    onBack = _ref97.onBack,
+    _ref97$pastDays = _ref97.pastDays,
+    pastDays = _ref97$pastDays === void 0 ? [] : _ref97$pastDays;
   var _useState115 = useState(""),
     _useState116 = _slicedToArray(_useState115, 2),
     desc = _useState116[0],
     setDesc = _useState116[1];
-  var _useState117 = useState(false),
+  var _useState117 = useState(null),
     _useState118 = _slicedToArray(_useState117, 2),
-    loading = _useState118[0],
-    setLoading = _useState118[1];
-  var _useState119 = useState(null),
+    reused = _useState118[0],
+    setReused = _useState118[1]; // date of the past entry reused (logging/09), else null
+  var _useState119 = useState(false),
     _useState120 = _slicedToArray(_useState119, 2),
-    items = _useState120[0],
-    setItems = _useState120[1];
-  var _useState121 = useState(""),
+    loading = _useState120[0],
+    setLoading = _useState120[1];
+  var _useState121 = useState(null),
     _useState122 = _slicedToArray(_useState121, 2),
-    mealName = _useState122[0],
-    setMealName = _useState122[1]; // model's short name for a photo meal
-  var _useState123 = useState(null),
+    items = _useState122[0],
+    setItems = _useState122[1];
+  var _useState123 = useState(""),
     _useState124 = _slicedToArray(_useState123, 2),
-    reestIdx = _useState124[0],
-    setReestIdx = _useState124[1];
-  var _useState125 = useState(""),
+    mealName = _useState124[0],
+    setMealName = _useState124[1]; // model's short name for a photo meal
+  var _useState125 = useState(null),
     _useState126 = _slicedToArray(_useState125, 2),
-    error = _useState126[0],
-    setError = _useState126[1];
-  var _useState127 = useState(false),
+    reestIdx = _useState126[0],
+    setReestIdx = _useState126[1];
+  var _useState127 = useState(""),
     _useState128 = _slicedToArray(_useState127, 2),
-    loggedAll = _useState128[0],
-    setLoggedAll = _useState128[1];
-  var _useState129 = useState({}),
+    error = _useState128[0],
+    setError = _useState128[1];
+  var _useState129 = useState(false),
     _useState130 = _slicedToArray(_useState129, 2),
-    loggedCount = _useState130[0],
-    setLoggedCount = _useState130[1]; // idx -> times logged (ephemeral; resets on unmount)
+    loggedAll = _useState130[0],
+    setLoggedAll = _useState130[1];
+  var _useState131 = useState({}),
+    _useState132 = _slicedToArray(_useState131, 2),
+    loggedCount = _useState132[0],
+    setLoggedCount = _useState132[1]; // idx -> times logged (ephemeral; resets on unmount)
   // Capture adapters — voice transcript + transient photo. The photo lives ONLY
   // here in memory ({base64, preview}); it is never written to storage and never
   // included in the saved record (see logAll). It is discarded when we unmount.
-  var _useState131 = useState(null),
-    _useState132 = _slicedToArray(_useState131, 2),
-    photo = _useState132[0],
-    setPhoto = _useState132[1];
-  var _useState133 = useState(false),
+  var _useState133 = useState(null),
     _useState134 = _slicedToArray(_useState133, 2),
-    listening = _useState134[0],
-    setListening = _useState134[1];
+    photo = _useState134[0],
+    setPhoto = _useState134[1];
   var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
-    micDenied = _useState136[0],
-    setMicDenied = _useState136[1];
+    listening = _useState136[0],
+    setListening = _useState136[1];
   var _useState137 = useState(false),
     _useState138 = _slicedToArray(_useState137, 2),
-    usedVoice = _useState138[0],
-    setUsedVoice = _useState138[1];
-  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
-  var _useState139 = useState([]),
+    micDenied = _useState138[0],
+    setMicDenied = _useState138[1];
+  var _useState139 = useState(false),
     _useState140 = _slicedToArray(_useState139, 2),
-    followups = _useState140[0],
-    setFollowups = _useState140[1]; // [{idx, ask, name}]
-  var _useState141 = useState({}),
+    usedVoice = _useState140[0],
+    setUsedVoice = _useState140[1];
+  // Confidence-gated follow-ups: which questions to ask + answered/skipped log.
+  var _useState141 = useState([]),
     _useState142 = _slicedToArray(_useState141, 2),
-    fuDone = _useState142[0],
-    setFuDone = _useState142[1]; // idx -> true once answered/skipped
-  var _useState143 = useState([]),
+    followups = _useState142[0],
+    setFollowups = _useState142[1]; // [{idx, ask, name}]
+  var _useState143 = useState({}),
     _useState144 = _slicedToArray(_useState143, 2),
-    fuLog = _useState144[0],
-    setFuLog = _useState144[1]; // [{q, a}] persisted with the meal
+    fuDone = _useState144[0],
+    setFuDone = _useState144[1]; // idx -> true once answered/skipped
+  var _useState145 = useState([]),
+    _useState146 = _slicedToArray(_useState145, 2),
+    fuLog = _useState146[0],
+    setFuLog = _useState146[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
   var fileRef = React.useRef(null);
 
@@ -11440,12 +11526,27 @@ function AILog(_ref97) {
       return _ref98.apply(this, arguments);
     };
   }();
+
+  // fresh: true skips the past-meal lookup — the "Re-estimate with AI" button on a reused meal.
   var estimate = /*#__PURE__*/function () {
     var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
-      var stated, parsed, aiItems, merged, k, wConf, _t42, _t43;
+      var _ref100,
+        _ref100$fresh,
+        fresh,
+        stated,
+        past,
+        parsed,
+        aiItems,
+        merged,
+        k,
+        wConf,
+        _args37 = arguments,
+        _t42,
+        _t43;
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.p = _context37.n) {
           case 0:
+            _ref100 = _args37.length > 0 && _args37[0] !== undefined ? _args37[0] : {}, _ref100$fresh = _ref100.fresh, fresh = _ref100$fresh === void 0 ? false : _ref100$fresh;
             if (!(!desc.trim() && !photo)) {
               _context37.n = 1;
               break;
@@ -11461,6 +11562,7 @@ function AILog(_ref97) {
             setFollowups([]);
             setFuDone({});
             setFuLog([]);
+            setReused(null);
             // A full totals line typed by the user IS the meal — one row, at once, no model call, no
             // questions (features/logging/06). Only for typed text: a photo is always estimated.
             stated = photo ? null : parseStatedTotals(desc);
@@ -11472,12 +11574,25 @@ function AILog(_ref97) {
             setLoading(false);
             return _context37.a(2);
           case 2:
-            _context37.p = 2;
-            if (!photo) {
-              _context37.n = 4;
+            // Typed text the user has logged before is answered from their log: no model call, no
+            // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
+            past = photo || fresh ? null : findPastMeal(desc, pastDays);
+            if (!past) {
+              _context37.n = 3;
               break;
             }
-            _context37.n = 3;
+            setItems(past.items);
+            setFuLog(past.followups);
+            setReused(past.date);
+            setLoading(false);
+            return _context37.a(2);
+          case 3:
+            _context37.p = 3;
+            if (!photo) {
+              _context37.n = 5;
+              break;
+            }
+            _context37.n = 4;
             return callAIJson([{
               type: "image",
               source: {
@@ -11489,16 +11604,16 @@ function AILog(_ref97) {
               type: "text",
               text: AI_PHOTO_PROMPT(desc)
             }], 2000);
-          case 3:
-            _t42 = _context37.v;
-            _context37.n = 6;
-            break;
           case 4:
-            _context37.n = 5;
-            return callAIJson(AI_PROMPT(desc), 2000);
-          case 5:
             _t42 = _context37.v;
+            _context37.n = 7;
+            break;
+          case 5:
+            _context37.n = 6;
+            return callAIJson(AI_PROMPT(desc), 2000);
           case 6:
+            _t42 = _context37.v;
+          case 7:
             parsed = _t42;
             aiItems = parsed.items || [];
             if (photo) setMealName(parsed.meal || "");
@@ -11524,18 +11639,18 @@ function AILog(_ref97) {
               return a + it.confidence * (it.kcal || 0);
             }, 0) / k) : 100;
             setFollowups(wConf < FOLLOWUP_BELOW ? pickFollowups(merged) : []);
-            _context37.n = 8;
+            _context37.n = 9;
             break;
-          case 7:
-            _context37.p = 7;
+          case 8:
+            _context37.p = 8;
             _t43 = _context37.v;
             setError("Estimation failed: " + _t43.message);
-          case 8:
-            setLoading(false);
           case 9:
+            setLoading(false);
+          case 10:
             return _context37.a(2);
         }
-      }, _callee37, null, [[2, 7]]);
+      }, _callee37, null, [[3, 8]]);
     }));
     return function estimate() {
       return _ref99.apply(this, arguments);
@@ -11569,7 +11684,7 @@ function AILog(_ref97) {
     }
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(idx, newName) {
+    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(idx, newName) {
       var updated, _final, _t44;
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.p = _context38.n) {
@@ -11602,7 +11717,7 @@ function AILog(_ref97) {
       }, _callee38, null, [[1, 3]]);
     }));
     return function reestimate(_x52, _x53) {
-      return _ref100.apply(this, arguments);
+      return _ref101.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -11793,7 +11908,9 @@ function AILog(_ref97) {
       display: "none"
     }
   }), /*#__PURE__*/React.createElement("button", {
-    onClick: estimate,
+    onClick: function onClick() {
+      return estimate();
+    },
     disabled: loading || !desc.trim() && !photo,
     style: {
       flex: 1,
@@ -11840,7 +11957,45 @@ function AILog(_ref97) {
     style: {
       marginTop: 20
     }
+  }, reused && /*#__PURE__*/React.createElement("div", {
+    role: "status",
+    style: {
+      background: CARD,
+      border: "1px solid ".concat(aA("44")),
+      borderRadius: 14,
+      padding: "12px 16px",
+      marginBottom: 12,
+      fontSize: 12,
+      color: "var(--text-mid)",
+      lineHeight: 1.5
+    }
   }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: A,
+      letterSpacing: "0.1em",
+      fontWeight: 800,
+      marginBottom: 4
+    }
+  }, "\u21BA LOGGED BEFORE"), "You logged this ", reused === todayKey() ? "earlier today" : "on " + fmtDay(reused), ", so these are the same numbers \u2014 no AI estimate needed.", /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return estimate({
+        fresh: true
+      });
+    },
+    style: {
+      display: "block",
+      marginTop: 8,
+      padding: "7px 12px",
+      background: "var(--surface-2)",
+      border: "1px solid ".concat(aA("44")),
+      borderRadius: 10,
+      color: A,
+      fontSize: 12,
+      fontWeight: 800,
+      cursor: "pointer"
+    }
+  }, "Re-estimate with AI")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
@@ -12054,27 +12209,27 @@ function AILog(_ref97) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref101) {
-  var onAdd = _ref101.onAdd,
-    onBack = _ref101.onBack,
-    meals = _ref101.meals,
-    setMeals = _ref101.setMeals,
-    _ref101$onForget = _ref101.onForget,
-    onForget = _ref101$onForget === void 0 ? function () {} : _ref101$onForget,
-    _ref101$isPremium = _ref101.isPremium,
-    isPremium = _ref101$isPremium === void 0 ? false : _ref101$isPremium,
-    _ref101$onPremiumGate = _ref101.onPremiumGate,
-    onPremiumGate = _ref101$onPremiumGate === void 0 ? function () {} : _ref101$onPremiumGate;
-  var _useState145 = useState(""),
-    _useState146 = _slicedToArray(_useState145, 2),
-    search = _useState146[0],
-    setSearch = _useState146[1];
-  var _useState147 = useState(null),
+function QuickAdd(_ref102) {
+  var onAdd = _ref102.onAdd,
+    onBack = _ref102.onBack,
+    meals = _ref102.meals,
+    setMeals = _ref102.setMeals,
+    _ref102$onForget = _ref102.onForget,
+    onForget = _ref102$onForget === void 0 ? function () {} : _ref102$onForget,
+    _ref102$isPremium = _ref102.isPremium,
+    isPremium = _ref102$isPremium === void 0 ? false : _ref102$isPremium,
+    _ref102$onPremiumGate = _ref102.onPremiumGate,
+    onPremiumGate = _ref102$onPremiumGate === void 0 ? function () {} : _ref102$onPremiumGate;
+  var _useState147 = useState(""),
     _useState148 = _slicedToArray(_useState147, 2),
-    modal = _useState148[0],
-    setModal = _useState148[1];
+    search = _useState148[0],
+    setSearch = _useState148[1];
+  var _useState149 = useState(null),
+    _useState150 = _slicedToArray(_useState149, 2),
+    modal = _useState150[0],
+    setModal = _useState150[1];
   var save = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
+    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
           case 0:
@@ -12087,7 +12242,7 @@ function QuickAdd(_ref101) {
       }, _callee39);
     }));
     return function save(_x54) {
-      return _ref102.apply(this, arguments);
+      return _ref103.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -12287,9 +12442,9 @@ var TAPE_SERIES = [{
 //
 // At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
 // can land under the thumb, so a taller card would cover the point being inspected.
-function BodyFatTooltip(_ref103) {
-  var active = _ref103.active,
-    payload = _ref103.payload;
+function BodyFatTooltip(_ref104) {
+  var active = _ref104.active,
+    payload = _ref104.payload;
   if (!active || !payload || !payload.length) return null;
   var r = payload[0].payload || {};
   return /*#__PURE__*/React.createElement("div", {
@@ -12320,31 +12475,31 @@ function BodyFatTooltip(_ref103) {
     }
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
-function History(_ref104) {
+function History(_ref105) {
   var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref104.history,
-    onBack = _ref104.onBack,
-    onUpdateDay = _ref104.onUpdateDay,
-    _ref104$weighIns = _ref104.weighIns,
-    weighIns = _ref104$weighIns === void 0 ? [] : _ref104$weighIns,
-    _ref104$bodyMeasureme = _ref104.bodyMeasurements,
-    bodyMeasurements = _ref104$bodyMeasureme === void 0 ? [] : _ref104$bodyMeasureme,
-    _ref104$sex = _ref104.sex,
-    sex = _ref104$sex === void 0 ? null : _ref104$sex,
-    _ref104$profile = _ref104.profile,
-    profile = _ref104$profile === void 0 ? {} : _ref104$profile,
-    _ref104$tdeeAdj = _ref104.tdeeAdj,
-    tdeeAdj = _ref104$tdeeAdj === void 0 ? 0 : _ref104$tdeeAdj,
-    _ref104$meals = _ref104.meals,
-    meals = _ref104$meals === void 0 ? DEF_MEALS : _ref104$meals,
-    _ref104$setMeals = _ref104.setMeals,
-    setMeals = _ref104$setMeals === void 0 ? function () {} : _ref104$setMeals,
-    _ref104$onForget = _ref104.onForget,
-    onForget = _ref104$onForget === void 0 ? function () {} : _ref104$onForget,
-    _ref104$isPremium = _ref104.isPremium,
-    isPremium = _ref104$isPremium === void 0 ? false : _ref104$isPremium,
-    _ref104$onPremiumGate = _ref104.onPremiumGate,
-    onPremiumGate = _ref104$onPremiumGate === void 0 ? function () {} : _ref104$onPremiumGate;
+  var history = _ref105.history,
+    onBack = _ref105.onBack,
+    onUpdateDay = _ref105.onUpdateDay,
+    _ref105$weighIns = _ref105.weighIns,
+    weighIns = _ref105$weighIns === void 0 ? [] : _ref105$weighIns,
+    _ref105$bodyMeasureme = _ref105.bodyMeasurements,
+    bodyMeasurements = _ref105$bodyMeasureme === void 0 ? [] : _ref105$bodyMeasureme,
+    _ref105$sex = _ref105.sex,
+    sex = _ref105$sex === void 0 ? null : _ref105$sex,
+    _ref105$profile = _ref105.profile,
+    profile = _ref105$profile === void 0 ? {} : _ref105$profile,
+    _ref105$tdeeAdj = _ref105.tdeeAdj,
+    tdeeAdj = _ref105$tdeeAdj === void 0 ? 0 : _ref105$tdeeAdj,
+    _ref105$meals = _ref105.meals,
+    meals = _ref105$meals === void 0 ? DEF_MEALS : _ref105$meals,
+    _ref105$setMeals = _ref105.setMeals,
+    setMeals = _ref105$setMeals === void 0 ? function () {} : _ref105$setMeals,
+    _ref105$onForget = _ref105.onForget,
+    onForget = _ref105$onForget === void 0 ? function () {} : _ref105$onForget,
+    _ref105$isPremium = _ref105.isPremium,
+    isPremium = _ref105$isPremium === void 0 ? false : _ref105$isPremium,
+    _ref105$onPremiumGate = _ref105.onPremiumGate,
+    onPremiumGate = _ref105$onPremiumGate === void 0 ? function () {} : _ref105$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -12380,46 +12535,46 @@ function History(_ref104) {
       unit: "g"
     }
   };
-  var _useState149 = useState("30D"),
-    _useState150 = _slicedToArray(_useState149, 2),
-    range = _useState150[0],
-    setRange = _useState150[1];
-  var _useState151 = useState(["KCAL"]),
+  var _useState151 = useState("30D"),
     _useState152 = _slicedToArray(_useState151, 2),
-    metrics = _useState152[0],
-    setMetrics = _useState152[1];
-  var _useState153 = useState(false),
+    range = _useState152[0],
+    setRange = _useState152[1];
+  var _useState153 = useState(["KCAL"]),
     _useState154 = _slicedToArray(_useState153, 2),
-    showWeight = _useState154[0],
-    setShowWeight = _useState154[1];
+    metrics = _useState154[0],
+    setMetrics = _useState154[1];
   var _useState155 = useState(false),
     _useState156 = _slicedToArray(_useState155, 2),
-    showBodyFat = _useState156[0],
-    setShowBodyFat = _useState156[1];
+    showWeight = _useState156[0],
+    setShowWeight = _useState156[1];
   var _useState157 = useState(false),
     _useState158 = _slicedToArray(_useState157, 2),
-    showTape = _useState158[0],
-    setShowTape = _useState158[1];
-  var _useState159 = useState("line"),
+    showBodyFat = _useState158[0],
+    setShowBodyFat = _useState158[1];
+  var _useState159 = useState(false),
     _useState160 = _slicedToArray(_useState159, 2),
-    chartType = _useState160[0],
-    setChartType = _useState160[1];
-  var _useState161 = useState(Math.max(0, history.length - 1)),
+    showTape = _useState160[0],
+    setShowTape = _useState160[1];
+  var _useState161 = useState("line"),
     _useState162 = _slicedToArray(_useState161, 2),
-    dayIdx = _useState162[0],
-    setDayIdx = _useState162[1];
-  var _useState163 = useState(null),
+    chartType = _useState162[0],
+    setChartType = _useState162[1];
+  var _useState163 = useState(Math.max(0, history.length - 1)),
     _useState164 = _slicedToArray(_useState163, 2),
-    addCtx = _useState164[0],
-    setAddCtx = _useState164[1];
+    dayIdx = _useState164[0],
+    setDayIdx = _useState164[1];
   var _useState165 = useState(null),
     _useState166 = _slicedToArray(_useState165, 2),
-    editId = _useState166[0],
-    setEditId = _useState166[1];
+    addCtx = _useState166[0],
+    setAddCtx = _useState166[1];
   var _useState167 = useState(null),
     _useState168 = _slicedToArray(_useState167, 2),
-    tgtDraft = _useState168[0],
-    setTgtDraft = _useState168[1]; // past-day target being typed, or null
+    editId = _useState168[0],
+    setEditId = _useState168[1];
+  var _useState169 = useState(null),
+    _useState170 = _slicedToArray(_useState169, 2),
+    tgtDraft = _useState170[0],
+    setTgtDraft = _useState170[1]; // past-day target being typed, or null
   var wPref = getWUnit(); // kg · st · lb
   var wUnit = wChartUnit(wPref); // chart axis label: kg, else lb (st plots in lb)
   var wConv = function wConv(kg) {
@@ -12694,7 +12849,8 @@ function History(_ref104) {
     onAdd: addEntry,
     onBack: function onBack() {
       return setAddCtx(null);
-    }
+    },
+    pastDays: history
   });
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -13165,11 +13321,11 @@ function History(_ref104) {
         fontWeight: 800,
         marginBottom: 4
       }
-    }, "BODY"), bodyRows.map(function (_ref105, i) {
-      var _ref106 = _slicedToArray(_ref105, 3),
-        label = _ref106[0],
-        value = _ref106[1],
-        color = _ref106[2];
+    }, "BODY"), bodyRows.map(function (_ref106, i) {
+      var _ref107 = _slicedToArray(_ref106, 3),
+        label = _ref107[0],
+        value = _ref107[1],
+        color = _ref107[2];
       return /*#__PURE__*/React.createElement("div", {
         key: label,
         style: {
@@ -13359,10 +13515,10 @@ function History(_ref104) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref107) {
-    var _ref108 = _slicedToArray(_ref107, 2),
-      k = _ref108[0],
-      m = _ref108[1];
+  }, Object.entries(MM).map(function (_ref108) {
+    var _ref109 = _slicedToArray(_ref108, 2),
+      k = _ref109[0],
+      m = _ref109[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -13438,10 +13594,10 @@ function History(_ref104) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref109) {
-    var _ref110 = _slicedToArray(_ref109, 2),
-      t = _ref110[0],
-      e = _ref110[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref110) {
+    var _ref111 = _slicedToArray(_ref110, 2),
+      t = _ref111[0],
+      e = _ref111[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -13731,10 +13887,10 @@ function History(_ref104) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref111) {
-    var _ref112 = _slicedToArray(_ref111, 2),
-      k = _ref112[0],
-      m = _ref112[1];
+  }, Object.entries(MM).map(function (_ref112) {
+    var _ref113 = _slicedToArray(_ref112, 2),
+      k = _ref113[0],
+      m = _ref113[1];
     var avg = avgRows.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / avgRows.length;
@@ -13922,9 +14078,9 @@ function History(_ref104) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref113) {
-  var earnedBdgs = _ref113.earnedBdgs,
-    onBack = _ref113.onBack;
+function Achievements(_ref114) {
+  var earnedBdgs = _ref114.earnedBdgs,
+    onBack = _ref114.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -14023,17 +14179,17 @@ function Achievements(_ref113) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref114) {
-  var badge = _ref114.badge,
-    onDone = _ref114.onDone;
+function BadgeFanfare(_ref115) {
+  var badge = _ref115.badge,
+    onDone = _ref115.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
-  var _useState169 = useState(0),
-    _useState170 = _slicedToArray(_useState169, 2),
-    count = _useState170[0],
-    setCount = _useState170[1];
-  var _useState171 = useState(function () {
+  var _useState171 = useState(0),
+    _useState172 = _slicedToArray(_useState171, 2),
+    count = _useState172[0],
+    setCount = _useState172[1];
+  var _useState173 = useState(function () {
       return Array.from({
         length: 18
       }, function (_, k) {
@@ -14047,8 +14203,8 @@ function BadgeFanfare(_ref114) {
         };
       });
     }),
-    _useState172 = _slicedToArray(_useState171, 1),
-    floaters = _useState172[0];
+    _useState174 = _slicedToArray(_useState173, 1),
+    floaters = _useState174[0];
   useEffect(function () {
     var dur = 900,
       start = Date.now();
@@ -14146,9 +14302,9 @@ function BadgeFanfare(_ref114) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref115) {
-  var streak = _ref115.streak,
-    onDone = _ref115.onDone;
+function StreakPip(_ref116) {
+  var streak = _ref116.streak,
+    onDone = _ref116.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -14199,9 +14355,9 @@ function StreakPip(_ref115) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref116) {
-  var badge = _ref116.badge,
-    onDone = _ref116.onDone;
+function BadgeToast(_ref117) {
+  var badge = _ref117.badge,
+    onDone = _ref117.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -14263,9 +14419,9 @@ function BadgeToast(_ref116) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref117) {
-  var text = _ref117.text,
-    onDone = _ref117.onDone;
+function NoteToast(_ref118) {
+  var text = _ref118.text,
+    onDone = _ref118.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -14306,134 +14462,134 @@ function NoteToast(_ref117) {
 // ── Root ──────────────────────────────────────────────────────
 
 function App() {
-  var _useState173 = useState("dashboard"),
-    _useState174 = _slicedToArray(_useState173, 2),
-    view = _useState174[0],
-    setView = _useState174[1];
-  var _useState175 = useState([]),
+  var _useState175 = useState("dashboard"),
     _useState176 = _slicedToArray(_useState175, 2),
-    logs = _useState176[0],
-    setLogs = _useState176[1];
-  var _useState177 = useState(0),
+    view = _useState176[0],
+    setView = _useState176[1];
+  var _useState177 = useState([]),
     _useState178 = _slicedToArray(_useState177, 2),
-    water = _useState178[0],
-    setWater = _useState178[1];
-  var _useState179 = useState("cut"),
+    logs = _useState178[0],
+    setLogs = _useState178[1];
+  var _useState179 = useState(0),
     _useState180 = _slicedToArray(_useState179, 2),
-    mode = _useState180[0],
-    setMode = _useState180[1];
-  var _useState181 = useState(null),
+    water = _useState180[0],
+    setWater = _useState180[1];
+  var _useState181 = useState("cut"),
     _useState182 = _slicedToArray(_useState181, 2),
-    prof = _useState182[0],
-    setProf = _useState182[1];
-  var _useState183 = useState([]),
+    mode = _useState182[0],
+    setMode = _useState182[1];
+  var _useState183 = useState(null),
     _useState184 = _slicedToArray(_useState183, 2),
-    hist = _useState184[0],
-    setHist = _useState184[1];
-  var _useState185 = useState([].concat(DEF_MEALS)),
+    prof = _useState184[0],
+    setProf = _useState184[1];
+  var _useState185 = useState([]),
     _useState186 = _slicedToArray(_useState185, 2),
-    meals = _useState186[0],
-    setMeals = _useState186[1];
-  var _useState187 = useState([]),
+    hist = _useState186[0],
+    setHist = _useState186[1];
+  var _useState187 = useState([].concat(DEF_MEALS)),
     _useState188 = _slicedToArray(_useState187, 2),
-    workouts = _useState188[0],
-    setWorkouts = _useState188[1];
+    meals = _useState188[0],
+    setMeals = _useState188[1];
+  var _useState189 = useState([]),
+    _useState190 = _slicedToArray(_useState189, 2),
+    workouts = _useState190[0],
+    setWorkouts = _useState190[1];
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
-  var _useState189 = useState([0, 0]),
-    _useState190 = _slicedToArray(_useState189, 2),
-    priorWorkoutKcal = _useState190[0],
-    setPriorWorkoutKcal = _useState190[1];
-  var _useState191 = useState([]),
+  var _useState191 = useState([0, 0]),
     _useState192 = _slicedToArray(_useState191, 2),
-    earnedBdgs = _useState192[0],
-    setEarnedBdgs = _useState192[1];
-  var _useState193 = useState(null),
+    priorWorkoutKcal = _useState192[0],
+    setPriorWorkoutKcal = _useState192[1];
+  var _useState193 = useState([]),
     _useState194 = _slicedToArray(_useState193, 2),
-    newBadge = _useState194[0],
-    setNewBadge = _useState194[1];
-  var _useState195 = useState(false),
+    earnedBdgs = _useState194[0],
+    setEarnedBdgs = _useState194[1];
+  var _useState195 = useState(null),
     _useState196 = _slicedToArray(_useState195, 2),
-    ready = _useState196[0],
-    setReady = _useState196[1];
-  // True once the startup cloud pull has landed or failed (or was never started). The daily
-  // cut-block accrual waits for it — see that effect.
+    newBadge = _useState196[0],
+    setNewBadge = _useState196[1];
   var _useState197 = useState(false),
     _useState198 = _slicedToArray(_useState197, 2),
-    cloudSettled = _useState198[0],
-    setCloudSettled = _useState198[1];
-  var _useState199 = useState([]),
+    ready = _useState198[0],
+    setReady = _useState198[1];
+  // True once the startup cloud pull has landed or failed (or was never started). The daily
+  // cut-block accrual waits for it — see that effect.
+  var _useState199 = useState(false),
     _useState200 = _slicedToArray(_useState199, 2),
-    weighIns = _useState200[0],
-    setWeighIns = _useState200[1];
-  var _useState201 = useState(0),
+    cloudSettled = _useState200[0],
+    setCloudSettled = _useState200[1];
+  var _useState201 = useState([]),
     _useState202 = _slicedToArray(_useState201, 2),
-    tdeeAdj = _useState202[0],
-    setTdeeAdj = _useState202[1];
-  var _useState203 = useState([]),
+    weighIns = _useState202[0],
+    setWeighIns = _useState202[1];
+  var _useState203 = useState(0),
     _useState204 = _slicedToArray(_useState203, 2),
-    adjLog = _useState204[0],
-    setAdjLog = _useState204[1]; // recent {date,adj} events — dead-time comp (local-only)
-  var _useState205 = useState(null),
+    tdeeAdj = _useState204[0],
+    setTdeeAdj = _useState204[1];
+  var _useState205 = useState([]),
     _useState206 = _slicedToArray(_useState205, 2),
-    weighNudgeAt = _useState206[0],
-    setWeighNudgeAt = _useState206[1]; // last weigh-in-nudge dismissal (ms; local-only)
+    adjLog = _useState206[0],
+    setAdjLog = _useState206[1]; // recent {date,adj} events — dead-time comp (local-only)
+  var _useState207 = useState(null),
+    _useState208 = _slicedToArray(_useState207, 2),
+    weighNudgeAt = _useState208[0],
+    setWeighNudgeAt = _useState208[1]; // last weigh-in-nudge dismissal (ms; local-only)
   // Body measurements (features/body/01) — bodyMeasurements syncs like weighIns; the mute
   // toggle and routine note are local-only, matching weighCadence/theme's per-device pattern.
-  var _useState207 = useState([]),
-    _useState208 = _slicedToArray(_useState207, 2),
-    bodyMeasurements = _useState208[0],
-    setBodyMeasurements = _useState208[1];
-  var _useState209 = useState(false),
+  var _useState209 = useState([]),
     _useState210 = _slicedToArray(_useState209, 2),
-    muteMeasurements = _useState210[0],
-    setMuteMeasurements = _useState210[1];
-  var _useState211 = useState(""),
+    bodyMeasurements = _useState210[0],
+    setBodyMeasurements = _useState210[1];
+  var _useState211 = useState(false),
     _useState212 = _slicedToArray(_useState211, 2),
-    measurementNote = _useState212[0],
-    setMeasurementNote = _useState212[1];
-  var _useState213 = useState(null),
+    muteMeasurements = _useState212[0],
+    setMuteMeasurements = _useState212[1];
+  var _useState213 = useState(""),
     _useState214 = _slicedToArray(_useState213, 2),
-    measurementNudgeAt = _useState214[0],
-    setMeasurementNudgeAt = _useState214[1];
-  var _useState215 = useState(EMPTY_CUT_BLOCK),
+    measurementNote = _useState214[0],
+    setMeasurementNote = _useState214[1];
+  var _useState215 = useState(null),
     _useState216 = _slicedToArray(_useState215, 2),
-    cutBlock = _useState216[0],
-    setCutBlock = _useState216[1]; // cut-cycling state (Step 5); 4 fields sync
+    measurementNudgeAt = _useState216[0],
+    setMeasurementNudgeAt = _useState216[1];
+  var _useState217 = useState(EMPTY_CUT_BLOCK),
+    _useState218 = _slicedToArray(_useState217, 2),
+    cutBlock = _useState218[0],
+    setCutBlock = _useState218[1]; // cut-cycling state (Step 5); 4 fields sync
   // Whether rebuildBreakFromHistory has had its one run on this device. A ref, not state: it
   // must not re-trigger the accrual effect that reads it.
   var breakRebuilt = React.useRef(true);
-  var _useState217 = useState(0),
-    _useState218 = _slicedToArray(_useState217, 2),
-    coachKey = _useState218[0],
-    setCoachKey = _useState218[1];
-  var _useState219 = useState(null),
+  var _useState219 = useState(0),
     _useState220 = _slicedToArray(_useState219, 2),
-    streakPop = _useState220[0],
-    setStreakPop = _useState220[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
+    coachKey = _useState220[0],
+    setCoachKey = _useState220[1];
   var _useState221 = useState(null),
     _useState222 = _slicedToArray(_useState221, 2),
-    badgeToast = _useState222[0],
-    setBadgeToast = _useState222[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+    streakPop = _useState222[0],
+    setStreakPop = _useState222[1]; // new streak number → fires the bottom pip (+ header chip pop) on first log of a new day
   var _useState223 = useState(null),
     _useState224 = _slicedToArray(_useState223, 2),
-    noteToast = _useState224[0],
-    setNoteToast = _useState224[1]; // plain one-line confirmations
-  var _useState225 = useState(false),
+    badgeToast = _useState224[0],
+    setBadgeToast = _useState224[1]; // Bronze/Silver badge → quiet toast + 🏆 glow
+  var _useState225 = useState(null),
     _useState226 = _slicedToArray(_useState225, 2),
-    badgeGlow = _useState226[0],
-    setBadgeGlow = _useState226[1]; // the 🏆 glow paired with the toast
-  var _useState227 = useState(null),
+    noteToast = _useState226[0],
+    setNoteToast = _useState226[1]; // plain one-line confirmations
+  var _useState227 = useState(false),
     _useState228 = _slicedToArray(_useState227, 2),
-    customKcal = _useState228[0],
-    setCustomKcal = _useState228[1];
-  var _useState229 = useState(false),
+    badgeGlow = _useState228[0],
+    setBadgeGlow = _useState228[1]; // the 🏆 glow paired with the toast
+  var _useState229 = useState(null),
     _useState230 = _slicedToArray(_useState229, 2),
-    aggressiveCutAcked = _useState230[0],
-    setAggressiveCutAcked = _useState230[1];
-  var _useState231 = useState(0),
+    customKcal = _useState230[0],
+    setCustomKcal = _useState230[1];
+  var _useState231 = useState(false),
     _useState232 = _slicedToArray(_useState231, 2),
-    setThemeTick = _useState232[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
+    aggressiveCutAcked = _useState232[0],
+    setAggressiveCutAcked = _useState232[1];
+  var _useState233 = useState(0),
+    _useState234 = _slicedToArray(_useState233, 2),
+    setThemeTick = _useState234[1]; // force re-render on live OS theme change (System mode → charts re-resolve)
 
   // CSS handles the repaint itself; this only re-resolves JS-read colours (Recharts) when the OS flips.
   useEffect(function () {
@@ -14459,46 +14615,46 @@ function App() {
   }, []);
 
   // ── Auth state ────────────────────────────────────────────────
-  var _useState233 = useState("anonymous"),
-    _useState234 = _slicedToArray(_useState233, 2),
-    authState = _useState234[0],
-    setAuthState = _useState234[1];
-  var _useState235 = useState(null),
+  var _useState235 = useState("anonymous"),
     _useState236 = _slicedToArray(_useState235, 2),
-    authUser = _useState236[0],
-    setAuthUser = _useState236[1];
+    authState = _useState236[0],
+    setAuthState = _useState236[1];
   var _useState237 = useState(null),
     _useState238 = _slicedToArray(_useState237, 2),
-    premiumGate = _useState238[0],
-    setPremiumGate = _useState238[1]; // {emoji, name} | null
-  var _useState239 = useState(false),
+    authUser = _useState238[0],
+    setAuthUser = _useState238[1];
+  var _useState239 = useState(null),
     _useState240 = _slicedToArray(_useState239, 2),
-    showSignIn = _useState240[0],
-    setShowSignIn = _useState240[1];
+    premiumGate = _useState240[0],
+    setPremiumGate = _useState240[1]; // {emoji, name} | null
   var _useState241 = useState(false),
     _useState242 = _slicedToArray(_useState241, 2),
-    showSignOut = _useState242[0],
-    setShowSignOut = _useState242[1];
+    showSignIn = _useState242[0],
+    setShowSignIn = _useState242[1];
   var _useState243 = useState(false),
     _useState244 = _slicedToArray(_useState243, 2),
-    showLapsed = _useState244[0],
-    setShowLapsed = _useState244[1];
+    showSignOut = _useState244[0],
+    setShowSignOut = _useState244[1];
   var _useState245 = useState(false),
     _useState246 = _slicedToArray(_useState245, 2),
-    needsConsent = _useState246[0],
-    setNeedsConsent = _useState246[1]; // retroactive Art. 9 consent (R2)
-  var _useState247 = useState(null),
+    showLapsed = _useState246[0],
+    setShowLapsed = _useState246[1];
+  var _useState247 = useState(false),
     _useState248 = _slicedToArray(_useState247, 2),
-    consentInfo = _useState248[0],
-    setConsentInfo = _useState248[1]; // parsed local health_consent for display
-  var _useState249 = useState(navigator.onLine),
+    needsConsent = _useState248[0],
+    setNeedsConsent = _useState248[1]; // retroactive Art. 9 consent (R2)
+  var _useState249 = useState(null),
     _useState250 = _slicedToArray(_useState249, 2),
-    isOnline = _useState250[0],
-    setIsOnline = _useState250[1];
-  var _useState251 = useState(""),
+    consentInfo = _useState250[0],
+    setConsentInfo = _useState250[1]; // parsed local health_consent for display
+  var _useState251 = useState(navigator.onLine),
     _useState252 = _slicedToArray(_useState251, 2),
-    syncMsg = _useState252[0],
-    setSyncMsg = _useState252[1];
+    isOnline = _useState252[0],
+    setIsOnline = _useState252[1];
+  var _useState253 = useState(""),
+    _useState254 = _slicedToArray(_useState253, 2),
+    syncMsg = _useState254[0],
+    setSyncMsg = _useState254[1];
   useEffect(function () {
     var up = function up() {
       return setIsOnline(true);
@@ -14538,7 +14694,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref118 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
+      var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
         var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t45, _t46;
         return _regenerator().w(function (_context40) {
           while (1) switch (_context40.p = _context40.n) {
@@ -14843,7 +14999,7 @@ function App() {
         }, _callee40, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref118.apply(this, arguments);
+        return _ref119.apply(this, arguments);
       };
     }();
     load();
@@ -14897,7 +15053,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(l) {
+    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(l) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -14912,11 +15068,11 @@ function App() {
       }, _callee41);
     }));
     return function saveLogs(_x55) {
-      return _ref119.apply(this, arguments);
+      return _ref120.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
+    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -14931,11 +15087,11 @@ function App() {
       }, _callee42);
     }));
     return function saveWater(_x56) {
-      return _ref120.apply(this, arguments);
+      return _ref121.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -14950,11 +15106,11 @@ function App() {
       }, _callee43);
     }));
     return function saveMode(_x57) {
-      return _ref121.apply(this, arguments);
+      return _ref122.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(p) {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(p) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -14970,11 +15126,11 @@ function App() {
       }, _callee44);
     }));
     return function saveProf(_x58) {
-      return _ref122.apply(this, arguments);
+      return _ref123.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(w) {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(w) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
@@ -14989,7 +15145,7 @@ function App() {
       }, _callee45);
     }));
     return function saveWorkouts(_x59) {
-      return _ref123.apply(this, arguments);
+      return _ref124.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15003,7 +15159,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(e) {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
@@ -15043,7 +15199,7 @@ function App() {
       }, _callee46);
     }));
     return function addLog(_x60) {
-      return _ref124.apply(this, arguments);
+      return _ref125.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15069,7 +15225,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(kcal) {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(kcal) {
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.n) {
           case 0:
@@ -15094,11 +15250,11 @@ function App() {
       }, _callee47);
     }));
     return function saveCustomKcal(_x61) {
-      return _ref125.apply(this, arguments);
+      return _ref126.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(m) {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(m) {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -15116,11 +15272,11 @@ function App() {
       }, _callee48);
     }));
     return function handleSetMode(_x62) {
-      return _ref126.apply(this, arguments);
+      return _ref127.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
           case 0:
@@ -15135,11 +15291,11 @@ function App() {
       }, _callee49);
     }));
     return function handleAckAggressiveCut() {
-      return _ref127.apply(this, arguments);
+      return _ref128.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(updated) {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(updated) {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
@@ -15154,7 +15310,7 @@ function App() {
       }, _callee50);
     }));
     return function saveMeals(_x63) {
-      return _ref128.apply(this, arguments);
+      return _ref129.apply(this, arguments);
     };
   }();
 
@@ -15164,7 +15320,7 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(entry) {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(entry) {
       var name, clean;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.n) {
@@ -15194,14 +15350,14 @@ function App() {
       }, _callee51);
     }));
     return function addToQA(_x64) {
-      return _ref129.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(googleUser, grantedBy, consentMeta) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t47;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.p = _context52.n) {
@@ -15301,13 +15457,13 @@ function App() {
       }, _callee52, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x65, _x66, _x67) {
-      return _ref130.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
       var meta, rec;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.n) {
@@ -15338,11 +15494,11 @@ function App() {
       }, _callee53);
     }));
     return function handleConsent() {
-      return _ref131.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       var clearKeys, _i4, _clearKeys, k, i, key, _t48;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.p = _context54.n) {
@@ -15414,7 +15570,7 @@ function App() {
       }, _callee54, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref132.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
 
@@ -15424,7 +15580,7 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.n) {
           case 0:
@@ -15444,7 +15600,7 @@ function App() {
       }, _callee55);
     }));
     return function resetTdeeAdj() {
-      return _ref133.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -15499,7 +15655,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
           case 0:
@@ -15514,11 +15670,11 @@ function App() {
       }, _callee56);
     }));
     return function handleDeleteAccount() {
-      return _ref134.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(upd) {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(upd) {
       var nh;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
@@ -15549,11 +15705,11 @@ function App() {
       }, _callee57);
     }));
     return function updateDay(_x68) {
-      return _ref135.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(weight) {
+    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.n) {
@@ -15638,7 +15794,7 @@ function App() {
       }, _callee58);
     }));
     return function onWeighIn(_x69) {
-      return _ref136.apply(this, arguments);
+      return _ref137.apply(this, arguments);
     };
   }();
 
@@ -15647,12 +15803,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(_ref137) {
+    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(_ref138) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.n) {
           case 0:
-            neck = _ref137.neck, waist = _ref137.waist, hip = _ref137.hip;
+            neck = _ref138.neck, waist = _ref138.waist, hip = _ref138.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -15714,11 +15870,11 @@ function App() {
       }, _callee59);
     }));
     return function onMeasurement(_x70) {
-      return _ref138.apply(this, arguments);
+      return _ref139.apply(this, arguments);
     };
   }();
   var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(on) {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(on) {
       return _regenerator().w(function (_context60) {
         while (1) switch (_context60.n) {
           case 0:
@@ -15731,11 +15887,11 @@ function App() {
       }, _callee60);
     }));
     return function toggleMuteMeasurements(_x71) {
-      return _ref139.apply(this, arguments);
+      return _ref140.apply(this, arguments);
     };
   }();
   var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(note) {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(note) {
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
           case 0:
@@ -15748,7 +15904,7 @@ function App() {
       }, _callee61);
     }));
     return function saveMeasurementNote(_x72) {
-      return _ref140.apply(this, arguments);
+      return _ref141.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -15791,7 +15947,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
       var ts;
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.n) {
@@ -15806,11 +15962,11 @@ function App() {
       }, _callee62);
     }));
     return function dismissWeighNudge() {
-      return _ref141.apply(this, arguments);
+      return _ref142.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.n) {
           case 0:
@@ -15827,7 +15983,7 @@ function App() {
       }, _callee63);
     }));
     return function muteWeighNudge() {
-      return _ref142.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
 
@@ -15846,7 +16002,7 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
       var ts;
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.n) {
@@ -15861,7 +16017,7 @@ function App() {
       }, _callee64);
     }));
     return function dismissMeasurementNudge() {
-      return _ref143.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
 
@@ -16023,7 +16179,7 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(next) {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(next) {
       return _regenerator().w(function (_context65) {
         while (1) switch (_context65.n) {
           case 0:
@@ -16038,7 +16194,7 @@ function App() {
       }, _callee65);
     }));
     return function saveCutBlock(_x73) {
-      return _ref144.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16061,7 +16217,7 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66() {
+    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66() {
       return _regenerator().w(function (_context66) {
         while (1) switch (_context66.n) {
           case 0:
@@ -16081,7 +16237,7 @@ function App() {
       }, _callee66);
     }));
     return function startDietBreak() {
-      return _ref145.apply(this, arguments);
+      return _ref146.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -16143,10 +16299,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref146) {
-    var _ref147 = _slicedToArray(_ref146, 2),
-      lbl = _ref147[0],
-      fn = _ref147[1];
+  }]].map(function (_ref147) {
+    var _ref148 = _slicedToArray(_ref147, 2),
+      lbl = _ref148[0],
+      fn = _ref148[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -16293,7 +16449,13 @@ function App() {
     onAdd: addLog,
     onBack: function onBack() {
       return setView("dashboard");
-    }
+    },
+    pastDays: [].concat(_toConsumableArray(hist.filter(function (d) {
+      return d.date !== todayKey();
+    })), [{
+      date: todayKey(),
+      logs: logs
+    }])
   }), view === "quick" && /*#__PURE__*/React.createElement(QuickAdd, {
     onAdd: addLog,
     onBack: function onBack() {

@@ -1522,6 +1522,18 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### AI Log reuses a meal you've logged before (Nov 2026)
+- Founder's ask: check the user's past meals before asking the AI, to save tokens on meals they've had before.
+- Typed text in AI Log is now looked up in your own log (today + all history) **before** the model is
+  called. The match is the whole line with case, punctuation and spacing ignored — no fuzzy matching,
+  so "3 eggs" never reuses "2 eggs". The most recent match wins; its elements come back as the rows
+  (or its edited totals as one row, if it was corrected after logging). No model call, no follow-ups.
+- A **LOGGED BEFORE** card shows the date and a **Re-estimate with AI** button. Photos are always
+  estimated; a stated totals line (§`logging/06`) is still handled first.
+- `mealKey` / `findPastMeal` sit next to `photoMealName`. Spec `features/logging/09` (new). Jest
+  **476/476** (+7), Playwright **166/166** (+3, `e2e/past-meal-reuse.spec.js`), sw `v104→v105`.
+  **No DB change, no data-flow change** — nothing new leaves the device; fewer requests do.
+
 ### Photo meals: typed notes guide the estimate (Nov 2026)
 - Founder's ask: whatever is typed with a photo should help the AI produce a more realistic macro split.
   It was already sent, but only as a one-line *"use it to disambiguate"* — weights, oil, brands and

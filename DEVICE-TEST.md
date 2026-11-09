@@ -68,6 +68,17 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v105 — a meal you've logged before is reused (2026-11-09)
+
+Fully close and reopen the installed PWA first — you must be on **v105**.
+
+- [ ] **AI Log → type a meal you logged on an earlier day**, word for word (capitals and commas
+      don't matter) → ANALYSE MEAL. The items appear **instantly** with the same numbers as last
+      time, and a **LOGGED BEFORE** card names the day.
+- [ ] Tap **Re-estimate with AI** → the usual "ANALYSING…" and a fresh estimate; the card goes away.
+- [ ] Change one word or number (e.g. *2 eggs* → *3 eggs*) → it goes to the AI as normal.
+- [ ] Same text with a **photo** attached → always goes to the AI.
+
 ### New in v104 — what you type with a photo guides the estimate (2026-11-05)
 
 Fully close and reopen the installed PWA first — you must be on **v104**. The suites stub the worker,

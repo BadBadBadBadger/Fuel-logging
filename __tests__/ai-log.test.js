@@ -23,9 +23,9 @@ const lifted = (() => {
   const end   = src.indexOf("const confColor", start);
   if (start < 0 || end < 0) throw new Error("stated-totals block not found in app.jsx");
   const block = src.slice(start, end);
-  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName };")();
+  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal };")();
 })();
-const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName } = lifted;
+const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal } = lifted;
 
 describe("A full totals line typed by the user is the meal (logging/06)", () => {
   test("the founder's crumpets: name before the figures, all four numbers exact", () => {
@@ -298,5 +298,56 @@ describe("The coach never says \"floor\" or \"ceiling\" (features/coach/01)", ()
       .map(s => s.replace(/- Speak plain, everyday English\.[^\n]*/, ""))
       .filter(s => /\b(floor|ceiling)s?\b/i.test(s));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("A meal logged before is reused, not re-estimated (logging/09)", () => {
+  const els = [
+    { name: "2 slices sourdough", kcal: 230, protein: 8, carbs: 44, fat: 1.5, conf: 80 },
+    { name: "2 poached eggs",     kcal: 143, protein: 12.6, carbs: 0.8, fat: 9.5, conf: 90 },
+  ];
+  const entry = (over = {}) => ({ name: "2 poached eggs on sourdough", kcal: 373, protein: 20.6,
+    carbs: 44.8, fat: 11, conf: 86, elements: els, source: "ai-text", followups: [], ...over });
+
+  test("case, punctuation and spacing don't matter; numbers and decimals do", () => {
+    expect(mealKey("  2 Poached eggs, on SOURDOUGH! ")).toBe(mealKey("2 poached eggs on sourdough"));
+    expect(mealKey("Nando's chicken")).toBe(mealKey("nandos chicken"));
+    expect(mealKey("2 eggs on toast")).not.toBe(mealKey("3 eggs on toast"));
+    expect(mealKey("1.5 bagels")).not.toBe(mealKey("15 bagels"));
+  });
+  test("an exact match returns the stored elements as rows, with no questions", () => {
+    const r = findPastMeal("2 Poached Eggs on Sourdough", [{ date: "2026-11-01", logs: [entry()] }]);
+    expect(r.date).toBe("2026-11-01");
+    expect(r.items.map(i => i.name)).toEqual(els.map(e => e.name));
+    expect(r.items[1]).toMatchObject({ kcal: 143, protein: 12.6, confidence: 90, ask: null });
+  });
+  test("a different meal is not a match — no fuzzy guessing", () => {
+    expect(findPastMeal("3 poached eggs on sourdough", [{ date: "2026-11-01", logs: [entry()] }])).toBeNull();
+    expect(findPastMeal("poached eggs", [{ date: "2026-11-01", logs: [entry()] }])).toBeNull();
+    expect(findPastMeal("", [{ date: "2026-11-01", logs: [entry()] }])).toBeNull();
+  });
+  test("the most recent log wins, whatever order the days come in", () => {
+    const days = [
+      { date: "2026-10-20", logs: [entry({ kcal: 300, elements: null })] },
+      { date: "2026-11-03", logs: [entry({ kcal: 410, elements: null })] },
+      { date: "2026-10-28", logs: [entry({ kcal: 350, elements: null })] },
+    ];
+    const r = findPastMeal("2 poached eggs on sourdough", days);
+    expect(r.date).toBe("2026-11-03");
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].kcal).toBe(410);
+  });
+  test("an entry edited after logging is reused as edited, not as its stale elements", () => {
+    const r = findPastMeal("2 poached eggs on sourdough",
+      [{ date: "2026-11-01", logs: [entry({ kcal: 450, fat: 19 })] }]);
+    expect(r.items).toEqual([expect.objectContaining({ name: "2 poached eggs on sourdough", kcal: 450, fat: 19 })]);
+  });
+  test("a 0-kcal entry is never reused", () => {
+    expect(findPastMeal("water", [{ date: "2026-11-01", logs: [{ name: "Water", kcal: 0 }] }])).toBeNull();
+  });
+  test("the follow-up answers from the earlier log come with it", () => {
+    const fu = [{ q: "How were the eggs cooked?", a: "Poached" }];
+    expect(findPastMeal("2 poached eggs on sourdough",
+      [{ date: "2026-11-01", logs: [entry({ followups: fu })] }]).followups).toEqual(fu);
   });
 });
