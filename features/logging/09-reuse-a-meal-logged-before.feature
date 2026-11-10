@@ -38,6 +38,13 @@
 #   • No match: up to 3 past meals sharing at least half the typed food words are listed in the
 #     text prompt as the user's usual recipe and portion, so the model builds on them.
 #
+# v107 (2026-11-10), founder: "scan both the Quick Add and fall back on past logged items even if
+# they are not Quick Added." Quick Add is checked FIRST and a match there always wins (the user's
+# own curated numbers); only without one does it fall back on the log. The log is the whole
+# account history: the startup cloud pull pages through every food_logs row, so nothing needs a
+# server lookup at estimate time. Note: on a fresh device the one-time reviveMeals recovery
+# rebuilds Quick Add from the log, so on such a device most past meals are also Quick Add rows.
+#
 # Jest: __tests__/ai-log.test.js lifts mealKey, mealParts, findPastMeal and similarPastMeals from app.jsx and runs them.
 # Playwright: e2e/past-meal-reuse.spec.js counts worker calls.
 # ============================================================================
@@ -117,3 +124,18 @@ Feature: A meal logged before is reused, not re-estimated
     Given "Whey protein shake" is a Quick Add meal of 130 kcal
     When I type "whey protein shake" and tap ANALYSE MEAL
     Then it is reused from Quick Add and no AI request is made
+
+  # ── v107: Quick Add first, then the log ───────────────────────────────────
+
+  Scenario: Quick Add wins over a newer log of the same food
+    Given "Chicken fajita pasta bake" is a Quick Add meal of 650 kcal
+    And I logged "Chicken fajita pasta bake" on 3 Nov as 720 kcal
+    When I type "Half size portion of chicken fajita pasta bake" and tap ANALYSE MEAL
+    Then one row of 325 kcal is shown
+    And the card says "Half of your Quick Add meal “Chicken fajita pasta bake”"
+
+  Scenario: Without a Quick Add match, any past log is used, however old
+    Given "Mum's lasagne" is not a Quick Add meal
+    And I logged "Mum's lasagne" in May as 810 kcal
+    When I type "mums lasagne" and tap ANALYSE MEAL
+    Then the 810 kcal entry from May is reused and no AI request is made

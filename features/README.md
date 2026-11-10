@@ -1,6 +1,6 @@
 # Feature specs — index
 
-**Updated:** 2026-11-10. **46 files · 486 scenarios.** Replaces the single
+**Updated:** 2026-11-10. **46 files · 488 scenarios.** Replaces the single
 `features/fuel-log.feature` (1,065 lines, 25 Features), split one file per Feature on 2026-08-16.
 
 > **These specs are documentation, not tests.** Nothing executes them — there is no Cucumber runner
@@ -286,7 +286,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [06-stated-totals](logging/06-stated-totals.feature) | Totals typed by the user are the meal, not another row | 20 | |
 | [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | |
 | [08-photo-notes-guide-the-estimate](logging/08-photo-notes-guide-the-estimate.feature) | Text typed with a photo guides the photo estimate | 6 | |
-| [09-reuse-a-meal-logged-before](logging/09-reuse-a-meal-logged-before.feature) | A meal logged before is reused, not re-estimated | 11 | `@wip` |
+| [09-reuse-a-meal-logged-before](logging/09-reuse-a-meal-logged-before.feature) | A meal logged before is reused, not re-estimated | 13 | `@wip` |
 
 > **`06` and `07` are the 2026-09-15 bug batch** — the founder's second by-eye report, kept
 > verbatim as [`logging/00-bug-report.md`](logging/00-bug-report.md) (its Bug 3 is a dashboard

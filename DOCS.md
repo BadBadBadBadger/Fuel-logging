@@ -1522,6 +1522,13 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### Quick Add first, then everything ever logged (Nov 2026, v107)
+- Founder: reuse should scan Quick Add and fall back on past logged items that were never Quick Added.
+  Quick Add is now checked first and always wins; otherwise the newest matching log entry, from the
+  whole account history (the startup pull already brings every `food_logs` row to the phone). The card
+  names the source: *"Half of your Quick Add meal “…”"* vs *"…, logged on 3 Nov (24 times)"*.
+- Jest **490/490** (+5), Playwright **169/169** (+1), sw `v106→v107`. **No DB change.**
+
 ### Reuse understands "half a portion of…", and the AI sees your usual (Nov 2026, v106)
 - Founder's screenshot: *"Half size portion of chicken fajita pasta bake"*, logged weekly for six months,
   came back 420 kcal at 42% from a generic recipe. v105 only matched the identical line.

@@ -412,3 +412,31 @@ describe("The text prompt carries the user's own past logs when there are any", 
     expect(p).toMatch(/"half" = half of the logged figures/);
   });
 });
+
+describe("Quick Add is checked first, then everything ever logged (logging/09, v107)", () => {
+  const qa = [{ name: "Chicken fajita pasta bake", kcal: 650, protein: 48, carbs: 62, fat: 20 }];
+  const days = [
+    { date: "2026-11-03", logs: [{ name: "Chicken fajita pasta bake", kcal: 720, protein: 52, carbs: 70, fat: 22 }] },
+    { date: "2026-05-02", logs: [{ name: "Mum's lasagne", kcal: 810, protein: 40, carbs: 70, fat: 38 }] },
+  ];
+  test("a Quick Add meal wins over a newer log of the same food", () => {
+    const r = findPastMeal("chicken fajita pasta bake", days, qa);
+    expect(r).toMatchObject({ date: null, factor: 1, count: 1 });
+    expect(r.items[0].kcal).toBe(650);
+  });
+  test("...and scales the same way", () => {
+    expect(findPastMeal("half chicken fajita pasta bake", days, qa).items[0].kcal).toBe(325);
+  });
+  test("with no Quick Add match, it falls back on the log — however old", () => {
+    const r = findPastMeal("mums lasagne", days, qa);
+    expect(r).toMatchObject({ date: "2026-05-02", count: 1 });
+    expect(r.items[0].kcal).toBe(810);
+  });
+  test("with no Quick Add meals at all, the newest log is used", () => {
+    expect(findPastMeal("chicken fajita pasta bake", days, []).items[0].kcal).toBe(720);
+  });
+  test("the AI reference list puts the Quick Add version first", () => {
+    const refs = similarPastMeals("chicken fajita pasta bake with garlic bread", days, qa);
+    expect(refs[0]).toMatchObject({ kcal: 650 });
+  });
+});

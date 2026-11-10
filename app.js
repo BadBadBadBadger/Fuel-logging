@@ -10886,20 +10886,39 @@ var mealParts = function mealParts(s) {
   };
 };
 
-// Every past meal the user has, newest first: logged entries from `days` ([{date, logs}], any
-// order), then saved Quick Add meals (date null). 0-kcal entries are left out.
+// Every past meal the user has. Saved Quick Add meals come FIRST (date null): they are the
+// user's own curated numbers (founder, 2026-11-10: "scan the Quick Add, and fall back on past
+// logged items even if they are not Quick Added"). Then every logged entry from `days`
+// ([{date, logs}], any order), newest first. The startup cloud pull fills `days` with the
+// account's whole food_logs history, so this is all of it, not a recent window. 0-kcal
+// entries are left out.
 var pastMealPool = function pastMealPool(days, meals) {
   var out = [];
+  var _iterator1 = _createForOfIteratorHelper(Array.isArray(meals) ? meals : []),
+    _step1;
+  try {
+    for (_iterator1.s(); !(_step1 = _iterator1.n()).done;) {
+      var m = _step1.value;
+      if (m && Number(m.kcal) > 0 && m.name) out.push({
+        e: m,
+        date: null
+      });
+    }
+  } catch (err) {
+    _iterator1.e(err);
+  } finally {
+    _iterator1.f();
+  }
   var sorted = (Array.isArray(days) ? days : []).filter(function (d) {
     return d && Array.isArray(d.logs);
   }).sort(function (a, b) {
     return String(b.date).localeCompare(String(a.date));
   });
-  var _iterator1 = _createForOfIteratorHelper(sorted),
-    _step1;
+  var _iterator10 = _createForOfIteratorHelper(sorted),
+    _step10;
   try {
-    for (_iterator1.s(); !(_step1 = _iterator1.n()).done;) {
-      var day = _step1.value;
+    for (_iterator10.s(); !(_step10 = _iterator10.n()).done;) {
+      var day = _step10.value;
       for (var i = day.logs.length - 1; i >= 0; i--) {
         var e = day.logs[i];
         if (e && Number(e.kcal) > 0 && e.name) out.push({
@@ -10907,21 +10926,6 @@ var pastMealPool = function pastMealPool(days, meals) {
           date: day.date
         });
       }
-    }
-  } catch (err) {
-    _iterator1.e(err);
-  } finally {
-    _iterator1.f();
-  }
-  var _iterator10 = _createForOfIteratorHelper(Array.isArray(meals) ? meals : []),
-    _step10;
-  try {
-    for (_iterator10.s(); !(_step10 = _iterator10.n()).done;) {
-      var m = _step10.value;
-      if (m && Number(m.kcal) > 0 && m.name) out.push({
-        e: m,
-        date: null
-      });
     }
   } catch (err) {
     _iterator10.e(err);
@@ -10973,16 +10977,17 @@ var pastRows = function pastRows(e, factor) {
   });
 };
 
-// The past meal that answers `desc` without the model, or null. Best first: the exact same line;
-// then the same food words at the same portion; then the same food words scaled by the portion
-// words. Newest wins within each. `count` is how many past entries are this meal.
+// The past meal that answers `desc` without the model, or null. A Quick Add match always wins;
+// only without one does it fall back on the log. Within each: the exact same line, then the same
+// food words at the same portion, then the same food words scaled by the portion words; newest
+// wins. `count` is how many LOGGED entries are this meal (Quick Add rows aren't counted).
 var findPastMeal = function findPastMeal(desc, days) {
   var meals = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
   var want = mealParts(desc);
   if (!want.key) return null;
   var exactKey = mealKey(desc);
   var best = null,
-    rank = 9,
+    rank = Infinity,
     count = 0;
   var _iterator11 = _createForOfIteratorHelper(pastMealPool(days, meals)),
     _step11;
@@ -10991,9 +10996,9 @@ var findPastMeal = function findPastMeal(desc, days) {
       var _p = _step11.value;
       var got = mealParts(_p.e.name);
       if (got.key !== want.key || got.size !== want.size) continue;
-      count++;
+      if (_p.date != null) count++;
       var _factor = want.mult / got.mult;
-      var r = mealKey(_p.e.name) === exactKey ? 0 : _factor === 1 ? 1 : 2;
+      var r = (_p.date == null ? 0 : 10) + (mealKey(_p.e.name) === exactKey ? 0 : _factor === 1 ? 1 : 2);
       if (r < rank) {
         best = {
           p: _p,
@@ -11016,7 +11021,7 @@ var findPastMeal = function findPastMeal(desc, days) {
     name: p.e.name,
     factor: factor,
     count: count,
-    exact: rank === 0,
+    exact: rank % 10 === 0,
     items: pastRows(p.e, factor),
     followups: factor === 1 && Array.isArray(p.e.followups) ? p.e.followups : []
   };
@@ -11025,7 +11030,8 @@ var findPastMeal = function findPastMeal(desc, days) {
 // When there is no match, the user's closest past meals still go to the model as their usual
 // recipe and portion (AI_PROMPT), so a "chicken fajita pasta bake with garlic bread" is built on
 // the bake they've logged for months, not a generic recipe. Close = shares at least half of the
-// typed food words (and at least two, unless only one was typed). Newest per meal, at most 3.
+// typed food words (and at least two, unless only one was typed). Quick Add first, then newest
+// per meal; at most 3.
 var similarPastMeals = function similarPastMeals(desc, days) {
   var meals = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
   var limit = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 3;
@@ -12149,7 +12155,7 @@ function AILog(_ref98) {
       marginBottom: 4
     }
   }, "\u21BA LOGGED BEFORE"), function () {
-    var when = reused.date == null ? "in your Quick Add meals" : reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
+    var when = reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
     var times = reused.count > 1 ? " (".concat(reused.count, " times)") : "";
     var f = reused.factor;
     var word = {
@@ -12158,6 +12164,7 @@ function AILog(_ref98) {
       2: "Double",
       3: "Triple"
     }[f] || (Math.abs(f - 1 / 3) < 0.01 ? "A third" : FACTOR_SIGN(f) + " ×");
+    if (reused.date == null) return f === 1 ? "Matches your Quick Add meal \u201C".concat(reused.name, "\u201D \u2014 same numbers, no AI estimate needed.") : "".concat(word, " of your Quick Add meal \u201C").concat(reused.name, "\u201D \u2014 no AI estimate needed.");
     if (reused.exact) return "You logged this ".concat(when).concat(times, ", so these are the same numbers \u2014 no AI estimate needed.");
     if (f === 1) return "Matches \u201C".concat(reused.name, "\u201D, logged ").concat(when).concat(times, " \u2014 same numbers, no AI estimate needed.");
     return "".concat(word, " of your \u201C").concat(reused.name, "\u201D, logged ").concat(when).concat(times, " \u2014 no AI estimate needed.");

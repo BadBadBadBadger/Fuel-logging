@@ -30,8 +30,10 @@ const HISTORY = [
     training: false, water: 4, logs: [BAKE] },
 ];
 
-async function openAILog(page) {
-  await open(page, { premium: true, history: HISTORY });
+async function openAILog(page, extra = {}) {
+  // qa_revive_v68 marks the one-time Quick Add recovery as done. Without it a fresh device
+  // rebuilds Quick Add from the seeded log, and every logged meal becomes a Quick Add match.
+  await open(page, { premium: true, history: HISTORY, extra: { qa_revive_v68: "1" }, ...extra });
   page.aiCalls = 0; page.aiBodies = [];
   await page.route(AI_ENDPOINT, route => {
     page.aiCalls++; page.aiBodies.push(route.request().postData() || "");
@@ -108,5 +110,15 @@ test.describe("A meal logged before is reused (logging/09)", () => {
     expect(page.aiCalls).toBe(1);
     const prompt = JSON.parse(page.aiBodies[0]).messages[0].content;
     expect(prompt).toContain('- "Chicken fajita pasta bake": 720 kcal, P 52g, C 70g, F 22g');
+  });
+
+  test("a Quick Add meal is checked first, over a newer log of the same food", async ({ page }) => {
+    await openAILog(page, { meals: [{ name: "Chicken fajita pasta bake", kcal: 650, protein: 48, carbs: 62, fat: 20 }] });
+    await analyse(page, "Half size portion of chicken fajita pasta bake");
+    await expect(page.getByText(/Half of your Quick Add meal “Chicken fajita pasta bake”/)).toBeVisible();
+    expect(page.aiCalls).toBe(0);
+    await page.getByRole("button", { name: /LOG ALL AS ONE ENTRY/ }).click();
+    await expect(page.getByText("CONSUMED", { exact: true })).toBeVisible({ timeout: 15_000 });
+    expect((await storedLogs(page))[0]).toMatchObject({ kcal: 325, protein: 24, carbs: 31, fat: 10 });
   });
 });

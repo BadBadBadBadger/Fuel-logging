@@ -1,8 +1,13 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-11-10 (cloud). **Jest 485/485 · Playwright 168/168 · sw v106 on branch
+**Updated:** 2026-11-10 (cloud). **Jest 490/490 · Playwright 169/169 · sw v107 on branch
 `ccr-5a151d53-mqw4cd` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
 (PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
+
+> **v107 (2026-11-10, cloud, on a branch): Quick Add first, then the log.** `pastMealPool` lists Quick
+> Add meals first; a Quick Add match always wins, else the newest log entry from the whole history
+> (the startup pull pages every `food_logs` row). e2e must set `qa_revive_v68`, or the one-time
+> `reviveMeals` recovery turns every seeded log into a Quick Add row.
 
 > **v106 (2026-11-10, cloud, on a branch): "half a portion of…" reuses the usual.** Matching is now on
 > food words in order (filler and plurals ignored); portion words scale the latest log (½ ×); size
@@ -258,10 +263,10 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v106**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v107**.
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
-- Run `npx jest` before claiming anything works. Currently **485/485**. `npm run test:ui` is **168/168**
+- Run `npx jest` before claiming anything works. Currently **490/490**. `npm run test:ui` is **169/169**
   (in a cloud session, see `PLAYWRIGHT-PLAN.md` → *How to run* first).
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.

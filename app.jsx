@@ -5173,10 +5173,16 @@ const mealParts = s => {
   return { core, key: core.join(" "), mult, size: size.sort().join(" ") };
 };
 
-// Every past meal the user has, newest first: logged entries from `days` ([{date, logs}], any
-// order), then saved Quick Add meals (date null). 0-kcal entries are left out.
+// Every past meal the user has. Saved Quick Add meals come FIRST (date null): they are the
+// user's own curated numbers (founder, 2026-11-10: "scan the Quick Add, and fall back on past
+// logged items even if they are not Quick Added"). Then every logged entry from `days`
+// ([{date, logs}], any order), newest first. The startup cloud pull fills `days` with the
+// account's whole food_logs history, so this is all of it, not a recent window. 0-kcal
+// entries are left out.
 const pastMealPool = (days, meals) => {
   const out = [];
+  for (const m of Array.isArray(meals) ? meals : [])
+    if (m && Number(m.kcal) > 0 && m.name) out.push({ e: m, date: null });
   const sorted = (Array.isArray(days) ? days : []).filter(d => d && Array.isArray(d.logs))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   for (const day of sorted)
@@ -5184,8 +5190,6 @@ const pastMealPool = (days, meals) => {
       const e = day.logs[i];
       if (e && Number(e.kcal) > 0 && e.name) out.push({ e, date: day.date });
     }
-  for (const m of Array.isArray(meals) ? meals : [])
-    if (m && Number(m.kcal) > 0 && m.name) out.push({ e: m, date: null });
   return out;
 };
 
@@ -5207,25 +5211,26 @@ const pastRows = (e, factor) => {
     confidence: x.conf == null ? 100 : x.conf, ask: null, reasoning: why }));
 };
 
-// The past meal that answers `desc` without the model, or null. Best first: the exact same line;
-// then the same food words at the same portion; then the same food words scaled by the portion
-// words. Newest wins within each. `count` is how many past entries are this meal.
+// The past meal that answers `desc` without the model, or null. A Quick Add match always wins;
+// only without one does it fall back on the log. Within each: the exact same line, then the same
+// food words at the same portion, then the same food words scaled by the portion words; newest
+// wins. `count` is how many LOGGED entries are this meal (Quick Add rows aren't counted).
 const findPastMeal = (desc, days, meals = []) => {
   const want = mealParts(desc);
   if (!want.key) return null;
   const exactKey = mealKey(desc);
-  let best = null, rank = 9, count = 0;
+  let best = null, rank = Infinity, count = 0;
   for (const p of pastMealPool(days, meals)) {
     const got = mealParts(p.e.name);
     if (got.key !== want.key || got.size !== want.size) continue;
-    count++;
+    if (p.date != null) count++;
     const factor = want.mult / got.mult;
-    const r = mealKey(p.e.name) === exactKey ? 0 : factor === 1 ? 1 : 2;
+    const r = (p.date == null ? 0 : 10) + (mealKey(p.e.name) === exactKey ? 0 : factor === 1 ? 1 : 2);
     if (r < rank) { best = { p, factor }; rank = r; }
   }
   if (!best) return null;
   const { p, factor } = best;
-  return { date: p.date, name: p.e.name, factor, count, exact: rank === 0,
+  return { date: p.date, name: p.e.name, factor, count, exact: rank % 10 === 0,
     items: pastRows(p.e, factor),
     followups: factor === 1 && Array.isArray(p.e.followups) ? p.e.followups : [] };
 };
@@ -5233,7 +5238,8 @@ const findPastMeal = (desc, days, meals = []) => {
 // When there is no match, the user's closest past meals still go to the model as their usual
 // recipe and portion (AI_PROMPT), so a "chicken fajita pasta bake with garlic bread" is built on
 // the bake they've logged for months, not a generic recipe. Close = shares at least half of the
-// typed food words (and at least two, unless only one was typed). Newest per meal, at most 3.
+// typed food words (and at least two, unless only one was typed). Quick Add first, then newest
+// per meal; at most 3.
 const similarPastMeals = (desc, days, meals = [], limit = 3) => {
   const want = mealParts(desc);
   if (!want.core.length) return [];
@@ -5761,12 +5767,14 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
                 ↺ LOGGED BEFORE
               </div>
               {(() => {
-                const when  = reused.date == null ? "in your Quick Add meals"
-                  : reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
+                const when  = reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
                 const times = reused.count > 1 ? ` (${reused.count} times)` : "";
                 const f     = reused.factor;
                 const word  = { 0.5:"Half", 0.25:"A quarter", 2:"Double", 3:"Triple" }[f]
                   || (Math.abs(f - 1/3) < 0.01 ? "A third" : FACTOR_SIGN(f) + " ×");
+                if (reused.date == null) return f === 1
+                  ? `Matches your Quick Add meal “${reused.name}” — same numbers, no AI estimate needed.`
+                  : `${word} of your Quick Add meal “${reused.name}” — no AI estimate needed.`;
                 if (reused.exact) return `You logged this ${when}${times}, so these are the same numbers — no AI estimate needed.`;
                 if (f === 1) return `Matches “${reused.name}”, logged ${when}${times} — same numbers, no AI estimate needed.`;
                 return `${word} of your “${reused.name}”, logged ${when}${times} — no AI estimate needed.`;

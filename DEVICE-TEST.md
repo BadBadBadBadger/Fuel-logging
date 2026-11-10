@@ -68,6 +68,11 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v107 — Quick Add is checked first (2026-11-10)
+
+- [ ] A meal that is in Quick Add → the card says *"…your Quick Add meal “…”"* and uses the Quick Add numbers.
+- [ ] A meal you logged months ago but never Quick Added → still reused, card names the date.
+
 ### New in v106 — "half a portion of…" reuses your usual (2026-11-10)
 
 You must be on **v106**.
