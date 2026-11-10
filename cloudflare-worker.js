@@ -36,6 +36,22 @@ const ALLOWED_MODELS  = new Set(["claude-sonnet-4-6"]);
 const DEFAULT_MODEL   = "claude-sonnet-4-6";
 const MAX_TOKENS_CAP  = 2000;
 
+// The web check (features/logging/10, step 6). Sent only when the app's user taps "Check
+// online". The tool is added HERE, never taken from the client body, and is capped: at most two
+// searches, a bigger output cap for the search-backed answer, and it counts as WEB_COST calls
+// against the daily limit — one web check costs many times an ordinary estimate.
+const WEB_SEARCH_TOOL = { type: "web_search_20260209", name: "web_search", max_uses: 2,
+  user_location: { type: "approximate", country: "GB" } };
+const WEB_MAX_TOKENS  = 3000;
+const WEB_COST        = 5;
+
+// Product labels (features/logging/10, step 4): Open Food Facts, asked by the worker so it
+// never sees the user's device or account. Free; no Anthropic call. Open Food Facts asks API
+// clients to name themselves in the User-Agent.
+const OFF_UA         = "FuelLog/1.0";
+const OFF_TIMEOUT_MS = 3500;
+const OFF_FIELDS     = "code,product_name,product_name_en,brands,nutriments,serving_quantity,serving_quantity_unit";
+
 // Per-user daily rate limit (only enforced once a KV namespace `RATE_LIMIT`
 // is bound to the worker — until then, auth still applies and this is skipped).
 const DAILY_LIMIT = 100;
@@ -80,13 +96,13 @@ async function verifySupabaseUser(token) {
   }
 }
 
-async function withinRateLimit(env, userId) {
+async function withinRateLimit(env, userId, cost = 1) {
   if (!env.RATE_LIMIT) return true; // KV not bound yet — skip (auth still enforced)
   try {
     const key   = "rl:" + userId + ":" + new Date().toISOString().slice(0, 10);
     const count = parseInt((await env.RATE_LIMIT.get(key)) || "0", 10);
-    if (count >= DAILY_LIMIT) return false;
-    await env.RATE_LIMIT.put(key, String(count + 1), { expirationTtl: 172800 });
+    if (count + cost > DAILY_LIMIT) return false;
+    await env.RATE_LIMIT.put(key, String(count + cost), { expirationTtl: 172800 });
     return true;
   } catch (e) {
     return true; // never let a KV hiccup block a legitimate user
@@ -242,6 +258,59 @@ async function keepAliveSupabase() {
   }
 }
 
+// ── Open Food Facts (features/logging/10) ─────────────────────────────────────
+// OFF-NORMALISE-START
+// One Open Food Facts product as the app wants it, or null. Brands can be a string (the classic
+// API) or a list (the search service); energy may only be in kJ.
+function offNormalise(p) {
+  if (!p || typeof p !== "object") return null;
+  const n   = p.nutriments || {};
+  const num = v => (v === null || v === undefined || v === "" || !isFinite(Number(v))) ? null : Number(v);
+  let kcal  = num(n["energy-kcal_100g"]);
+  if (kcal === null && num(n["energy_100g"]) !== null) kcal = Math.round(num(n["energy_100g"]) / 4.184);
+  const brands = Array.isArray(p.brands) ? p.brands.join(", ") : String(p.brands || "");
+  const unit   = String(p.serving_quantity_unit || "g").toLowerCase();
+  const sq     = num(p.serving_quantity);
+  const name   = String(p.product_name_en || p.product_name || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!name && !brands.trim()) return null;
+  return { code: String(p.code || "").replace(/\D/g, "").slice(0, 14), name, brands: brands.trim().slice(0, 80),
+    kcal100: kcal, protein100: num(n.proteins_100g), carbs100: num(n.carbohydrates_100g), fat100: num(n.fat_100g),
+    servingG: sq !== null && sq > 0 && (unit === "g" || unit === "ml") ? sq : null };
+}
+// OFF-NORMALISE-END
+
+async function offFetch(url) {
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), OFF_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": OFF_UA, Accept: "application/json" }, signal: ctrl.signal });
+    return r.ok ? await r.json() : null;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Typed food text → up to 20 products. The search service first (it is more forgiving of word
+// order), then the classic search if that fails or finds nothing usable.
+async function offSearch(q) {
+  const enc = encodeURIComponent(q);
+  const tidy = list => (Array.isArray(list) ? list : []).map(offNormalise).filter(p => p && p.kcal100 !== null);
+  const a = await offFetch("https://search.openfoodfacts.org/search?q=" + enc + "&page_size=20&fields=" + OFF_FIELDS);
+  const first = tidy(a && a.hits);
+  if (first.length) return first;
+  const b = await offFetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + enc +
+    "&search_simple=1&action=process&json=1&page_size=20&fields=" + OFF_FIELDS);
+  return tidy(b && b.products);
+}
+
+async function offByCode(code) {
+  const d = await offFetch("https://world.openfoodfacts.org/api/v2/product/" + code + ".json?fields=" + OFF_FIELDS);
+  const p = d && d.status === 1 ? offNormalise({ code, ...d.product }) : null;
+  return p && p.kcal100 !== null ? [p] : [];
+}
+
 export default {
   // Cron Trigger entrypoint (configure schedule in wrangler / dashboard — see SETUP).
   async scheduled(event, env, ctx) {
@@ -316,6 +385,26 @@ export default {
         : json({ error: "Deletion failed" }, 502, cors);
     }
 
+    // ── Route: POST /food (product labels, features/logging/10)
+    // Signed-in users only (the JWT is the gate, as for the AI). No Anthropic call and no
+    // daily-limit charge: Open Food Facts is free. Only the food text or barcode is sent on.
+    if (url.pathname === "/food") {
+      const authHeader = request.headers.get("Authorization") || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!token) return json({ error: "Unauthorized" }, 401, cors);
+      const user = await verifySupabaseUser(token);
+      if (!user) return json({ error: "Unauthorized" }, 401, cors);
+
+      let body;
+      try { body = await request.json(); }
+      catch (e) { return json({ error: "Bad request" }, 400, cors); }
+      const code = String(body.code || "").trim();
+      const q    = String(body.q || "").replace(/[^\p{L}\p{N}\s'&-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+      if (/^\d{8,14}$/.test(code)) return json({ products: await offByCode(code) }, 200, cors);
+      if (q.length >= 3)          return json({ products: await offSearch(q) }, 200, cors);
+      return json({ error: "Bad request" }, 400, cors);
+    }
+
     // ── Route: POST / (AI proxy, Phase 0+A)
     // 1. Require a valid Supabase session.
     const authHeader = request.headers.get("Authorization") || "";
@@ -335,33 +424,44 @@ export default {
       );
     }
 
-    // 3. Per-user rate limit (no-op until KV is bound).
-    if (!(await withinRateLimit(env, user.id)))
-      return json({ error: "Daily AI limit reached" }, 429, cors);
-
-    // 4. Sanitise the body — never trust client-supplied model / max_tokens.
+    // 3. Sanitise the body — never trust client-supplied model / max_tokens / tools.
     let body;
     try { body = await request.json(); }
     catch (e) { return json({ error: "Bad request" }, 400, cors); }
 
+    const web       = body.web === true; // the "Check online" web check (logging/10)
     const model     = ALLOWED_MODELS.has(body.model) ? body.model : DEFAULT_MODEL;
-    const maxTokens = Math.min(Math.max(1, Number(body.max_tokens) || 500), MAX_TOKENS_CAP);
+    const maxTokens = Math.min(Math.max(1, Number(body.max_tokens) || 500), web ? WEB_MAX_TOKENS : MAX_TOKENS_CAP);
     const messages  = Array.isArray(body.messages) ? body.messages : [];
     if (!messages.length) return json({ error: "Bad request" }, 400, cors);
 
-    // 5. Proxy to Anthropic with server-controlled params.
+    // 4. Per-user rate limit (no-op until KV is bound). A web check counts as WEB_COST calls.
+    if (!(await withinRateLimit(env, user.id, web ? WEB_COST : 1)))
+      return json({ error: "Daily AI limit reached" }, 429, cors);
+
+    // 5. Proxy to Anthropic with server-controlled params. A web search can pause a long turn
+    //    (stop_reason "pause_turn"); it is resumed here, at most twice, and the pieces joined.
     try {
-      const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type":      "application/json",
-          "x-api-key":         env.ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
-      });
-      const data = await upstream.json();
-      return json(data, upstream.status, cors);
+      let msgs = messages, acc = [], data, status;
+      for (let i = 0; i < 3; i++) {
+        const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type":      "application/json",
+            "x-api-key":         env.ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({ model, max_tokens: maxTokens, messages: msgs,
+            ...(web ? { tools: [WEB_SEARCH_TOOL] } : {}) }),
+        });
+        status = upstream.status;
+        data   = await upstream.json();
+        if (!web || !upstream.ok || data.stop_reason !== "pause_turn") break;
+        acc  = acc.concat(data.content || []);
+        msgs = [...messages, { role: "assistant", content: acc }];
+      }
+      if (web && acc.length && data && Array.isArray(data.content)) data.content = acc.concat(data.content);
+      return json(data, status, cors);
     } catch (e) {
       return json({ error: "Upstream error" }, 502, cors);
     }

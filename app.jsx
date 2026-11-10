@@ -2023,19 +2023,21 @@ const deleteAccountRequest = async () => {
 
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
-const callAI = async (prompt, maxTokens = 500) => {
+// opts.web: the "Check online" web check (logging/10) — the worker adds its web search tool;
+// it can take a minute, so the timeout is longer.
+const callAI = async (prompt, maxTokens = 500, opts = {}) => {
   const token = await getAccessToken();
   if (!token) throw new Error("Please sign in to use AI features.");
   // Hard timeout so a stalled request (e.g. flaky mobile signal) can never hang
   // the UI forever — it aborts and surfaces as a clear, retryable error.
   const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30000);
+  const timer = setTimeout(() => ctrl.abort(), opts.web ? 90000 : 30000);
   let res;
   try {
     res = await fetch(AI_ENDPOINT, { method:"POST", signal: ctrl.signal,
       headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
       body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens,
-        messages:[{ role:"user", content:prompt }] }) });
+        messages:[{ role:"user", content:prompt }], ...(opts.web ? { web: true } : {}) }) });
   } catch (e) {
     throw new Error(e.name === "AbortError"
       ? "AI request timed out — check your connection and try again."
@@ -2065,9 +2067,44 @@ const repairJson = (text) => {
   s = s.replace(/,(\s*[}\]])/g, '$1');
   return JSON.parse(s);
 };
-const callAIJson = async (prompt, maxTokens = 500) => {
-  const text = await callAI(prompt, maxTokens);
+const callAIJson = async (prompt, maxTokens = 500, opts = {}) => {
+  const text = await callAI(prompt, maxTokens, opts);
   return repairJson(text);
+};
+
+// Product labels, through the app's own worker (features/logging/10). The worker asks Open Food
+// Facts and returns normalised products; Open Food Facts never sees the user's device or account.
+// `req` is { q } (typed food text) or { code } (a barcode). Never throws: any failure — signed
+// out, offline, Open Food Facts down — is "no labels", and the chain moves on to the AI.
+const lookupFood = async req => {
+  try {
+    const token = await getAccessToken();
+    if (!token) return [];
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(AI_ENDPOINT + "/food", { method:"POST", signal: ctrl.signal,
+        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
+        body: JSON.stringify(req) });
+      if (!res.ok) return [];
+      const d = await res.json();
+      return Array.isArray(d && d.products) ? d.products : [];
+    } finally { clearTimeout(timer); }
+  } catch (e) { return []; }
+};
+
+// A barcode in a photo, read on the device (Chrome on Android has BarcodeDetector; where it is
+// missing this is null and the photo goes to the AI as before). Never throws.
+const BARCODE_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e"];
+const detectBarcode = async file => {
+  try {
+    if (typeof window === "undefined" || !("BarcodeDetector" in window) || !file) return null;
+    const det  = new window.BarcodeDetector({ formats: BARCODE_FORMATS });
+    const bmp  = await createImageBitmap(file);
+    const hits = await det.detect(bmp);
+    const code = hits && hits[0] && String(hits[0].rawValue || "").trim();
+    return /^\d{8,14}$/.test(code || "") ? code : null;
+  } catch (e) { return null; }
 };
 
 // ── Error Boundary ────────────────────────────────────────────
@@ -4983,7 +5020,18 @@ The user's OWN past logs of similar food — their usual recipe and portion size
 ${past.map(m => `- "${m.name.replace(/"/g, "'")}": ${m.kcal} kcal, P ${m.protein}g, C ${m.carbs}g, F ${m.fat}g`).join("\n")}
 Where a component of the meal below is one of these, base it on these numbers rather than a generic recipe, scaled to the portion described now ("half" = half of the logged figures), and give it confidence 80+. Ignore any that are a different food.
 `;
-const AI_PROMPT = (desc, past = []) => `You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.
+// Parts of the meal the lookup chain already answered (logging/10): from the user's own log or a
+// product label. The model estimates only the rest — fewer items out means fewer tokens.
+const AI_KNOWN_BLOCK = known => !known || !known.length ? "" : `
+ALREADY WORKED OUT — these parts of the meal come from the user's own log or a product label. Do NOT return them as items and do not count them again. Return items ONLY for the rest of the meal:
+${known.map(r => `- "${String(r.name).replace(/"/g, "'")}": ${r.kcal} kcal`).join("\n")}
+`;
+// Near-miss labels: products that might be what was typed, but not surely (logging/10).
+const AI_LABEL_BLOCK = labels => !labels || !labels.length ? "" : `
+Possible product labels found for this text (per 100 g). Use one only if it is clearly the product described, scaled to the portion described; otherwise ignore them:
+${labels.map(p => `- "${[p.brands, p.name].filter(Boolean).join(" — ").replace(/"/g, "'")}": ${Math.round(p.kcal100)} kcal, P ${p.protein100}g, C ${p.carbs100}g, F ${p.fat100}g${p.servingG ? `, serving ${p.servingG} g` : ""}`).join("\n")}
+`;
+const AI_PROMPT = (desc, past = [], { known = [], labels = [] } = {}) => `You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.
 
 Rules:
 - For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data — never substitute a generic equivalent.
@@ -4996,24 +5044,11 @@ Rules:
 - Arithmetic: check kcal against the macros — kcal ≈ 4×protein + 4×carbs + 9×fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.
 - A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.
 - For ANY component whose confidence is below 80, set "ask" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: "fat" (hidden cooking fat — oil/butter vs dry/grilled), "portion" (ambiguous amount/size), or "version" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set "ask" to null. If the description already answers a question — it says dry, or gives a weight — do not ask it.
-${AI_PAST_BLOCK(past)}
+${AI_PAST_BLOCK(past)}${AI_LABEL_BLOCK(labels)}${AI_KNOWN_BLOCK(known)}
 Meal to analyse: "${desc}"
 
-Return ONLY valid JSON (no markdown, no preamble):
-{
-  "items": [
-    {
-      "name": "specific item name with quantity/size",
-      "kcal": number,
-      "protein": number,
-      "carbs": number,
-      "fat": number,
-      "confidence": number,
-      "ask": "fat" | "portion" | "version" | null,
-      "reasoning": "one sentence explaining source of data or uncertainty"
-    }
-  ]
-}`;
+Return ONLY valid JSON on a single line (no markdown, no preamble, no line breaks), in this shape:
+{"items":[{"name":"specific item name with quantity/size","kcal":number,"protein":number,"carbs":number,"fat":number,"confidence":number,"ask":"fat"|"portion"|"version"|null,"reasoning":"under 12 words: the data source or the main uncertainty"}]}`;
 
 // Vision variant — same contract, but the meal is in the attached photo. Any text typed
 // alongside the photo is the user's GUIDANCE (features/logging/08): weights, brands, cooking
@@ -5054,9 +5089,10 @@ Return ONLY valid JSON (no markdown, no preamble):
 {
   "meal": "short name for the whole meal",
   "items": [
-    { "name": "specific food with estimated portion", "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": number, "ask": "fat" | "portion" | "version" | null, "reasoning": "one sentence" }
+    { "name": "specific food with estimated portion", "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": number, "ask": "fat" | "portion" | "version" | null, "reasoning": "under 12 words" }
   ]
-}`;
+}
+Write the JSON on a single line, without line breaks or indentation.`;
 };
 
 const AI_REESTIMATE_PROMPT = (item) => `You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.
@@ -5065,16 +5101,27 @@ Item: "${item}"
 
 Apply the same rules: use exact menu/label data for branded products. Be precise, not approximate.
 
-Return ONLY valid JSON (no markdown):
-{
-  "name": "item name",
-  "kcal": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "confidence": number,
-  "reasoning": "one sentence explaining source"
-}`;
+Return ONLY valid JSON on a single line (no markdown, no line breaks), in this shape:
+{"name":"item name","kcal":number,"protein":number,"carbs":number,"fat":number,"confidence":number,"reasoning":"under 12 words: the data source"}`;
+
+// The web check (features/logging/10, step 6). Only ever sent when the user taps "Check online":
+// web search is the costliest call the app makes (the search fee plus every page it reads), so
+// it is never automatic. `rows` are the AI's own rows; the rows from the log or a label are not
+// sent and are never replaced.
+const AI_WEB_PROMPT = (desc, rows) => `You are a nutrition database expert. Search the web for the published nutrition information of the items below. They are part of this meal: "${String(desc).replace(/"/g, "'")}".
+
+Rules:
+- Look for the brand's or restaurant's own nutrition page first, then a major UK supermarket listing. Use at most two searches.
+- Scale each figure to the portion in the item's name. A stated weight or count IS the portion.
+- If there is no reliable published figure for an item, return the estimate given below for it unchanged, with its confidence.
+- confidence 90+ only for a published figure for that exact product; then the reasoning names the website.
+- kcal ≈ 4×protein + 4×carbs + 9×fat, except alcohol (7 kcal/g) and sugar alcohols.
+
+Items, with the current estimate:
+${rows.map(r => `- "${String(r.name).replace(/"/g, "'")}": ${Math.round(r.kcal)} kcal, P ${r.protein}g, C ${r.carbs}g, F ${r.fat}g (confidence ${r.confidence})`).join("\n")}
+
+Reply with ONLY the JSON, on a single line, no other text — one entry per item above, in the same order:
+{"items":[{"name":"item name with portion","kcal":number,"protein":number,"carbs":number,"fat":number,"confidence":number,"ask":null,"reasoning":"under 12 words, naming the website used"}]}`;
 
 // ── Stated totals (features/logging/06) ──────────────────────────
 // If the description carries a FULL totals line — kcal, protein, carbs AND fat — those four
@@ -5259,6 +5306,148 @@ const similarPastMeals = (desc, days, meals = [], limit = 3) => {
   return out.sort((a, b) => b.shared - a.shared).slice(0, limit).map(({ shared, ...m }) => m);
 };
 
+// ── The lookup chain (features/logging/10) ────────────────────────────────────────────
+// Cheapest and surest source first; only what is still unknown goes on to the next:
+//   1. a stated totals line (logging/06)             free, exact
+//   2. the whole line from the user's log (logging/09) free, the user's own numbers
+//   3. each PART of a mixed meal from the user's log  free
+//   4. a product label (Open Food Facts, via worker)  free, needs a sure match
+//   5. the AI estimate — for the parts still unknown  tokens
+//   6. a web check, only when the user taps it        the most tokens
+//
+// Parts of a mixed meal. Commas, semicolons, "+" and new lines always separate parts. "and",
+// "&" and "plus" separate too, but a part split off by one of those is matched on its own only
+// if it has two or more food words: "fish and chips", "mac and cheese" and "cookies and cream"
+// are one food, and "cheese" alone must never pull a logged slice of cheese into a mac and cheese.
+const mealChunks = desc => String(desc || "").split(/\s*(?:;|\n|\+|,(?!\d))\s*/)
+  .map(s => s.trim()).filter(Boolean);
+const chunkParts = chunk => chunk.split(/\s+(?:and|&|plus)\s+/i).map(s => s.trim()).filter(Boolean);
+
+// { known: [{ text, past }], unknown: [text], parts }. A chunk none of whose parts matched stays
+// whole in `unknown`, so the AI (and the label lookup) see it as the user wrote it.
+const splitAgainstPast = (desc, days, meals = []) => {
+  const known = [], unknown = [];
+  let parts = 0;
+  for (const chunk of mealChunks(desc)) {
+    const subs = chunkParts(chunk);
+    parts += subs.length;
+    const hits = subs.map(s => subs.length > 1 && mealParts(s).core.length < 2
+      ? null : findPastMeal(s, days, meals));
+    if (hits.some(Boolean)) subs.forEach((s, i) => hits[i] ? known.push({ text: s, past: hits[i] }) : unknown.push(s));
+    else unknown.push(chunk);
+  }
+  return { known, unknown, parts };
+};
+
+// Product labels (Open Food Facts). The 2026-09-15 lesson (logging/07): a free-text search that
+// takes the first hit is a guess dressed as a label ("Butter, 30g" became a peanut-butter
+// biscuit). So a label is used only on a SURE match:
+//   • the product's BRAND is one of the typed words, and
+//   • EVERY typed food word is in the product's name or brand (a one-letter typo is allowed in
+//     words of 5+ letters: "barbells" finds "Barebells"), and
+//   • it has per-100 g figures that add up, and a portion: a typed weight, or the label's own
+//     serving × the typed count.
+//   • Several products fitting equally well must be the same product, or none is used.
+// Anything less goes to the AI, with the near misses listed as hints. Generic foods ("chicken
+// breast") have no brand in the typed words, so they never take a label.
+const UNIT_WORDS = ["g","gram","gramme","kg","ml","l","litre","liter","kcal","cal","calory","x"];
+const labelWords = text => mealParts(text).core.filter(w => !/^\d/.test(w) && !/^x\d/.test(w) && !UNIT_WORDS.includes(w));
+const editDistance = (a, b) => {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0]; d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = t;
+    }
+  }
+  return d[b.length];
+};
+const nearWord = (a, b) => {
+  if (a === b) return true;
+  const n = Math.min(a.length, b.length);
+  return n >= 5 && editDistance(a, b) <= (n >= 8 ? 2 : 1);
+};
+const validLabel = p => {
+  if (!p) return false;
+  const k = Number(p.kcal100), pr = Number(p.protein100), c = Number(p.carbs100), f = Number(p.fat100);
+  if (![k, pr, c, f].every(v => isFinite(v) && v >= 0) || p.kcal100 == null) return false;
+  if (k <= 0 || k > 900 || pr + c + f > 105) return false;
+  if (k < 10) return true; // diet drinks: too small for the macro check to mean anything
+  const est = 4 * pr + 4 * c + 9 * f; // polyols and fibre can put the label below this
+  return est >= k * 0.6 && est <= k * 1.6;
+};
+// The portion on a label row: a typed weight wins; else the label's serving × the typed count
+// ("2 barebells", "2x …", "half a …"). No weight and no serving → null (no honest number).
+const labelPortion = (text, servingG) => {
+  const s = String(text || "").toLowerCase();
+  const m = s.match(/(\d+(?:[.,]\d+)?)\s*(?:g|grams?|ml)\b/);
+  if (m) return { grams: Number(m[1].replace(",", ".")), count: null };
+  if (!(Number(servingG) > 0)) return null;
+  const c = s.match(/^\s*(\d+(?:\.\d+)?)\s*(?:x\s*|\s+)/) || s.match(/\bx\s*(\d+(?:\.\d+)?)\b/);
+  const count = (c ? Number(c[1]) : 1) * mealParts(text).mult;
+  return { grams: Number(servingG) * count, count };
+};
+const pickLabel = (text, products) => {
+  const want = labelWords(text);
+  if (want.length < 2) return { pick: null, near: [] };
+  const pass = [];
+  for (const p of Array.isArray(products) ? products : []) {
+    if (!validLabel(p)) continue;
+    const brand = labelWords(p.brands || ""), name = labelWords(p.name || "");
+    if (!brand.length || !name.length) continue;
+    if (!brand.some(b => want.some(w => nearWord(w, b)))) continue;
+    const all = name.concat(brand);
+    if (!want.every(w => all.some(x => nearWord(w, x)))) continue;
+    const extra = name.filter(x => !brand.includes(x) && !want.some(w => nearWord(w, x))).length;
+    pass.push({ p, extra });
+  }
+  if (!pass.length) return { pick: null, near: [] };
+  const best = Math.min(...pass.map(x => x.extra));
+  const top  = pass.filter(x => x.extra === best).map(x => x.p);
+  const k    = top.map(p => Number(p.kcal100));
+  const same = new Set(top.map(p => labelWords(p.name).join(" "))).size === 1
+    && Math.max(...k) <= Math.min(...k) * 1.1;
+  const pick = same ? (top.find(p => Number(p.servingG) > 0 && labelPortion(text, p.servingG)) || top[0]) : null;
+  if (pick && !labelPortion(text, pick.servingG)) return { pick: null, near: [pick] };
+  return { pick, near: pick ? [] : pass.slice(0, 3).map(x => x.p) };
+};
+const LABEL_CONF   = 90; // a sure name match to a label — the prompt's "90+ = exact label data"
+const BARCODE_CONF = 95; // the barcode IS the product; only the portion can still be off
+const labelTitle = p => {
+  const brand = String(p.brands || "").split(",")[0].trim();
+  const name  = String(p.name || "").trim();
+  return !brand || name.toLowerCase().includes(brand.toLowerCase()) ? name || brand : brand + " " + name;
+};
+// One estimate row from a label, or null when there is no honest portion.
+const labelRow = (text, p, conf = LABEL_CONF) => {
+  const por = labelPortion(text, p.servingG);
+  if (!por) return null;
+  const f  = por.grams / 100;
+  const r1 = v => Math.round(Number(v) * f * 10) / 10;
+  const g  = Math.round(por.grams * 10) / 10;
+  const name = por.count != null && por.count !== 1
+    ? `${FACTOR_SIGN(por.count)} × ${labelTitle(p)} (${Math.round(Number(p.servingG))} g)`
+    : `${labelTitle(p)} (${g} g)`;
+  return { name, kcal: Math.round(Number(p.kcal100) * f), protein: r1(p.protein100),
+    carbs: r1(p.carbs100), fat: r1(p.fat100), confidence: conf, ask: null, source: "label",
+    reasoning: `Product label (Open Food Facts${p.code ? " " + p.code : ""}): per 100 g × ${g} g.` };
+};
+// A scanned or typed barcode: the label, at its serving (or a typed weight). A label with no
+// serving size is shown per 100 g, at a low confidence, with the portion question asked.
+const barcodeRow = (text, p) => {
+  if (!validLabel(p)) return null;
+  const row = labelRow(text, p, BARCODE_CONF);
+  if (row) return row;
+  return { ...labelRow("100g", { ...p, servingG: null }, 60), ask: "portion",
+    reasoning: "Product label (Open Food Facts): no serving size on it, so this is per 100 g." };
+};
+const barcodeInText = desc => {
+  const m = String(desc || "").match(/^\s*(\d{8}|\d{12,14})\s*$/);
+  return m ? m[1] : null;
+};
+
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
 const confLabel = c => c <= 33 ? "Low" : c <= 66 ? "Medium" : "High";
 
@@ -5279,6 +5468,9 @@ const normConf = c => {
 // Threshold reuses INTAKE_FLAG_BELOW (80) — the same kcal-weighted bar that
 // intakeConfidence already calls "guess-heavy". No new magic number.
 const FOLLOWUP_BELOW = INTAKE_FLAG_BELOW;
+// "Check online" (logging/10) is offered only when an AI row is below this confidence — a web
+// search costs many times an estimate, so it is kept for the rows that are really guesses.
+const WEB_CHECK_BELOW = 70;
 
 // Below this, refining an item cannot change the day, so asking wastes a tap.
 // A 75 kcal item answered 30% wrong is a ~25 kcal error — around 1% of a day's
@@ -5490,6 +5682,11 @@ function ItemRow({ item, onReestimate, reestimating }) {
 function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   const [desc,         setDesc]         = useState("");
   const [reused,       setReused]       = useState(null); // the findPastMeal result reused (logging/09), else null
+  // What the lookup chain found without the AI (logging/10): [{ kind:"log"|"label"|"barcode", text }]
+  // plus whether the AI estimated the rest. null when the chain found nothing.
+  const [found,        setFound]        = useState(null);
+  const [checking,     setChecking]     = useState(false); // the "Check online" web check is running
+  const [webDone,      setWebDone]      = useState(false); // ...and has run for these rows
   const [loading,      setLoading]      = useState(false);
   const [items,        setItems]        = useState(null);
   const [mealName,     setMealName]     = useState(""); // model's short name for a photo meal
@@ -5552,19 +5749,38 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
     const file = e.target.files && e.target.files[0];
     e.target.value = ""; // let the same file be re-picked
     if (!file) return;
-    try { setPhoto(await fileToImage(file)); setError(""); }
+    try {
+      // A barcode in the photo is read on the device (logging/10): a packet is answered from its
+      // label, with no image sent to the AI at all.
+      const [img, barcode] = await Promise.all([fileToImage(file), detectBarcode(file)]);
+      setPhoto({ ...img, barcode }); setError("");
+    }
     catch(err) { setError("Couldn't read that image — try another photo."); }
   };
 
-  // fresh: true skips the past-meal lookup — the "Re-estimate with AI" button on a reused meal.
+  // The lookup chain (features/logging/10): cheapest and surest source first, and only what is
+  // still unknown goes on. fresh: true skips every lookup — the "Re-estimate with AI" buttons.
   const estimate = async ({ fresh = false } = {}) => {
     if (!desc.trim() && !photo) return;
     setLoading(true); setError(""); setItems(null); setMealName(""); setLoggedAll(false); setLoggedCount({});
-    setFollowups([]); setFuDone({}); setFuLog([]); setReused(null);
+    setFollowups([]); setFuDone({}); setFuLog([]); setReused(null); setFound(null); setWebDone(false);
     // A full totals line typed by the user IS the meal — one row, at once, no model call, no
     // questions (features/logging/06). Only for typed text: a photo is always estimated.
     const stated = photo ? null : parseStatedTotals(desc);
     if (stated) { setItems([statedTotalsItem(stated)]); setLoading(false); return; }
+    // A barcode — read from the photo, or typed on its own — is the product: its label.
+    const code = fresh ? null : photo ? photo.barcode : barcodeInText(desc);
+    if (code) {
+      const prod = (await lookupFood({ code }))[0];
+      const row  = prod && barcodeRow(photo ? desc : "", prod);
+      if (row) {
+        setItems([row]); setFound({ parts: [{ kind: "barcode", text: labelTitle(prod) }], ai: false });
+        setFollowups(row.ask ? pickFollowups([row]) : []);
+        setLoading(false); return;
+      }
+      // Not in Open Food Facts: a photo goes to the AI as before; typed digits can't be estimated.
+      if (!photo) { setError("That barcode isn't in the product database — describe the food instead."); setLoading(false); return; }
+    }
     // Typed text the user has logged before is answered from their log: no model call, no
     // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
     const past = photo || fresh ? null : findPastMeal(desc, pastDays, meals);
@@ -5572,25 +5788,53 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
       setItems(past.items); setFuLog(past.followups); setReused(past);
       setLoading(false); return;
     }
+    // Parts of a mixed meal from the log, then product labels for what is left (logging/10).
+    let known = [], parts = [], left = [desc], labelHints = [];
+    if (!photo && !fresh) {
+      const split = splitAgainstPast(desc, pastDays, meals);
+      for (const k of split.known) {
+        known.push(...k.past.items.map(r => ({ ...r, source: "log" })));
+        parts.push({ kind: "log", text: k.past.name, date: k.past.date, factor: k.past.factor });
+      }
+      left = split.unknown;
+      // At most three label lookups, in parallel; a long list goes straight to the AI.
+      const ask = left.length <= 3 ? left.filter(t => labelWords(t).length >= 2) : [];
+      const res = await Promise.all(ask.map(t => lookupFood({ q: t }).then(ps => ({ t, ...pickLabel(t, ps) }))));
+      for (const r of res) {
+        const row = r.pick && labelRow(r.t, r.pick);
+        if (row) {
+          known.push(row); parts.push({ kind: "label", text: labelTitle(r.pick) });
+          left = left.filter(t => t !== r.t);
+        } else labelHints.push(...r.near);
+      }
+      if (!left.length) {
+        setItems(known); setFound({ parts, ai: false });
+        setLoading(false); return;
+      }
+    }
     try {
       const parsed = photo
         ? await callAIJson([
             { type:"image", source:{ type:"base64", media_type:photo.mediaType, data:photo.base64 } },
             { type:"text",  text: AI_PHOTO_PROMPT(desc) },
           ], 2000)
-        : await callAIJson(AI_PROMPT(desc, similarPastMeals(desc, pastDays, meals)), 2000);
+        : await callAIJson(AI_PROMPT(desc, similarPastMeals(left.join(", "), pastDays, meals),
+            { known, labels: labelHints.slice(0, 3) }), 2000);
       const aiItems = parsed.items || [];
       if (photo) setMealName(parsed.meal || "");
 
       // The model's rows are the rows. Normalise confidence only (vision models may return a
       // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
       // parallel and REPLACED any row it found a product for — at a fixed confidence of 98,
-      // per that product's serving, under the AI's item name. features/logging/07.
+      // per that product's serving, under the AI's item name. features/logging/07. Labels now
+      // come BEFORE the model (logging/10) and only answer parts the model is then not asked.
       // dropDuplicateTotalRow then strips a hallucinated meal-total row, if the model added
       // one despite the prompt telling it not to (recurred 2026-09-16).
-      const merged = dropDuplicateTotalRow(aiItems.map(it => ({ ...it, confidence: normConf(it.confidence) })));
+      const aiRows = dropDuplicateTotalRow(aiItems.map(it => ({ ...it, confidence: normConf(it.confidence), source: "ai" })));
+      const merged = [...known, ...aiRows];
 
       setItems(merged);
+      if (parts.length) setFound({ parts, ai: true });
       // Confidence-gated: only ask when the kcal-weighted estimate is below the
       // "guess-heavy" bar, and only the top-2 highest-leverage unknowns.
       const k = merged.reduce((a, it) => a + (it.kcal || 0), 0);
@@ -5602,6 +5846,37 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
       setError("Estimation failed: " + e.message);
     }
     setLoading(false);
+  };
+
+  // The web check (logging/10, step 6): only on a tap, only for the AI's own rows. Rows from the
+  // log or a label stay as they are. A failure leaves the estimate untouched.
+  const isAIRow   = it => it && it.source !== "log" && it.source !== "label" && !it.stated;
+  const canCheckOnline = !!items && !webDone && !checking && !reused
+    && items.some(it => isAIRow(it) && it.confidence < WEB_CHECK_BELOW);
+  const checkOnline = async () => {
+    if (!items || checking) return;
+    const idx  = items.map((it, i) => isAIRow(it) ? i : -1).filter(i => i >= 0);
+    if (!idx.length) return;
+    setChecking(true); setError("");
+    try {
+      const rows   = idx.map(i => items[i]);
+      const parsed = await callAIJson(AI_WEB_PROMPT(desc, rows), 3000, { web: true });
+      const got    = Array.isArray(parsed && parsed.items) ? parsed.items : [];
+      const okRow  = r => r && isFinite(Number(r.kcal)) && Number(r.kcal) >= 0;
+      if (got.length !== rows.length || !got.every(okRow)) throw new Error("no usable answer");
+      const next = items.slice();
+      idx.forEach((i, n) => {
+        const r = got[n];
+        next[i] = { name: String(r.name || rows[n].name), kcal: Number(r.kcal),
+          protein: Number(r.protein) || 0, carbs: Number(r.carbs) || 0, fat: Number(r.fat) || 0,
+          confidence: normConf(r.confidence), ask: null, source: "web",
+          reasoning: String(r.reasoning || "Checked online.") };
+      });
+      setItems(next); setFollowups([]); setFuDone({}); setWebDone(true);
+    } catch (e) {
+      setError("Couldn't check online — the estimate above is unchanged.");
+    }
+    setChecking(false);
   };
 
   // Answer one follow-up: fat/portion refine offline (deterministic), version
@@ -5691,6 +5966,12 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
         <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
           📝 Anything you type here guides the photo estimate — weights, brands, cooking oil,
           hidden sauces or how much you actually ate. Your notes win where the photo can't tell.
+        </div>
+      )}
+      {photo && photo.barcode && (
+        <div style={{ fontSize:12, color:A, lineHeight:1.5, marginTop:6, fontWeight:700 }}>
+          🏷 Barcode found ({photo.barcode}) — its product label will be used. Type a weight or
+          “2 bars” above if you had more or less than one serving.
         </div>
       )}
       <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:6 }}>
@@ -5788,6 +6069,34 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
             </div>
           )}
 
+          {/* What the lookup chain found without the AI (logging/10) — say where each part came from */}
+          {found && !reused && (
+            <div role="status" style={{ background:CARD, border:`1px solid ${aA("44")}`, borderRadius:14,
+              padding:"12px 16px", marginBottom:12, fontSize:12, color:"var(--text-mid)", lineHeight:1.5 }}>
+              <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
+                {found.ai ? "↺ PARTLY FOUND WITHOUT AI" : "↺ FOUND WITHOUT AI"}
+              </div>
+              {found.parts.map((pt, n) => (
+                <div key={n}>
+                  {pt.kind === "log"
+                    ? <>From your {pt.date == null ? "Quick Add" : "log"}: “{pt.text}”{pt.date != null && pt.date !== todayKey() ? ", " + fmtDay(pt.date) : ""}{pt.factor !== 1 ? " (" + FACTOR_SIGN(pt.factor) + " ×)" : ""}</>
+                    : pt.kind === "barcode"
+                      ? <>Barcode: {pt.text} — product label</>
+                      : <>Product label: {pt.text}</>}
+                </div>
+              ))}
+              <div style={{ marginTop:4 }}>
+                {found.ai ? "The rest was estimated by AI." : "No AI estimate needed."}
+              </div>
+              <button onClick={() => estimate({ fresh: true })}
+                style={{ display:"block", marginTop:8, padding:"7px 12px", background:"var(--surface-2)",
+                  border:`1px solid ${aA("44")}`, borderRadius:10, color:A, fontSize:12,
+                  fontWeight:800, cursor:"pointer" }}>
+                Re-estimate everything with AI
+              </button>
+            </div>
+          )}
+
           {/* Overall confidence banner */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             background:CARD, border:`1px solid ${BD}`, borderRadius:14,
@@ -5806,6 +6115,16 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
               reestimating={reestIdx === i}
               onReestimate={newName => reestimate(i, newName)}/>
           ))}
+
+          {/* The web check (logging/10): on a tap only — it is the costliest lookup */}
+          {(canCheckOnline || checking) && (
+            <button onClick={checkOnline} disabled={checking}
+              style={{ width:"100%", padding:"10px 14px", marginBottom:12, background:"var(--surface-2)",
+                border:`1px solid ${aA("44")}`, borderRadius:12, color:A, fontSize:12,
+                fontWeight:800, cursor: checking ? "default" : "pointer" }}>
+              {checking ? "Checking published nutrition online…" : "🔎 Check online for published figures (slower)"}
+            </button>
+          )}
 
           {/* Confidence-gated follow-ups — at most 2, each a chip tap. OPTIONAL:
               the log buttons below are always available; answering just sharpens

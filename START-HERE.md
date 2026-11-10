@@ -1,8 +1,14 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-11-10 (cloud). **Jest 490/490 · Playwright 169/169 · sw v107 on branch
-`ccr-5a151d53-mqw4cd` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
+**Updated:** 2026-11-10 (cloud). **Jest 519/519 · Playwright 176/176 · sw v108 on branch
+`ccr-19fa75ab-tdiu9p` (not yet merged; needs the worker redeployed).** Last confirmed live on Pages: `main` @ `33a8e8f`
 (PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
+
+> **v108 (2026-11-10, cloud, on a branch): the lookup chain (`features/logging/10`).** Log parts of a
+> mixed meal → Open Food Facts label via the worker's new `/food` route (sure matches only) or a
+> barcode → AI for the rest only → web check on a tap. **Redeploy `cloudflare-worker.js`** for labels
+> and the web check; without it the app quietly falls back to the AI. Live OFF responses and live web
+> search were NOT tested from the cloud container (OFF is blocked there) — device-test them.
 
 > **v107 (2026-11-10, cloud, on a branch): Quick Add first, then the log.** `pastMealPool` lists Quick
 > Add meals first; a Quick Add match always wins, else the newest log entry from the whole history
@@ -263,7 +269,7 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v107**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v108**.
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
 - Run `npx jest` before claiming anything works. Currently **490/490**. `npm run test:ui` is **169/169**

@@ -287,6 +287,7 @@ Sequenced by `ENERGY_MODEL.md` §5. `01`–`07` are the original workstream; **`
 | [07-estimate-of-what-you-typed](logging/07-estimate-of-what-you-typed.feature) | The numbers on screen are the AI's estimate of what you typed | 8 | |
 | [08-photo-notes-guide-the-estimate](logging/08-photo-notes-guide-the-estimate.feature) | Text typed with a photo guides the photo estimate | 6 | |
 | [09-reuse-a-meal-logged-before](logging/09-reuse-a-meal-logged-before.feature) | A meal logged before is reused, not re-estimated | 13 | `@wip` |
+| [10-lookup-chain](logging/10-lookup-chain.feature) | The cheapest sure source answers first (log parts, product labels, AI, web on a tap) | 11 | `@wip` |
 
 > **`06` and `07` are the 2026-09-15 bug batch** — the founder's second by-eye report, kept
 > verbatim as [`logging/00-bug-report.md`](logging/00-bug-report.md) (its Bug 3 is a dashboard

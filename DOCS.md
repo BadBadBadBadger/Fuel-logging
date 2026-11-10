@@ -56,7 +56,7 @@ Fuel Log is a gym-focused calorie and macro tracking PWA. Targets are personalis
 | Charts | Recharts 2.12.7 (vendored) |
 | Styling | Inline React styles only |
 | Storage | `localStorage` via `window.storage` bridge in `index.html` |
-| Food API | None. Open Food Facts was dropped from the AI Log and re-estimates on 2026-09-15 and the Food Search screen was removed in Nov 2026 (§16) — the AI Log is the lookup |
+| Food API | Open Food Facts, through the worker's `/food` route, only on a sure brand + name match or a barcode (Nov 2026, v108, `features/logging/10`). It was dropped on 2026-09-15 because it overwrote the AI's numbers with a first hit; now labels come *before* the AI and only answer parts the AI is then not asked |
 | AI API | Anthropic `claude-sonnet-4-6` via Cloudflare Worker proxy |
 | Hosting | GitHub Pages |
 | Android | PWABuilder.com → APK |
@@ -1521,6 +1521,21 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ---
 
 ## 37. Changelog
+
+### The lookup chain: log parts, product labels, AI, web on a tap (Nov 2026, v108)
+- Founder: £15 of AI in 6 months for one user makes the margin thin — use the cheapest sure source
+  first. Order: stated totals → whole line from the log → each **part** of a mixed meal from the log →
+  **Open Food Facts label** (worker route `/food`; sure match only: brand typed, every word on the
+  product, figures add up, a portion exists) or a **barcode** (typed, or read from a photo on the
+  device — then no image goes to the AI) → **AI for the unknown parts only** (known parts listed as
+  "already worked out") → **web check** only on a "Check online" tap, offered below 70% confidence.
+- Replies are shorter: one line of JSON, reasoning under 12 words (output is ~70% of the cost).
+  Prompt caching was checked and cannot apply (prompt ~700 tokens; Sonnet 4.6 minimum 1024).
+- **Worker must be redeployed** for labels and the web check (new `/food` route, server-side
+  `web_search_20260209` tool capped at 2 searches, a web check counts 5 against `DAILY_LIMIT`).
+  Until then `/food` fails quietly and the app falls through to the AI, as before.
+- Jest **519/519** (+29, `lookup-chain.test.js`), Playwright **176/176** (+7, `lookup-chain.spec.js`;
+  the harness now stubs `/food` with "no labels"), sw `v107→v108`. **No DB change.**
 
 ### Quick Add first, then everything ever logged (Nov 2026, v107)
 - Founder: reuse should scan Quick Add and fall back on past logged items that were never Quick Added.

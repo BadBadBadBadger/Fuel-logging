@@ -328,6 +328,21 @@ location.reload();
 > body-sized minimum and a cut collapses to almost no deficit — a 50 kg man gets 16 kcal. Real, understood,
 > and **deliberately shelved** because the only user is 98.5 kg. `ARCHITECTURE_REVIEW.md` §4.I.
 
+## Part B1 — the lookup chain (v108, `features/logging/10`)
+
+**First redeploy `cloudflare-worker.js`** (new `/food` route + server-side web search). Then on the phone:
+
+1. AI LOG → `cookies and cream barebells protein bar` → ANALYSE. Expect **↺ FOUND WITHOUT AI**,
+   "Product label: Barebells …", one row ≈ 200 kcal (55 g). If it goes to the AI instead, Open Food
+   Facts didn't return a sure match — note what you typed.
+2. Photograph the barcode on any packet → the line "🏷 Barcode found" appears under the photo →
+   ANALYSE PHOTO gives the label at one serving.
+3. `chicken fajita pasta bake and a yoghurt` → **↺ PARTLY FOUND WITHOUT AI**, bake from your log,
+   yoghurt from the AI.
+4. Something vague (`a sandwich from the cafe`) → if a row is under 70%, **🔎 Check online** shows.
+   Tap it: takes 10–40 s, the AI rows update and name a website. Your log rows don't change.
+5. Anthropic Console → Usage: after a week, compare the daily spend with the weeks before.
+
 ## Part B2 — the one thing no test can check: does the cloud actually obey?
 
 The UI suite proves the app *asks* Supabase to delete the right row — the right table, filtered by

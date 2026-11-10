@@ -144,6 +144,13 @@ async function seed(page, { profile, cutBlock, mode, weighIns, weighInsSpec, day
 
 /** Seed, open the harness, and wait for the app to actually render. */
 async function open(page, state = {}) {
+  // The worker's product-label route (features/logging/10) answers "no labels" unless a spec
+  // routes it itself (a later page.route wins). Never the real worker; every call is counted.
+  page.foodBodies = [];
+  await page.route("https://fuellog.adriandavidrichards.workers.dev/food", route => {
+    page.foodBodies.push(route.request().postData() || "");
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
+  });
   await seed(page, { profile: PROFILE, ...state });
   await page.goto("/preview.html");
   await expect(page.locator("#root")).toBeVisible({ timeout: 15_000 });
