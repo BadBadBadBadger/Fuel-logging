@@ -1522,6 +1522,16 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### Reuse understands "half a portion of…", and the AI sees your usual (Nov 2026, v106)
+- Founder's screenshot: *"Half size portion of chicken fajita pasta bake"*, logged weekly for six months,
+  came back 420 kcal at 42% from a generic recipe. v105 only matched the identical line.
+- Now matched on food words in order (filler like *size / portion / of / bowl / homemade* and plurals
+  ignored). Portion words (*half, ½, 1/2, quarter, third, double, twice, triple*) scale the latest log;
+  rows read *"½ × …"*. Size words (*large, small…*) must match or it goes to the AI. Quick Add meals count.
+- No match → up to 3 similar past meals are put in the text prompt as the user's usual recipe/portion.
+- Jest **485/485** (+9), Playwright **168/168** (+2), sw `v105→v106`. **No DB change.** The prompt now
+  carries up to three of the user's own meal names and macros — nothing that wasn't already theirs to send.
+
 ### AI Log reuses a meal you've logged before (Nov 2026)
 - Founder's ask: check the user's past meals before asking the AI, to save tokens on meals they've had before.
 - Typed text in AI Log is now looked up in your own log (today + all history) **before** the model is

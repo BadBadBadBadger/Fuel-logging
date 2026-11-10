@@ -4977,7 +4977,13 @@ function Dashboard({ logs, totals, targets, remaining, water, setWater, hist = [
 
 // ── AI Log ────────────────────────────────────────────────────
 
-const AI_PROMPT = (desc) => `You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.
+// `past` is similarPastMeals' list — the user's own logs of similar food (logging/09).
+const AI_PAST_BLOCK = past => !past || !past.length ? "" : `
+The user's OWN past logs of similar food — their usual recipe and portion size:
+${past.map(m => `- "${m.name.replace(/"/g, "'")}": ${m.kcal} kcal, P ${m.protein}g, C ${m.carbs}g, F ${m.fat}g`).join("\n")}
+Where a component of the meal below is one of these, base it on these numbers rather than a generic recipe, scaled to the portion described now ("half" = half of the logged figures), and give it confidence 80+. Ignore any that are a different food.
+`;
+const AI_PROMPT = (desc, past = []) => `You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.
 
 Rules:
 - For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data — never substitute a generic equivalent.
@@ -4990,7 +4996,7 @@ Rules:
 - Arithmetic: check kcal against the macros — kcal ≈ 4×protein + 4×carbs + 9×fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.
 - A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.
 - For ANY component whose confidence is below 80, set "ask" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: "fat" (hidden cooking fat — oil/butter vs dry/grilled), "portion" (ambiguous amount/size), or "version" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set "ask" to null. If the description already answers a question — it says dry, or gives a weight — do not ask it.
-
+${AI_PAST_BLOCK(past)}
 Meal to analyse: "${desc}"
 
 Return ONLY valid JSON (no markdown, no preamble):
@@ -5145,35 +5151,106 @@ const mealKey = s => (typeof s === "string" ? s : "").toLowerCase()
   .replace(/(\d)[.,](\d)/g, "$1d$2").replace(/['’]/g, "")
   .replace(/[^a-z0-9]+/g, " ").trim();
 
-// The most recent logged entry whose name matches `desc`, as estimate rows. `days` is
-// [{date, logs:[…]}] in any order. An entry's stored elements are the rows only while they
-// still add up to the entry (an edit in EntryEditor changes the totals, not the elements);
-// otherwise the entry's own totals are one row, so a correction the user made is what's reused.
-// Returns null for no match, a photo-only line, or a 0-kcal entry.
-const findPastMeal = (desc, days) => {
-  const key = mealKey(desc);
-  if (!key || !Array.isArray(days)) return null;
-  const sorted = [...days].filter(d => d && Array.isArray(d.logs))
+// The same meal in other words (features/logging/09, v106). Typed lines are compared on their
+// FOOD words, in order: case, punctuation, plurals and filler ("size", "portion", "of", "bowl",
+// "homemade"…) don't count. Portion words become a multiplier, so "Half size portion of chicken
+// fajita pasta bake" is ½ × "chicken fajita pasta bake". Size words ("large", "small"…) must be
+// the same on both sides, since there is no honest number for "large". Numbers stay food words:
+// "2 eggs" never matches "3 eggs".
+const PORTION_MULT = { half:0.5, halve:0.5, quarter:0.25, third:1/3, double:2, twice:2, triple:3 };
+const SIZE_WORDS   = ["small","large","big","little","medium","regular","huge","mini","giant","jumbo","extra"];
+const FILLER_WORDS = ["a","an","the","of","and","size","sized","portion","portions","serving","servings",
+  "bowl","bowls","plate","plates","some","my","usual","homemade","leftover","leftovers"];
+const mealParts = s => {
+  const raw = String(s || "").replace(/½|\b1\/2\b/g, " half ").replace(/¼|\b1\/4\b/g, " quarter ")
+    .replace(/⅓|\b1\/3\b/g, " third ");
+  let mult = 1; const size = [], core = [];
+  for (const w of mealKey(raw).split(" ").filter(Boolean)) {
+    if (PORTION_MULT[w] != null) mult *= PORTION_MULT[w];
+    else if (SIZE_WORDS.includes(w)) size.push(w);
+    else if (!FILLER_WORDS.includes(w)) core.push(w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w);
+  }
+  return { core, key: core.join(" "), mult, size: size.sort().join(" ") };
+};
+
+// Every past meal the user has, newest first: logged entries from `days` ([{date, logs}], any
+// order), then saved Quick Add meals (date null). 0-kcal entries are left out.
+const pastMealPool = (days, meals) => {
+  const out = [];
+  const sorted = (Array.isArray(days) ? days : []).filter(d => d && Array.isArray(d.logs))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  for (const day of sorted) {
+  for (const day of sorted)
     for (let i = day.logs.length - 1; i >= 0; i--) {
       const e = day.logs[i];
-      if (!e || !(Number(e.kcal) > 0) || mealKey(e.name) !== key) continue;
-      const why = "Same as you logged before.";
-      const els = Array.isArray(e.elements) ? e.elements : [];
-      const sum = els.reduce((a, x) => a + (Number(x.kcal) || 0), 0);
-      const fits = els.length > 0 && Math.abs(sum - e.kcal) <= Math.max(2, e.kcal * 0.02);
-      const rows = fits
-        ? els.map(x => ({ name: x.name, kcal: Number(x.kcal) || 0, protein: Number(x.protein) || 0,
-            carbs: Number(x.carbs) || 0, fat: Number(x.fat) || 0,
-            confidence: x.conf == null ? 100 : x.conf, ask: null, reasoning: why }))
-        : [{ name: e.name, kcal: Number(e.kcal) || 0, protein: Number(e.protein) || 0,
-            carbs: Number(e.carbs) || 0, fat: Number(e.fat) || 0,
-            confidence: e.conf == null ? 100 : e.conf, ask: null, reasoning: why }];
-      return { date: day.date, items: rows, followups: Array.isArray(e.followups) ? e.followups : [] };
+      if (e && Number(e.kcal) > 0 && e.name) out.push({ e, date: day.date });
     }
+  for (const m of Array.isArray(meals) ? meals : [])
+    if (m && Number(m.kcal) > 0 && m.name) out.push({ e: m, date: null });
+  return out;
+};
+
+// An entry as estimate rows, scaled by `factor`. Its stored elements are the rows only while they
+// still add up to the entry (an edit in EntryEditor changes the totals, not the elements);
+// otherwise the entry's own totals are one row, so a correction the user made is what's reused.
+const FACTOR_SIGN = f => ({ 0.5:"½", 0.25:"¼", 2:"2", 3:"3" })[f]
+  || (Math.abs(f - 1/3) < 0.01 ? "⅓" : String(Math.round(f * 100) / 100));
+const pastRows = (e, factor) => {
+  const why = factor === 1 ? "Same as you logged before." : FACTOR_SIGN(factor) + " × what you logged before.";
+  const sc  = (v, dp) => { const n = (Number(v) || 0) * factor; return dp ? Math.round(n * 10) / 10 : Math.round(n); };
+  const nm  = n => factor === 1 ? n : FACTOR_SIGN(factor) + " × " + n;
+  const els = Array.isArray(e.elements) ? e.elements : [];
+  const sum = els.reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+  const fits = els.length > 0 && Math.abs(sum - e.kcal) <= Math.max(2, e.kcal * 0.02);
+  const src = fits ? els : [{ ...e, conf: e.conf }];
+  return src.map(x => ({ name: nm(x.name), kcal: sc(x.kcal), protein: sc(x.protein, 1),
+    carbs: sc(x.carbs, 1), fat: sc(x.fat, 1),
+    confidence: x.conf == null ? 100 : x.conf, ask: null, reasoning: why }));
+};
+
+// The past meal that answers `desc` without the model, or null. Best first: the exact same line;
+// then the same food words at the same portion; then the same food words scaled by the portion
+// words. Newest wins within each. `count` is how many past entries are this meal.
+const findPastMeal = (desc, days, meals = []) => {
+  const want = mealParts(desc);
+  if (!want.key) return null;
+  const exactKey = mealKey(desc);
+  let best = null, rank = 9, count = 0;
+  for (const p of pastMealPool(days, meals)) {
+    const got = mealParts(p.e.name);
+    if (got.key !== want.key || got.size !== want.size) continue;
+    count++;
+    const factor = want.mult / got.mult;
+    const r = mealKey(p.e.name) === exactKey ? 0 : factor === 1 ? 1 : 2;
+    if (r < rank) { best = { p, factor }; rank = r; }
   }
-  return null;
+  if (!best) return null;
+  const { p, factor } = best;
+  return { date: p.date, name: p.e.name, factor, count, exact: rank === 0,
+    items: pastRows(p.e, factor),
+    followups: factor === 1 && Array.isArray(p.e.followups) ? p.e.followups : [] };
+};
+
+// When there is no match, the user's closest past meals still go to the model as their usual
+// recipe and portion (AI_PROMPT), so a "chicken fajita pasta bake with garlic bread" is built on
+// the bake they've logged for months, not a generic recipe. Close = shares at least half of the
+// typed food words (and at least two, unless only one was typed). Newest per meal, at most 3.
+const similarPastMeals = (desc, days, meals = [], limit = 3) => {
+  const want = mealParts(desc);
+  if (!want.core.length) return [];
+  const need = Math.max(Math.min(2, want.core.length), Math.ceil(want.core.length / 2));
+  const seen = new Set(), out = [];
+  for (const p of pastMealPool(days, meals)) {
+    const got = mealParts(p.e.name);
+    if (!got.key || seen.has(got.key + "|" + got.size + "|" + got.mult)) continue;
+    const shared = want.core.filter(w => got.core.includes(w)).length;
+    if (shared < need) continue;
+    seen.add(got.key + "|" + got.size + "|" + got.mult);
+    out.push({ shared, name: String(p.e.name).slice(0, 120), kcal: Math.round(p.e.kcal),
+      protein: Math.round((Number(p.e.protein) || 0) * 10) / 10,
+      carbs: Math.round((Number(p.e.carbs) || 0) * 10) / 10,
+      fat: Math.round((Number(p.e.fat) || 0) * 10) / 10 });
+  }
+  return out.sort((a, b) => b.shared - a.shared).slice(0, limit).map(({ shared, ...m }) => m);
 };
 
 const confColor = c => c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
@@ -5404,9 +5481,9 @@ function ItemRow({ item, onReestimate, reestimating }) {
   );
 }
 
-function AILog({ onAdd, onBack, pastDays = [] }) {
+function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   const [desc,         setDesc]         = useState("");
-  const [reused,       setReused]       = useState(null); // date of the past entry reused (logging/09), else null
+  const [reused,       setReused]       = useState(null); // the findPastMeal result reused (logging/09), else null
   const [loading,      setLoading]      = useState(false);
   const [items,        setItems]        = useState(null);
   const [mealName,     setMealName]     = useState(""); // model's short name for a photo meal
@@ -5484,9 +5561,9 @@ function AILog({ onAdd, onBack, pastDays = [] }) {
     if (stated) { setItems([statedTotalsItem(stated)]); setLoading(false); return; }
     // Typed text the user has logged before is answered from their log: no model call, no
     // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
-    const past = photo || fresh ? null : findPastMeal(desc, pastDays);
+    const past = photo || fresh ? null : findPastMeal(desc, pastDays, meals);
     if (past) {
-      setItems(past.items); setFuLog(past.followups); setReused(past.date);
+      setItems(past.items); setFuLog(past.followups); setReused(past);
       setLoading(false); return;
     }
     try {
@@ -5495,7 +5572,7 @@ function AILog({ onAdd, onBack, pastDays = [] }) {
             { type:"image", source:{ type:"base64", media_type:photo.mediaType, data:photo.base64 } },
             { type:"text",  text: AI_PHOTO_PROMPT(desc) },
           ], 2000)
-        : await callAIJson(AI_PROMPT(desc), 2000);
+        : await callAIJson(AI_PROMPT(desc, similarPastMeals(desc, pastDays, meals)), 2000);
       const aiItems = parsed.items || [];
       if (photo) setMealName(parsed.meal || "");
 
@@ -5683,8 +5760,17 @@ function AILog({ onAdd, onBack, pastDays = [] }) {
               <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
                 ↺ LOGGED BEFORE
               </div>
-              You logged this {reused === todayKey() ? "earlier today" : "on " + fmtDay(reused)}, so these are
-              the same numbers — no AI estimate needed.
+              {(() => {
+                const when  = reused.date == null ? "in your Quick Add meals"
+                  : reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
+                const times = reused.count > 1 ? ` (${reused.count} times)` : "";
+                const f     = reused.factor;
+                const word  = { 0.5:"Half", 0.25:"A quarter", 2:"Double", 3:"Triple" }[f]
+                  || (Math.abs(f - 1/3) < 0.01 ? "A third" : FACTOR_SIGN(f) + " ×");
+                if (reused.exact) return `You logged this ${when}${times}, so these are the same numbers — no AI estimate needed.`;
+                if (f === 1) return `Matches “${reused.name}”, logged ${when}${times} — same numbers, no AI estimate needed.`;
+                return `${word} of your “${reused.name}”, logged ${when}${times} — no AI estimate needed.`;
+              })()}
               <button onClick={() => estimate({ fresh: true })}
                 style={{ display:"block", marginTop:8, padding:"7px 12px", background:"var(--surface-2)",
                   border:`1px solid ${aA("44")}`, borderRadius:10, color:A, fontSize:12,
@@ -6129,7 +6215,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
 
   if (addCtx === "quick") return <QuickAdd meals={meals} setMeals={setMeals} onForget={onForget} onAdd={addEntry} onBack={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
   if (addCtx === "manual") return <MealForm onSave={addEntry} onCancel={() => setAddCtx(null)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>;
-  if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)} pastDays={history}/>;
+  if (addCtx === "ai")    return <AILog onAdd={addEntry} onBack={() => setAddCtx(null)} pastDays={history} meals={meals}/>;
 
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
@@ -7767,7 +7853,8 @@ function App() {
           measurementNote={measurementNote} onSaveMeasurementNote={saveMeasurementNote}
           muteMeasurements={muteMeasurements} onToggleMuteMeasurements={toggleMuteMeasurements}/>}
       {view === "ai"           && <AILog           onAdd={addLog} onBack={() => setView("dashboard")}
-                                      pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}/>}
+                                      pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
+                                      meals={meals}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}

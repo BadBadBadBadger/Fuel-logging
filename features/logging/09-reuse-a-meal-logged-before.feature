@@ -23,7 +23,22 @@
 #   • Typed text only. A photo can't be matched against text, so a photo is always estimated.
 #     A stated totals line (logging/06) is still handled first: it never needs the model either.
 #
-# Jest: __tests__/ai-log.test.js lifts mealKey and findPastMeal from app.jsx and runs them.
+# v106 (2026-11-10), the founder's screenshot: "Half size portion of chicken fajita pasta bake",
+# a dish logged almost weekly for six months, went to the model and came back 420 kcal at 42% from
+# a generic recipe. v105 only matched the identical line, so it never saw the history. Now:
+#   • Lines are compared on their FOOD words, in order. Filler ("size", "portion", "of", "bowl",
+#     "homemade", "leftovers"…) and plurals don't count.
+#   • Portion words are a multiplier: half / ½ / 1/2, quarter, third, double, twice, triple.
+#     "Half size portion of X" is ½ × the user's latest X. Rows are named "½ × …".
+#   • Size words (large, small, big, medium…) must be the same on both sides. "Large" has no
+#     honest number, so a size the user hasn't logged before goes to the model.
+#   • Order of preference: the identical line, then the same food at the same portion, then the
+#     same food scaled. Newest wins within each. The card says how many times it was logged.
+#   • Saved Quick Add meals count as meals logged before.
+#   • No match: up to 3 past meals sharing at least half the typed food words are listed in the
+#     text prompt as the user's usual recipe and portion, so the model builds on them.
+#
+# Jest: __tests__/ai-log.test.js lifts mealKey, mealParts, findPastMeal and similarPastMeals from app.jsx and runs them.
 # Playwright: e2e/past-meal-reuse.spec.js counts worker calls.
 # ============================================================================
 
@@ -77,3 +92,28 @@ Feature: A meal logged before is reused, not re-estimated
     Given I attach a photo and type "2 poached eggs on sourdough" as notes
     When I tap ANALYSE PHOTO
     Then the AI is asked
+
+  # ── v106: the same meal in other words ────────────────────────────────────
+
+  Scenario: A portion word scales my usual
+    Given I logged "Chicken fajita pasta bake" on 3 Nov as 720 kcal (P 52 C 70 F 22)
+    When I type "Half size portion of chicken fajita pasta bake" and tap ANALYSE MEAL
+    Then I see one row "½ × Chicken fajita pasta bake" of 360 kcal (P 26 C 35 F 11) at once
+    And the card says "Half of your “Chicken fajita pasta bake”, logged on 3 Nov"
+    And no AI request is made
+
+  Scenario: A size I haven't logged goes to the AI
+    Given I logged "Chicken fajita pasta bake" before
+    When I type "Large chicken fajita pasta bake" and tap ANALYSE MEAL
+    Then the AI is asked
+
+  Scenario: A meal with something extra goes to the AI, with my usual as reference
+    Given I logged "Chicken fajita pasta bake" on 3 Nov as 720 kcal
+    When I type "chicken fajita pasta bake with garlic bread" and tap ANALYSE MEAL
+    Then the AI is asked
+    And the request lists "Chicken fajita pasta bake": 720 kcal as my own past log
+
+  Scenario: A saved Quick Add meal counts
+    Given "Whey protein shake" is a Quick Add meal of 130 kcal
+    When I type "whey protein shake" and tap ANALYSE MEAL
+    Then it is reused from Quick Add and no AI request is made

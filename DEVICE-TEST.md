@@ -68,6 +68,16 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v106 — "half a portion of…" reuses your usual (2026-11-10)
+
+You must be on **v106**.
+
+- [ ] Type **"Half size portion of chicken fajita pasta bake"** → instant, no "ANALYSING…"; the card
+      says *"Half of your “…”, logged on …"* with a count, and the row is half your usual.
+- [ ] **"Large chicken fajita pasta bake"** → goes to the AI (size not logged before).
+- [ ] **"chicken fajita pasta bake with garlic bread"** → goes to the AI; the bake's numbers should be
+      close to your usual, not a generic recipe.
+
 ### New in v105 — a meal you've logged before is reused (2026-11-09)
 
 Fully close and reopen the installed PWA first — you must be on **v105**.

@@ -1,8 +1,13 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-11-09 (cloud). **Jest 476/476 · Playwright 166/166 · sw v105 on branch
+**Updated:** 2026-11-10 (cloud). **Jest 485/485 · Playwright 168/168 · sw v106 on branch
 `ccr-5a151d53-mqw4cd` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
 (PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
+
+> **v106 (2026-11-10, cloud, on a branch): "half a portion of…" reuses the usual.** Matching is now on
+> food words in order (filler and plurals ignored); portion words scale the latest log (½ ×); size
+> words must match; Quick Add meals count. No match → up to 3 similar past meals go in `AI_PROMPT` as
+> the user's usual. `mealParts`, `similarPastMeals`, `AI_PAST_BLOCK`. Spec `logging/09` (v106 block).
 
 > **v105 (2026-11-09, cloud, on a branch): a meal logged before skips the AI.** Typed AI Log text
 > is looked up in the user's own log (today + history) before the model is called. Exact match on
@@ -253,10 +258,10 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v105**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v106**.
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
-- Run `npx jest` before claiming anything works. Currently **476/476**. `npm run test:ui` is **166/166**
+- Run `npx jest` before claiming anything works. Currently **485/485**. `npm run test:ui` is **168/168**
   (in a cloud session, see `PLAYWRIGHT-PLAN.md` → *How to run* first).
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.

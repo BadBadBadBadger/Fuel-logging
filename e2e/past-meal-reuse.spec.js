@@ -21,14 +21,20 @@ const PAST = {
     { name: "2 poached eggs", kcal: 143, protein: 12.6, carbs: 0.8, fat: 9.5, conf: 90 },
   ],
 };
-const HISTORY = [{ date: "2026-11-01", mode: "cut", kcal: 373, protein: 20.6, carbs: 44.8, fat: 11,
-  training: false, water: 4, logs: [PAST] }];
+const BAKE = { name: "Chicken fajita pasta bake", kcal: 720, protein: 52, carbs: 70, fat: 22, conf: 70,
+  source: "ai-text", followups: [], id: 2, time: "19:00", elements: null };
+const HISTORY = [
+  { date: "2026-11-01", mode: "cut", kcal: 373, protein: 20.6, carbs: 44.8, fat: 11,
+    training: false, water: 4, logs: [PAST] },
+  { date: "2026-11-03", mode: "cut", kcal: 720, protein: 52, carbs: 70, fat: 22,
+    training: false, water: 4, logs: [BAKE] },
+];
 
 async function openAILog(page) {
   await open(page, { premium: true, history: HISTORY });
-  page.aiCalls = 0;
+  page.aiCalls = 0; page.aiBodies = [];
   await page.route(AI_ENDPOINT, route => {
-    page.aiCalls++;
+    page.aiCalls++; page.aiBodies.push(route.request().postData() || "");
     route.fulfill({ status: 200, contentType: "application/json",
       body: JSON.stringify({ content: [{ text: JSON.stringify({ items: [
         { name: "Model's guess", kcal: 999, protein: 50, carbs: 100, fat: 40, confidence: 70,
@@ -80,5 +86,27 @@ test.describe("A meal logged before is reused (logging/09)", () => {
     await expect(page.getByText("Model's guess").first()).toBeVisible();
     await expect(page.getByText("↺ LOGGED BEFORE")).toHaveCount(0);
     expect(page.aiCalls).toBe(1);
+  });
+
+  test("the founder's bake: 'Half size portion of…' is half the usual, model never asked", async ({ page }) => {
+    await openAILog(page);
+    await analyse(page, "Half size portion of chicken fajita pasta bake");
+    await expect(page.getByText(/Half of your “Chicken fajita pasta bake”, logged on 3 Nov/)).toBeVisible();
+    await expect(page.getByText("½ × Chicken fajita pasta bake").first()).toBeVisible();
+    expect(page.aiCalls).toBe(0);
+    await page.getByRole("button", { name: /LOG ALL AS ONE ENTRY/ }).click();
+    await expect(page.getByText("CONSUMED", { exact: true })).toBeVisible({ timeout: 15_000 });
+    const logs = await storedLogs(page);
+    expect(logs[0]).toMatchObject({ name: "Half size portion of chicken fajita pasta bake",
+      kcal: 360, protein: 26, carbs: 35, fat: 11 });
+  });
+
+  test("no match, but a similar past meal goes to the model as the user's usual", async ({ page }) => {
+    await openAILog(page);
+    await analyse(page, "chicken fajita pasta bake with garlic bread");
+    await expect(page.getByText("Model's guess").first()).toBeVisible();
+    expect(page.aiCalls).toBe(1);
+    const prompt = JSON.parse(page.aiBodies[0]).messages[0].content;
+    expect(prompt).toContain('- "Chicken fajita pasta bake": 720 kcal, P 52g, C 70g, F 22g');
   });
 });

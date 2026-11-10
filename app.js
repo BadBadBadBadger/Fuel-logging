@@ -1,4 +1,7 @@
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
+var _excluded = ["shared"];
+function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
+function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
 function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
 function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = r[t]; o.enumerable = o.enumerable || !1, o.configurable = !0, "value" in o && (o.writable = !0), Object.defineProperty(e, _toPropertyKey(o.key), o); } }
 function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
@@ -10716,8 +10719,15 @@ function Dashboard(_ref92) {
 
 // ── AI Log ────────────────────────────────────────────────────
 
+// `past` is similarPastMeals' list — the user's own logs of similar food (logging/09).
+var AI_PAST_BLOCK = function AI_PAST_BLOCK(past) {
+  return !past || !past.length ? "" : "\nThe user's OWN past logs of similar food \u2014 their usual recipe and portion size:\n".concat(past.map(function (m) {
+    return "- \"".concat(m.name.replace(/"/g, "'"), "\": ").concat(m.kcal, " kcal, P ").concat(m.protein, "g, C ").concat(m.carbs, "g, F ").concat(m.fat, "g");
+  }).join("\n"), "\nWhere a component of the meal below is one of these, base it on these numbers rather than a generic recipe, scaled to the portion described now (\"half\" = half of the logged figures), and give it confidence 80+. Ignore any that are a different food.\n");
+};
 var AI_PROMPT = function AI_PROMPT(desc) {
-  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.\n\nRules:\n- For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data \u2014 never substitute a generic equivalent.\n- Break the meal into individual components. Each component gets its own nutrition estimate and confidence score.\n- Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.\n- If a component is ambiguous (e.g. \"large meal\" at a restaurant that only does regular), state the ambiguity in the reasoning field.\n- Be conservative \u2014 if unsure between two estimates, explain both.\n- Cooking fat: \"dry\", \"no oil\", \"zero added fat\", \"no butter\", \"air-fried without oil\", \"grilled\", \"boiled\", \"poached\", \"steamed\" mean NO cooking fat was added. Estimate the food's own fat only \u2014 cooked skinless chicken breast is about 3\u20134 g fat per 100 g, not more.\n- Portion: a stated weight or count IS the portion. Scale every figure in proportion to it (150 g is 60% of 250 g, in every macro).\n- Arithmetic: check kcal against the macros \u2014 kcal \u2248 4\xD7protein + 4\xD7carbs + 9\xD7fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.\n- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.\n- For ANY component whose confidence is below 80, set \"ask\" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: \"fat\" (hidden cooking fat \u2014 oil/butter vs dry/grilled), \"portion\" (ambiguous amount/size), or \"version\" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set \"ask\" to null. If the description already answers a question \u2014 it says dry, or gives a weight \u2014 do not ask it.\n\nMeal to analyse: \"".concat(desc, "\"\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    {\n      \"name\": \"specific item name with quantity/size\",\n      \"kcal\": number,\n      \"protein\": number,\n      \"carbs\": number,\n      \"fat\": number,\n      \"confidence\": number,\n      \"ask\": \"fat\" | \"portion\" | \"version\" | null,\n      \"reasoning\": \"one sentence explaining source of data or uncertainty\"\n    }\n  ]\n}");
+  var past = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
+  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international commercial food products, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL. Under-fuelling and over-fuelling are both harmful.\n\nRules:\n- For any named restaurant, brand or product (GDK, Pret, McDonald's, Greggs, Magic Spoon, Quest, Grenade, Weetabix, Oatly etc.) use your precise knowledge of their ACTUAL menu nutrition data \u2014 never substitute a generic equivalent.\n- Break the meal into individual components. Each component gets its own nutrition estimate and confidence score.\n- Confidence score (0-100): 90+ means you have exact menu/label data. 60-89 means good knowledge but some uncertainty. Below 60 means you are estimating and the user should verify.\n- If a component is ambiguous (e.g. \"large meal\" at a restaurant that only does regular), state the ambiguity in the reasoning field.\n- Be conservative \u2014 if unsure between two estimates, explain both.\n- Cooking fat: \"dry\", \"no oil\", \"zero added fat\", \"no butter\", \"air-fried without oil\", \"grilled\", \"boiled\", \"poached\", \"steamed\" mean NO cooking fat was added. Estimate the food's own fat only \u2014 cooked skinless chicken breast is about 3\u20134 g fat per 100 g, not more.\n- Portion: a stated weight or count IS the portion. Scale every figure in proportion to it (150 g is 60% of 250 g, in every macro).\n- Arithmetic: check kcal against the macros \u2014 kcal \u2248 4\xD7protein + 4\xD7carbs + 9\xD7fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.\n- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.\n- For ANY component whose confidence is below 80, set \"ask\" to the SINGLE highest-leverage unknown that, if clarified, would most improve the estimate: \"fat\" (hidden cooking fat \u2014 oil/butter vs dry/grilled), \"portion\" (ambiguous amount/size), or \"version\" (animal-vs-plant or major recipe variant). If confidence is 80+, or no single question would help, set \"ask\" to null. If the description already answers a question \u2014 it says dry, or gives a weight \u2014 do not ask it.\n".concat(AI_PAST_BLOCK(past), "\nMeal to analyse: \"").concat(desc, "\"\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"items\": [\n    {\n      \"name\": \"specific item name with quantity/size\",\n      \"kcal\": number,\n      \"protein\": number,\n      \"carbs\": number,\n      \"fat\": number,\n      \"confidence\": number,\n      \"ask\": \"fat\" | \"portion\" | \"version\" | null,\n      \"reasoning\": \"one sentence explaining source of data or uncertainty\"\n    }\n  ]\n}");
 };
 
 // Vision variant — same contract, but the meal is in the attached photo. Any text typed
@@ -10834,75 +10844,234 @@ var mealKey = function mealKey(s) {
   return (typeof s === "string" ? s : "").toLowerCase().replace(/(\d)[.,](\d)/g, "$1d$2").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 };
 
-// The most recent logged entry whose name matches `desc`, as estimate rows. `days` is
-// [{date, logs:[…]}] in any order. An entry's stored elements are the rows only while they
-// still add up to the entry (an edit in EntryEditor changes the totals, not the elements);
-// otherwise the entry's own totals are one row, so a correction the user made is what's reused.
-// Returns null for no match, a photo-only line, or a 0-kcal entry.
-var findPastMeal = function findPastMeal(desc, days) {
-  var key = mealKey(desc);
-  if (!key || !Array.isArray(days)) return null;
-  var sorted = _toConsumableArray(days).filter(function (d) {
-    return d && Array.isArray(d.logs);
-  }).sort(function (a, b) {
-    return String(b.date).localeCompare(String(a.date));
-  });
-  var _iterator0 = _createForOfIteratorHelper(sorted),
+// The same meal in other words (features/logging/09, v106). Typed lines are compared on their
+// FOOD words, in order: case, punctuation, plurals and filler ("size", "portion", "of", "bowl",
+// "homemade"…) don't count. Portion words become a multiplier, so "Half size portion of chicken
+// fajita pasta bake" is ½ × "chicken fajita pasta bake". Size words ("large", "small"…) must be
+// the same on both sides, since there is no honest number for "large". Numbers stay food words:
+// "2 eggs" never matches "3 eggs".
+var PORTION_MULT = {
+  half: 0.5,
+  halve: 0.5,
+  quarter: 0.25,
+  third: 1 / 3,
+  "double": 2,
+  twice: 2,
+  triple: 3
+};
+var SIZE_WORDS = ["small", "large", "big", "little", "medium", "regular", "huge", "mini", "giant", "jumbo", "extra"];
+var FILLER_WORDS = ["a", "an", "the", "of", "and", "size", "sized", "portion", "portions", "serving", "servings", "bowl", "bowls", "plate", "plates", "some", "my", "usual", "homemade", "leftover", "leftovers"];
+var mealParts = function mealParts(s) {
+  var raw = String(s || "").replace(/½|\b1\/2\b/g, " half ").replace(/¼|\b1\/4\b/g, " quarter ").replace(/⅓|\b1\/3\b/g, " third ");
+  var mult = 1;
+  var size = [],
+    core = [];
+  var _iterator0 = _createForOfIteratorHelper(mealKey(raw).split(" ").filter(Boolean)),
     _step0;
   try {
     for (_iterator0.s(); !(_step0 = _iterator0.n()).done;) {
-      var day = _step0.value;
-      var _loop2 = function _loop2() {
-          var e = day.logs[i];
-          if (!e || !(Number(e.kcal) > 0) || mealKey(e.name) !== key) return 0; // continue
-          var why = "Same as you logged before.";
-          var els = Array.isArray(e.elements) ? e.elements : [];
-          var sum = els.reduce(function (a, x) {
-            return a + (Number(x.kcal) || 0);
-          }, 0);
-          var fits = els.length > 0 && Math.abs(sum - e.kcal) <= Math.max(2, e.kcal * 0.02);
-          var rows = fits ? els.map(function (x) {
-            return {
-              name: x.name,
-              kcal: Number(x.kcal) || 0,
-              protein: Number(x.protein) || 0,
-              carbs: Number(x.carbs) || 0,
-              fat: Number(x.fat) || 0,
-              confidence: x.conf == null ? 100 : x.conf,
-              ask: null,
-              reasoning: why
-            };
-          }) : [{
-            name: e.name,
-            kcal: Number(e.kcal) || 0,
-            protein: Number(e.protein) || 0,
-            carbs: Number(e.carbs) || 0,
-            fat: Number(e.fat) || 0,
-            confidence: e.conf == null ? 100 : e.conf,
-            ask: null,
-            reasoning: why
-          }];
-          return {
-            v: {
-              date: day.date,
-              items: rows,
-              followups: Array.isArray(e.followups) ? e.followups : []
-            }
-          };
-        },
-        _ret;
-      for (var i = day.logs.length - 1; i >= 0; i--) {
-        _ret = _loop2();
-        if (_ret === 0) continue;
-        if (_ret) return _ret.v;
-      }
+      var w = _step0.value;
+      if (PORTION_MULT[w] != null) mult *= PORTION_MULT[w];else if (SIZE_WORDS.includes(w)) size.push(w);else if (!FILLER_WORDS.includes(w)) core.push(w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w);
     }
   } catch (err) {
     _iterator0.e(err);
   } finally {
     _iterator0.f();
   }
-  return null;
+  return {
+    core: core,
+    key: core.join(" "),
+    mult: mult,
+    size: size.sort().join(" ")
+  };
+};
+
+// Every past meal the user has, newest first: logged entries from `days` ([{date, logs}], any
+// order), then saved Quick Add meals (date null). 0-kcal entries are left out.
+var pastMealPool = function pastMealPool(days, meals) {
+  var out = [];
+  var sorted = (Array.isArray(days) ? days : []).filter(function (d) {
+    return d && Array.isArray(d.logs);
+  }).sort(function (a, b) {
+    return String(b.date).localeCompare(String(a.date));
+  });
+  var _iterator1 = _createForOfIteratorHelper(sorted),
+    _step1;
+  try {
+    for (_iterator1.s(); !(_step1 = _iterator1.n()).done;) {
+      var day = _step1.value;
+      for (var i = day.logs.length - 1; i >= 0; i--) {
+        var e = day.logs[i];
+        if (e && Number(e.kcal) > 0 && e.name) out.push({
+          e: e,
+          date: day.date
+        });
+      }
+    }
+  } catch (err) {
+    _iterator1.e(err);
+  } finally {
+    _iterator1.f();
+  }
+  var _iterator10 = _createForOfIteratorHelper(Array.isArray(meals) ? meals : []),
+    _step10;
+  try {
+    for (_iterator10.s(); !(_step10 = _iterator10.n()).done;) {
+      var m = _step10.value;
+      if (m && Number(m.kcal) > 0 && m.name) out.push({
+        e: m,
+        date: null
+      });
+    }
+  } catch (err) {
+    _iterator10.e(err);
+  } finally {
+    _iterator10.f();
+  }
+  return out;
+};
+
+// An entry as estimate rows, scaled by `factor`. Its stored elements are the rows only while they
+// still add up to the entry (an edit in EntryEditor changes the totals, not the elements);
+// otherwise the entry's own totals are one row, so a correction the user made is what's reused.
+var FACTOR_SIGN = function FACTOR_SIGN(f) {
+  return {
+    0.5: "½",
+    0.25: "¼",
+    2: "2",
+    3: "3"
+  }[f] || (Math.abs(f - 1 / 3) < 0.01 ? "⅓" : String(Math.round(f * 100) / 100));
+};
+var pastRows = function pastRows(e, factor) {
+  var why = factor === 1 ? "Same as you logged before." : FACTOR_SIGN(factor) + " × what you logged before.";
+  var sc = function sc(v, dp) {
+    var n = (Number(v) || 0) * factor;
+    return dp ? Math.round(n * 10) / 10 : Math.round(n);
+  };
+  var nm = function nm(n) {
+    return factor === 1 ? n : FACTOR_SIGN(factor) + " × " + n;
+  };
+  var els = Array.isArray(e.elements) ? e.elements : [];
+  var sum = els.reduce(function (a, x) {
+    return a + (Number(x.kcal) || 0);
+  }, 0);
+  var fits = els.length > 0 && Math.abs(sum - e.kcal) <= Math.max(2, e.kcal * 0.02);
+  var src = fits ? els : [_objectSpread(_objectSpread({}, e), {}, {
+    conf: e.conf
+  })];
+  return src.map(function (x) {
+    return {
+      name: nm(x.name),
+      kcal: sc(x.kcal),
+      protein: sc(x.protein, 1),
+      carbs: sc(x.carbs, 1),
+      fat: sc(x.fat, 1),
+      confidence: x.conf == null ? 100 : x.conf,
+      ask: null,
+      reasoning: why
+    };
+  });
+};
+
+// The past meal that answers `desc` without the model, or null. Best first: the exact same line;
+// then the same food words at the same portion; then the same food words scaled by the portion
+// words. Newest wins within each. `count` is how many past entries are this meal.
+var findPastMeal = function findPastMeal(desc, days) {
+  var meals = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
+  var want = mealParts(desc);
+  if (!want.key) return null;
+  var exactKey = mealKey(desc);
+  var best = null,
+    rank = 9,
+    count = 0;
+  var _iterator11 = _createForOfIteratorHelper(pastMealPool(days, meals)),
+    _step11;
+  try {
+    for (_iterator11.s(); !(_step11 = _iterator11.n()).done;) {
+      var _p = _step11.value;
+      var got = mealParts(_p.e.name);
+      if (got.key !== want.key || got.size !== want.size) continue;
+      count++;
+      var _factor = want.mult / got.mult;
+      var r = mealKey(_p.e.name) === exactKey ? 0 : _factor === 1 ? 1 : 2;
+      if (r < rank) {
+        best = {
+          p: _p,
+          factor: _factor
+        };
+        rank = r;
+      }
+    }
+  } catch (err) {
+    _iterator11.e(err);
+  } finally {
+    _iterator11.f();
+  }
+  if (!best) return null;
+  var _best = best,
+    p = _best.p,
+    factor = _best.factor;
+  return {
+    date: p.date,
+    name: p.e.name,
+    factor: factor,
+    count: count,
+    exact: rank === 0,
+    items: pastRows(p.e, factor),
+    followups: factor === 1 && Array.isArray(p.e.followups) ? p.e.followups : []
+  };
+};
+
+// When there is no match, the user's closest past meals still go to the model as their usual
+// recipe and portion (AI_PROMPT), so a "chicken fajita pasta bake with garlic bread" is built on
+// the bake they've logged for months, not a generic recipe. Close = shares at least half of the
+// typed food words (and at least two, unless only one was typed). Newest per meal, at most 3.
+var similarPastMeals = function similarPastMeals(desc, days) {
+  var meals = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
+  var limit = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 3;
+  var want = mealParts(desc);
+  if (!want.core.length) return [];
+  var need = Math.max(Math.min(2, want.core.length), Math.ceil(want.core.length / 2));
+  var seen = new Set(),
+    out = [];
+  var _iterator12 = _createForOfIteratorHelper(pastMealPool(days, meals)),
+    _step12;
+  try {
+    var _loop2 = function _loop2() {
+        var p = _step12.value;
+        var got = mealParts(p.e.name);
+        if (!got.key || seen.has(got.key + "|" + got.size + "|" + got.mult)) return 0; // continue
+        var shared = want.core.filter(function (w) {
+          return got.core.includes(w);
+        }).length;
+        if (shared < need) return 0; // continue
+        seen.add(got.key + "|" + got.size + "|" + got.mult);
+        out.push({
+          shared: shared,
+          name: String(p.e.name).slice(0, 120),
+          kcal: Math.round(p.e.kcal),
+          protein: Math.round((Number(p.e.protein) || 0) * 10) / 10,
+          carbs: Math.round((Number(p.e.carbs) || 0) * 10) / 10,
+          fat: Math.round((Number(p.e.fat) || 0) * 10) / 10
+        });
+      },
+      _ret;
+    for (_iterator12.s(); !(_step12 = _iterator12.n()).done;) {
+      _ret = _loop2();
+      if (_ret === 0) continue;
+    }
+  } catch (err) {
+    _iterator12.e(err);
+  } finally {
+    _iterator12.f();
+  }
+  return out.sort(function (a, b) {
+    return b.shared - a.shared;
+  }).slice(0, limit).map(function (_ref96) {
+    var shared = _ref96.shared,
+      m = _objectWithoutProperties(_ref96, _excluded);
+    return m;
+  });
 };
 var confColor = function confColor(c) {
   return c <= 33 ? "var(--over)" : c <= 66 ? "var(--warn)" : A;
@@ -11211,10 +11380,10 @@ var reportEstimate = function reportEstimate(desc, items, totals) {
   var body = "I think this AI estimate is wrong.\n\nMy description:\n" + (desc ? desc : "(photo only)") + "\n\nEstimate:\n" + lines + "\n\nTotal: " + Math.round(totals && totals.kcal || 0) + " kcal" + "\n\nWhat was off:\n";
   window.location.href = "mailto:fuellogadmin@gmail.com?subject=" + encodeURIComponent("Fuel Log — inaccurate AI estimate") + "&body=" + encodeURIComponent(body);
 };
-function ItemRow(_ref96) {
-  var item = _ref96.item,
-    onReestimate = _ref96.onReestimate,
-    reestimating = _ref96.reestimating;
+function ItemRow(_ref97) {
+  var item = _ref97.item,
+    onReestimate = _ref97.onReestimate,
+    reestimating = _ref97.reestimating;
   var _useState111 = useState(false),
     _useState112 = _slicedToArray(_useState111, 2),
     editing = _useState112[0],
@@ -11337,11 +11506,13 @@ function ItemRow(_ref96) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref97) {
-  var onAdd = _ref97.onAdd,
-    onBack = _ref97.onBack,
-    _ref97$pastDays = _ref97.pastDays,
-    pastDays = _ref97$pastDays === void 0 ? [] : _ref97$pastDays;
+function AILog(_ref98) {
+  var onAdd = _ref98.onAdd,
+    onBack = _ref98.onBack,
+    _ref98$pastDays = _ref98.pastDays,
+    pastDays = _ref98$pastDays === void 0 ? [] : _ref98$pastDays,
+    _ref98$meals = _ref98.meals,
+    meals = _ref98$meals === void 0 ? [] : _ref98$meals;
   var _useState115 = useState(""),
     _useState116 = _slicedToArray(_useState115, 2),
     desc = _useState116[0],
@@ -11349,7 +11520,7 @@ function AILog(_ref97) {
   var _useState117 = useState(null),
     _useState118 = _slicedToArray(_useState117, 2),
     reused = _useState118[0],
-    setReused = _useState118[1]; // date of the past entry reused (logging/09), else null
+    setReused = _useState118[1]; // the findPastMeal result reused (logging/09), else null
   var _useState119 = useState(false),
     _useState120 = _slicedToArray(_useState119, 2),
     loading = _useState120[0],
@@ -11491,7 +11662,7 @@ function AILog(_ref97) {
     setListening(false);
   };
   var onPickPhoto = /*#__PURE__*/function () {
-    var _ref98 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(e) {
+    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(e) {
       var file, _t40, _t41;
       return _regenerator().w(function (_context36) {
         while (1) switch (_context36.p = _context36.n) {
@@ -11523,15 +11694,15 @@ function AILog(_ref97) {
       }, _callee36, null, [[1, 3]]);
     }));
     return function onPickPhoto(_x51) {
-      return _ref98.apply(this, arguments);
+      return _ref99.apply(this, arguments);
     };
   }();
 
   // fresh: true skips the past-meal lookup — the "Re-estimate with AI" button on a reused meal.
   var estimate = /*#__PURE__*/function () {
-    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
-      var _ref100,
-        _ref100$fresh,
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
+      var _ref101,
+        _ref101$fresh,
         fresh,
         stated,
         past,
@@ -11546,7 +11717,7 @@ function AILog(_ref97) {
       return _regenerator().w(function (_context37) {
         while (1) switch (_context37.p = _context37.n) {
           case 0:
-            _ref100 = _args37.length > 0 && _args37[0] !== undefined ? _args37[0] : {}, _ref100$fresh = _ref100.fresh, fresh = _ref100$fresh === void 0 ? false : _ref100$fresh;
+            _ref101 = _args37.length > 0 && _args37[0] !== undefined ? _args37[0] : {}, _ref101$fresh = _ref101.fresh, fresh = _ref101$fresh === void 0 ? false : _ref101$fresh;
             if (!(!desc.trim() && !photo)) {
               _context37.n = 1;
               break;
@@ -11576,14 +11747,14 @@ function AILog(_ref97) {
           case 2:
             // Typed text the user has logged before is answered from their log: no model call, no
             // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
-            past = photo || fresh ? null : findPastMeal(desc, pastDays);
+            past = photo || fresh ? null : findPastMeal(desc, pastDays, meals);
             if (!past) {
               _context37.n = 3;
               break;
             }
             setItems(past.items);
             setFuLog(past.followups);
-            setReused(past.date);
+            setReused(past);
             setLoading(false);
             return _context37.a(2);
           case 3:
@@ -11610,7 +11781,7 @@ function AILog(_ref97) {
             break;
           case 5:
             _context37.n = 6;
-            return callAIJson(AI_PROMPT(desc), 2000);
+            return callAIJson(AI_PROMPT(desc, similarPastMeals(desc, pastDays, meals)), 2000);
           case 6:
             _t42 = _context37.v;
           case 7:
@@ -11653,7 +11824,7 @@ function AILog(_ref97) {
       }, _callee37, null, [[3, 8]]);
     }));
     return function estimate() {
-      return _ref99.apply(this, arguments);
+      return _ref100.apply(this, arguments);
     };
   }();
 
@@ -11684,7 +11855,7 @@ function AILog(_ref97) {
     }
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(idx, newName) {
+    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(idx, newName) {
       var updated, _final, _t44;
       return _regenerator().w(function (_context38) {
         while (1) switch (_context38.p = _context38.n) {
@@ -11717,7 +11888,7 @@ function AILog(_ref97) {
       }, _callee38, null, [[1, 3]]);
     }));
     return function reestimate(_x52, _x53) {
-      return _ref101.apply(this, arguments);
+      return _ref102.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -11977,7 +12148,20 @@ function AILog(_ref97) {
       fontWeight: 800,
       marginBottom: 4
     }
-  }, "\u21BA LOGGED BEFORE"), "You logged this ", reused === todayKey() ? "earlier today" : "on " + fmtDay(reused), ", so these are the same numbers \u2014 no AI estimate needed.", /*#__PURE__*/React.createElement("button", {
+  }, "\u21BA LOGGED BEFORE"), function () {
+    var when = reused.date == null ? "in your Quick Add meals" : reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
+    var times = reused.count > 1 ? " (".concat(reused.count, " times)") : "";
+    var f = reused.factor;
+    var word = {
+      0.5: "Half",
+      0.25: "A quarter",
+      2: "Double",
+      3: "Triple"
+    }[f] || (Math.abs(f - 1 / 3) < 0.01 ? "A third" : FACTOR_SIGN(f) + " ×");
+    if (reused.exact) return "You logged this ".concat(when).concat(times, ", so these are the same numbers \u2014 no AI estimate needed.");
+    if (f === 1) return "Matches \u201C".concat(reused.name, "\u201D, logged ").concat(when).concat(times, " \u2014 same numbers, no AI estimate needed.");
+    return "".concat(word, " of your \u201C").concat(reused.name, "\u201D, logged ").concat(when).concat(times, " \u2014 no AI estimate needed.");
+  }(), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
       return estimate({
         fresh: true
@@ -12209,17 +12393,17 @@ function AILog(_ref97) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref102) {
-  var onAdd = _ref102.onAdd,
-    onBack = _ref102.onBack,
-    meals = _ref102.meals,
-    setMeals = _ref102.setMeals,
-    _ref102$onForget = _ref102.onForget,
-    onForget = _ref102$onForget === void 0 ? function () {} : _ref102$onForget,
-    _ref102$isPremium = _ref102.isPremium,
-    isPremium = _ref102$isPremium === void 0 ? false : _ref102$isPremium,
-    _ref102$onPremiumGate = _ref102.onPremiumGate,
-    onPremiumGate = _ref102$onPremiumGate === void 0 ? function () {} : _ref102$onPremiumGate;
+function QuickAdd(_ref103) {
+  var onAdd = _ref103.onAdd,
+    onBack = _ref103.onBack,
+    meals = _ref103.meals,
+    setMeals = _ref103.setMeals,
+    _ref103$onForget = _ref103.onForget,
+    onForget = _ref103$onForget === void 0 ? function () {} : _ref103$onForget,
+    _ref103$isPremium = _ref103.isPremium,
+    isPremium = _ref103$isPremium === void 0 ? false : _ref103$isPremium,
+    _ref103$onPremiumGate = _ref103.onPremiumGate,
+    onPremiumGate = _ref103$onPremiumGate === void 0 ? function () {} : _ref103$onPremiumGate;
   var _useState147 = useState(""),
     _useState148 = _slicedToArray(_useState147, 2),
     search = _useState148[0],
@@ -12229,7 +12413,7 @@ function QuickAdd(_ref102) {
     modal = _useState150[0],
     setModal = _useState150[1];
   var save = /*#__PURE__*/function () {
-    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
+    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
       return _regenerator().w(function (_context39) {
         while (1) switch (_context39.n) {
           case 0:
@@ -12242,7 +12426,7 @@ function QuickAdd(_ref102) {
       }, _callee39);
     }));
     return function save(_x54) {
-      return _ref103.apply(this, arguments);
+      return _ref104.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -12442,9 +12626,9 @@ var TAPE_SERIES = [{
 //
 // At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
 // can land under the thumb, so a taller card would cover the point being inspected.
-function BodyFatTooltip(_ref104) {
-  var active = _ref104.active,
-    payload = _ref104.payload;
+function BodyFatTooltip(_ref105) {
+  var active = _ref105.active,
+    payload = _ref105.payload;
   if (!active || !payload || !payload.length) return null;
   var r = payload[0].payload || {};
   return /*#__PURE__*/React.createElement("div", {
@@ -12475,31 +12659,31 @@ function BodyFatTooltip(_ref104) {
     }
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
-function History(_ref105) {
+function History(_ref106) {
   var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref105.history,
-    onBack = _ref105.onBack,
-    onUpdateDay = _ref105.onUpdateDay,
-    _ref105$weighIns = _ref105.weighIns,
-    weighIns = _ref105$weighIns === void 0 ? [] : _ref105$weighIns,
-    _ref105$bodyMeasureme = _ref105.bodyMeasurements,
-    bodyMeasurements = _ref105$bodyMeasureme === void 0 ? [] : _ref105$bodyMeasureme,
-    _ref105$sex = _ref105.sex,
-    sex = _ref105$sex === void 0 ? null : _ref105$sex,
-    _ref105$profile = _ref105.profile,
-    profile = _ref105$profile === void 0 ? {} : _ref105$profile,
-    _ref105$tdeeAdj = _ref105.tdeeAdj,
-    tdeeAdj = _ref105$tdeeAdj === void 0 ? 0 : _ref105$tdeeAdj,
-    _ref105$meals = _ref105.meals,
-    meals = _ref105$meals === void 0 ? DEF_MEALS : _ref105$meals,
-    _ref105$setMeals = _ref105.setMeals,
-    setMeals = _ref105$setMeals === void 0 ? function () {} : _ref105$setMeals,
-    _ref105$onForget = _ref105.onForget,
-    onForget = _ref105$onForget === void 0 ? function () {} : _ref105$onForget,
-    _ref105$isPremium = _ref105.isPremium,
-    isPremium = _ref105$isPremium === void 0 ? false : _ref105$isPremium,
-    _ref105$onPremiumGate = _ref105.onPremiumGate,
-    onPremiumGate = _ref105$onPremiumGate === void 0 ? function () {} : _ref105$onPremiumGate;
+  var history = _ref106.history,
+    onBack = _ref106.onBack,
+    onUpdateDay = _ref106.onUpdateDay,
+    _ref106$weighIns = _ref106.weighIns,
+    weighIns = _ref106$weighIns === void 0 ? [] : _ref106$weighIns,
+    _ref106$bodyMeasureme = _ref106.bodyMeasurements,
+    bodyMeasurements = _ref106$bodyMeasureme === void 0 ? [] : _ref106$bodyMeasureme,
+    _ref106$sex = _ref106.sex,
+    sex = _ref106$sex === void 0 ? null : _ref106$sex,
+    _ref106$profile = _ref106.profile,
+    profile = _ref106$profile === void 0 ? {} : _ref106$profile,
+    _ref106$tdeeAdj = _ref106.tdeeAdj,
+    tdeeAdj = _ref106$tdeeAdj === void 0 ? 0 : _ref106$tdeeAdj,
+    _ref106$meals = _ref106.meals,
+    meals = _ref106$meals === void 0 ? DEF_MEALS : _ref106$meals,
+    _ref106$setMeals = _ref106.setMeals,
+    setMeals = _ref106$setMeals === void 0 ? function () {} : _ref106$setMeals,
+    _ref106$onForget = _ref106.onForget,
+    onForget = _ref106$onForget === void 0 ? function () {} : _ref106$onForget,
+    _ref106$isPremium = _ref106.isPremium,
+    isPremium = _ref106$isPremium === void 0 ? false : _ref106$isPremium,
+    _ref106$onPremiumGate = _ref106.onPremiumGate,
+    onPremiumGate = _ref106$onPremiumGate === void 0 ? function () {} : _ref106$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -12850,7 +13034,8 @@ function History(_ref105) {
     onBack: function onBack() {
       return setAddCtx(null);
     },
-    pastDays: history
+    pastDays: history,
+    meals: meals
   });
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -13321,11 +13506,11 @@ function History(_ref105) {
         fontWeight: 800,
         marginBottom: 4
       }
-    }, "BODY"), bodyRows.map(function (_ref106, i) {
-      var _ref107 = _slicedToArray(_ref106, 3),
-        label = _ref107[0],
-        value = _ref107[1],
-        color = _ref107[2];
+    }, "BODY"), bodyRows.map(function (_ref107, i) {
+      var _ref108 = _slicedToArray(_ref107, 3),
+        label = _ref108[0],
+        value = _ref108[1],
+        color = _ref108[2];
       return /*#__PURE__*/React.createElement("div", {
         key: label,
         style: {
@@ -13515,10 +13700,10 @@ function History(_ref105) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref108) {
-    var _ref109 = _slicedToArray(_ref108, 2),
-      k = _ref109[0],
-      m = _ref109[1];
+  }, Object.entries(MM).map(function (_ref109) {
+    var _ref110 = _slicedToArray(_ref109, 2),
+      k = _ref110[0],
+      m = _ref110[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -13594,10 +13779,10 @@ function History(_ref105) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref110) {
-    var _ref111 = _slicedToArray(_ref110, 2),
-      t = _ref111[0],
-      e = _ref111[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref111) {
+    var _ref112 = _slicedToArray(_ref111, 2),
+      t = _ref112[0],
+      e = _ref112[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -13887,10 +14072,10 @@ function History(_ref105) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref112) {
-    var _ref113 = _slicedToArray(_ref112, 2),
-      k = _ref113[0],
-      m = _ref113[1];
+  }, Object.entries(MM).map(function (_ref113) {
+    var _ref114 = _slicedToArray(_ref113, 2),
+      k = _ref114[0],
+      m = _ref114[1];
     var avg = avgRows.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / avgRows.length;
@@ -14078,9 +14263,9 @@ function History(_ref105) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref114) {
-  var earnedBdgs = _ref114.earnedBdgs,
-    onBack = _ref114.onBack;
+function Achievements(_ref115) {
+  var earnedBdgs = _ref115.earnedBdgs,
+    onBack = _ref115.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -14179,9 +14364,9 @@ function Achievements(_ref114) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref115) {
-  var badge = _ref115.badge,
-    onDone = _ref115.onDone;
+function BadgeFanfare(_ref116) {
+  var badge = _ref116.badge,
+    onDone = _ref116.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
@@ -14302,9 +14487,9 @@ function BadgeFanfare(_ref115) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref116) {
-  var streak = _ref116.streak,
-    onDone = _ref116.onDone;
+function StreakPip(_ref117) {
+  var streak = _ref117.streak,
+    onDone = _ref117.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -14355,9 +14540,9 @@ function StreakPip(_ref116) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref117) {
-  var badge = _ref117.badge,
-    onDone = _ref117.onDone;
+function BadgeToast(_ref118) {
+  var badge = _ref118.badge,
+    onDone = _ref118.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -14419,9 +14604,9 @@ function BadgeToast(_ref117) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref118) {
-  var text = _ref118.text,
-    onDone = _ref118.onDone;
+function NoteToast(_ref119) {
+  var text = _ref119.text,
+    onDone = _ref119.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -14694,7 +14879,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref119 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
+      var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
         var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t45, _t46;
         return _regenerator().w(function (_context40) {
           while (1) switch (_context40.p = _context40.n) {
@@ -14999,7 +15184,7 @@ function App() {
         }, _callee40, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref119.apply(this, arguments);
+        return _ref120.apply(this, arguments);
       };
     }();
     load();
@@ -15053,7 +15238,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(l) {
+    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(l) {
       return _regenerator().w(function (_context41) {
         while (1) switch (_context41.n) {
           case 0:
@@ -15068,11 +15253,11 @@ function App() {
       }, _callee41);
     }));
     return function saveLogs(_x55) {
-      return _ref120.apply(this, arguments);
+      return _ref121.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -15087,11 +15272,11 @@ function App() {
       }, _callee42);
     }));
     return function saveWater(_x56) {
-      return _ref121.apply(this, arguments);
+      return _ref122.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -15106,11 +15291,11 @@ function App() {
       }, _callee43);
     }));
     return function saveMode(_x57) {
-      return _ref122.apply(this, arguments);
+      return _ref123.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(p) {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(p) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -15126,11 +15311,11 @@ function App() {
       }, _callee44);
     }));
     return function saveProf(_x58) {
-      return _ref123.apply(this, arguments);
+      return _ref124.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(w) {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(w) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
@@ -15145,7 +15330,7 @@ function App() {
       }, _callee45);
     }));
     return function saveWorkouts(_x59) {
-      return _ref124.apply(this, arguments);
+      return _ref125.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15159,7 +15344,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(e) {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
@@ -15199,7 +15384,7 @@ function App() {
       }, _callee46);
     }));
     return function addLog(_x60) {
-      return _ref125.apply(this, arguments);
+      return _ref126.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15225,7 +15410,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(kcal) {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(kcal) {
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.n) {
           case 0:
@@ -15250,11 +15435,11 @@ function App() {
       }, _callee47);
     }));
     return function saveCustomKcal(_x61) {
-      return _ref126.apply(this, arguments);
+      return _ref127.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(m) {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(m) {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -15272,11 +15457,11 @@ function App() {
       }, _callee48);
     }));
     return function handleSetMode(_x62) {
-      return _ref127.apply(this, arguments);
+      return _ref128.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
           case 0:
@@ -15291,11 +15476,11 @@ function App() {
       }, _callee49);
     }));
     return function handleAckAggressiveCut() {
-      return _ref128.apply(this, arguments);
+      return _ref129.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(updated) {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(updated) {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
@@ -15310,7 +15495,7 @@ function App() {
       }, _callee50);
     }));
     return function saveMeals(_x63) {
-      return _ref129.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
 
@@ -15320,7 +15505,7 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(entry) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(entry) {
       var name, clean;
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.n) {
@@ -15350,14 +15535,14 @@ function App() {
       }, _callee51);
     }));
     return function addToQA(_x64) {
-      return _ref130.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(googleUser, grantedBy, consentMeta) {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t47;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.p = _context52.n) {
@@ -15457,13 +15642,13 @@ function App() {
       }, _callee52, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x65, _x66, _x67) {
-      return _ref131.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
       var meta, rec;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.n) {
@@ -15494,11 +15679,11 @@ function App() {
       }, _callee53);
     }));
     return function handleConsent() {
-      return _ref132.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       var clearKeys, _i4, _clearKeys, k, i, key, _t48;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.p = _context54.n) {
@@ -15570,7 +15755,7 @@ function App() {
       }, _callee54, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref133.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
 
@@ -15580,7 +15765,7 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.n) {
           case 0:
@@ -15600,7 +15785,7 @@ function App() {
       }, _callee55);
     }));
     return function resetTdeeAdj() {
-      return _ref134.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -15655,7 +15840,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
           case 0:
@@ -15670,11 +15855,11 @@ function App() {
       }, _callee56);
     }));
     return function handleDeleteAccount() {
-      return _ref135.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(upd) {
+    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(upd) {
       var nh;
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
@@ -15705,11 +15890,11 @@ function App() {
       }, _callee57);
     }));
     return function updateDay(_x68) {
-      return _ref136.apply(this, arguments);
+      return _ref137.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(weight) {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.n) {
@@ -15794,7 +15979,7 @@ function App() {
       }, _callee58);
     }));
     return function onWeighIn(_x69) {
-      return _ref137.apply(this, arguments);
+      return _ref138.apply(this, arguments);
     };
   }();
 
@@ -15803,12 +15988,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(_ref138) {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(_ref139) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.n) {
           case 0:
-            neck = _ref138.neck, waist = _ref138.waist, hip = _ref138.hip;
+            neck = _ref139.neck, waist = _ref139.waist, hip = _ref139.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -15870,11 +16055,11 @@ function App() {
       }, _callee59);
     }));
     return function onMeasurement(_x70) {
-      return _ref139.apply(this, arguments);
+      return _ref140.apply(this, arguments);
     };
   }();
   var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(on) {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(on) {
       return _regenerator().w(function (_context60) {
         while (1) switch (_context60.n) {
           case 0:
@@ -15887,11 +16072,11 @@ function App() {
       }, _callee60);
     }));
     return function toggleMuteMeasurements(_x71) {
-      return _ref140.apply(this, arguments);
+      return _ref141.apply(this, arguments);
     };
   }();
   var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(note) {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(note) {
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
           case 0:
@@ -15904,7 +16089,7 @@ function App() {
       }, _callee61);
     }));
     return function saveMeasurementNote(_x72) {
-      return _ref141.apply(this, arguments);
+      return _ref142.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -15947,7 +16132,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
       var ts;
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.n) {
@@ -15962,11 +16147,11 @@ function App() {
       }, _callee62);
     }));
     return function dismissWeighNudge() {
-      return _ref142.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.n) {
           case 0:
@@ -15983,7 +16168,7 @@ function App() {
       }, _callee63);
     }));
     return function muteWeighNudge() {
-      return _ref143.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
 
@@ -16002,7 +16187,7 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
       var ts;
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.n) {
@@ -16017,7 +16202,7 @@ function App() {
       }, _callee64);
     }));
     return function dismissMeasurementNudge() {
-      return _ref144.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
 
@@ -16179,7 +16364,7 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(next) {
+    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(next) {
       return _regenerator().w(function (_context65) {
         while (1) switch (_context65.n) {
           case 0:
@@ -16194,7 +16379,7 @@ function App() {
       }, _callee65);
     }));
     return function saveCutBlock(_x73) {
-      return _ref145.apply(this, arguments);
+      return _ref146.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16217,7 +16402,7 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66() {
+    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66() {
       return _regenerator().w(function (_context66) {
         while (1) switch (_context66.n) {
           case 0:
@@ -16237,7 +16422,7 @@ function App() {
       }, _callee66);
     }));
     return function startDietBreak() {
-      return _ref146.apply(this, arguments);
+      return _ref147.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -16299,10 +16484,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref147) {
-    var _ref148 = _slicedToArray(_ref147, 2),
-      lbl = _ref148[0],
-      fn = _ref148[1];
+  }]].map(function (_ref148) {
+    var _ref149 = _slicedToArray(_ref148, 2),
+      lbl = _ref149[0],
+      fn = _ref149[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -16455,7 +16640,8 @@ function App() {
     })), [{
       date: todayKey(),
       logs: logs
-    }])
+    }]),
+    meals: meals
   }), view === "quick" && /*#__PURE__*/React.createElement(QuickAdd, {
     onAdd: addLog,
     onBack: function onBack() {

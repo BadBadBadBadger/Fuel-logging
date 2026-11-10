@@ -23,9 +23,9 @@ const lifted = (() => {
   const end   = src.indexOf("const confColor", start);
   if (start < 0 || end < 0) throw new Error("stated-totals block not found in app.jsx");
   const block = src.slice(start, end);
-  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal };")();
+  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal, mealParts, similarPastMeals };")();
 })();
-const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal } = lifted;
+const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal, mealParts, similarPastMeals } = lifted;
 
 describe("A full totals line typed by the user is the meal (logging/06)", () => {
   test("the founder's crumpets: name before the figures, all four numbers exact", () => {
@@ -349,5 +349,66 @@ describe("A meal logged before is reused, not re-estimated (logging/09)", () => 
     const fu = [{ q: "How were the eggs cooked?", a: "Poached" }];
     expect(findPastMeal("2 poached eggs on sourdough",
       [{ date: "2026-11-01", logs: [entry({ followups: fu })] }]).followups).toEqual(fu);
+  });
+});
+
+describe("The same meal in other words: portion words scale it (logging/09, v106)", () => {
+  // The founder's screenshot, 2026-11-10: logged weekly for six months, then typed with "Half size
+  // portion of" in front — and the model guessed 420 kcal at 42% from a generic recipe.
+  const bake = (date, kcal, name = "Chicken fajita pasta bake") => ({ date, logs: [{ name, kcal,
+    protein: 52, carbs: 70, fat: 22, conf: 70, source: "ai-text", elements: null }] });
+  const days = [bake("2026-10-20", 700), bake("2026-11-03", 720), bake("2026-10-27", 690, "chicken fajita pasta bake.")];
+
+  test("filler and portion words aren't food words", () => {
+    expect(mealParts("Half size portion of chicken fajita pasta bake"))
+      .toMatchObject({ key: "chicken fajita pasta bake", mult: 0.5, size: "" });
+    expect(mealParts("½ bowl of homemade chilli").mult).toBe(0.5);
+    expect(mealParts("1/2 chilli").mult).toBe(0.5);
+    expect(mealParts("double cheeseburgers").key).toBe("cheeseburger");
+  });
+  test("half of the usual is half of the most recent log, without the model", () => {
+    const r = findPastMeal("Half size portion of chicken fajita pasta bake", days);
+    expect(r).toMatchObject({ date: "2026-11-03", factor: 0.5, count: 3, exact: false });
+    expect(r.items).toEqual([expect.objectContaining({
+      name: "½ × Chicken fajita pasta bake", kcal: 360, protein: 26, carbs: 35, fat: 11 })]);
+  });
+  test("an earlier half portion logged in the same words is reused as it is", () => {
+    const withHalf = [...days, bake("2026-10-01", 350, "Half size portion of chicken fajita pasta bake")];
+    const r = findPastMeal("half size portion of chicken fajita pasta bake", withHalf);
+    expect(r).toMatchObject({ exact: true, factor: 1, date: "2026-10-01" });
+    expect(r.items[0].kcal).toBe(350);
+  });
+  test("a size word must be the same on both sides — 'large' has no honest number", () => {
+    expect(findPastMeal("large chicken fajita pasta bake", days)).toBeNull();
+  });
+  test("an extra food is a different meal — but the usual goes to the model as reference", () => {
+    const desc = "chicken fajita pasta bake with garlic bread";
+    expect(findPastMeal(desc, days)).toBeNull();
+    const refs = similarPastMeals(desc, days);
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ name: "Chicken fajita pasta bake", kcal: 720 });
+  });
+  test("an unrelated meal sends no reference", () => {
+    expect(similarPastMeals("chicken tikka masala", days)).toEqual([]);
+  });
+  test("a saved Quick Add meal counts as a meal logged before", () => {
+    const r = findPastMeal("Whey protein shake", [], [{ name: "Whey protein shake", kcal: 130, protein: 25, carbs: 5, fat: 2 }]);
+    expect(r).toMatchObject({ date: null, factor: 1 });
+    expect(r.items[0].kcal).toBe(130);
+  });
+});
+
+describe("The text prompt carries the user's own past logs when there are any", () => {
+  const start = src.indexOf("const AI_PAST_BLOCK");
+  const AI_PROMPT = new Function(src.slice(start, src.indexOf("// Vision variant", start)) + "\nreturn AI_PROMPT;")();
+  test("no past logs: the prompt is as it was", () => {
+    expect(AI_PROMPT("toast")).not.toMatch(/OWN past logs/);
+  });
+  test("past logs are listed with their numbers and the scaling rule", () => {
+    const p = AI_PROMPT("chicken fajita pasta bake with garlic bread",
+      [{ name: "Chicken fajita pasta bake", kcal: 720, protein: 52, carbs: 70, fat: 22 }]);
+    expect(p).toMatch(/OWN past logs/);
+    expect(p).toContain('- "Chicken fajita pasta bake": 720 kcal, P 52g, C 70g, F 22g');
+    expect(p).toMatch(/"half" = half of the logged figures/);
   });
 });
