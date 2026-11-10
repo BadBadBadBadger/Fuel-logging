@@ -1,8 +1,25 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-11-05 (cloud). **Jest 469/469 · Playwright 163/163 · sw v104 on branch
-`ccr-4f9a195a-6yc3cl` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
-(PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v103 merged to `main` since.
+**Updated:** 2026-11-10 (cloud). **Jest 490/490 · Playwright 169/169 · sw v107 on branch
+`ccr-5a151d53-mqw4cd` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
+(PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
+
+> **v107 (2026-11-10, cloud, on a branch): Quick Add first, then the log.** `pastMealPool` lists Quick
+> Add meals first; a Quick Add match always wins, else the newest log entry from the whole history
+> (the startup pull pages every `food_logs` row). e2e must set `qa_revive_v68`, or the one-time
+> `reviveMeals` recovery turns every seeded log into a Quick Add row.
+
+> **v106 (2026-11-10, cloud, on a branch): "half a portion of…" reuses the usual.** Matching is now on
+> food words in order (filler and plurals ignored); portion words scale the latest log (½ ×); size
+> words must match; Quick Add meals count. No match → up to 3 similar past meals go in `AI_PROMPT` as
+> the user's usual. `mealParts`, `similarPastMeals`, `AI_PAST_BLOCK`. Spec `logging/09` (v106 block).
+
+> **v105 (2026-11-09, cloud, on a branch): a meal logged before skips the AI.** Typed AI Log text
+> is looked up in the user's own log (today + history) before the model is called. Exact match on
+> the whole line, case/punctuation/spacing ignored, no fuzzy matching; the most recent entry wins
+> and its elements are reused. No tokens, no follow-ups. A **LOGGED BEFORE** card offers
+> **Re-estimate with AI**. Photos always go to the model. `findPastMeal` next to `photoMealName`.
+> Spec: `features/logging/09`. Device check: `DEVICE-TEST.md` → *New in v105*. Detail: `DOCS.md` §37.
 
 > **v104 (2026-11-05, cloud, on a branch): what you type with a photo guides the estimate.** Text in
 > the AI Log box was already sent with a photo, but only as a weak *"disambiguate"* hint. It is now
@@ -246,10 +263,10 @@ the repo for orientation. Open further docs only when the task actually needs th
 
 **House rules that will bite you if you skip them:**
 - `app.js` is **generated** — edit `app.jsx`, then `npx babel app.jsx --out-file app.js`. Never edit `app.js`.
-- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v94**.
+- **Bump `sw.js` cache version on every build** (`const CACHE = "fuel-log-vNN"`). Currently **v107**.
   If a cloud session and this laptop both bumped to the same number, the merge bumps once more —
   that is what v90 is.
-- Run `npx jest` before claiming anything works. Currently **447/447**. `npm run test:ui` is **152/152**
+- Run `npx jest` before claiming anything works. Currently **490/490**. `npm run test:ui` is **169/169**
   (in a cloud session, see `PLAYWRIGHT-PLAN.md` → *How to run* first).
 - Only `useState`/`useEffect` are available as React hooks. Storage keys use `__`, not colons.
 - Exact numbers live in `__tests__/logic.test.js`, which **mirrors** the pure functions from `app.jsx`.

@@ -1522,6 +1522,35 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 
 ## 37. Changelog
 
+### Quick Add first, then everything ever logged (Nov 2026, v107)
+- Founder: reuse should scan Quick Add and fall back on past logged items that were never Quick Added.
+  Quick Add is now checked first and always wins; otherwise the newest matching log entry, from the
+  whole account history (the startup pull already brings every `food_logs` row to the phone). The card
+  names the source: *"Half of your Quick Add meal “…”"* vs *"…, logged on 3 Nov (24 times)"*.
+- Jest **490/490** (+5), Playwright **169/169** (+1), sw `v106→v107`. **No DB change.**
+
+### Reuse understands "half a portion of…", and the AI sees your usual (Nov 2026, v106)
+- Founder's screenshot: *"Half size portion of chicken fajita pasta bake"*, logged weekly for six months,
+  came back 420 kcal at 42% from a generic recipe. v105 only matched the identical line.
+- Now matched on food words in order (filler like *size / portion / of / bowl / homemade* and plurals
+  ignored). Portion words (*half, ½, 1/2, quarter, third, double, twice, triple*) scale the latest log;
+  rows read *"½ × …"*. Size words (*large, small…*) must match or it goes to the AI. Quick Add meals count.
+- No match → up to 3 similar past meals are put in the text prompt as the user's usual recipe/portion.
+- Jest **485/485** (+9), Playwright **168/168** (+2), sw `v105→v106`. **No DB change.** The prompt now
+  carries up to three of the user's own meal names and macros — nothing that wasn't already theirs to send.
+
+### AI Log reuses a meal you've logged before (Nov 2026)
+- Founder's ask: check the user's past meals before asking the AI, to save tokens on meals they've had before.
+- Typed text in AI Log is now looked up in your own log (today + all history) **before** the model is
+  called. The match is the whole line with case, punctuation and spacing ignored — no fuzzy matching,
+  so "3 eggs" never reuses "2 eggs". The most recent match wins; its elements come back as the rows
+  (or its edited totals as one row, if it was corrected after logging). No model call, no follow-ups.
+- A **LOGGED BEFORE** card shows the date and a **Re-estimate with AI** button. Photos are always
+  estimated; a stated totals line (§`logging/06`) is still handled first.
+- `mealKey` / `findPastMeal` sit next to `photoMealName`. Spec `features/logging/09` (new). Jest
+  **476/476** (+7), Playwright **166/166** (+3, `e2e/past-meal-reuse.spec.js`), sw `v104→v105`.
+  **No DB change, no data-flow change** — nothing new leaves the device; fewer requests do.
+
 ### Photo meals: typed notes guide the estimate (Nov 2026)
 - Founder's ask: whatever is typed with a photo should help the AI produce a more realistic macro split.
   It was already sent, but only as a one-line *"use it to disambiguate"* — weights, oil, brands and

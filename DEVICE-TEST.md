@@ -68,6 +68,32 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v107 — Quick Add is checked first (2026-11-10)
+
+- [ ] A meal that is in Quick Add → the card says *"…your Quick Add meal “…”"* and uses the Quick Add numbers.
+- [ ] A meal you logged months ago but never Quick Added → still reused, card names the date.
+
+### New in v106 — "half a portion of…" reuses your usual (2026-11-10)
+
+You must be on **v106**.
+
+- [ ] Type **"Half size portion of chicken fajita pasta bake"** → instant, no "ANALYSING…"; the card
+      says *"Half of your “…”, logged on …"* with a count, and the row is half your usual.
+- [ ] **"Large chicken fajita pasta bake"** → goes to the AI (size not logged before).
+- [ ] **"chicken fajita pasta bake with garlic bread"** → goes to the AI; the bake's numbers should be
+      close to your usual, not a generic recipe.
+
+### New in v105 — a meal you've logged before is reused (2026-11-09)
+
+Fully close and reopen the installed PWA first — you must be on **v105**.
+
+- [ ] **AI Log → type a meal you logged on an earlier day**, word for word (capitals and commas
+      don't matter) → ANALYSE MEAL. The items appear **instantly** with the same numbers as last
+      time, and a **LOGGED BEFORE** card names the day.
+- [ ] Tap **Re-estimate with AI** → the usual "ANALYSING…" and a fresh estimate; the card goes away.
+- [ ] Change one word or number (e.g. *2 eggs* → *3 eggs*) → it goes to the AI as normal.
+- [ ] Same text with a **photo** attached → always goes to the AI.
+
 ### New in v104 — what you type with a photo guides the estimate (2026-11-05)
 
 Fully close and reopen the installed PWA first — you must be on **v104**. The suites stub the worker,

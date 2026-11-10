@@ -23,9 +23,9 @@ const lifted = (() => {
   const end   = src.indexOf("const confColor", start);
   if (start < 0 || end < 0) throw new Error("stated-totals block not found in app.jsx");
   const block = src.slice(start, end);
-  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName };")();
+  return new Function(block + "\nreturn { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal, mealParts, similarPastMeals };")();
 })();
-const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName } = lifted;
+const { parseStatedTotals, statedTotalsItem, dropDuplicateTotalRow, photoMealName, mealKey, findPastMeal, mealParts, similarPastMeals } = lifted;
 
 describe("A full totals line typed by the user is the meal (logging/06)", () => {
   test("the founder's crumpets: name before the figures, all four numbers exact", () => {
@@ -298,5 +298,145 @@ describe("The coach never says \"floor\" or \"ceiling\" (features/coach/01)", ()
       .map(s => s.replace(/- Speak plain, everyday English\.[^\n]*/, ""))
       .filter(s => /\b(floor|ceiling)s?\b/i.test(s));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("A meal logged before is reused, not re-estimated (logging/09)", () => {
+  const els = [
+    { name: "2 slices sourdough", kcal: 230, protein: 8, carbs: 44, fat: 1.5, conf: 80 },
+    { name: "2 poached eggs",     kcal: 143, protein: 12.6, carbs: 0.8, fat: 9.5, conf: 90 },
+  ];
+  const entry = (over = {}) => ({ name: "2 poached eggs on sourdough", kcal: 373, protein: 20.6,
+    carbs: 44.8, fat: 11, conf: 86, elements: els, source: "ai-text", followups: [], ...over });
+
+  test("case, punctuation and spacing don't matter; numbers and decimals do", () => {
+    expect(mealKey("  2 Poached eggs, on SOURDOUGH! ")).toBe(mealKey("2 poached eggs on sourdough"));
+    expect(mealKey("Nando's chicken")).toBe(mealKey("nandos chicken"));
+    expect(mealKey("2 eggs on toast")).not.toBe(mealKey("3 eggs on toast"));
+    expect(mealKey("1.5 bagels")).not.toBe(mealKey("15 bagels"));
+  });
+  test("an exact match returns the stored elements as rows, with no questions", () => {
+    const r = findPastMeal("2 Poached Eggs on Sourdough", [{ date: "2026-11-01", logs: [entry()] }]);
+    expect(r.date).toBe("2026-11-01");
+    expect(r.items.map(i => i.name)).toEqual(els.map(e => e.name));
+    expect(r.items[1]).toMatchObject({ kcal: 143, protein: 12.6, confidence: 90, ask: null });
+  });
+  test("a different meal is not a match — no fuzzy guessing", () => {
+    expect(findPastMeal("3 poached eggs on sourdough", [{ date: "2026-11-01", logs: [entry()] }])).toBeNull();
+    expect(findPastMeal("poached eggs", [{ date: "2026-11-01", logs: [entry()] }])).toBeNull();
+    expect(findPastMeal("", [{ date: "2026-11-01", logs: [entry()] }])).toBeNull();
+  });
+  test("the most recent log wins, whatever order the days come in", () => {
+    const days = [
+      { date: "2026-10-20", logs: [entry({ kcal: 300, elements: null })] },
+      { date: "2026-11-03", logs: [entry({ kcal: 410, elements: null })] },
+      { date: "2026-10-28", logs: [entry({ kcal: 350, elements: null })] },
+    ];
+    const r = findPastMeal("2 poached eggs on sourdough", days);
+    expect(r.date).toBe("2026-11-03");
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].kcal).toBe(410);
+  });
+  test("an entry edited after logging is reused as edited, not as its stale elements", () => {
+    const r = findPastMeal("2 poached eggs on sourdough",
+      [{ date: "2026-11-01", logs: [entry({ kcal: 450, fat: 19 })] }]);
+    expect(r.items).toEqual([expect.objectContaining({ name: "2 poached eggs on sourdough", kcal: 450, fat: 19 })]);
+  });
+  test("a 0-kcal entry is never reused", () => {
+    expect(findPastMeal("water", [{ date: "2026-11-01", logs: [{ name: "Water", kcal: 0 }] }])).toBeNull();
+  });
+  test("the follow-up answers from the earlier log come with it", () => {
+    const fu = [{ q: "How were the eggs cooked?", a: "Poached" }];
+    expect(findPastMeal("2 poached eggs on sourdough",
+      [{ date: "2026-11-01", logs: [entry({ followups: fu })] }]).followups).toEqual(fu);
+  });
+});
+
+describe("The same meal in other words: portion words scale it (logging/09, v106)", () => {
+  // The founder's screenshot, 2026-11-10: logged weekly for six months, then typed with "Half size
+  // portion of" in front — and the model guessed 420 kcal at 42% from a generic recipe.
+  const bake = (date, kcal, name = "Chicken fajita pasta bake") => ({ date, logs: [{ name, kcal,
+    protein: 52, carbs: 70, fat: 22, conf: 70, source: "ai-text", elements: null }] });
+  const days = [bake("2026-10-20", 700), bake("2026-11-03", 720), bake("2026-10-27", 690, "chicken fajita pasta bake.")];
+
+  test("filler and portion words aren't food words", () => {
+    expect(mealParts("Half size portion of chicken fajita pasta bake"))
+      .toMatchObject({ key: "chicken fajita pasta bake", mult: 0.5, size: "" });
+    expect(mealParts("½ bowl of homemade chilli").mult).toBe(0.5);
+    expect(mealParts("1/2 chilli").mult).toBe(0.5);
+    expect(mealParts("double cheeseburgers").key).toBe("cheeseburger");
+  });
+  test("half of the usual is half of the most recent log, without the model", () => {
+    const r = findPastMeal("Half size portion of chicken fajita pasta bake", days);
+    expect(r).toMatchObject({ date: "2026-11-03", factor: 0.5, count: 3, exact: false });
+    expect(r.items).toEqual([expect.objectContaining({
+      name: "½ × Chicken fajita pasta bake", kcal: 360, protein: 26, carbs: 35, fat: 11 })]);
+  });
+  test("an earlier half portion logged in the same words is reused as it is", () => {
+    const withHalf = [...days, bake("2026-10-01", 350, "Half size portion of chicken fajita pasta bake")];
+    const r = findPastMeal("half size portion of chicken fajita pasta bake", withHalf);
+    expect(r).toMatchObject({ exact: true, factor: 1, date: "2026-10-01" });
+    expect(r.items[0].kcal).toBe(350);
+  });
+  test("a size word must be the same on both sides — 'large' has no honest number", () => {
+    expect(findPastMeal("large chicken fajita pasta bake", days)).toBeNull();
+  });
+  test("an extra food is a different meal — but the usual goes to the model as reference", () => {
+    const desc = "chicken fajita pasta bake with garlic bread";
+    expect(findPastMeal(desc, days)).toBeNull();
+    const refs = similarPastMeals(desc, days);
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ name: "Chicken fajita pasta bake", kcal: 720 });
+  });
+  test("an unrelated meal sends no reference", () => {
+    expect(similarPastMeals("chicken tikka masala", days)).toEqual([]);
+  });
+  test("a saved Quick Add meal counts as a meal logged before", () => {
+    const r = findPastMeal("Whey protein shake", [], [{ name: "Whey protein shake", kcal: 130, protein: 25, carbs: 5, fat: 2 }]);
+    expect(r).toMatchObject({ date: null, factor: 1 });
+    expect(r.items[0].kcal).toBe(130);
+  });
+});
+
+describe("The text prompt carries the user's own past logs when there are any", () => {
+  const start = src.indexOf("const AI_PAST_BLOCK");
+  const AI_PROMPT = new Function(src.slice(start, src.indexOf("// Vision variant", start)) + "\nreturn AI_PROMPT;")();
+  test("no past logs: the prompt is as it was", () => {
+    expect(AI_PROMPT("toast")).not.toMatch(/OWN past logs/);
+  });
+  test("past logs are listed with their numbers and the scaling rule", () => {
+    const p = AI_PROMPT("chicken fajita pasta bake with garlic bread",
+      [{ name: "Chicken fajita pasta bake", kcal: 720, protein: 52, carbs: 70, fat: 22 }]);
+    expect(p).toMatch(/OWN past logs/);
+    expect(p).toContain('- "Chicken fajita pasta bake": 720 kcal, P 52g, C 70g, F 22g');
+    expect(p).toMatch(/"half" = half of the logged figures/);
+  });
+});
+
+describe("Quick Add is checked first, then everything ever logged (logging/09, v107)", () => {
+  const qa = [{ name: "Chicken fajita pasta bake", kcal: 650, protein: 48, carbs: 62, fat: 20 }];
+  const days = [
+    { date: "2026-11-03", logs: [{ name: "Chicken fajita pasta bake", kcal: 720, protein: 52, carbs: 70, fat: 22 }] },
+    { date: "2026-05-02", logs: [{ name: "Mum's lasagne", kcal: 810, protein: 40, carbs: 70, fat: 38 }] },
+  ];
+  test("a Quick Add meal wins over a newer log of the same food", () => {
+    const r = findPastMeal("chicken fajita pasta bake", days, qa);
+    expect(r).toMatchObject({ date: null, factor: 1, count: 1 });
+    expect(r.items[0].kcal).toBe(650);
+  });
+  test("...and scales the same way", () => {
+    expect(findPastMeal("half chicken fajita pasta bake", days, qa).items[0].kcal).toBe(325);
+  });
+  test("with no Quick Add match, it falls back on the log — however old", () => {
+    const r = findPastMeal("mums lasagne", days, qa);
+    expect(r).toMatchObject({ date: "2026-05-02", count: 1 });
+    expect(r.items[0].kcal).toBe(810);
+  });
+  test("with no Quick Add meals at all, the newest log is used", () => {
+    expect(findPastMeal("chicken fajita pasta bake", days, []).items[0].kcal).toBe(720);
+  });
+  test("the AI reference list puts the Quick Add version first", () => {
+    const refs = similarPastMeals("chicken fajita pasta bake with garlic bread", days, qa);
+    expect(refs[0]).toMatchObject({ kcal: 650 });
   });
 });
