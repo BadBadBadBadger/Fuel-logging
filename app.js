@@ -11695,8 +11695,7 @@ function AILog(_ref99) {
     fuLog = _useState146[0],
     setFuLog = _useState146[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
-  var cameraRef = React.useRef(null); // opens the camera straight away (capture)
-  var galleryRef = React.useRef(null); // the photo picker / files — choose one or several
+  var fileRef = React.useRef(null); // the phone's picker: camera + photo reel, several at once
 
   // Stop any in-flight speech recognition if we leave the screen.
   useEffect(function () {
@@ -12072,21 +12071,14 @@ function AILog(_ref99) {
   }, /*#__PURE__*/React.createElement(BackHdr, {
     title: "AI MEAL LOG",
     onBack: onBack
-  }), /*#__PURE__*/React.createElement("p", {
-    style: {
-      color: "var(--text-mid)",
-      fontSize: 13,
-      lineHeight: 1.6,
-      marginBottom: 16
-    }
-  }, "Type it, say it, or add photos \u2014 I'll break it down item by item with confidence scores. Tap any item to correct it and re-estimate."), /*#__PURE__*/React.createElement("textarea", {
+  }), /*#__PURE__*/React.createElement("textarea", {
     value: desc,
     onChange: function onChange(e) {
       return setDesc(e.target.value);
     },
     rows: 4,
     "aria-label": hasPhoto ? "Notes for the photos" : "Describe your meal",
-    placeholder: hasPhoto ? "Optional notes to sharpen the estimate — e.g. 'Tesco chicken tikka, ate the whole pack', '200g chicken in 1 tbsp olive oil', 'only ate half the chips'" : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'",
+    placeholder: hasPhoto ? "e.g. 'Tesco chicken tikka, ate half' — weights and brands help" : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'",
     style: {
       width: "100%",
       boxSizing: "border-box",
@@ -12101,24 +12093,20 @@ function AILog(_ref99) {
       outline: "none",
       lineHeight: 1.6
     }
-  }), hasPhoto && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: "var(--text-mid)",
       lineHeight: 1.5,
       marginTop: 6
     }
-  }, "\uD83D\uDCDD Anything you type here guides the estimate \u2014 weights, brands, cooking oil, hidden sauces or how much you actually ate. Your notes win where the photos can't tell."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12
-    }
-  }, hasPhoto && /*#__PURE__*/React.createElement("div", {
+  }, "Describe it, snap it, or both \u2014 photos go to our AI once and are never stored."), hasPhoto && /*#__PURE__*/React.createElement("div", {
     role: "list",
     "aria-label": "Attached photos",
     style: {
       display: "flex",
       gap: 8,
-      marginBottom: 10,
+      marginTop: 12,
       flexWrap: "wrap"
     }
   }, photos.map(function (p, i) {
@@ -12177,71 +12165,7 @@ function AILog(_ref99) {
         textAlign: "center"
       }
     }, "\u2715")));
-  })), photos.length < MAX_PHOTOS ? /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8
-    }
-  }, [["camera", "📷", "Camera", "Take a photo with the camera", cameraRef], ["gallery", "🖼", "Gallery", "Choose photos from your gallery", galleryRef]].map(function (_ref104) {
-    var _ref105 = _slicedToArray(_ref104, 5),
-      k = _ref105[0],
-      icon = _ref105[1],
-      label = _ref105[2],
-      aria = _ref105[3],
-      ref = _ref105[4];
-    return /*#__PURE__*/React.createElement("button", {
-      key: k,
-      onClick: function onClick() {
-        return ref.current && ref.current.click();
-      },
-      "aria-label": aria,
-      style: {
-        flex: 1,
-        minHeight: 48,
-        padding: "12px 10px",
-        borderRadius: 14,
-        background: "var(--surface-2)",
-        color: A,
-        border: "1px solid ".concat(aA("44")),
-        fontSize: 13,
-        fontWeight: 800,
-        cursor: "pointer"
-      }
-    }, icon, " ", label);
-  })) : /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: "var(--text-mid)",
-      lineHeight: 1.5
-    }
-  }, MAX_PHOTOS, " photos max \u2014 remove one to add another."), /*#__PURE__*/React.createElement("input", {
-    ref: cameraRef,
-    type: "file",
-    accept: "image/*",
-    capture: "environment",
-    "data-testid": "photo-camera",
-    onChange: onPickPhotos,
-    style: {
-      display: "none"
-    }
-  }), /*#__PURE__*/React.createElement("input", {
-    ref: galleryRef,
-    type: "file",
-    accept: "image/*",
-    multiple: true,
-    "data-testid": "photo-gallery",
-    onChange: onPickPhotos,
-    style: {
-      display: "none"
-    }
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: "var(--text-mid)",
-      lineHeight: 1.5,
-      marginTop: 8
-    }
-  }, hasPhoto ? photos.length < MAX_PHOTOS ? "Packet missing its name? Add the front too — up to " + MAX_PHOTOS + " photos of one meal." : "" : "Up to " + MAX_PHOTOS + " photos of one meal — e.g. a packet's front, its label, and the plate."), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     "aria-live": "polite",
     style: {
       position: "absolute",
@@ -12250,14 +12174,7 @@ function AILog(_ref99) {
       overflow: "hidden",
       clip: "rect(0 0 0 0)"
     }
-  }, hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : "")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "var(--text-lo-2)",
-      lineHeight: 1.5,
-      marginTop: 8
-    }
-  }, "Just the food \u2014 no personal details needed. Dictation runs on your device; only the text is sent. Photos are sent once to our AI to estimate the meal, with location data removed, and are never stored. Only include food and packaging."), /*#__PURE__*/React.createElement("div", {
+  }, hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : ""), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -12280,6 +12197,34 @@ function AILog(_ref99) {
     }
   }, listening ? "⏹" : "🎤"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
+      return fileRef.current && fileRef.current.click();
+    },
+    disabled: photos.length >= MAX_PHOTOS,
+    "aria-label": photos.length >= MAX_PHOTOS ? MAX_PHOTOS + " photos max" : "Add photos",
+    style: {
+      flexShrink: 0,
+      width: 54,
+      padding: "15px 0",
+      borderRadius: 14,
+      background: "var(--surface-2)",
+      color: A,
+      border: "1px solid ".concat(aA("44")),
+      fontSize: 18,
+      opacity: photos.length >= MAX_PHOTOS ? 0.4 : 1,
+      cursor: photos.length >= MAX_PHOTOS ? "not-allowed" : "pointer"
+    }
+  }, "\uD83D\uDCF7"), /*#__PURE__*/React.createElement("input", {
+    ref: fileRef,
+    type: "file",
+    accept: "image/*",
+    multiple: true,
+    "data-testid": "photo-input",
+    onChange: onPickPhotos,
+    style: {
+      display: "none"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
       return estimate();
     },
     disabled: loading || !desc.trim() && !hasPhoto,
@@ -12295,7 +12240,7 @@ function AILog(_ref99) {
       letterSpacing: "0.08em",
       cursor: loading || !desc.trim() && !hasPhoto ? "not-allowed" : "pointer"
     }
-  }, loading ? "⚡ ANALYSING..." : photos.length > 1 ? "🤖 ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL")), error && /*#__PURE__*/React.createElement("div", {
+  }, loading ? "⚡ ANALYSING..." : photos.length > 1 ? "ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "ANALYSE PHOTO" : "ANALYSE MEAL")), error && /*#__PURE__*/React.createElement("div", {
     style: {
       color: "var(--bulk-3)",
       fontSize: 12,
@@ -12594,17 +12539,17 @@ function AILog(_ref99) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref106) {
-  var onAdd = _ref106.onAdd,
-    onBack = _ref106.onBack,
-    meals = _ref106.meals,
-    setMeals = _ref106.setMeals,
-    _ref106$onForget = _ref106.onForget,
-    onForget = _ref106$onForget === void 0 ? function () {} : _ref106$onForget,
-    _ref106$isPremium = _ref106.isPremium,
-    isPremium = _ref106$isPremium === void 0 ? false : _ref106$isPremium,
-    _ref106$onPremiumGate = _ref106.onPremiumGate,
-    onPremiumGate = _ref106$onPremiumGate === void 0 ? function () {} : _ref106$onPremiumGate;
+function QuickAdd(_ref104) {
+  var onAdd = _ref104.onAdd,
+    onBack = _ref104.onBack,
+    meals = _ref104.meals,
+    setMeals = _ref104.setMeals,
+    _ref104$onForget = _ref104.onForget,
+    onForget = _ref104$onForget === void 0 ? function () {} : _ref104$onForget,
+    _ref104$isPremium = _ref104.isPremium,
+    isPremium = _ref104$isPremium === void 0 ? false : _ref104$isPremium,
+    _ref104$onPremiumGate = _ref104.onPremiumGate,
+    onPremiumGate = _ref104$onPremiumGate === void 0 ? function () {} : _ref104$onPremiumGate;
   var _useState147 = useState(""),
     _useState148 = _slicedToArray(_useState147, 2),
     search = _useState148[0],
@@ -12614,7 +12559,7 @@ function QuickAdd(_ref106) {
     modal = _useState150[0],
     setModal = _useState150[1];
   var save = /*#__PURE__*/function () {
-    var _ref107 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(m) {
+    var _ref105 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(m) {
       return _regenerator().w(function (_context40) {
         while (1) switch (_context40.n) {
           case 0:
@@ -12627,7 +12572,7 @@ function QuickAdd(_ref106) {
       }, _callee40);
     }));
     return function save(_x57) {
-      return _ref107.apply(this, arguments);
+      return _ref105.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -12827,9 +12772,9 @@ var TAPE_SERIES = [{
 //
 // At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
 // can land under the thumb, so a taller card would cover the point being inspected.
-function BodyFatTooltip(_ref108) {
-  var active = _ref108.active,
-    payload = _ref108.payload;
+function BodyFatTooltip(_ref106) {
+  var active = _ref106.active,
+    payload = _ref106.payload;
   if (!active || !payload || !payload.length) return null;
   var r = payload[0].payload || {};
   return /*#__PURE__*/React.createElement("div", {
@@ -12860,31 +12805,31 @@ function BodyFatTooltip(_ref108) {
     }
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
-function History(_ref109) {
+function History(_ref107) {
   var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref109.history,
-    onBack = _ref109.onBack,
-    onUpdateDay = _ref109.onUpdateDay,
-    _ref109$weighIns = _ref109.weighIns,
-    weighIns = _ref109$weighIns === void 0 ? [] : _ref109$weighIns,
-    _ref109$bodyMeasureme = _ref109.bodyMeasurements,
-    bodyMeasurements = _ref109$bodyMeasureme === void 0 ? [] : _ref109$bodyMeasureme,
-    _ref109$sex = _ref109.sex,
-    sex = _ref109$sex === void 0 ? null : _ref109$sex,
-    _ref109$profile = _ref109.profile,
-    profile = _ref109$profile === void 0 ? {} : _ref109$profile,
-    _ref109$tdeeAdj = _ref109.tdeeAdj,
-    tdeeAdj = _ref109$tdeeAdj === void 0 ? 0 : _ref109$tdeeAdj,
-    _ref109$meals = _ref109.meals,
-    meals = _ref109$meals === void 0 ? DEF_MEALS : _ref109$meals,
-    _ref109$setMeals = _ref109.setMeals,
-    setMeals = _ref109$setMeals === void 0 ? function () {} : _ref109$setMeals,
-    _ref109$onForget = _ref109.onForget,
-    onForget = _ref109$onForget === void 0 ? function () {} : _ref109$onForget,
-    _ref109$isPremium = _ref109.isPremium,
-    isPremium = _ref109$isPremium === void 0 ? false : _ref109$isPremium,
-    _ref109$onPremiumGate = _ref109.onPremiumGate,
-    onPremiumGate = _ref109$onPremiumGate === void 0 ? function () {} : _ref109$onPremiumGate;
+  var history = _ref107.history,
+    onBack = _ref107.onBack,
+    onUpdateDay = _ref107.onUpdateDay,
+    _ref107$weighIns = _ref107.weighIns,
+    weighIns = _ref107$weighIns === void 0 ? [] : _ref107$weighIns,
+    _ref107$bodyMeasureme = _ref107.bodyMeasurements,
+    bodyMeasurements = _ref107$bodyMeasureme === void 0 ? [] : _ref107$bodyMeasureme,
+    _ref107$sex = _ref107.sex,
+    sex = _ref107$sex === void 0 ? null : _ref107$sex,
+    _ref107$profile = _ref107.profile,
+    profile = _ref107$profile === void 0 ? {} : _ref107$profile,
+    _ref107$tdeeAdj = _ref107.tdeeAdj,
+    tdeeAdj = _ref107$tdeeAdj === void 0 ? 0 : _ref107$tdeeAdj,
+    _ref107$meals = _ref107.meals,
+    meals = _ref107$meals === void 0 ? DEF_MEALS : _ref107$meals,
+    _ref107$setMeals = _ref107.setMeals,
+    setMeals = _ref107$setMeals === void 0 ? function () {} : _ref107$setMeals,
+    _ref107$onForget = _ref107.onForget,
+    onForget = _ref107$onForget === void 0 ? function () {} : _ref107$onForget,
+    _ref107$isPremium = _ref107.isPremium,
+    isPremium = _ref107$isPremium === void 0 ? false : _ref107$isPremium,
+    _ref107$onPremiumGate = _ref107.onPremiumGate,
+    onPremiumGate = _ref107$onPremiumGate === void 0 ? function () {} : _ref107$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -13707,11 +13652,11 @@ function History(_ref109) {
         fontWeight: 800,
         marginBottom: 4
       }
-    }, "BODY"), bodyRows.map(function (_ref110, i) {
-      var _ref111 = _slicedToArray(_ref110, 3),
-        label = _ref111[0],
-        value = _ref111[1],
-        color = _ref111[2];
+    }, "BODY"), bodyRows.map(function (_ref108, i) {
+      var _ref109 = _slicedToArray(_ref108, 3),
+        label = _ref109[0],
+        value = _ref109[1],
+        color = _ref109[2];
       return /*#__PURE__*/React.createElement("div", {
         key: label,
         style: {
@@ -13901,10 +13846,10 @@ function History(_ref109) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref112) {
-    var _ref113 = _slicedToArray(_ref112, 2),
-      k = _ref113[0],
-      m = _ref113[1];
+  }, Object.entries(MM).map(function (_ref110) {
+    var _ref111 = _slicedToArray(_ref110, 2),
+      k = _ref111[0],
+      m = _ref111[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -13980,10 +13925,10 @@ function History(_ref109) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref114) {
-    var _ref115 = _slicedToArray(_ref114, 2),
-      t = _ref115[0],
-      e = _ref115[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref112) {
+    var _ref113 = _slicedToArray(_ref112, 2),
+      t = _ref113[0],
+      e = _ref113[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -14273,10 +14218,10 @@ function History(_ref109) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref116) {
-    var _ref117 = _slicedToArray(_ref116, 2),
-      k = _ref117[0],
-      m = _ref117[1];
+  }, Object.entries(MM).map(function (_ref114) {
+    var _ref115 = _slicedToArray(_ref114, 2),
+      k = _ref115[0],
+      m = _ref115[1];
     var avg = avgRows.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / avgRows.length;
@@ -14464,9 +14409,9 @@ function History(_ref109) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref118) {
-  var earnedBdgs = _ref118.earnedBdgs,
-    onBack = _ref118.onBack;
+function Achievements(_ref116) {
+  var earnedBdgs = _ref116.earnedBdgs,
+    onBack = _ref116.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -14565,9 +14510,9 @@ function Achievements(_ref118) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref119) {
-  var badge = _ref119.badge,
-    onDone = _ref119.onDone;
+function BadgeFanfare(_ref117) {
+  var badge = _ref117.badge,
+    onDone = _ref117.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
@@ -14688,9 +14633,9 @@ function BadgeFanfare(_ref119) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref120) {
-  var streak = _ref120.streak,
-    onDone = _ref120.onDone;
+function StreakPip(_ref118) {
+  var streak = _ref118.streak,
+    onDone = _ref118.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -14741,9 +14686,9 @@ function StreakPip(_ref120) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref121) {
-  var badge = _ref121.badge,
-    onDone = _ref121.onDone;
+function BadgeToast(_ref119) {
+  var badge = _ref119.badge,
+    onDone = _ref119.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -14805,9 +14750,9 @@ function BadgeToast(_ref121) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref122) {
-  var text = _ref122.text,
-    onDone = _ref122.onDone;
+function NoteToast(_ref120) {
+  var text = _ref120.text,
+    onDone = _ref120.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -15080,7 +15025,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
+      var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
         var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t49, _t50;
         return _regenerator().w(function (_context41) {
           while (1) switch (_context41.p = _context41.n) {
@@ -15385,7 +15330,7 @@ function App() {
         }, _callee41, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref123.apply(this, arguments);
+        return _ref121.apply(this, arguments);
       };
     }();
     load();
@@ -15439,7 +15384,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
+    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -15454,11 +15399,11 @@ function App() {
       }, _callee42);
     }));
     return function saveLogs(_x58) {
-      return _ref124.apply(this, arguments);
+      return _ref122.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
+    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -15473,11 +15418,11 @@ function App() {
       }, _callee43);
     }));
     return function saveWater(_x59) {
-      return _ref125.apply(this, arguments);
+      return _ref123.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -15492,11 +15437,11 @@ function App() {
       }, _callee44);
     }));
     return function saveMode(_x60) {
-      return _ref126.apply(this, arguments);
+      return _ref124.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
@@ -15512,11 +15457,11 @@ function App() {
       }, _callee45);
     }));
     return function saveProf(_x61) {
-      return _ref127.apply(this, arguments);
+      return _ref125.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
           case 0:
@@ -15531,7 +15476,7 @@ function App() {
       }, _callee46);
     }));
     return function saveWorkouts(_x62) {
-      return _ref128.apply(this, arguments);
+      return _ref126.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15545,7 +15490,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.n) {
@@ -15585,7 +15530,7 @@ function App() {
       }, _callee47);
     }));
     return function addLog(_x63) {
-      return _ref129.apply(this, arguments);
+      return _ref127.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15611,7 +15556,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -15636,11 +15581,11 @@ function App() {
       }, _callee48);
     }));
     return function saveCustomKcal(_x64) {
-      return _ref130.apply(this, arguments);
+      return _ref128.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
           case 0:
@@ -15658,11 +15603,11 @@ function App() {
       }, _callee49);
     }));
     return function handleSetMode(_x65) {
-      return _ref131.apply(this, arguments);
+      return _ref129.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
@@ -15677,11 +15622,11 @@ function App() {
       }, _callee50);
     }));
     return function handleAckAggressiveCut() {
-      return _ref132.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.n) {
           case 0:
@@ -15696,7 +15641,7 @@ function App() {
       }, _callee51);
     }));
     return function saveMeals(_x66) {
-      return _ref133.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
 
@@ -15706,7 +15651,7 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
       var name, clean;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.n) {
@@ -15736,14 +15681,14 @@ function App() {
       }, _callee52);
     }));
     return function addToQA(_x67) {
-      return _ref134.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t51;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
@@ -15843,13 +15788,13 @@ function App() {
       }, _callee53, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x68, _x69, _x70) {
-      return _ref135.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       var meta, rec;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.n) {
@@ -15880,11 +15825,11 @@ function App() {
       }, _callee54);
     }));
     return function handleConsent() {
-      return _ref136.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
       var clearKeys, _i4, _clearKeys, k, i, key, _t52;
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.p = _context55.n) {
@@ -15956,7 +15901,7 @@ function App() {
       }, _callee55, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref137.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
 
@@ -15966,7 +15911,7 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
           case 0:
@@ -15986,7 +15931,7 @@ function App() {
       }, _callee56);
     }));
     return function resetTdeeAdj() {
-      return _ref138.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -16041,7 +15986,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
+    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
           case 0:
@@ -16056,11 +16001,11 @@ function App() {
       }, _callee57);
     }));
     return function handleDeleteAccount() {
-      return _ref139.apply(this, arguments);
+      return _ref137.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
       var nh;
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.n) {
@@ -16091,11 +16036,11 @@ function App() {
       }, _callee58);
     }));
     return function updateDay(_x71) {
-      return _ref140.apply(this, arguments);
+      return _ref138.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
+    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.n) {
@@ -16180,7 +16125,7 @@ function App() {
       }, _callee59);
     }));
     return function onWeighIn(_x72) {
-      return _ref141.apply(this, arguments);
+      return _ref139.apply(this, arguments);
     };
   }();
 
@@ -16189,12 +16134,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref142) {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref140) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
       return _regenerator().w(function (_context60) {
         while (1) switch (_context60.n) {
           case 0:
-            neck = _ref142.neck, waist = _ref142.waist, hip = _ref142.hip;
+            neck = _ref140.neck, waist = _ref140.waist, hip = _ref140.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -16256,11 +16201,11 @@ function App() {
       }, _callee60);
     }));
     return function onMeasurement(_x73) {
-      return _ref143.apply(this, arguments);
+      return _ref141.apply(this, arguments);
     };
   }();
   var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
           case 0:
@@ -16273,11 +16218,11 @@ function App() {
       }, _callee61);
     }));
     return function toggleMuteMeasurements(_x74) {
-      return _ref144.apply(this, arguments);
+      return _ref142.apply(this, arguments);
     };
   }();
   var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.n) {
           case 0:
@@ -16290,7 +16235,7 @@ function App() {
       }, _callee62);
     }));
     return function saveMeasurementNote(_x75) {
-      return _ref145.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -16333,7 +16278,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       var ts;
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.n) {
@@ -16348,11 +16293,11 @@ function App() {
       }, _callee63);
     }));
     return function dismissWeighNudge() {
-      return _ref146.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.n) {
           case 0:
@@ -16369,7 +16314,7 @@ function App() {
       }, _callee64);
     }));
     return function muteWeighNudge() {
-      return _ref147.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
 
@@ -16388,7 +16333,7 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref148 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
+    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
       var ts;
       return _regenerator().w(function (_context65) {
         while (1) switch (_context65.n) {
@@ -16403,7 +16348,7 @@ function App() {
       }, _callee65);
     }));
     return function dismissMeasurementNudge() {
-      return _ref148.apply(this, arguments);
+      return _ref146.apply(this, arguments);
     };
   }();
 
@@ -16565,7 +16510,7 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref149 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
+    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
       return _regenerator().w(function (_context66) {
         while (1) switch (_context66.n) {
           case 0:
@@ -16580,7 +16525,7 @@ function App() {
       }, _callee66);
     }));
     return function saveCutBlock(_x76) {
-      return _ref149.apply(this, arguments);
+      return _ref147.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16603,7 +16548,7 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref150 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
+    var _ref148 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
       return _regenerator().w(function (_context67) {
         while (1) switch (_context67.n) {
           case 0:
@@ -16623,7 +16568,7 @@ function App() {
       }, _callee67);
     }));
     return function startDietBreak() {
-      return _ref150.apply(this, arguments);
+      return _ref148.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -16685,10 +16630,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref151) {
-    var _ref152 = _slicedToArray(_ref151, 2),
-      lbl = _ref152[0],
-      fn = _ref152[1];
+  }]].map(function (_ref149) {
+    var _ref150 = _slicedToArray(_ref149, 2),
+      lbl = _ref150[0],
+      fn = _ref150[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,

@@ -5549,8 +5549,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   const [fuDone,       setFuDone]        = useState({});   // idx -> true once answered/skipped
   const [fuLog,        setFuLog]        = useState([]);    // [{q, a}] persisted with the meal
   const recRef  = React.useRef(null);
-  const cameraRef  = React.useRef(null); // opens the camera straight away (capture)
-  const galleryRef = React.useRef(null); // the photo picker / files — choose one or several
+  const fileRef = React.useRef(null); // the phone's picker: camera + photo reel, several at once
 
   // Stop any in-flight speech recognition if we leave the screen.
   useEffect(() => () => { try { recRef.current && recRef.current.stop(); } catch(e) {} }, []);
@@ -5717,93 +5716,51 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   return (
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="AI MEAL LOG" onBack={onBack}/>
-      <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
-        Type it, say it, or add photos — I'll break it down item by item with
-        confidence scores. Tap any item to correct it and re-estimate.
-      </p>
-
       <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={4}
         aria-label={hasPhoto ? "Notes for the photos" : "Describe your meal"}
         placeholder={hasPhoto
-          ? "Optional notes to sharpen the estimate — e.g. 'Tesco chicken tikka, ate the whole pack', '200g chicken in 1 tbsp olive oil', 'only ate half the chips'"
+          ? "e.g. 'Tesco chicken tikka, ate half' — weights and brands help"
           : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
         style={{ width:"100%", boxSizing:"border-box", background:CARD,
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
+      {/* The screen's one sentence (logging/10, founder 2026-11-20: "one small sentence giving
+          the gist"). It doubles as the on-screen privacy layer; the detail is in the policy. */}
+      <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
+        Describe it, snap it, or both — photos go to our AI once and are never stored.
+      </div>
+
+      {/* Photos — held in memory only, discarded on save/leave (features/logging/10). */}
       {hasPhoto && (
-        <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
-          📝 Anything you type here guides the estimate — weights, brands, cooking oil,
-          hidden sauces or how much you actually ate. Your notes win where the photos can't tell.
+        <div role="list" aria-label="Attached photos"
+          style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
+          {photos.map((p, i) => (
+            <div role="listitem" key={p.id} style={{ position:"relative", width:84, height:84,
+              borderRadius:12, overflow:"hidden", border:`1px solid ${BD}`, flexShrink:0 }}>
+              <img src={p.preview} alt={`Photo ${i + 1} of ${photos.length}`}
+                style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+              <button onClick={() => removePhoto(p.id)}
+                aria-label={`Remove photo ${i + 1} of ${photos.length}`}
+                style={{ position:"absolute", top:0, right:0, width:40, height:40, padding:0,
+                  background:"transparent", border:"none", cursor:"pointer",
+                  display:"flex", alignItems:"flex-start", justifyContent:"flex-end" }}>
+                <span aria-hidden="true" style={{ margin:4, width:24, height:24, borderRadius:12,
+                  background:"rgba(0,0,0,0.65)", color:"#fff", fontSize:12, fontWeight:900,
+                  lineHeight:"24px", textAlign:"center" }}>✕</span>
+              </button>
+            </div>
+          ))}
         </div>
       )}
-
-      {/* Photos — held in memory only, discarded on save/leave (features/logging/10).
-          Camera opens the camera in one tap; Gallery opens the picker, one or several at once,
-          so a shot taken with the phone's own camera app (its own settings) can be used. */}
-      <div style={{ marginTop:12 }}>
-        {hasPhoto && (
-          <div role="list" aria-label="Attached photos"
-            style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-            {photos.map((p, i) => (
-              <div role="listitem" key={p.id} style={{ position:"relative", width:84, height:84,
-                borderRadius:12, overflow:"hidden", border:`1px solid ${BD}`, flexShrink:0 }}>
-                <img src={p.preview} alt={`Photo ${i + 1} of ${photos.length}`}
-                  style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
-                <button onClick={() => removePhoto(p.id)}
-                  aria-label={`Remove photo ${i + 1} of ${photos.length}`}
-                  style={{ position:"absolute", top:0, right:0, width:40, height:40, padding:0,
-                    background:"transparent", border:"none", cursor:"pointer",
-                    display:"flex", alignItems:"flex-start", justifyContent:"flex-end" }}>
-                  <span aria-hidden="true" style={{ margin:4, width:24, height:24, borderRadius:12,
-                    background:"rgba(0,0,0,0.65)", color:"#fff", fontSize:12, fontWeight:900,
-                    lineHeight:"24px", textAlign:"center" }}>✕</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        {photos.length < MAX_PHOTOS ? (
-          <div style={{ display:"flex", gap:8 }}>
-            {[["camera", "📷", "Camera", "Take a photo with the camera", cameraRef],
-              ["gallery", "🖼", "Gallery", "Choose photos from your gallery", galleryRef]].map(([k, icon, label, aria, ref]) => (
-              <button key={k} onClick={() => ref.current && ref.current.click()} aria-label={aria}
-                style={{ flex:1, minHeight:48, padding:"12px 10px", borderRadius:14,
-                  background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`,
-                  fontSize:13, fontWeight:800, cursor:"pointer" }}>
-                {icon} {label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5 }}>
-            {MAX_PHOTOS} photos max — remove one to add another.
-          </div>
-        )}
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment"
-          data-testid="photo-camera" onChange={onPickPhotos} style={{ display:"none" }}/>
-        <input ref={galleryRef} type="file" accept="image/*" multiple
-          data-testid="photo-gallery" onChange={onPickPhotos} style={{ display:"none" }}/>
-        <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:8 }}>
-          {hasPhoto
-            ? (photos.length < MAX_PHOTOS
-                ? "Packet missing its name? Add the front too — up to " + MAX_PHOTOS + " photos of one meal."
-                : "")
-            : "Up to " + MAX_PHOTOS + " photos of one meal — e.g. a packet's front, its label, and the plate."}
-        </div>
-        <div aria-live="polite" style={{ position:"absolute", width:1, height:1, overflow:"hidden",
-          clip:"rect(0 0 0 0)" }}>
-          {hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : ""}
-        </div>
+      <div aria-live="polite" style={{ position:"absolute", width:1, height:1, overflow:"hidden",
+        clip:"rect(0 0 0 0)" }}>
+        {hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : ""}
       </div>
 
-      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:8 }}>
-        Just the food — no personal details needed. Dictation runs on your device; only the
-        text is sent. Photos are sent once to our AI to estimate the meal, with location data
-        removed, and are never stored. Only include food and packaging.
-      </div>
-
-      {/* Action row: 🎤 voice beside the Analyse button */}
+      {/* Action row: 🎤 voice · 📷 photo · Analyse. ONE photo button: no `capture`, so the phone's
+          own picker offers the camera and the photo reel in one place, several at once. At the
+          cap it is disabled (not hidden), so the row doesn't jump. */}
       <div style={{ display:"flex", gap:8, marginTop:12 }}>
         {voiceAvailable && (
           <button onClick={listening ? stopVoice : startVoice} aria-label="Dictate meal"
@@ -5815,13 +5772,22 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
             {listening ? "⏹" : "🎤"}
           </button>
         )}
+        <button onClick={() => fileRef.current && fileRef.current.click()}
+          disabled={photos.length >= MAX_PHOTOS}
+          aria-label={photos.length >= MAX_PHOTOS ? MAX_PHOTOS + " photos max" : "Add photos"}
+          style={{ flexShrink:0, width:54, padding:"15px 0", borderRadius:14,
+            background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`, fontSize:18,
+            opacity: photos.length >= MAX_PHOTOS ? 0.4 : 1,
+            cursor: photos.length >= MAX_PHOTOS ? "not-allowed" : "pointer" }}>📷</button>
+        <input ref={fileRef} type="file" accept="image/*" multiple
+          data-testid="photo-input" onChange={onPickPhotos} style={{ display:"none" }}/>
         <button onClick={() => estimate()} disabled={loading || (!desc.trim() && !hasPhoto)}
           style={{ flex:1, padding:"15px",
             background: loading || (!desc.trim() && !hasPhoto) ? "var(--surface-2)" : A,
             color:      loading || (!desc.trim() && !hasPhoto) ? "var(--border-strong)" : "var(--bg)",
             border:"none", borderRadius:14, fontSize:14, fontWeight:900,
             letterSpacing:"0.08em", cursor: loading || (!desc.trim() && !hasPhoto) ? "not-allowed" : "pointer" }}>
-          {loading ? "⚡ ANALYSING..." : photos.length > 1 ? "🤖 ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL"}
+          {loading ? "⚡ ANALYSING..." : photos.length > 1 ? "ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "ANALYSE PHOTO" : "ANALYSE MEAL"}
         </button>
       </div>
 
