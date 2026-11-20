@@ -4034,6 +4034,7 @@ var deleteAccountRequest = /*#__PURE__*/function () {
 var callAI = /*#__PURE__*/function () {
   var _ref40 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee25(prompt) {
     var maxTokens,
+      timeoutMs,
       token,
       ctrl,
       timer,
@@ -4045,6 +4046,7 @@ var callAI = /*#__PURE__*/function () {
       while (1) switch (_context25.p = _context25.n) {
         case 0:
           maxTokens = _args25.length > 1 && _args25[1] !== undefined ? _args25[1] : 500;
+          timeoutMs = _args25.length > 2 && _args25[2] !== undefined ? _args25[2] : 30000;
           _context25.n = 1;
           return getAccessToken();
         case 1:
@@ -4060,7 +4062,7 @@ var callAI = /*#__PURE__*/function () {
           ctrl = new AbortController();
           timer = setTimeout(function () {
             return ctrl.abort();
-          }, 30000);
+          }, timeoutMs);
           _context25.p = 3;
           _context25.n = 4;
           return fetch(AI_ENDPOINT, {
@@ -4147,14 +4149,16 @@ var repairJson = function repairJson(text) {
 var callAIJson = /*#__PURE__*/function () {
   var _ref41 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee26(prompt) {
     var maxTokens,
+      timeoutMs,
       text,
       _args26 = arguments;
     return _regenerator().w(function (_context26) {
       while (1) switch (_context26.n) {
         case 0:
           maxTokens = _args26.length > 1 && _args26[1] !== undefined ? _args26[1] : 500;
+          timeoutMs = _args26.length > 2 ? _args26[2] : undefined;
           _context26.n = 1;
-          return callAI(prompt, maxTokens);
+          return callAI(prompt, maxTokens, timeoutMs);
         case 1:
           text = _context26.v;
           return _context26.a(2, repairJson(text));
@@ -10734,9 +10738,15 @@ var AI_PROMPT = function AI_PROMPT(desc) {
 // alongside the photo is the user's GUIDANCE (features/logging/08): weights, brands, cooking
 // method, what's hidden under the sauce, how much of it they actually ate. It outranks what the
 // photo suggests, and gets the same weight/fat/number rules the text prompt has (logging/07).
+//
+// Several photos (features/logging/10) are views of ONE meal — e.g. a packet's front (the name)
+// and back (the label), or a plate and the packet it came from. They sharpen one estimate; they
+// never add items. Double counting is the risk, so the rule is "combine, don't add".
 var AI_PHOTO_PROMPT = function AI_PHOTO_PROMPT(desc) {
+  var count = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1;
   var notes = desc && desc.trim() ? desc.trim() : "";
-  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL.\n\nA photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.\n\nRules:\n- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).\n- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.\n- Hidden cooking fat and exact portion are the usual photo blind spots \u2014 reflect that in confidence and in \"ask\".\n- Arithmetic: check kcal against the macros \u2014 kcal \u2248 4\xD7protein + 4\xD7carbs + 9\xD7fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.\n- For ANY component with confidence below 80, set \"ask\" to the single highest-leverage unknown: \"fat\", \"portion\", or \"version\" (see below). Otherwise null.\n".concat(notes ? "\nUSER'S NOTES about this photo: \"".concat(notes, "\"\n\nThe notes are the user's own knowledge of the meal and are GUIDANCE for your estimate. Where the notes and the photo disagree, the NOTES WIN \u2014 the user knows things a photo cannot show. Use the photo for everything the notes do not cover. Specifically:\n- A weight, count or size in the notes IS that item's portion \u2014 use it instead of your visual estimate and scale every macro in proportion (150 g is 60% of 250 g, in every macro).\n- A brand, restaurant, shop or product name in the notes identifies the food \u2014 use that product's ACTUAL menu/label nutrition, not a generic equivalent.\n- Cooking method in the notes sets the fat: \"dry\", \"no oil\", \"zero added fat\", \"no butter\", \"air-fried without oil\", \"grilled\", \"boiled\", \"poached\", \"steamed\" mean NO cooking fat was added; \"fried\", \"with butter\", \"a tablespoon of oil\" etc. mean that fat IS there even if it is not visible.\n- Ingredients the notes mention that the photo cannot show (oil, butter, sauce or dressing, sugar in a drink, a filling, something under other food, a side not in shot) are part of the meal \u2014 include them as their own component.\n- A recipe variant in the notes (vegan, low-fat, skinless, diet/zero-sugar, semi-skimmed, wholemeal, etc.) is the version to estimate.\n- If the notes say only part was eaten (\"ate half\", \"left the chips\", \"shared with two\"), estimate what was EATEN, not what is on the plate, and say so in reasoning.\n- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.\n- Confidence: raise it for any component the notes pin down (a stated weight, a named product, a stated cooking method) \u2014 the remaining uncertainty is only what the notes leave open.\n- If the notes already answer a question \u2014 they say dry, or give a weight, or name the version \u2014 do not set \"ask\" to that question.\n- Mention in each affected item's reasoning that the user's notes were used.\n") : "", "\n\"ask\" meanings: \"fat\" = hidden cooking fat (oil/butter vs dry/grilled); \"portion\" = ambiguous amount/size; \"version\" = animal-vs-plant or major recipe variant.\n\n\"meal\" is a short, natural name for the whole photo, 2\u20136 words, the way a person would write it in a food diary \u2014 e.g. \"Chicken Caesar salad\", \"Full English breakfast\", \"Pret tuna baguette\". If a brand or product name is visible on packaging").concat(notes ? " or given in the notes" : "", ", use it (e.g. \"M\xFCller Corner strawberry yogurt\"). No portions, weights or numbers in it.\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"meal\": \"short name for the whole meal\",\n  \"items\": [\n    { \"name\": \"specific food with estimated portion\", \"kcal\": number, \"protein\": number, \"carbs\": number, \"fat\": number, \"confidence\": number, \"ask\": \"fat\" | \"portion\" | \"version\" | null, \"reasoning\": \"one sentence\" }\n  ]\n}");
+  var n = Math.max(1, Math.floor(Number(count) || 1));
+  return "You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals \u2014 accuracy is CRITICAL.\n\n".concat(n > 1 ? "".concat(n, " photos are attached. They are views of ONE meal being logged \u2014 not ").concat(n, " meals. Work out what each photo shows before estimating:\n- SAME PRODUCT, SEVERAL VIEWS: the front, back, side or label of one packet, bottle or tin is ONE item. Combine what each view tells you (the name from the front, the nutrition panel from the back). Never return the same product twice.\n- PACKET + PLATE: if a packet or label and a plated or served food show the same food, the packet IDENTIFIES the food and the plate shows the PORTION. Return it once.\n- DIFFERENT FOODS: photos of genuinely different foods (a main and a drink, a plate and a separate snack) are separate items in the same meal.\n- When unsure whether two photos show the same food, treat them as the same and lower confidence \u2014 never count it twice.\n- In each item's reasoning, say which photo(s) it came from (e.g. \"photos 1+2: front and label\").") : "A photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.", "\n\nRules:\n- Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).\n- Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.\n- Hidden cooking fat and exact portion are the usual photo blind spots \u2014 reflect that in confidence and in \"ask\".\n- Arithmetic: check kcal against the macros \u2014 kcal \u2248 4\xD7protein + 4\xD7carbs + 9\xD7fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.\n- NUTRITION LABELS: when a nutrition panel is readable, its figures are FACT \u2014 use them, not a generic estimate. Per-100 g figures are the reference; scale them to the portion eaten. Use the per-serving column only when the portion IS one stated serving (a single-serve pot, bar, can or pack). If only a multi-serve pack is shown and nothing says how much was eaten, use one label serving, set \"ask\" to \"portion\" and say so in reasoning.\n- For ANY component with confidence below 80, set \"ask\" to the single highest-leverage unknown: \"fat\", \"portion\", or \"version\" (see below). Otherwise null.\n").concat(notes ? "\nUSER'S NOTES about ".concat(n > 1 ? "these photos" : "this photo", ": \"").concat(notes, "\"\n\nThe notes are the user's own knowledge of the meal and are GUIDANCE for your estimate. Where the notes and the photo disagree, the NOTES WIN \u2014 the user knows things a photo cannot show. Use the photo for everything the notes do not cover. Specifically:\n- A weight, count or size in the notes IS that item's portion \u2014 use it instead of your visual estimate and scale every macro in proportion (150 g is 60% of 250 g, in every macro).\n- A brand, restaurant, shop or product name in the notes identifies the food \u2014 use that product's ACTUAL menu/label nutrition, not a generic equivalent.\n- A product named in the notes identifies any packet in the photos, even one shot only from the back.\n- Cooking method in the notes sets the fat: \"dry\", \"no oil\", \"zero added fat\", \"no butter\", \"air-fried without oil\", \"grilled\", \"boiled\", \"poached\", \"steamed\" mean NO cooking fat was added; \"fried\", \"with butter\", \"a tablespoon of oil\" etc. mean that fat IS there even if it is not visible.\n- Ingredients the notes mention that the photo cannot show (oil, butter, sauce or dressing, sugar in a drink, a filling, something under other food, a side not in shot) are part of the meal \u2014 include them as their own component.\n- A recipe variant in the notes (vegan, low-fat, skinless, diet/zero-sugar, semi-skimmed, wholemeal, etc.) is the version to estimate.\n- If the notes say only part was eaten (\"ate half\", \"left the chips\", \"shared with two\"), estimate what was EATEN, not what is on the plate, and say so in reasoning.\n- A number the user typed (a kcal figure, a macro) is a FACT about the item it belongs to. Use it for that item. NEVER return a separate item for a number the user typed.\n- Confidence: raise it for any component the notes pin down (a stated weight, a named product, a stated cooking method) \u2014 the remaining uncertainty is only what the notes leave open.\n- If the notes already answer a question \u2014 they say dry, or give a weight, or name the version \u2014 do not set \"ask\" to that question.\n- Mention in each affected item's reasoning that the user's notes were used.\n") : "", "\n\"ask\" meanings: \"fat\" = hidden cooking fat (oil/butter vs dry/grilled); \"portion\" = ambiguous amount/size; \"version\" = animal-vs-plant or major recipe variant.\n\n\"meal\" is a short, natural name for the whole ").concat(n > 1 ? "meal across all the photos" : "photo", ", 2\u20136 words, the way a person would write it in a food diary \u2014 e.g. \"Chicken Caesar salad\", \"Full English breakfast\", \"Pret tuna baguette\". If a brand or product name is visible on packaging").concat(notes ? " or given in the notes" : "", ", use it (e.g. \"M\xFCller Corner strawberry yogurt\")").concat(n > 1 ? " — even if other photos show only the back or the plate" : "", ". No portions, weights or numbers in it.\n\nReturn ONLY valid JSON (no markdown, no preamble):\n{\n  \"meal\": \"short name for the whole meal\",\n  \"items\": [\n    { \"name\": \"specific food with estimated portion\", \"kcal\": number, \"protein\": number, \"carbs\": number, \"fat\": number, \"confidence\": number, \"ask\": \"fat\" | \"portion\" | \"version\" | null, \"reasoning\": \"one sentence\" }\n  ]\n}");
 };
 var AI_REESTIMATE_PROMPT = function AI_REESTIMATE_PROMPT(item) {
   return "You are a nutrition database expert. Re-estimate the nutritional content for this specific food item with maximum accuracy.\n\nItem: \"".concat(item, "\"\n\nApply the same rules: use exact menu/label data for branded products. Be precise, not approximate.\n\nReturn ONLY valid JSON (no markdown):\n{\n  \"name\": \"item name\",\n  \"kcal\": number,\n  \"protein\": number,\n  \"carbs\": number,\n  \"fat\": number,\n  \"confidence\": number,\n  \"reasoning\": \"one sentence explaining source\"\n}");
@@ -11346,6 +11356,8 @@ var SpeechRec = typeof window !== "undefined" && (window.SpeechRecognition || wi
 // payload stays small (cheaper + within the worker's body limits). The result
 // lives only in component state — never written to storage. Returns
 // { base64, mediaType, preview }.
+// PRIVACY GUARANTEE: the canvas re-encode is what strips EXIF (GPS, device, time) from a gallery
+// photo. Never send the picked File itself — always this re-encoded copy.
 var fileToImage = function fileToImage(file) {
   var max = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1024;
   var quality = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.7;
@@ -11376,6 +11388,100 @@ var fileToImage = function fileToImage(file) {
   });
 };
 
+// Up to three photos of ONE meal (features/logging/10): packet front + label + plate is the real
+// case. More invites double counting and a second meal sneaking in, and costs more per call.
+var MAX_PHOTOS = 3;
+
+// Add newly picked photos to the ones already attached, in the order picked. Only as many as
+// fit under the cap are read; one unreadable file never throws away the rest. `read` is
+// fileToImage (a parameter so Jest can lift this without a canvas). Returns the new list plus
+// a short notice for the user when something was skipped, else "".
+var addPhotos = /*#__PURE__*/function () {
+  var _ref97 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(existing, files, read) {
+    var max,
+      picked,
+      room,
+      take,
+      added,
+      failed,
+      _iterator13,
+      _step13,
+      f,
+      over,
+      notes,
+      _args36 = arguments,
+      _t40,
+      _t41,
+      _t42,
+      _t43,
+      _t44,
+      _t45;
+    return _regenerator().w(function (_context36) {
+      while (1) switch (_context36.p = _context36.n) {
+        case 0:
+          max = _args36.length > 3 && _args36[3] !== undefined ? _args36[3] : MAX_PHOTOS;
+          picked = Array.from(files || []);
+          room = Math.max(0, max - existing.length);
+          take = picked.slice(0, room);
+          added = [];
+          failed = 0;
+          _iterator13 = _createForOfIteratorHelper(take);
+          _context36.p = 1;
+          _iterator13.s();
+        case 2:
+          if ((_step13 = _iterator13.n()).done) {
+            _context36.n = 7;
+            break;
+          }
+          f = _step13.value;
+          _context36.p = 3;
+          _t40 = added;
+          _t41 = _objectSpread;
+          _t42 = _objectSpread;
+          _t43 = {};
+          _context36.n = 4;
+          return read(f);
+        case 4:
+          _t40.push.call(_t40, _t41(_t42(_t43, _context36.v), {}, {
+            id: Date.now() + "-" + Math.random().toString(36).slice(2)
+          }));
+          _context36.n = 6;
+          break;
+        case 5:
+          _context36.p = 5;
+          _t44 = _context36.v;
+          failed++;
+        case 6:
+          _context36.n = 2;
+          break;
+        case 7:
+          _context36.n = 9;
+          break;
+        case 8:
+          _context36.p = 8;
+          _t45 = _context36.v;
+          _iterator13.e(_t45);
+        case 9:
+          _context36.p = 9;
+          _iterator13.f();
+          return _context36.f(9);
+        case 10:
+          over = picked.length - take.length;
+          notes = [];
+          if (failed) notes.push(failed === 1 ? "1 photo couldn't be read — try a JPEG or PNG." : failed + " photos couldn't be read — try JPEG or PNG.");
+          if (over) notes.push("Up to " + max + " photos per meal — " + (over === 1 ? "1 wasn't" : over + " weren't") + " added.");
+          return _context36.a(2, {
+            photos: [].concat(_toConsumableArray(existing), added),
+            notice: notes.join(" ")
+          });
+      }
+    }, _callee36, null, [[3, 5], [1, 8, 9, 10]]);
+  }));
+  return function addPhotos(_x51, _x52, _x53) {
+    return _ref97.apply(this, arguments);
+  };
+}();
+
 // "Report estimate as wrong" → opens a prefilled email (Google Play GenAI app
 // policy needs a working report path). Sends only what the user already gave the
 // AI — the description + the numbers — never account data. (launch + design)
@@ -11386,10 +11492,10 @@ var reportEstimate = function reportEstimate(desc, items, totals) {
   var body = "I think this AI estimate is wrong.\n\nMy description:\n" + (desc ? desc : "(photo only)") + "\n\nEstimate:\n" + lines + "\n\nTotal: " + Math.round(totals && totals.kcal || 0) + " kcal" + "\n\nWhat was off:\n";
   window.location.href = "mailto:fuellogadmin@gmail.com?subject=" + encodeURIComponent("Fuel Log — inaccurate AI estimate") + "&body=" + encodeURIComponent(body);
 };
-function ItemRow(_ref97) {
-  var item = _ref97.item,
-    onReestimate = _ref97.onReestimate,
-    reestimating = _ref97.reestimating;
+function ItemRow(_ref98) {
+  var item = _ref98.item,
+    onReestimate = _ref98.onReestimate,
+    reestimating = _ref98.reestimating;
   var _useState111 = useState(false),
     _useState112 = _slicedToArray(_useState111, 2),
     editing = _useState112[0],
@@ -11512,13 +11618,13 @@ function ItemRow(_ref97) {
     }
   }, "\u26A0\uFE0F Contains ", itemAllergens.join(", "), " \u2014 flagged from your allergies."));
 }
-function AILog(_ref98) {
-  var onAdd = _ref98.onAdd,
-    onBack = _ref98.onBack,
-    _ref98$pastDays = _ref98.pastDays,
-    pastDays = _ref98$pastDays === void 0 ? [] : _ref98$pastDays,
-    _ref98$meals = _ref98.meals,
-    meals = _ref98$meals === void 0 ? [] : _ref98$meals;
+function AILog(_ref99) {
+  var onAdd = _ref99.onAdd,
+    onBack = _ref99.onBack,
+    _ref99$pastDays = _ref99.pastDays,
+    pastDays = _ref99$pastDays === void 0 ? [] : _ref99$pastDays,
+    _ref99$meals = _ref99.meals,
+    meals = _ref99$meals === void 0 ? [] : _ref99$meals;
   var _useState115 = useState(""),
     _useState116 = _slicedToArray(_useState115, 2),
     desc = _useState116[0],
@@ -11555,13 +11661,14 @@ function AILog(_ref98) {
     _useState132 = _slicedToArray(_useState131, 2),
     loggedCount = _useState132[0],
     setLoggedCount = _useState132[1]; // idx -> times logged (ephemeral; resets on unmount)
-  // Capture adapters — voice transcript + transient photo. The photo lives ONLY
-  // here in memory ({base64, preview}); it is never written to storage and never
-  // included in the saved record (see logAll). It is discarded when we unmount.
-  var _useState133 = useState(null),
+  // Capture adapters — voice transcript + transient photos. Photos live ONLY
+  // here in memory ([{id, base64, preview}], up to MAX_PHOTOS); they are never written to
+  // storage and never included in the saved record (see logAll). Discarded when we unmount.
+  var _useState133 = useState([]),
     _useState134 = _slicedToArray(_useState133, 2),
-    photo = _useState134[0],
-    setPhoto = _useState134[1];
+    photos = _useState134[0],
+    setPhotos = _useState134[1];
+  var hasPhoto = photos.length > 0;
   var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
     listening = _useState136[0],
@@ -11588,7 +11695,8 @@ function AILog(_ref98) {
     fuLog = _useState146[0],
     setFuLog = _useState146[1]; // [{q, a}] persisted with the meal
   var recRef = React.useRef(null);
-  var fileRef = React.useRef(null);
+  var cameraRef = React.useRef(null); // opens the camera straight away (capture)
+  var galleryRef = React.useRef(null); // the photo picker / files — choose one or several
 
   // Stop any in-flight speech recognition if we leave the screen.
   useEffect(function () {
@@ -11667,48 +11775,51 @@ function AILog(_ref98) {
     } catch (e) {}
     setListening(false);
   };
-  var onPickPhoto = /*#__PURE__*/function () {
-    var _ref99 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee36(e) {
-      var file, _t40, _t41;
-      return _regenerator().w(function (_context36) {
-        while (1) switch (_context36.p = _context36.n) {
+  var onPickPhotos = /*#__PURE__*/function () {
+    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37(e) {
+      var files, _yield$addPhotos, next, notice;
+      return _regenerator().w(function (_context37) {
+        while (1) switch (_context37.n) {
           case 0:
-            file = e.target.files && e.target.files[0];
+            files = Array.from(e.target.files || []);
             e.target.value = ""; // let the same file be re-picked
-            if (file) {
-              _context36.n = 1;
+            if (files.length) {
+              _context37.n = 1;
               break;
             }
-            return _context36.a(2);
+            return _context37.a(2);
           case 1:
-            _context36.p = 1;
-            _t40 = setPhoto;
-            _context36.n = 2;
-            return fileToImage(file);
+            _context37.n = 2;
+            return addPhotos(photos, files, fileToImage);
           case 2:
-            _t40(_context36.v);
-            setError("");
-            _context36.n = 4;
-            break;
+            _yield$addPhotos = _context37.v;
+            next = _yield$addPhotos.photos;
+            notice = _yield$addPhotos.notice;
+            setPhotos(next);
+            setError(notice);
           case 3:
-            _context36.p = 3;
-            _t41 = _context36.v;
-            setError("Couldn't read that image — try another photo.");
-          case 4:
-            return _context36.a(2);
+            return _context37.a(2);
         }
-      }, _callee36, null, [[1, 3]]);
+      }, _callee37);
     }));
-    return function onPickPhoto(_x51) {
-      return _ref99.apply(this, arguments);
+    return function onPickPhotos(_x54) {
+      return _ref100.apply(this, arguments);
     };
   }();
+  var removePhoto = function removePhoto(id) {
+    setPhotos(function (p) {
+      return p.filter(function (x) {
+        return x.id !== id;
+      });
+    });
+    setError("");
+  };
 
   // fresh: true skips the past-meal lookup — the "Re-estimate with AI" button on a reused meal.
   var estimate = /*#__PURE__*/function () {
-    var _ref100 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee37() {
-      var _ref101,
-        _ref101$fresh,
+    var _ref101 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38() {
+      var _ref102,
+        _ref102$fresh,
         fresh,
         stated,
         past,
@@ -11717,18 +11828,18 @@ function AILog(_ref98) {
         merged,
         k,
         wConf,
-        _args37 = arguments,
-        _t42,
-        _t43;
-      return _regenerator().w(function (_context37) {
-        while (1) switch (_context37.p = _context37.n) {
+        _args38 = arguments,
+        _t46,
+        _t47;
+      return _regenerator().w(function (_context38) {
+        while (1) switch (_context38.p = _context38.n) {
           case 0:
-            _ref101 = _args37.length > 0 && _args37[0] !== undefined ? _args37[0] : {}, _ref101$fresh = _ref101.fresh, fresh = _ref101$fresh === void 0 ? false : _ref101$fresh;
-            if (!(!desc.trim() && !photo)) {
-              _context37.n = 1;
+            _ref102 = _args38.length > 0 && _args38[0] !== undefined ? _args38[0] : {}, _ref102$fresh = _ref102.fresh, fresh = _ref102$fresh === void 0 ? false : _ref102$fresh;
+            if (!(!desc.trim() && !hasPhoto)) {
+              _context38.n = 1;
               break;
             }
-            return _context37.a(2);
+            return _context38.a(2);
           case 1:
             setLoading(true);
             setError("");
@@ -11742,58 +11853,60 @@ function AILog(_ref98) {
             setReused(null);
             // A full totals line typed by the user IS the meal — one row, at once, no model call, no
             // questions (features/logging/06). Only for typed text: a photo is always estimated.
-            stated = photo ? null : parseStatedTotals(desc);
+            stated = hasPhoto ? null : parseStatedTotals(desc);
             if (!stated) {
-              _context37.n = 2;
+              _context38.n = 2;
               break;
             }
             setItems([statedTotalsItem(stated)]);
             setLoading(false);
-            return _context37.a(2);
+            return _context38.a(2);
           case 2:
             // Typed text the user has logged before is answered from their log: no model call, no
             // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
-            past = photo || fresh ? null : findPastMeal(desc, pastDays, meals);
+            past = hasPhoto || fresh ? null : findPastMeal(desc, pastDays, meals);
             if (!past) {
-              _context37.n = 3;
+              _context38.n = 3;
               break;
             }
             setItems(past.items);
             setFuLog(past.followups);
             setReused(past);
             setLoading(false);
-            return _context37.a(2);
+            return _context38.a(2);
           case 3:
-            _context37.p = 3;
-            if (!photo) {
-              _context37.n = 5;
+            _context38.p = 3;
+            if (!hasPhoto) {
+              _context38.n = 5;
               break;
             }
-            _context37.n = 4;
-            return callAIJson([{
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: photo.mediaType,
-                data: photo.base64
-              }
-            }, {
+            _context38.n = 4;
+            return callAIJson([].concat(_toConsumableArray(photos.map(function (p) {
+              return {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: p.mediaType,
+                  data: p.base64
+                }
+              };
+            })), [{
               type: "text",
-              text: AI_PHOTO_PROMPT(desc)
-            }], 2000);
+              text: AI_PHOTO_PROMPT(desc, photos.length)
+            }]), 2000, photos.length > 1 ? 45000 : 30000);
           case 4:
-            _t42 = _context37.v;
-            _context37.n = 7;
+            _t46 = _context38.v;
+            _context38.n = 7;
             break;
           case 5:
-            _context37.n = 6;
+            _context38.n = 6;
             return callAIJson(AI_PROMPT(desc, similarPastMeals(desc, pastDays, meals)), 2000);
           case 6:
-            _t42 = _context37.v;
+            _t46 = _context38.v;
           case 7:
-            parsed = _t42;
+            parsed = _t46;
             aiItems = parsed.items || [];
-            if (photo) setMealName(parsed.meal || "");
+            if (hasPhoto) setMealName(parsed.meal || "");
 
             // The model's rows are the rows. Normalise confidence only (vision models may return a
             // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
@@ -11816,21 +11929,21 @@ function AILog(_ref98) {
               return a + it.confidence * (it.kcal || 0);
             }, 0) / k) : 100;
             setFollowups(wConf < FOLLOWUP_BELOW ? pickFollowups(merged) : []);
-            _context37.n = 9;
+            _context38.n = 9;
             break;
           case 8:
-            _context37.p = 8;
-            _t43 = _context37.v;
-            setError("Estimation failed: " + _t43.message);
+            _context38.p = 8;
+            _t47 = _context38.v;
+            setError("Estimation failed: " + _t47.message);
           case 9:
             setLoading(false);
           case 10:
-            return _context37.a(2);
+            return _context38.a(2);
         }
-      }, _callee37, null, [[3, 8]]);
+      }, _callee38, null, [[3, 8]]);
     }));
     return function estimate() {
-      return _ref100.apply(this, arguments);
+      return _ref101.apply(this, arguments);
     };
   }();
 
@@ -11861,17 +11974,17 @@ function AILog(_ref98) {
     }
   };
   var reestimate = /*#__PURE__*/function () {
-    var _ref102 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee38(idx, newName) {
-      var updated, _final, _t44;
-      return _regenerator().w(function (_context38) {
-        while (1) switch (_context38.p = _context38.n) {
+    var _ref103 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(idx, newName) {
+      var updated, _final, _t48;
+      return _regenerator().w(function (_context39) {
+        while (1) switch (_context39.p = _context39.n) {
           case 0:
             setReestIdx(idx);
-            _context38.p = 1;
-            _context38.n = 2;
+            _context39.p = 1;
+            _context39.n = 2;
             return callAIJson(AI_REESTIMATE_PROMPT(newName), 300);
           case 2:
-            updated = _context38.v;
+            updated = _context39.v;
             _final = _objectSpread(_objectSpread({}, updated), {}, {
               confidence: normConf(updated.confidence),
               name: newName
@@ -11881,20 +11994,20 @@ function AILog(_ref98) {
                 return i === idx ? _final : it;
               });
             });
-            _context38.n = 4;
+            _context39.n = 4;
             break;
           case 3:
-            _context38.p = 3;
-            _t44 = _context38.v;
+            _context39.p = 3;
+            _t48 = _context39.v;
           case 4:
             setReestIdx(null);
           case 5:
-            return _context38.a(2);
+            return _context39.a(2);
         }
-      }, _callee38, null, [[1, 3]]);
+      }, _callee39, null, [[1, 3]]);
     }));
-    return function reestimate(_x52, _x53) {
-      return _ref102.apply(this, arguments);
+    return function reestimate(_x55, _x56) {
+      return _ref103.apply(this, arguments);
     };
   }();
   var logAll = function logAll() {
@@ -11920,8 +12033,8 @@ function AILog(_ref98) {
       return a + e.conf * e.kcal;
     }, 0) / totals.kcal) : avgConf;
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
-    var source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
-    var name = stated ? items[0].name : photo ? photoMealName(mealName, desc, items) : desc.trim();
+    var source = hasPhoto ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    var name = stated ? items[0].name : hasPhoto ? photoMealName(mealName, desc, items) : desc.trim();
     onAdd({
       name: name,
       kcal: Math.round(totals.kcal),
@@ -11936,7 +12049,7 @@ function AILog(_ref98) {
     onBack();
   };
   var logItem = function logItem(item, idx) {
-    var source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    var source = hasPhoto ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
     onAdd({
       name: item.name,
       kcal: Math.round(item.kcal),
@@ -11966,14 +12079,14 @@ function AILog(_ref98) {
       lineHeight: 1.6,
       marginBottom: 16
     }
-  }, "Type it, dictate it, or photograph it \u2014 I'll break it down item by item with confidence scores. Tap any item to correct it and re-estimate."), /*#__PURE__*/React.createElement("textarea", {
+  }, "Type it, say it, or add photos \u2014 I'll break it down item by item with confidence scores. Tap any item to correct it and re-estimate."), /*#__PURE__*/React.createElement("textarea", {
     value: desc,
     onChange: function onChange(e) {
       return setDesc(e.target.value);
     },
     rows: 4,
-    "aria-label": photo ? "Notes for the photo" : "Describe your meal",
-    placeholder: photo ? "Optional notes to sharpen the estimate — e.g. '200g chicken, cooked in 1 tbsp olive oil, rice is about 150g, only ate half the chips'" : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'",
+    "aria-label": hasPhoto ? "Notes for the photos" : "Describe your meal",
+    placeholder: hasPhoto ? "Optional notes to sharpen the estimate — e.g. 'Tesco chicken tikka, ate the whole pack', '200g chicken in 1 tbsp olive oil', 'only ate half the chips'" : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'",
     style: {
       width: "100%",
       boxSizing: "border-box",
@@ -11988,57 +12101,163 @@ function AILog(_ref98) {
       outline: "none",
       lineHeight: 1.6
     }
-  }), photo && /*#__PURE__*/React.createElement("div", {
+  }), hasPhoto && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: "var(--text-mid)",
       lineHeight: 1.5,
       marginTop: 6
     }
-  }, "\uD83D\uDCDD Anything you type here guides the photo estimate \u2014 weights, brands, cooking oil, hidden sauces or how much you actually ate. Your notes win where the photo can't tell."), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDCDD Anything you type here guides the estimate \u2014 weights, brands, cooking oil, hidden sauces or how much you actually ate. Your notes win where the photos can't tell."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12
+    }
+  }, hasPhoto && /*#__PURE__*/React.createElement("div", {
+    role: "list",
+    "aria-label": "Attached photos",
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 10,
+      flexWrap: "wrap"
+    }
+  }, photos.map(function (p, i) {
+    return /*#__PURE__*/React.createElement("div", {
+      role: "listitem",
+      key: p.id,
+      style: {
+        position: "relative",
+        width: 84,
+        height: 84,
+        borderRadius: 12,
+        overflow: "hidden",
+        border: "1px solid ".concat(BD),
+        flexShrink: 0
+      }
+    }, /*#__PURE__*/React.createElement("img", {
+      src: p.preview,
+      alt: "Photo ".concat(i + 1, " of ").concat(photos.length),
+      style: {
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        display: "block"
+      }
+    }), /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() {
+        return removePhoto(p.id);
+      },
+      "aria-label": "Remove photo ".concat(i + 1, " of ").concat(photos.length),
+      style: {
+        position: "absolute",
+        top: 0,
+        right: 0,
+        width: 40,
+        height: 40,
+        padding: 0,
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "flex-end"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      "aria-hidden": "true",
+      style: {
+        margin: 4,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        background: "rgba(0,0,0,0.65)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 900,
+        lineHeight: "24px",
+        textAlign: "center"
+      }
+    }, "\u2715")));
+  })), photos.length < MAX_PHOTOS ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, [["camera", "📷", "Camera", "Take a photo with the camera", cameraRef], ["gallery", "🖼", "Gallery", "Choose photos from your gallery", galleryRef]].map(function (_ref104) {
+    var _ref105 = _slicedToArray(_ref104, 5),
+      k = _ref105[0],
+      icon = _ref105[1],
+      label = _ref105[2],
+      aria = _ref105[3],
+      ref = _ref105[4];
+    return /*#__PURE__*/React.createElement("button", {
+      key: k,
+      onClick: function onClick() {
+        return ref.current && ref.current.click();
+      },
+      "aria-label": aria,
+      style: {
+        flex: 1,
+        minHeight: 48,
+        padding: "12px 10px",
+        borderRadius: 14,
+        background: "var(--surface-2)",
+        color: A,
+        border: "1px solid ".concat(aA("44")),
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer"
+      }
+    }, icon, " ", label);
+  })) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--text-mid)",
+      lineHeight: 1.5
+    }
+  }, MAX_PHOTOS, " photos max \u2014 remove one to add another."), /*#__PURE__*/React.createElement("input", {
+    ref: cameraRef,
+    type: "file",
+    accept: "image/*",
+    capture: "environment",
+    "data-testid": "photo-camera",
+    onChange: onPickPhotos,
+    style: {
+      display: "none"
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    ref: galleryRef,
+    type: "file",
+    accept: "image/*",
+    multiple: true,
+    "data-testid": "photo-gallery",
+    onChange: onPickPhotos,
+    style: {
+      display: "none"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--text-mid)",
+      lineHeight: 1.5,
+      marginTop: 8
+    }
+  }, hasPhoto ? photos.length < MAX_PHOTOS ? "Packet missing its name? Add the front too — up to " + MAX_PHOTOS + " photos of one meal." : "" : "Up to " + MAX_PHOTOS + " photos of one meal — e.g. a packet's front, its label, and the plate."), /*#__PURE__*/React.createElement("div", {
+    "aria-live": "polite",
+    style: {
+      position: "absolute",
+      width: 1,
+      height: 1,
+      overflow: "hidden",
+      clip: "rect(0 0 0 0)"
+    }
+  }, hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : "")), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "var(--text-lo-2)",
       lineHeight: 1.5,
-      marginTop: 6
+      marginTop: 8
     }
-  }, "Just the food \u2014 no personal details needed. Dictation runs on your device; only the text is sent. A photo is used once to estimate the meal and is never stored."), photo && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12,
-      position: "relative",
-      borderRadius: 14,
-      overflow: "hidden",
-      border: "1px solid ".concat(BD)
-    }
-  }, /*#__PURE__*/React.createElement("img", {
-    src: photo.preview,
-    alt: "meal",
-    style: {
-      width: "100%",
-      display: "block",
-      maxHeight: 220,
-      objectFit: "cover"
-    }
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
-      return setPhoto(null);
-    },
-    "aria-label": "Remove photo",
-    style: {
-      position: "absolute",
-      top: 8,
-      right: 8,
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      background: "rgba(0,0,0,0.6)",
-      color: "#fff",
-      border: "none",
-      fontSize: 16,
-      fontWeight: 900,
-      cursor: "pointer"
-    }
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, "Just the food \u2014 no personal details needed. Dictation runs on your device; only the text is sent. Photos are sent once to our AI to estimate the meal, with location data removed, and are never stored. Only include food and packaging."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -12061,47 +12280,22 @@ function AILog(_ref98) {
     }
   }, listening ? "⏹" : "🎤"), /*#__PURE__*/React.createElement("button", {
     onClick: function onClick() {
-      return fileRef.current && fileRef.current.click();
-    },
-    "aria-label": "Photograph meal",
-    style: {
-      flexShrink: 0,
-      width: 54,
-      padding: "15px 0",
-      borderRadius: 14,
-      background: "var(--surface-2)",
-      color: A,
-      border: "1px solid ".concat(aA("44")),
-      fontSize: 18,
-      cursor: "pointer"
-    }
-  }, "\uD83D\uDCF7"), /*#__PURE__*/React.createElement("input", {
-    ref: fileRef,
-    type: "file",
-    accept: "image/*",
-    capture: "environment",
-    onChange: onPickPhoto,
-    style: {
-      display: "none"
-    }
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
       return estimate();
     },
-    disabled: loading || !desc.trim() && !photo,
+    disabled: loading || !desc.trim() && !hasPhoto,
     style: {
       flex: 1,
       padding: "15px",
-      background: loading || !desc.trim() && !photo ? "var(--surface-2)" : A,
-      color: loading || !desc.trim() && !photo ? "var(--border-strong)" : "var(--bg)",
+      background: loading || !desc.trim() && !hasPhoto ? "var(--surface-2)" : A,
+      color: loading || !desc.trim() && !hasPhoto ? "var(--border-strong)" : "var(--bg)",
       border: "none",
       borderRadius: 14,
       fontSize: 14,
       fontWeight: 900,
       letterSpacing: "0.08em",
-      cursor: loading || !desc.trim() && !photo ? "not-allowed" : "pointer"
+      cursor: loading || !desc.trim() && !hasPhoto ? "not-allowed" : "pointer"
     }
-  }, loading ? "⚡ ANALYSING..." : photo ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL")), error && /*#__PURE__*/React.createElement("div", {
+  }, loading ? "⚡ ANALYSING..." : photos.length > 1 ? "🤖 ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL")), error && /*#__PURE__*/React.createElement("div", {
     style: {
       color: "var(--bulk-3)",
       fontSize: 12,
@@ -12115,7 +12309,7 @@ function AILog(_ref98) {
   }, error, capError &&
   /*#__PURE__*/
   // Cap reached / session expired — degrade gracefully. The typed text
-  // and any photo are kept; offer manual entry instead of losing them.
+  // and any photos are kept; offer manual entry instead of losing them.
   React.createElement("button", {
     onClick: onBack,
     style: {
@@ -12400,17 +12594,17 @@ function AILog(_ref98) {
 
 // ── Quick Add ─────────────────────────────────────────────────
 
-function QuickAdd(_ref103) {
-  var onAdd = _ref103.onAdd,
-    onBack = _ref103.onBack,
-    meals = _ref103.meals,
-    setMeals = _ref103.setMeals,
-    _ref103$onForget = _ref103.onForget,
-    onForget = _ref103$onForget === void 0 ? function () {} : _ref103$onForget,
-    _ref103$isPremium = _ref103.isPremium,
-    isPremium = _ref103$isPremium === void 0 ? false : _ref103$isPremium,
-    _ref103$onPremiumGate = _ref103.onPremiumGate,
-    onPremiumGate = _ref103$onPremiumGate === void 0 ? function () {} : _ref103$onPremiumGate;
+function QuickAdd(_ref106) {
+  var onAdd = _ref106.onAdd,
+    onBack = _ref106.onBack,
+    meals = _ref106.meals,
+    setMeals = _ref106.setMeals,
+    _ref106$onForget = _ref106.onForget,
+    onForget = _ref106$onForget === void 0 ? function () {} : _ref106$onForget,
+    _ref106$isPremium = _ref106.isPremium,
+    isPremium = _ref106$isPremium === void 0 ? false : _ref106$isPremium,
+    _ref106$onPremiumGate = _ref106.onPremiumGate,
+    onPremiumGate = _ref106$onPremiumGate === void 0 ? function () {} : _ref106$onPremiumGate;
   var _useState147 = useState(""),
     _useState148 = _slicedToArray(_useState147, 2),
     search = _useState148[0],
@@ -12420,20 +12614,20 @@ function QuickAdd(_ref103) {
     modal = _useState150[0],
     setModal = _useState150[1];
   var save = /*#__PURE__*/function () {
-    var _ref104 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee39(m) {
-      return _regenerator().w(function (_context39) {
-        while (1) switch (_context39.n) {
+    var _ref107 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40(m) {
+      return _regenerator().w(function (_context40) {
+        while (1) switch (_context40.n) {
           case 0:
             setMeals(m);
-            _context39.n = 1;
+            _context40.n = 1;
             return ss("meals", JSON.stringify(m));
           case 1:
-            return _context39.a(2);
+            return _context40.a(2);
         }
-      }, _callee39);
+      }, _callee40);
     }));
-    return function save(_x54) {
-      return _ref104.apply(this, arguments);
+    return function save(_x57) {
+      return _ref107.apply(this, arguments);
     };
   }();
   var handleSave = function handleSave(saved) {
@@ -12633,9 +12827,9 @@ var TAPE_SERIES = [{
 //
 // At most four short lines, deliberately: it floats over a 200px-tall chart at phone width and
 // can land under the thumb, so a taller card would cover the point being inspected.
-function BodyFatTooltip(_ref105) {
-  var active = _ref105.active,
-    payload = _ref105.payload;
+function BodyFatTooltip(_ref108) {
+  var active = _ref108.active,
+    payload = _ref108.payload;
   if (!active || !payload || !payload.length) return null;
   var r = payload[0].payload || {};
   return /*#__PURE__*/React.createElement("div", {
@@ -12666,31 +12860,31 @@ function BodyFatTooltip(_ref105) {
     }
   }, r.sinceDays === 1 ? "1 day later" : r.sinceDays + " days later"));
 }
-function History(_ref106) {
+function History(_ref109) {
   var _bodyFatWindowRows2, _MODES$day$mode, _MODES$day$mode2, _MODES$day$mode3;
-  var history = _ref106.history,
-    onBack = _ref106.onBack,
-    onUpdateDay = _ref106.onUpdateDay,
-    _ref106$weighIns = _ref106.weighIns,
-    weighIns = _ref106$weighIns === void 0 ? [] : _ref106$weighIns,
-    _ref106$bodyMeasureme = _ref106.bodyMeasurements,
-    bodyMeasurements = _ref106$bodyMeasureme === void 0 ? [] : _ref106$bodyMeasureme,
-    _ref106$sex = _ref106.sex,
-    sex = _ref106$sex === void 0 ? null : _ref106$sex,
-    _ref106$profile = _ref106.profile,
-    profile = _ref106$profile === void 0 ? {} : _ref106$profile,
-    _ref106$tdeeAdj = _ref106.tdeeAdj,
-    tdeeAdj = _ref106$tdeeAdj === void 0 ? 0 : _ref106$tdeeAdj,
-    _ref106$meals = _ref106.meals,
-    meals = _ref106$meals === void 0 ? DEF_MEALS : _ref106$meals,
-    _ref106$setMeals = _ref106.setMeals,
-    setMeals = _ref106$setMeals === void 0 ? function () {} : _ref106$setMeals,
-    _ref106$onForget = _ref106.onForget,
-    onForget = _ref106$onForget === void 0 ? function () {} : _ref106$onForget,
-    _ref106$isPremium = _ref106.isPremium,
-    isPremium = _ref106$isPremium === void 0 ? false : _ref106$isPremium,
-    _ref106$onPremiumGate = _ref106.onPremiumGate,
-    onPremiumGate = _ref106$onPremiumGate === void 0 ? function () {} : _ref106$onPremiumGate;
+  var history = _ref109.history,
+    onBack = _ref109.onBack,
+    onUpdateDay = _ref109.onUpdateDay,
+    _ref109$weighIns = _ref109.weighIns,
+    weighIns = _ref109$weighIns === void 0 ? [] : _ref109$weighIns,
+    _ref109$bodyMeasureme = _ref109.bodyMeasurements,
+    bodyMeasurements = _ref109$bodyMeasureme === void 0 ? [] : _ref109$bodyMeasureme,
+    _ref109$sex = _ref109.sex,
+    sex = _ref109$sex === void 0 ? null : _ref109$sex,
+    _ref109$profile = _ref109.profile,
+    profile = _ref109$profile === void 0 ? {} : _ref109$profile,
+    _ref109$tdeeAdj = _ref109.tdeeAdj,
+    tdeeAdj = _ref109$tdeeAdj === void 0 ? 0 : _ref109$tdeeAdj,
+    _ref109$meals = _ref109.meals,
+    meals = _ref109$meals === void 0 ? DEF_MEALS : _ref109$meals,
+    _ref109$setMeals = _ref109.setMeals,
+    setMeals = _ref109$setMeals === void 0 ? function () {} : _ref109$setMeals,
+    _ref109$onForget = _ref109.onForget,
+    onForget = _ref109$onForget === void 0 ? function () {} : _ref109$onForget,
+    _ref109$isPremium = _ref109.isPremium,
+    isPremium = _ref109$isPremium === void 0 ? false : _ref109$isPremium,
+    _ref109$onPremiumGate = _ref109.onPremiumGate,
+    onPremiumGate = _ref109$onPremiumGate === void 0 ? function () {} : _ref109$onPremiumGate;
   var RANGES = ["DAY", "W", "30D", "3M", "1Y", "ALL"];
   var RLBL = {
     DAY: "Day",
@@ -13513,11 +13707,11 @@ function History(_ref106) {
         fontWeight: 800,
         marginBottom: 4
       }
-    }, "BODY"), bodyRows.map(function (_ref107, i) {
-      var _ref108 = _slicedToArray(_ref107, 3),
-        label = _ref108[0],
-        value = _ref108[1],
-        color = _ref108[2];
+    }, "BODY"), bodyRows.map(function (_ref110, i) {
+      var _ref111 = _slicedToArray(_ref110, 3),
+        label = _ref111[0],
+        value = _ref111[1],
+        color = _ref111[2];
       return /*#__PURE__*/React.createElement("div", {
         key: label,
         style: {
@@ -13707,10 +13901,10 @@ function History(_ref106) {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, Object.entries(MM).map(function (_ref109) {
-    var _ref110 = _slicedToArray(_ref109, 2),
-      k = _ref110[0],
-      m = _ref110[1];
+  }, Object.entries(MM).map(function (_ref112) {
+    var _ref113 = _slicedToArray(_ref112, 2),
+      k = _ref113[0],
+      m = _ref113[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -13786,10 +13980,10 @@ function History(_ref106) {
       display: "flex",
       gap: 6
     }
-  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref111) {
-    var _ref112 = _slicedToArray(_ref111, 2),
-      t = _ref112[0],
-      e = _ref112[1];
+  }, [["line", "📈"], ["bar", "📊"]].map(function (_ref114) {
+    var _ref115 = _slicedToArray(_ref114, 2),
+      t = _ref115[0],
+      e = _ref115[1];
     return /*#__PURE__*/React.createElement("button", {
       key: t,
       onClick: function onClick() {
@@ -14079,10 +14273,10 @@ function History(_ref106) {
       gridTemplateColumns: "repeat(4,1fr)",
       gap: 8
     }
-  }, Object.entries(MM).map(function (_ref113) {
-    var _ref114 = _slicedToArray(_ref113, 2),
-      k = _ref114[0],
-      m = _ref114[1];
+  }, Object.entries(MM).map(function (_ref116) {
+    var _ref117 = _slicedToArray(_ref116, 2),
+      k = _ref117[0],
+      m = _ref117[1];
     var avg = avgRows.reduce(function (a, d) {
       return a + (d[m.key] || 0);
     }, 0) / avgRows.length;
@@ -14270,9 +14464,9 @@ function History(_ref106) {
 
 // ── Achievements ──────────────────────────────────────────────
 
-function Achievements(_ref115) {
-  var earnedBdgs = _ref115.earnedBdgs,
-    onBack = _ref115.onBack;
+function Achievements(_ref118) {
+  var earnedBdgs = _ref118.earnedBdgs,
+    onBack = _ref118.onBack;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "20px 16px 50px",
@@ -14371,9 +14565,9 @@ function Achievements(_ref115) {
 // Gold tier and above earn a full-screen fanfare; the number counts up and the
 // overlay auto-dismisses after ~2.5s (tap to dismiss early). Daily streaks are a
 // quiet chip pop (in the header) — this overlay is reserved for the rare events.
-function BadgeFanfare(_ref116) {
-  var badge = _ref116.badge,
-    onDone = _ref116.onDone;
+function BadgeFanfare(_ref119) {
+  var badge = _ref119.badge,
+    onDone = _ref119.onDone;
   var b = badge.b,
     i = badge.i;
   var target = TIERS[i];
@@ -14494,9 +14688,9 @@ function BadgeFanfare(_ref116) {
 
 // Daily streak → the quietest celebration: a small pip in the thumb zone (where the user is
 // mid-log), not the off-screen header. Springs in, fades out, ~1.4s, never blocks the log flow.
-function StreakPip(_ref117) {
-  var streak = _ref117.streak,
-    onDone = _ref117.onDone;
+function StreakPip(_ref120) {
+  var streak = _ref120.streak,
+    onDone = _ref120.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 1400);
     return function () {
@@ -14547,9 +14741,9 @@ function StreakPip(_ref117) {
 }
 
 // Bronze / Silver badge → a quiet bottom toast, no overlay. Auto-dismisses ~2.8s.
-function BadgeToast(_ref118) {
-  var badge = _ref118.badge,
-    onDone = _ref118.onDone;
+function BadgeToast(_ref121) {
+  var badge = _ref121.badge,
+    onDone = _ref121.onDone;
   var b = badge.b,
     i = badge.i;
   useEffect(function () {
@@ -14611,9 +14805,9 @@ function BadgeToast(_ref118) {
 
 // Plain text toast — the badge one carries a tier and an emoji, this one just says a
 // thing and goes away. Same dismiss-on-tap and the same 2.8s as BadgeToast.
-function NoteToast(_ref119) {
-  var text = _ref119.text,
-    onDone = _ref119.onDone;
+function NoteToast(_ref122) {
+  var text = _ref122.text,
+    onDone = _ref122.onDone;
   useEffect(function () {
     var t = setTimeout(onDone, 2800);
     return function () {
@@ -14886,206 +15080,206 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref120 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee40() {
-        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t45, _t46;
-        return _regenerator().w(function (_context40) {
-          while (1) switch (_context40.p = _context40.n) {
+      var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
+        var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t49, _t50;
+        return _regenerator().w(function (_context41) {
+          while (1) switch (_context41.p = _context41.n) {
             case 0:
-              _context40.n = 1;
+              _context41.n = 1;
               return runMigrations();
             case 1:
               k = todayKey();
-              _context40.n = 2;
+              _context41.n = 2;
               return sg("logs__" + k);
             case 2:
-              lv = _context40.v;
+              lv = _context41.v;
               if (lv) setLogs(JSON.parse(lv));
-              _context40.n = 3;
+              _context41.n = 3;
               return sg("water__" + k);
             case 3:
-              wv = _context40.v;
+              wv = _context41.v;
               if (wv) setWater(parseInt(wv) || 0);
               // A new day has no stored mode yet. It CARRIES the last one forward — "mode persists until
               // the user changes it" (energy-safety/02). It used to fall back to the useState default,
               // "cut": every morning opened in Cut, the once-a-day break accrual counted that day as a
               // cut day and reset the break to zero, and only then did a cloud pull restore Maintain on
               // screen — so a week-long break sat at "about 14 days to fully recharged". Fixed 2026-10-11.
-              _context40.n = 4;
+              _context41.n = 4;
               return sg("mode__" + k);
             case 4:
-              mv = _context40.v;
+              mv = _context41.v;
               if (!mv) {
-                _context40.n = 5;
+                _context41.n = 5;
                 break;
               }
               setMode(mv);
-              _context40.n = 10;
+              _context41.n = 10;
               break;
             case 5:
               _prior = null;
-              _context40.p = 6;
-              _context40.n = 7;
+              _context41.p = 6;
+              _context41.n = 7;
               return sg("history");
             case 7:
-              hv0 = _context40.v;
+              hv0 = _context41.v;
               before = (hv0 ? JSON.parse(hv0) : []).filter(function (h) {
                 return h && h.date <= k && MODES[h.mode];
               });
               if (before.length) _prior = before.reduce(function (a, b) {
                 return b.date > a.date ? b : a;
               }).mode;
-              _context40.n = 9;
+              _context41.n = 9;
               break;
             case 8:
-              _context40.p = 8;
-              _t45 = _context40.v;
+              _context41.p = 8;
+              _t49 = _context41.v;
             case 9:
               if (!_prior) {
-                _context40.n = 10;
+                _context41.n = 10;
                 break;
               }
               setMode(_prior);
-              _context40.n = 10;
+              _context41.n = 10;
               return ss("mode__" + k, _prior);
             case 10:
-              _context40.n = 11;
+              _context41.n = 11;
               return sg("profile");
             case 11:
-              pv = _context40.v;
+              pv = _context41.v;
               if (pv) {
                 pp = JSON.parse(pv);
                 setProf(pp);
                 setDietaryCache(pp.dietary);
               }
               loadedMeals = [].concat(DEF_MEALS);
-              _context40.n = 12;
+              _context41.n = 12;
               return sg("meals");
             case 12:
-              mv2 = _context40.v;
+              mv2 = _context41.v;
               if (mv2) {
                 loadedMeals = JSON.parse(mv2);
                 setMeals(loadedMeals);
               }
-              _context40.n = 13;
+              _context41.n = 13;
               return sg("workouts__" + k);
             case 13:
-              wkv = _context40.v;
+              wkv = _context41.v;
               if (wkv) setWorkouts(JSON.parse(wkv));
               // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
               prior = [];
               d = 1;
             case 14:
               if (!(d <= 2)) {
-                _context40.n = 17;
+                _context41.n = 17;
                 break;
               }
-              _context40.n = 15;
+              _context41.n = 15;
               return sg("workouts__" + dateKey(new Date(Date.now() - d * 86400000)));
             case 15:
-              pwv = _context40.v;
+              pwv = _context41.v;
               prior.push(pwv ? JSON.parse(pwv).reduce(function (s, w) {
                 return s + (w.kcal || 0);
               }, 0) : 0);
             case 16:
               d++;
-              _context40.n = 14;
+              _context41.n = 14;
               break;
             case 17:
               setPriorWorkoutKcal(prior);
-              _context40.n = 18;
+              _context41.n = 18;
               return sg("badges");
             case 18:
-              bv = _context40.v;
+              bv = _context41.v;
               if (bv) setEarnedBdgs(JSON.parse(bv));
-              _context40.n = 19;
+              _context41.n = 19;
               return sg("history");
             case 19:
-              hv = _context40.v;
+              hv = _context41.v;
               if (hv) setHist(JSON.parse(hv));
-              _context40.n = 20;
+              _context41.n = 20;
               return sg("weighins");
             case 20:
-              wiv = _context40.v;
+              wiv = _context41.v;
               if (wiv) setWeighIns(JSON.parse(wiv));
-              _context40.n = 21;
+              _context41.n = 21;
               return sg("bodymeasurements");
             case 21:
-              bmv = _context40.v;
+              bmv = _context41.v;
               if (bmv) {
                 try {
                   setBodyMeasurements(JSON.parse(bmv) || []);
                 } catch (e) {}
               }
-              _context40.n = 22;
+              _context41.n = 22;
               return sg("mute_body_measurements");
             case 22:
-              mmv = _context40.v;
+              mmv = _context41.v;
               if (mmv) setMuteMeasurements(mmv === "1");
-              _context40.n = 23;
+              _context41.n = 23;
               return sg("body_measurement_note");
             case 23:
-              mnv = _context40.v;
+              mnv = _context41.v;
               if (mnv) setMeasurementNote(mnv);
-              _context40.n = 24;
+              _context41.n = 24;
               return sg("body_measurement_nudge_dismissed");
             case 24:
-              mnav = _context40.v;
+              mnav = _context41.v;
               if (mnav) setMeasurementNudgeAt(parseInt(mnav) || null);
-              _context40.n = 25;
+              _context41.n = 25;
               return sg("tdee_adj");
             case 25:
-              tav = _context40.v;
+              tav = _context41.v;
               if (tav) setTdeeAdj(parseInt(tav) || 0);
-              _context40.n = 26;
+              _context41.n = 26;
               return sg("tdee_adj_log");
             case 26:
-              alv = _context40.v;
+              alv = _context41.v;
               if (alv) {
                 try {
                   setAdjLog(JSON.parse(alv) || []);
                 } catch (e) {}
               }
-              _context40.n = 27;
+              _context41.n = 27;
               return sg("weigh_nudge_dismissed");
             case 27:
-              wnv = _context40.v;
+              wnv = _context41.v;
               if (wnv) setWeighNudgeAt(parseInt(wnv) || null);
-              _context40.n = 28;
+              _context41.n = 28;
               return sg("cut_block");
             case 28:
-              cbv = _context40.v;
+              cbv = _context41.v;
               if (cbv) {
                 try {
                   setCutBlock(_objectSpread(_objectSpread({}, EMPTY_CUT_BLOCK), JSON.parse(cbv)));
                 } catch (e) {}
               }
-              _context40.n = 29;
+              _context41.n = 29;
               return sg(BREAK_REBUILT_KEY);
             case 29:
-              breakRebuilt.current = !!_context40.v;
-              _context40.n = 30;
+              breakRebuilt.current = !!_context41.v;
+              _context41.n = 30;
               return sg("target_kcal");
             case 30:
-              ckv = _context40.v;
+              ckv = _context41.v;
               if (ckv) {
                 n = parseInt(ckv);
                 if (n > 0) setCustomKcal(n);
               }
-              _context40.n = 31;
+              _context41.n = 31;
               return sg("aggressive_cut_acked");
             case 31:
-              acv = _context40.v;
+              acv = _context41.v;
               if (acv) setAggressiveCutAcked(true);
 
               // Auth — load premium state and check expiry
-              _context40.n = 32;
+              _context41.n = 32;
               return sg("auth_state");
             case 32:
-              asv = _context40.v;
-              _context40.n = 33;
+              asv = _context41.v;
+              _context41.n = 33;
               return sg("auth_user");
             case 33:
-              auv = _context40.v;
+              auv = _context41.v;
               premiumUid = null; // The background pull below and the revive further down both write the meal list.
               // The revive's is the union of the two, so it wins whichever order they land in.
               revive = {
@@ -15093,19 +15287,19 @@ function App() {
               };
               pulling = false;
               if (!(asv === "premium" && auv)) {
-                _context40.n = 37;
+                _context41.n = 37;
                 break;
               }
               u = JSON.parse(auv);
               if (!(u.subExpiry && Date.now() > u.subExpiry)) {
-                _context40.n = 35;
+                _context41.n = 35;
                 break;
               }
-              _context40.n = 34;
+              _context41.n = 34;
               return ss("auth_state", "anonymous");
             case 34:
               setShowLapsed(true);
-              _context40.n = 37;
+              _context41.n = 37;
               break;
             case 35:
               premiumUid = u.id || null;
@@ -15113,10 +15307,10 @@ function App() {
               setAuthUser(u);
               // Retroactive consent guard (R2): premium users from before consent existed,
               // or who haven't agreed to the current policy version, must consent before continuing.
-              _context40.n = 36;
+              _context41.n = 36;
               return sg("health_consent");
             case 36:
-              hc = _context40.v;
+              hc = _context41.v;
               hcParsed = null;
               try {
                 hcParsed = hc ? JSON.parse(hc) : null;
@@ -15169,29 +15363,29 @@ function App() {
               if (!pulling) setCloudSettled(true);
 
               // One-time recovery for lists the old "Reset to defaults" button wiped.
-              _context40.p = 38;
-              _context40.n = 39;
+              _context41.p = 38;
+              _context41.n = 39;
               return reviveMeals(premiumUid, loadedMeals);
             case 39:
-              revived = _context40.v;
+              revived = _context41.v;
               if (revived) {
                 revive.done = true;
                 setMeals(revived);
               }
-              _context40.n = 41;
+              _context41.n = 41;
               break;
             case 40:
-              _context40.p = 40;
-              _t46 = _context40.v;
+              _context41.p = 40;
+              _t50 = _context41.v;
             case 41:
               setReady(true);
             case 42:
-              return _context40.a(2);
+              return _context41.a(2);
           }
-        }, _callee40, null, [[38, 40], [6, 8]]);
+        }, _callee41, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref120.apply(this, arguments);
+        return _ref123.apply(this, arguments);
       };
     }();
     load();
@@ -15245,99 +15439,99 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref121 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41(l) {
-      return _regenerator().w(function (_context41) {
-        while (1) switch (_context41.n) {
-          case 0:
-            setLogs(l);
-            _context41.n = 1;
-            return ss("logs__" + todayKey(), JSON.stringify(l));
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogsTracked(authUser.id, todayKey(), l)["catch"](function () {});
-          case 2:
-            return _context41.a(2);
-        }
-      }, _callee41);
-    }));
-    return function saveLogs(_x55) {
-      return _ref121.apply(this, arguments);
-    };
-  }();
-  var saveWater = /*#__PURE__*/function () {
-    var _ref122 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(w) {
+    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
-            setWater(w);
+            setLogs(l);
             _context42.n = 1;
-            return ss("water__" + todayKey(), String(w));
+            return ss("logs__" + todayKey(), JSON.stringify(l));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncFoodLogsTracked(authUser.id, todayKey(), l)["catch"](function () {});
           case 2:
             return _context42.a(2);
         }
       }, _callee42);
     }));
-    return function saveWater(_x56) {
-      return _ref122.apply(this, arguments);
+    return function saveLogs(_x58) {
+      return _ref124.apply(this, arguments);
     };
   }();
-  var saveMode = /*#__PURE__*/function () {
-    var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(m) {
+  var saveWater = /*#__PURE__*/function () {
+    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
-            setMode(m);
+            setWater(w);
             _context43.n = 1;
-            return ss("mode__" + todayKey(), m);
+            return ss("water__" + todayKey(), String(w));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWater(authUser.id, todayKey(), w)["catch"](function () {});
           case 2:
             return _context43.a(2);
         }
       }, _callee43);
     }));
-    return function saveMode(_x57) {
-      return _ref123.apply(this, arguments);
+    return function saveWater(_x59) {
+      return _ref125.apply(this, arguments);
     };
   }();
-  var saveProf = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(p) {
+  var saveMode = /*#__PURE__*/function () {
+    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
-            setProf(p);
-            setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
+            setMode(m);
             _context44.n = 1;
-            return ss("profile", JSON.stringify(p));
+            return ss("mode__" + todayKey(), m);
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 2:
             return _context44.a(2);
         }
       }, _callee44);
     }));
-    return function saveProf(_x58) {
-      return _ref124.apply(this, arguments);
+    return function saveMode(_x60) {
+      return _ref126.apply(this, arguments);
     };
   }();
-  var saveWorkouts = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(w) {
+  var saveProf = /*#__PURE__*/function () {
+    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
-            setWorkouts(w);
+            setProf(p);
+            setDietaryCache(p.dietary); // keep the AI-prompt cache in step with the saved config
             _context45.n = 1;
-            return ss("workouts__" + todayKey(), JSON.stringify(w));
+            return ss("profile", JSON.stringify(p));
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncProfile(authUser.id, p)["catch"](function () {});
           case 2:
             return _context45.a(2);
         }
       }, _callee45);
     }));
-    return function saveWorkouts(_x59) {
-      return _ref125.apply(this, arguments);
+    return function saveProf(_x61) {
+      return _ref127.apply(this, arguments);
+    };
+  }();
+  var saveWorkouts = /*#__PURE__*/function () {
+    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
+      return _regenerator().w(function (_context46) {
+        while (1) switch (_context46.n) {
+          case 0:
+            setWorkouts(w);
+            _context46.n = 1;
+            return ss("workouts__" + todayKey(), JSON.stringify(w));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWorkouts(authUser.id, todayKey(), w)["catch"](function () {});
+          case 2:
+            return _context46.a(2);
+        }
+      }, _callee46);
+    }));
+    return function saveWorkouts(_x62) {
+      return _ref128.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15351,14 +15545,14 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(e) {
+    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
-      return _regenerator().w(function (_context46) {
-        while (1) switch (_context46.n) {
+      return _regenerator().w(function (_context47) {
+        while (1) switch (_context47.n) {
           case 0:
             haptic();
             isFirstToday = logs.length === 0;
-            _context46.n = 1;
+            _context47.n = 1;
             return saveLogs([].concat(_toConsumableArray(logs), [_objectSpread(_objectSpread({}, e), {}, {
               id: Date.now(),
               time: new Date().toLocaleTimeString([], {
@@ -15386,12 +15580,12 @@ function App() {
               }
             }
           case 2:
-            return _context46.a(2);
+            return _context47.a(2);
         }
-      }, _callee46);
+      }, _callee47);
     }));
-    return function addLog(_x60) {
-      return _ref126.apply(this, arguments);
+    return function addLog(_x63) {
+      return _ref129.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15417,92 +15611,92 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(kcal) {
-      return _regenerator().w(function (_context47) {
-        while (1) switch (_context47.n) {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
+      return _regenerator().w(function (_context48) {
+        while (1) switch (_context48.n) {
           case 0:
             setCustomKcal(kcal);
             if (!(kcal == null)) {
-              _context47.n = 2;
+              _context48.n = 2;
               break;
             }
-            _context47.n = 1;
+            _context48.n = 1;
             return ss("target_kcal", "");
           case 1:
-            _context47.n = 3;
+            _context48.n = 3;
             break;
           case 2:
-            _context47.n = 3;
+            _context48.n = 3;
             return ss("target_kcal", String(kcal));
           case 3:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, kcal, aggressiveCutAcked)["catch"](function () {});
           case 4:
-            return _context47.a(2);
+            return _context48.a(2);
         }
-      }, _callee47);
+      }, _callee48);
     }));
-    return function saveCustomKcal(_x61) {
-      return _ref127.apply(this, arguments);
+    return function saveCustomKcal(_x64) {
+      return _ref130.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(m) {
-      return _regenerator().w(function (_context48) {
-        while (1) switch (_context48.n) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
+      return _regenerator().w(function (_context49) {
+        while (1) switch (_context49.n) {
           case 0:
-            _context48.n = 1;
+            _context49.n = 1;
             return saveMode(m);
           case 1:
-            _context48.n = 2;
+            _context49.n = 2;
             return saveCustomKcal(null);
           case 2:
             // Sync once more with correct (m, null) pair to resolve any stale-closure race
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, m, tdeeAdj, null, aggressiveCutAcked)["catch"](function () {});
           case 3:
-            return _context48.a(2);
-        }
-      }, _callee48);
-    }));
-    return function handleSetMode(_x62) {
-      return _ref128.apply(this, arguments);
-    };
-  }();
-  var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49() {
-      return _regenerator().w(function (_context49) {
-        while (1) switch (_context49.n) {
-          case 0:
-            setAggressiveCutAcked(true);
-            _context49.n = 1;
-            return ss("aggressive_cut_acked", "1");
-          case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
-          case 2:
             return _context49.a(2);
         }
       }, _callee49);
     }));
-    return function handleAckAggressiveCut() {
-      return _ref129.apply(this, arguments);
+    return function handleSetMode(_x65) {
+      return _ref131.apply(this, arguments);
     };
   }();
-  var saveMeals = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50(updated) {
+  var handleAckAggressiveCut = /*#__PURE__*/function () {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
-            setMeals(updated);
+            setAggressiveCutAcked(true);
             _context50.n = 1;
-            return ss("meals", JSON.stringify(updated));
+            return ss("aggressive_cut_acked", "1");
           case 1:
-            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, tdeeAdj, customKcal, true)["catch"](function () {});
           case 2:
             return _context50.a(2);
         }
       }, _callee50);
     }));
-    return function saveMeals(_x63) {
-      return _ref130.apply(this, arguments);
+    return function handleAckAggressiveCut() {
+      return _ref132.apply(this, arguments);
+    };
+  }();
+  var saveMeals = /*#__PURE__*/function () {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
+      return _regenerator().w(function (_context51) {
+        while (1) switch (_context51.n) {
+          case 0:
+            setMeals(updated);
+            _context51.n = 1;
+            return ss("meals", JSON.stringify(updated));
+          case 1:
+            if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncMeals(authUser.id, updated)["catch"](function () {});
+          case 2:
+            return _context51.a(2);
+        }
+      }, _callee51);
+    }));
+    return function saveMeals(_x66) {
+      return _ref133.apply(this, arguments);
     };
   }();
 
@@ -15512,19 +15706,19 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(entry) {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
       var name, clean;
-      return _regenerator().w(function (_context51) {
-        while (1) switch (_context51.n) {
+      return _regenerator().w(function (_context52) {
+        while (1) switch (_context52.n) {
           case 0:
             name = entry.name;
             if (!meals.find(function (m) {
               return m.name.toLowerCase() === name.toLowerCase();
             })) {
-              _context51.n = 1;
+              _context52.n = 1;
               break;
             }
-            return _context51.a(2);
+            return _context52.a(2);
           case 1:
             haptic();
             clean = {
@@ -15534,25 +15728,25 @@ function App() {
               carbs: Math.round(entry.carbs * 10) / 10,
               fat: Math.round(entry.fat * 10) / 10
             };
-            _context51.n = 2;
+            _context52.n = 2;
             return saveMeals([].concat(_toConsumableArray(meals), [clean]));
           case 2:
-            return _context51.a(2);
+            return _context52.a(2);
         }
-      }, _callee51);
+      }, _callee52);
     }));
-    return function addToQA(_x64) {
-      return _ref131.apply(this, arguments);
+    return function addToQA(_x67) {
+      return _ref134.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(googleUser, grantedBy, consentMeta) {
-      var user, rec, pulled, tod, snap, _t47;
-      return _regenerator().w(function (_context52) {
-        while (1) switch (_context52.p = _context52.n) {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
+      var user, rec, pulled, tod, snap, _t51;
+      return _regenerator().w(function (_context53) {
+        while (1) switch (_context53.p = _context53.n) {
           case 0:
             user = {
               id: googleUser.id || null,
@@ -15566,20 +15760,20 @@ function App() {
             };
             setAuthUser(user);
             setAuthState("premium");
-            _context52.n = 1;
+            _context53.n = 1;
             return ss("auth_state", "premium");
           case 1:
-            _context52.n = 2;
+            _context53.n = 2;
             return ss("auth_user", JSON.stringify(user));
           case 2:
             if (!consentMeta) {
-              _context52.n = 4;
+              _context53.n = 4;
               break;
             }
             rec = _objectSpread(_objectSpread({}, consentMeta), {}, {
               version: consentMeta.policyVersion
             });
-            _context52.n = 3;
+            _context53.n = 3;
             return ss("health_consent", JSON.stringify(rec));
           case 3:
             setConsentInfo(rec);
@@ -15587,25 +15781,25 @@ function App() {
             setShowSignIn(false);
             setPremiumGate(null);
             if (!(user.id && navigator.onLine)) {
-              _context52.n = 11;
+              _context53.n = 11;
               break;
             }
             setSyncMsg("Syncing your data…");
-            _context52.p = 5;
+            _context53.p = 5;
             if (!consentMeta) {
-              _context52.n = 6;
+              _context53.n = 6;
               break;
             }
-            _context52.n = 6;
+            _context53.n = 6;
             return syncConsent(user.id, consentMeta);
           case 6:
-            _context52.n = 7;
+            _context53.n = 7;
             return migrateLocalToSupabase(user.id);
           case 7:
-            _context52.n = 8;
+            _context53.n = 8;
             return pullFromSupabase(user.id);
           case 8:
-            pulled = _context52.v;
+            pulled = _context53.v;
             if (pulled.profile) {
               setProf(pulled.profile);
               setDietaryCache(pulled.profile.dietary);
@@ -15636,29 +15830,29 @@ function App() {
               setWorkouts(pulled.workouts[todayKey()] || []);
               setPriorWorkoutKcal(priorFromByDate(pulled.workouts));
             }
-            _context52.n = 10;
+            _context53.n = 10;
             break;
           case 9:
-            _context52.p = 9;
-            _t47 = _context52.v;
+            _context53.p = 9;
+            _t51 = _context53.v;
           case 10:
             setSyncMsg("");
           case 11:
-            return _context52.a(2);
+            return _context53.a(2);
         }
-      }, _callee52, null, [[5, 9]]);
+      }, _callee53, null, [[5, 9]]);
     }));
-    return function handleSignInSuccess(_x65, _x66, _x67) {
-      return _ref132.apply(this, arguments);
+    return function handleSignInSuccess(_x68, _x69, _x70) {
+      return _ref135.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53() {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       var meta, rec;
-      return _regenerator().w(function (_context53) {
-        while (1) switch (_context53.n) {
+      return _regenerator().w(function (_context54) {
+        while (1) switch (_context54.n) {
           case 0:
             meta = {
               ageConfirmedAt: null,
@@ -15668,60 +15862,60 @@ function App() {
             rec = _objectSpread(_objectSpread({}, meta), {}, {
               version: POLICY_VERSION
             });
-            _context53.n = 1;
+            _context54.n = 1;
             return ss("health_consent", JSON.stringify(rec));
           case 1:
             setConsentInfo(rec);
             if (!(authUser !== null && authUser !== void 0 && authUser.id)) {
-              _context53.n = 2;
+              _context54.n = 2;
               break;
             }
-            _context53.n = 2;
+            _context54.n = 2;
             return syncConsent(authUser.id, meta);
           case 2:
             setNeedsConsent(false);
           case 3:
-            return _context53.a(2);
+            return _context54.a(2);
         }
-      }, _callee53);
+      }, _callee54);
     }));
     return function handleConsent() {
-      return _ref133.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
-      var clearKeys, _i4, _clearKeys, k, i, key, _t48;
-      return _regenerator().w(function (_context54) {
-        while (1) switch (_context54.p = _context54.n) {
+    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+      var clearKeys, _i4, _clearKeys, k, i, key, _t52;
+      return _regenerator().w(function (_context55) {
+        while (1) switch (_context55.p = _context55.n) {
           case 0:
             if (!sb()) {
-              _context54.n = 4;
+              _context55.n = 4;
               break;
             }
-            _context54.p = 1;
-            _context54.n = 2;
+            _context55.p = 1;
+            _context55.n = 2;
             return sb().auth.signOut();
           case 2:
-            _context54.n = 4;
+            _context55.n = 4;
             break;
           case 3:
-            _context54.p = 3;
-            _t48 = _context54.v;
+            _context55.p = 3;
+            _t52 = _context55.v;
           case 4:
             clearKeys = ["auth_state", "auth_user", "profile", "meals", "history", "badges", "weighins", "tdee_adj", "tdee_adj_log", "weigh_nudge_dismissed", "cut_block", "target_kcal", "aggressive_cut_acked", "health_consent"];
             _i4 = 0, _clearKeys = clearKeys;
           case 5:
             if (!(_i4 < _clearKeys.length)) {
-              _context54.n = 7;
+              _context55.n = 7;
               break;
             }
             k = _clearKeys[_i4];
-            _context54.n = 6;
+            _context55.n = 6;
             return ss(k, "");
           case 6:
             _i4++;
-            _context54.n = 5;
+            _context55.n = 5;
             break;
           case 7:
             try {
@@ -15757,12 +15951,12 @@ function App() {
             setShowSignOut(false);
             setView("dashboard");
           case 8:
-            return _context54.a(2);
+            return _context55.a(2);
         }
-      }, _callee54, null, [[1, 3]]);
+      }, _callee55, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref134.apply(this, arguments);
+      return _ref137.apply(this, arguments);
     };
   }();
 
@@ -15772,27 +15966,27 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
-      return _regenerator().w(function (_context55) {
-        while (1) switch (_context55.n) {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+      return _regenerator().w(function (_context56) {
+        while (1) switch (_context56.n) {
           case 0:
             setTdeeAdj(0);
             setAdjLog([]);
-            _context55.n = 1;
+            _context56.n = 1;
             return ss("tdee_adj", "0");
           case 1:
-            _context55.n = 2;
+            _context56.n = 2;
             return ss("tdee_adj_log", JSON.stringify([]));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, 0, customKcal, aggressiveCutAcked)["catch"](function () {});
             setNoteToast("Adjustment reset — the app will re-learn from your weigh-ins");
           case 3:
-            return _context55.a(2);
+            return _context56.a(2);
         }
-      }, _callee55);
+      }, _callee56);
     }));
     return function resetTdeeAdj() {
-      return _ref135.apply(this, arguments);
+      return _ref138.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -15847,29 +16041,29 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
-      return _regenerator().w(function (_context56) {
-        while (1) switch (_context56.n) {
+    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
+      return _regenerator().w(function (_context57) {
+        while (1) switch (_context57.n) {
           case 0:
-            _context56.n = 1;
+            _context57.n = 1;
             return deleteAccountRequest();
           case 1:
-            _context56.n = 2;
+            _context57.n = 2;
             return handleSignOut();
           case 2:
-            return _context56.a(2);
+            return _context57.a(2);
         }
-      }, _callee56);
+      }, _callee57);
     }));
     return function handleDeleteAccount() {
-      return _ref136.apply(this, arguments);
+      return _ref139.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57(upd) {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
       var nh;
-      return _regenerator().w(function (_context57) {
-        while (1) switch (_context57.n) {
+      return _regenerator().w(function (_context58) {
+        while (1) switch (_context58.n) {
           case 0:
             nh = [].concat(_toConsumableArray(hist.filter(function (d) {
               return d.date !== upd.date;
@@ -15877,14 +16071,14 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setHist(nh);
-            _context57.n = 1;
+            _context58.n = 1;
             return ss("history", JSON.stringify(nh));
           case 1:
             if (!upd.logs) {
-              _context57.n = 2;
+              _context58.n = 2;
               break;
             }
-            _context57.n = 2;
+            _context58.n = 2;
             return ss("logs__" + upd.date, JSON.stringify(upd.logs));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) {
@@ -15892,19 +16086,19 @@ function App() {
               if (upd.logs) syncFoodLogsTracked(authUser.id, upd.date, upd.logs)["catch"](function () {});
             }
           case 3:
-            return _context57.a(2);
+            return _context58.a(2);
         }
-      }, _callee57);
+      }, _callee58);
     }));
-    return function updateDay(_x68) {
-      return _ref137.apply(this, arguments);
+    return function updateDay(_x71) {
+      return _ref140.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(weight) {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
-      return _regenerator().w(function (_context58) {
-        while (1) switch (_context58.n) {
+      return _regenerator().w(function (_context59) {
+        while (1) switch (_context59.n) {
           case 0:
             haptic();
             entry = {
@@ -15917,7 +16111,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setWeighIns(updated);
-            _context58.n = 1;
+            _context59.n = 1;
             return ss("weighins", JSON.stringify(updated));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncWeighIns(authUser.id, updated)["catch"](function () {});
@@ -15926,7 +16120,7 @@ function App() {
             updatedProf = _objectSpread(_objectSpread({}, prof || DEF_PROFILE), {}, {
               weight: weight
             });
-            _context58.n = 2;
+            _context59.n = 2;
             return saveProf(updatedProf);
           case 2:
             // Run calibration whenever a new weigh-in arrives — measure the deficit against the
@@ -15954,17 +16148,17 @@ function App() {
               settledAdj: settledAdj
             });
             if (!(result && Math.abs(result.adj) >= CAL_MIN_STEP)) {
-              _context58.n = 5;
+              _context59.n = 5;
               break;
             }
             newAdj = Math.max(-ADJ_CAP, Math.min(ADJ_CAP, tdeeAdj + result.adj));
             applied = newAdj - tdeeAdj;
             if (!(applied !== 0)) {
-              _context58.n = 5;
+              _context59.n = 5;
               break;
             }
             setTdeeAdj(newAdj);
-            _context58.n = 3;
+            _context59.n = 3;
             return ss("tdee_adj", String(newAdj));
           case 3:
             // Retention bumped 14→30 (file 09): raiseContext looks back RAISE_REVERSAL_WINDOW_DAYS
@@ -15976,17 +16170,17 @@ function App() {
               adj: applied
             }]).slice(-30);
             setAdjLog(nextLog);
-            _context58.n = 4;
+            _context59.n = 4;
             return ss("tdee_adj_log", JSON.stringify(nextLog));
           case 4:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncSettings(authUser.id, mode, newAdj, customKcal, aggressiveCutAcked)["catch"](function () {});
           case 5:
-            return _context58.a(2);
+            return _context59.a(2);
         }
-      }, _callee58);
+      }, _callee59);
     }));
-    return function onWeighIn(_x69) {
-      return _ref138.apply(this, arguments);
+    return function onWeighIn(_x72) {
+      return _ref141.apply(this, arguments);
     };
   }();
 
@@ -15995,12 +16189,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(_ref139) {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref142) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
-      return _regenerator().w(function (_context59) {
-        while (1) switch (_context59.n) {
+      return _regenerator().w(function (_context60) {
+        while (1) switch (_context60.n) {
           case 0:
-            neck = _ref139.neck, waist = _ref139.waist, hip = _ref139.hip;
+            neck = _ref142.neck, waist = _ref142.waist, hip = _ref142.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -16013,10 +16207,10 @@ function App() {
               hipCm: hip
             });
             if (!(computed_bf == null)) {
-              _context59.n = 1;
+              _context60.n = 1;
               break;
             }
-            return _context59.a(2);
+            return _context60.a(2);
           case 1:
             // hard-blocked domain — UI should already have refused this
             entry = {
@@ -16033,7 +16227,7 @@ function App() {
               return a.date.localeCompare(b.date);
             });
             setBodyMeasurements(updated);
-            _context59.n = 2;
+            _context60.n = 2;
             return ss("bodymeasurements", JSON.stringify(updated));
           case 2:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncBodyMeasurements(authUser.id, updated)["catch"](function () {});
@@ -16049,54 +16243,54 @@ function App() {
               cutting: effectiveMode === "cut"
             });
             if (!(next != null)) {
-              _context59.n = 3;
+              _context60.n = 3;
               break;
             }
-            _context59.n = 3;
+            _context60.n = 3;
             return saveProf(_objectSpread(_objectSpread({}, measureProf), {}, {
               bodyFat: next
             }));
           case 3:
-            return _context59.a(2, computed_bf);
-        }
-      }, _callee59);
-    }));
-    return function onMeasurement(_x70) {
-      return _ref140.apply(this, arguments);
-    };
-  }();
-  var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(on) {
-      return _regenerator().w(function (_context60) {
-        while (1) switch (_context60.n) {
-          case 0:
-            setMuteMeasurements(on);
-            _context60.n = 1;
-            return ss("mute_body_measurements", on ? "1" : "");
-          case 1:
-            return _context60.a(2);
+            return _context60.a(2, computed_bf);
         }
       }, _callee60);
     }));
-    return function toggleMuteMeasurements(_x71) {
-      return _ref141.apply(this, arguments);
+    return function onMeasurement(_x73) {
+      return _ref143.apply(this, arguments);
     };
   }();
-  var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(note) {
+  var toggleMuteMeasurements = /*#__PURE__*/function () {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
           case 0:
-            setMeasurementNote(note);
+            setMuteMeasurements(on);
             _context61.n = 1;
-            return ss("body_measurement_note", note);
+            return ss("mute_body_measurements", on ? "1" : "");
           case 1:
             return _context61.a(2);
         }
       }, _callee61);
     }));
-    return function saveMeasurementNote(_x72) {
-      return _ref142.apply(this, arguments);
+    return function toggleMuteMeasurements(_x74) {
+      return _ref144.apply(this, arguments);
+    };
+  }();
+  var saveMeasurementNote = /*#__PURE__*/function () {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
+      return _regenerator().w(function (_context62) {
+        while (1) switch (_context62.n) {
+          case 0:
+            setMeasurementNote(note);
+            _context62.n = 1;
+            return ss("body_measurement_note", note);
+          case 1:
+            return _context62.a(2);
+        }
+      }, _callee62);
+    }));
+    return function saveMeasurementNote(_x75) {
+      return _ref145.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -16139,43 +16333,43 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62() {
+    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       var ts;
-      return _regenerator().w(function (_context62) {
-        while (1) switch (_context62.n) {
-          case 0:
-            ts = Date.now();
-            setWeighNudgeAt(ts);
-            _context62.n = 1;
-            return ss("weigh_nudge_dismissed", String(ts));
-          case 1:
-            return _context62.a(2);
-        }
-      }, _callee62);
-    }));
-    return function dismissWeighNudge() {
-      return _ref143.apply(this, arguments);
-    };
-  }();
-  var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.n) {
           case 0:
+            ts = Date.now();
+            setWeighNudgeAt(ts);
             _context63.n = 1;
-            return dismissWeighNudge();
+            return ss("weigh_nudge_dismissed", String(ts));
           case 1:
-            _context63.n = 2;
-            return saveProf(_objectSpread(_objectSpread({}, p), {}, {
-              weighCadence: "off"
-            }));
-          case 2:
             return _context63.a(2);
         }
       }, _callee63);
     }));
+    return function dismissWeighNudge() {
+      return _ref146.apply(this, arguments);
+    };
+  }();
+  var muteWeighNudge = /*#__PURE__*/function () {
+    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+      return _regenerator().w(function (_context64) {
+        while (1) switch (_context64.n) {
+          case 0:
+            _context64.n = 1;
+            return dismissWeighNudge();
+          case 1:
+            _context64.n = 2;
+            return saveProf(_objectSpread(_objectSpread({}, p), {}, {
+              weighCadence: "off"
+            }));
+          case 2:
+            return _context64.a(2);
+        }
+      }, _callee64);
+    }));
     return function muteWeighNudge() {
-      return _ref144.apply(this, arguments);
+      return _ref147.apply(this, arguments);
     };
   }();
 
@@ -16194,22 +16388,22 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+    var _ref148 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
       var ts;
-      return _regenerator().w(function (_context64) {
-        while (1) switch (_context64.n) {
+      return _regenerator().w(function (_context65) {
+        while (1) switch (_context65.n) {
           case 0:
             ts = Date.now();
             setMeasurementNudgeAt(ts);
-            _context64.n = 1;
+            _context65.n = 1;
             return ss("body_measurement_nudge_dismissed", String(ts));
           case 1:
-            return _context64.a(2);
+            return _context65.a(2);
         }
-      }, _callee64);
+      }, _callee65);
     }));
     return function dismissMeasurementNudge() {
-      return _ref145.apply(this, arguments);
+      return _ref148.apply(this, arguments);
     };
   }();
 
@@ -16371,22 +16565,22 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65(next) {
-      return _regenerator().w(function (_context65) {
-        while (1) switch (_context65.n) {
+    var _ref149 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
+      return _regenerator().w(function (_context66) {
+        while (1) switch (_context66.n) {
           case 0:
             setCutBlock(next);
-            _context65.n = 1;
+            _context66.n = 1;
             return ss("cut_block", JSON.stringify(next));
           case 1:
             if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id) syncCutBlock(authUser.id, next)["catch"](function () {});
           case 2:
-            return _context65.a(2);
+            return _context66.a(2);
         }
-      }, _callee65);
+      }, _callee66);
     }));
-    return function saveCutBlock(_x73) {
-      return _ref146.apply(this, arguments);
+    return function saveCutBlock(_x76) {
+      return _ref149.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16409,14 +16603,14 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66() {
-      return _regenerator().w(function (_context66) {
-        while (1) switch (_context66.n) {
+    var _ref150 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
+      return _regenerator().w(function (_context67) {
+        while (1) switch (_context67.n) {
           case 0:
-            _context66.n = 1;
+            _context67.n = 1;
             return handleSetMode("maintain");
           case 1:
-            _context66.n = 2;
+            _context67.n = 2;
             return saveCutBlock(_objectSpread(_objectSpread({}, cutBlock), {}, {
               nudgeAt: null,
               snoozeAt: null
@@ -16424,12 +16618,12 @@ function App() {
           case 2:
             setNoteToast("Break started — eat at maintenance and recharge");
           case 3:
-            return _context66.a(2);
+            return _context67.a(2);
         }
-      }, _callee66);
+      }, _callee67);
     }));
     return function startDietBreak() {
-      return _ref147.apply(this, arguments);
+      return _ref150.apply(this, arguments);
     };
   }();
   var totals = sumLogs(logs);
@@ -16491,10 +16685,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref148) {
-    var _ref149 = _slicedToArray(_ref148, 2),
-      lbl = _ref149[0],
-      fn = _ref149[1];
+  }]].map(function (_ref151) {
+    var _ref152 = _slicedToArray(_ref151, 2),
+      lbl = _ref152[0],
+      fn = _ref152[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,

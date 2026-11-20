@@ -2023,13 +2023,13 @@ const deleteAccountRequest = async () => {
 
 // Shared AI fetch — returns the text content string, throws on failure.
 // Sends the Supabase JWT; the hardened worker rejects anonymous/over-limit calls.
-const callAI = async (prompt, maxTokens = 500) => {
+const callAI = async (prompt, maxTokens = 500, timeoutMs = 30000) => {
   const token = await getAccessToken();
   if (!token) throw new Error("Please sign in to use AI features.");
   // Hard timeout so a stalled request (e.g. flaky mobile signal) can never hang
   // the UI forever — it aborts and surfaces as a clear, retryable error.
   const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
   try {
     res = await fetch(AI_ENDPOINT, { method:"POST", signal: ctrl.signal,
@@ -2065,8 +2065,8 @@ const repairJson = (text) => {
   s = s.replace(/,(\s*[}\]])/g, '$1');
   return JSON.parse(s);
 };
-const callAIJson = async (prompt, maxTokens = 500) => {
-  const text = await callAI(prompt, maxTokens);
+const callAIJson = async (prompt, maxTokens = 500, timeoutMs) => {
+  const text = await callAI(prompt, maxTokens, timeoutMs);
   return repairJson(text);
 };
 
@@ -5019,24 +5019,36 @@ Return ONLY valid JSON (no markdown, no preamble):
 // alongside the photo is the user's GUIDANCE (features/logging/08): weights, brands, cooking
 // method, what's hidden under the sauce, how much of it they actually ate. It outranks what the
 // photo suggests, and gets the same weight/fat/number rules the text prompt has (logging/07).
-const AI_PHOTO_PROMPT = (desc) => {
+//
+// Several photos (features/logging/10) are views of ONE meal — e.g. a packet's front (the name)
+// and back (the label), or a plate and the packet it came from. They sharpen one estimate; they
+// never add items. Double counting is the risk, so the rule is "combine, don't add".
+const AI_PHOTO_PROMPT = (desc, count = 1) => {
   const notes = desc && desc.trim() ? desc.trim() : "";
+  const n = Math.max(1, Math.floor(Number(count) || 1));
   return `You are a nutrition database expert with encyclopaedic knowledge of UK and international foods, restaurant menus, supermarket items, and portion sizes. Your estimates directly affect someone's health and body composition goals — accuracy is CRITICAL.
 
-A photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition.
+${n > 1 ? `${n} photos are attached. They are views of ONE meal being logged — not ${n} meals. Work out what each photo shows before estimating:
+- SAME PRODUCT, SEVERAL VIEWS: the front, back, side or label of one packet, bottle or tin is ONE item. Combine what each view tells you (the name from the front, the nutrition panel from the back). Never return the same product twice.
+- PACKET + PLATE: if a packet or label and a plated or served food show the same food, the packet IDENTIFIES the food and the plate shows the PORTION. Return it once.
+- DIFFERENT FOODS: photos of genuinely different foods (a main and a drink, a plate and a separate snack) are separate items in the same meal.
+- When unsure whether two photos show the same food, treat them as the same and lower confidence — never count it twice.
+- In each item's reasoning, say which photo(s) it came from (e.g. "photos 1+2: front and label").` : "A photo of a meal is attached. Identify each distinct food on the plate and estimate its nutrition."}
 
 Rules:
 - Identify every distinct component you can see; estimate portion size from visual cues (plate size, utensils, relative proportions).
 - Confidence score (0-100): 90+ only when you can clearly identify a branded/known item; 60-89 for confident generic identification; below 60 when the item or portion is genuinely unclear from the image.
 - Hidden cooking fat and exact portion are the usual photo blind spots — reflect that in confidence and in "ask".
 - Arithmetic: check kcal against the macros — kcal ≈ 4×protein + 4×carbs + 9×fat. Alcohol (7 kcal/g) and sugar alcohols are the only exceptions; say so in reasoning when they apply.
+- NUTRITION LABELS: when a nutrition panel is readable, its figures are FACT — use them, not a generic estimate. Per-100 g figures are the reference; scale them to the portion eaten. Use the per-serving column only when the portion IS one stated serving (a single-serve pot, bar, can or pack). If only a multi-serve pack is shown and nothing says how much was eaten, use one label serving, set "ask" to "portion" and say so in reasoning.
 - For ANY component with confidence below 80, set "ask" to the single highest-leverage unknown: "fat", "portion", or "version" (see below). Otherwise null.
 ${notes ? `
-USER'S NOTES about this photo: "${notes}"
+USER'S NOTES about ${n > 1 ? "these photos" : "this photo"}: "${notes}"
 
 The notes are the user's own knowledge of the meal and are GUIDANCE for your estimate. Where the notes and the photo disagree, the NOTES WIN — the user knows things a photo cannot show. Use the photo for everything the notes do not cover. Specifically:
 - A weight, count or size in the notes IS that item's portion — use it instead of your visual estimate and scale every macro in proportion (150 g is 60% of 250 g, in every macro).
 - A brand, restaurant, shop or product name in the notes identifies the food — use that product's ACTUAL menu/label nutrition, not a generic equivalent.
+- A product named in the notes identifies any packet in the photos, even one shot only from the back.
 - Cooking method in the notes sets the fat: "dry", "no oil", "zero added fat", "no butter", "air-fried without oil", "grilled", "boiled", "poached", "steamed" mean NO cooking fat was added; "fried", "with butter", "a tablespoon of oil" etc. mean that fat IS there even if it is not visible.
 - Ingredients the notes mention that the photo cannot show (oil, butter, sauce or dressing, sugar in a drink, a filling, something under other food, a side not in shot) are part of the meal — include them as their own component.
 - A recipe variant in the notes (vegan, low-fat, skinless, diet/zero-sugar, semi-skimmed, wholemeal, etc.) is the version to estimate.
@@ -5048,7 +5060,7 @@ The notes are the user's own knowledge of the meal and are GUIDANCE for your est
 ` : ""}
 "ask" meanings: "fat" = hidden cooking fat (oil/butter vs dry/grilled); "portion" = ambiguous amount/size; "version" = animal-vs-plant or major recipe variant.
 
-"meal" is a short, natural name for the whole photo, 2–6 words, the way a person would write it in a food diary — e.g. "Chicken Caesar salad", "Full English breakfast", "Pret tuna baguette". If a brand or product name is visible on packaging${notes ? " or given in the notes" : ""}, use it (e.g. "Müller Corner strawberry yogurt"). No portions, weights or numbers in it.
+"meal" is a short, natural name for the whole ${n > 1 ? "meal across all the photos" : "photo"}, 2–6 words, the way a person would write it in a food diary — e.g. "Chicken Caesar salad", "Full English breakfast", "Pret tuna baguette". If a brand or product name is visible on packaging${notes ? " or given in the notes" : ""}, use it (e.g. "Müller Corner strawberry yogurt")${n > 1 ? " — even if other photos show only the back or the plate" : ""}. No portions, weights or numbers in it.
 
 Return ONLY valid JSON (no markdown, no preamble):
 {
@@ -5398,6 +5410,8 @@ const SpeechRec = typeof window !== "undefined" &&
 // payload stays small (cheaper + within the worker's body limits). The result
 // lives only in component state — never written to storage. Returns
 // { base64, mediaType, preview }.
+// PRIVACY GUARANTEE: the canvas re-encode is what strips EXIF (GPS, device, time) from a gallery
+// photo. Never send the picked File itself — always this re-encoded copy.
 const fileToImage = (file, max = 1024, quality = 0.7) => new Promise((resolve, reject) => {
   const img = new Image();
   const url = URL.createObjectURL(file);
@@ -5414,6 +5428,31 @@ const fileToImage = (file, max = 1024, quality = 0.7) => new Promise((resolve, r
   img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read image")); };
   img.src = url;
 });
+
+// Up to three photos of ONE meal (features/logging/10): packet front + label + plate is the real
+// case. More invites double counting and a second meal sneaking in, and costs more per call.
+const MAX_PHOTOS = 3;
+
+// Add newly picked photos to the ones already attached, in the order picked. Only as many as
+// fit under the cap are read; one unreadable file never throws away the rest. `read` is
+// fileToImage (a parameter so Jest can lift this without a canvas). Returns the new list plus
+// a short notice for the user when something was skipped, else "".
+const addPhotos = async (existing, files, read, max = MAX_PHOTOS) => {
+  const picked = Array.from(files || []);
+  const room   = Math.max(0, max - existing.length);
+  const take   = picked.slice(0, room);
+  const added  = [];
+  let failed = 0;
+  for (const f of take) { // one at a time: keeps the order and the memory peak low
+    try { added.push({ ...(await read(f)), id: Date.now() + "-" + Math.random().toString(36).slice(2) }); }
+    catch (e) { failed++; }
+  }
+  const over = picked.length - take.length;
+  const notes = [];
+  if (failed) notes.push(failed === 1 ? "1 photo couldn't be read — try a JPEG or PNG." : failed + " photos couldn't be read — try JPEG or PNG.");
+  if (over)   notes.push("Up to " + max + " photos per meal — " + (over === 1 ? "1 wasn't" : over + " weren't") + " added.");
+  return { photos: [...existing, ...added], notice: notes.join(" ") };
+};
 
 // "Report estimate as wrong" → opens a prefilled email (Google Play GenAI app
 // policy needs a working report path). Sends only what the user already gave the
@@ -5497,10 +5536,11 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   const [error,        setError]        = useState("");
   const [loggedAll,    setLoggedAll]    = useState(false);
   const [loggedCount,  setLoggedCount]  = useState({}); // idx -> times logged (ephemeral; resets on unmount)
-  // Capture adapters — voice transcript + transient photo. The photo lives ONLY
-  // here in memory ({base64, preview}); it is never written to storage and never
-  // included in the saved record (see logAll). It is discarded when we unmount.
-  const [photo,        setPhoto]        = useState(null);
+  // Capture adapters — voice transcript + transient photos. Photos live ONLY
+  // here in memory ([{id, base64, preview}], up to MAX_PHOTOS); they are never written to
+  // storage and never included in the saved record (see logAll). Discarded when we unmount.
+  const [photos,       setPhotos]       = useState([]);
+  const hasPhoto = photos.length > 0;
   const [listening,    setListening]    = useState(false);
   const [micDenied,    setMicDenied]    = useState(false);
   const [usedVoice,    setUsedVoice]    = useState(false);
@@ -5509,7 +5549,8 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   const [fuDone,       setFuDone]        = useState({});   // idx -> true once answered/skipped
   const [fuLog,        setFuLog]        = useState([]);    // [{q, a}] persisted with the meal
   const recRef  = React.useRef(null);
-  const fileRef = React.useRef(null);
+  const cameraRef  = React.useRef(null); // opens the camera straight away (capture)
+  const galleryRef = React.useRef(null); // the photo picker / files — choose one or several
 
   // Stop any in-flight speech recognition if we leave the screen.
   useEffect(() => () => { try { recRef.current && recRef.current.stop(); } catch(e) {} }, []);
@@ -5548,39 +5589,42 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   };
   const stopVoice = () => { try { recRef.current && recRef.current.stop(); } catch(e) {} setListening(false); };
 
-  const onPickPhoto = async e => {
-    const file = e.target.files && e.target.files[0];
+  const onPickPhotos = async e => {
+    const files = Array.from((e.target.files) || []);
     e.target.value = ""; // let the same file be re-picked
-    if (!file) return;
-    try { setPhoto(await fileToImage(file)); setError(""); }
-    catch(err) { setError("Couldn't read that image — try another photo."); }
+    if (!files.length) return;
+    const { photos: next, notice } = await addPhotos(photos, files, fileToImage);
+    setPhotos(next); setError(notice);
   };
+  const removePhoto = id => { setPhotos(p => p.filter(x => x.id !== id)); setError(""); };
 
   // fresh: true skips the past-meal lookup — the "Re-estimate with AI" button on a reused meal.
   const estimate = async ({ fresh = false } = {}) => {
-    if (!desc.trim() && !photo) return;
+    if (!desc.trim() && !hasPhoto) return;
     setLoading(true); setError(""); setItems(null); setMealName(""); setLoggedAll(false); setLoggedCount({});
     setFollowups([]); setFuDone({}); setFuLog([]); setReused(null);
     // A full totals line typed by the user IS the meal — one row, at once, no model call, no
     // questions (features/logging/06). Only for typed text: a photo is always estimated.
-    const stated = photo ? null : parseStatedTotals(desc);
+    const stated = hasPhoto ? null : parseStatedTotals(desc);
     if (stated) { setItems([statedTotalsItem(stated)]); setLoading(false); return; }
     // Typed text the user has logged before is answered from their log: no model call, no
     // tokens, no questions (features/logging/09). A photo can't be matched, so it is always sent.
-    const past = photo || fresh ? null : findPastMeal(desc, pastDays, meals);
+    const past = hasPhoto || fresh ? null : findPastMeal(desc, pastDays, meals);
     if (past) {
       setItems(past.items); setFuLog(past.followups); setReused(past);
       setLoading(false); return;
     }
     try {
-      const parsed = photo
+      // Every photo is its own image block, in the order picked, then one prompt (logging/10).
+      // Several images upload slower on mobile signal, so they get a longer timeout.
+      const parsed = hasPhoto
         ? await callAIJson([
-            { type:"image", source:{ type:"base64", media_type:photo.mediaType, data:photo.base64 } },
-            { type:"text",  text: AI_PHOTO_PROMPT(desc) },
-          ], 2000)
+            ...photos.map(p => ({ type:"image", source:{ type:"base64", media_type:p.mediaType, data:p.base64 } })),
+            { type:"text",  text: AI_PHOTO_PROMPT(desc, photos.length) },
+          ], 2000, photos.length > 1 ? 45000 : 30000)
         : await callAIJson(AI_PROMPT(desc, similarPastMeals(desc, pastDays, meals)), 2000);
       const aiItems = parsed.items || [];
-      if (photo) setMealName(parsed.meal || "");
+      if (hasPhoto) setMealName(parsed.meal || "");
 
       // The model's rows are the rows. Normalise confidence only (vision models may return a
       // 0–1 fraction). Until 2026-09-15 an Open Food Facts free-text search ran here in
@@ -5650,8 +5694,8 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
       ? Math.round(elements.reduce((a, e) => a + e.conf * e.kcal, 0) / totals.kcal)
       : avgConf;
     // The record carries numbers + answers + flags — NEVER the photo or any audio.
-    const source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
-    const name = stated ? items[0].name : photo ? photoMealName(mealName, desc, items) : desc.trim();
+    const source = hasPhoto ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    const name = stated ? items[0].name : hasPhoto ? photoMealName(mealName, desc, items) : desc.trim();
     onAdd({ name, kcal: Math.round(totals.kcal),
       protein: Math.round(totals.protein * 10) / 10,
       carbs:   Math.round(totals.carbs   * 10) / 10,
@@ -5661,7 +5705,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   };
 
   const logItem = (item, idx) => {
-    const source = photo ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
+    const source = hasPhoto ? "ai-photo" : usedVoice ? "ai-voice" : "ai-text";
     onAdd({ name: item.name, kcal: Math.round(item.kcal),
       protein: Math.round(item.protein * 10) / 10,
       carbs:   Math.round(item.carbs   * 10) / 10,
@@ -5674,44 +5718,92 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
     <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
       <BackHdr title="AI MEAL LOG" onBack={onBack}/>
       <p style={{ color:"var(--text-mid)", fontSize:13, lineHeight:1.6, marginBottom:16 }}>
-        Type it, dictate it, or photograph it — I'll break it down item by item with
+        Type it, say it, or add photos — I'll break it down item by item with
         confidence scores. Tap any item to correct it and re-estimate.
       </p>
 
       <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={4}
-        aria-label={photo ? "Notes for the photo" : "Describe your meal"}
-        placeholder={photo
-          ? "Optional notes to sharpen the estimate — e.g. '200g chicken, cooked in 1 tbsp olive oil, rice is about 150g, only ate half the chips'"
+        aria-label={hasPhoto ? "Notes for the photos" : "Describe your meal"}
+        placeholder={hasPhoto
+          ? "Optional notes to sharpen the estimate — e.g. 'Tesco chicken tikka, ate the whole pack', '200g chicken in 1 tbsp olive oil', 'only ate half the chips'"
           : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
         style={{ width:"100%", boxSizing:"border-box", background:CARD,
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
-      {photo && (
+      {hasPhoto && (
         <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
-          📝 Anything you type here guides the photo estimate — weights, brands, cooking oil,
-          hidden sauces or how much you actually ate. Your notes win where the photo can't tell.
+          📝 Anything you type here guides the estimate — weights, brands, cooking oil,
+          hidden sauces or how much you actually ate. Your notes win where the photos can't tell.
         </div>
       )}
-      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:6 }}>
-        Just the food — no personal details needed. Dictation runs on your device; only the
-        text is sent. A photo is used once to estimate the meal and is never stored.
+
+      {/* Photos — held in memory only, discarded on save/leave (features/logging/10).
+          Camera opens the camera in one tap; Gallery opens the picker, one or several at once,
+          so a shot taken with the phone's own camera app (its own settings) can be used. */}
+      <div style={{ marginTop:12 }}>
+        {hasPhoto && (
+          <div role="list" aria-label="Attached photos"
+            style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+            {photos.map((p, i) => (
+              <div role="listitem" key={p.id} style={{ position:"relative", width:84, height:84,
+                borderRadius:12, overflow:"hidden", border:`1px solid ${BD}`, flexShrink:0 }}>
+                <img src={p.preview} alt={`Photo ${i + 1} of ${photos.length}`}
+                  style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+                <button onClick={() => removePhoto(p.id)}
+                  aria-label={`Remove photo ${i + 1} of ${photos.length}`}
+                  style={{ position:"absolute", top:0, right:0, width:40, height:40, padding:0,
+                    background:"transparent", border:"none", cursor:"pointer",
+                    display:"flex", alignItems:"flex-start", justifyContent:"flex-end" }}>
+                  <span aria-hidden="true" style={{ margin:4, width:24, height:24, borderRadius:12,
+                    background:"rgba(0,0,0,0.65)", color:"#fff", fontSize:12, fontWeight:900,
+                    lineHeight:"24px", textAlign:"center" }}>✕</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {photos.length < MAX_PHOTOS ? (
+          <div style={{ display:"flex", gap:8 }}>
+            {[["camera", "📷", "Camera", "Take a photo with the camera", cameraRef],
+              ["gallery", "🖼", "Gallery", "Choose photos from your gallery", galleryRef]].map(([k, icon, label, aria, ref]) => (
+              <button key={k} onClick={() => ref.current && ref.current.click()} aria-label={aria}
+                style={{ flex:1, minHeight:48, padding:"12px 10px", borderRadius:14,
+                  background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`,
+                  fontSize:13, fontWeight:800, cursor:"pointer" }}>
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5 }}>
+            {MAX_PHOTOS} photos max — remove one to add another.
+          </div>
+        )}
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+          data-testid="photo-camera" onChange={onPickPhotos} style={{ display:"none" }}/>
+        <input ref={galleryRef} type="file" accept="image/*" multiple
+          data-testid="photo-gallery" onChange={onPickPhotos} style={{ display:"none" }}/>
+        <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:8 }}>
+          {hasPhoto
+            ? (photos.length < MAX_PHOTOS
+                ? "Packet missing its name? Add the front too — up to " + MAX_PHOTOS + " photos of one meal."
+                : "")
+            : "Up to " + MAX_PHOTOS + " photos of one meal — e.g. a packet's front, its label, and the plate."}
+        </div>
+        <div aria-live="polite" style={{ position:"absolute", width:1, height:1, overflow:"hidden",
+          clip:"rect(0 0 0 0)" }}>
+          {hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : ""}
+        </div>
       </div>
 
-      {/* Transient photo preview — held in memory only, discarded on save/leave */}
-      {photo && (
-        <div style={{ marginTop:12, position:"relative", borderRadius:14, overflow:"hidden",
-          border:`1px solid ${BD}` }}>
-          <img src={photo.preview} alt="meal" style={{ width:"100%", display:"block",
-            maxHeight:220, objectFit:"cover" }}/>
-          <button onClick={() => setPhoto(null)} aria-label="Remove photo"
-            style={{ position:"absolute", top:8, right:8, width:32, height:32, borderRadius:16,
-              background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", fontSize:16,
-              fontWeight:900, cursor:"pointer" }}>✕</button>
-        </div>
-      )}
+      <div style={{ fontSize:11, color:"var(--text-lo-2)", lineHeight:1.5, marginTop:8 }}>
+        Just the food — no personal details needed. Dictation runs on your device; only the
+        text is sent. Photos are sent once to our AI to estimate the meal, with location data
+        removed, and are never stored. Only include food and packaging.
+      </div>
 
-      {/* Inline capture row: 🎤 voice + 📷 photo beside the Analyse button */}
+      {/* Action row: 🎤 voice beside the Analyse button */}
       <div style={{ display:"flex", gap:8, marginTop:12 }}>
         {voiceAvailable && (
           <button onClick={listening ? stopVoice : startVoice} aria-label="Dictate meal"
@@ -5723,19 +5815,13 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
             {listening ? "⏹" : "🎤"}
           </button>
         )}
-        <button onClick={() => fileRef.current && fileRef.current.click()} aria-label="Photograph meal"
-          style={{ flexShrink:0, width:54, padding:"15px 0", borderRadius:14,
-            background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`,
-            fontSize:18, cursor:"pointer" }}>📷</button>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment"
-          onChange={onPickPhoto} style={{ display:"none" }}/>
-        <button onClick={() => estimate()} disabled={loading || (!desc.trim() && !photo)}
+        <button onClick={() => estimate()} disabled={loading || (!desc.trim() && !hasPhoto)}
           style={{ flex:1, padding:"15px",
-            background: loading || (!desc.trim() && !photo) ? "var(--surface-2)" : A,
-            color:      loading || (!desc.trim() && !photo) ? "var(--border-strong)" : "var(--bg)",
+            background: loading || (!desc.trim() && !hasPhoto) ? "var(--surface-2)" : A,
+            color:      loading || (!desc.trim() && !hasPhoto) ? "var(--border-strong)" : "var(--bg)",
             border:"none", borderRadius:14, fontSize:14, fontWeight:900,
-            letterSpacing:"0.08em", cursor: loading || (!desc.trim() && !photo) ? "not-allowed" : "pointer" }}>
-          {loading ? "⚡ ANALYSING..." : photo ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL"}
+            letterSpacing:"0.08em", cursor: loading || (!desc.trim() && !hasPhoto) ? "not-allowed" : "pointer" }}>
+          {loading ? "⚡ ANALYSING..." : photos.length > 1 ? "🤖 ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "🤖 ANALYSE PHOTO" : "🤖 ANALYSE MEAL"}
         </button>
       </div>
 
@@ -5745,7 +5831,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
           {error}
           {capError && (
             // Cap reached / session expired — degrade gracefully. The typed text
-            // and any photo are kept; offer manual entry instead of losing them.
+            // and any photos are kept; offer manual entry instead of losing them.
             <button onClick={onBack}
               style={{ display:"block", marginTop:10, padding:"9px 14px", background:"var(--surface-2)",
                 border:`1px solid ${aA("44")}`, borderRadius:10, color:A, fontSize:12,

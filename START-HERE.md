@@ -1,8 +1,17 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-11-10 (cloud). **Jest 490/490 · Playwright 169/169 · sw v107 on branch
-`ccr-5a151d53-mqw4cd` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
+**Updated:** 2026-11-20 (cloud). **Jest 501/501 · Playwright 176/176 · sw v108 on branch
+`claude/photo-meal-redesign-9fou0d` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
 (PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
+
+> **v108 (2026-11-20, cloud, branch `claude/photo-meal-redesign-9fou0d`): photos from the gallery, up
+> to 3 per meal.** User feedback: no way to pick a stored photo (the one input had
+> `capture="environment"`, camera only on Android) and only one photo (a second replaced the first).
+> AI Log now has **📷 Camera** and **🖼 Gallery** (`multiple`, no `capture`), a thumbnail strip with
+> per-photo ✕, `MAX_PHOTOS = 3`, `addPhotos` (order kept, bad files skipped, cap notice). All photos
+> go as image blocks in ONE call; `AI_PHOTO_PROMPT(desc, count)` says they are views of ONE meal
+> (front/back of a packet = one item; label figures are fact). Legal docs now name photos. Jest
+> 501/501 · Playwright 176/176. Spec `logging/10`. Device check: `DEVICE-TEST.md` → *New in v108*.
 
 > **v107 (2026-11-10, cloud, on a branch): Quick Add first, then the log.** `pastMealPool` lists Quick
 > Add meals first; a Quick Add match always wins, else the newest log entry from the whole history

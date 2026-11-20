@@ -68,6 +68,20 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v108 — photos from the gallery, and up to 3 per meal (2026-11-20)
+
+- [ ] AI Log → **🖼 Gallery** opens the phone's photo picker (not the camera). A photo taken earlier with the camera app can be chosen.
+- [ ] In the picker, select **two or three photos at once** → all appear as thumbnails, in the order picked.
+- [ ] **📷 Camera** still opens the camera straight away; a shot taken after a gallery pick **joins** the strip, it doesn't replace it.
+- [ ] Pick **4** → 3 are kept, *"Up to 3 photos per meal — 1 wasn't added."*, and the Camera/Gallery buttons give way to *"3 photos max — remove one to add another."*
+- [ ] The ✕ on each thumbnail is easy to hit and removes only that photo; the button reads **ANALYSE 2 PHOTOS** / **ANALYSE PHOTO** to match.
+- [ ] Portrait photos look upright in the thumbnails. A large (12 MP+) photo ×3 doesn't freeze the app.
+- [ ] Samsung shooting **HEIC**: if a photo can't be read you get *"1 photo couldn't be read — try a JPEG or PNG."* and the others stay.
+- [ ] **Real model, front + back of one yogurt pot** → **one** item, named from the front, numbers from the label. Not two items.
+- [ ] **Real model, packet back (no name) + front** → the logged entry is named after the product.
+- [ ] **Real model, plate + the packet it came from** → one item for that food, kcal not doubled.
+- [ ] iOS (if tested): the 🖼 sheet offers Photo Library; HEIC photos come through fine.
+
 ### New in v107 — Quick Add is checked first (2026-11-10)
 
 - [ ] A meal that is in Quick Add → the card says *"…your Quick Add meal “…”"* and uses the Quick Add numbers.
