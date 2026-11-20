@@ -37,18 +37,19 @@ async function openAILog(page) {
   return sent;
 }
 const thumbs = page => page.getByRole("listitem").locator("img");
-const picker = page => page.getByTestId("photo-input");
+const picker = page => page.getByTestId("photo-gallery");
 
 test.describe("Photos from the gallery, and more than one (logging/10)", () => {
-  test("one Photo button opens the phone's own picker — camera and reel together, several at once", async ({ page }) => {
+  test("📷 goes straight to the camera; 🖼 opens the photo picker, several at once", async ({ page }) => {
+    // Two icons because Android's own picker (Google Photos) has no camera — founder's phone.
     await openAILog(page);
-    await expect(page.locator('input[type="file"]')).toHaveCount(1);
-    const input = picker(page);
-    expect(await input.getAttribute("capture")).toBeNull(); // no forced camera: the reel is offered
-    expect(await input.evaluate(e => e.multiple)).toBe(true);
-    expect(await input.getAttribute("accept")).toBe("image/*");
-    await expect(page.getByRole("button", { name: "Add photos" })).toBeEnabled();
-    await expect(page.getByRole("button", { name: /Camera|Gallery/ })).toHaveCount(0);
+    const gallery = picker(page), camera = page.getByTestId("photo-camera");
+    expect(await gallery.getAttribute("capture")).toBeNull(); // no forced camera: the reel is offered
+    expect(await gallery.evaluate(e => e.multiple)).toBe(true);
+    expect(await gallery.getAttribute("accept")).toBe("image/*");
+    expect(await camera.getAttribute("capture")).toBe("environment");
+    await expect(page.getByRole("button", { name: "Take a photo" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Choose photos" })).toBeEnabled();
   });
 
   test("the screen says one sentence, not paragraphs", async ({ page }) => {
@@ -79,21 +80,22 @@ test.describe("Photos from the gallery, and more than one (logging/10)", () => {
     expect(content[2].text).toContain("2 photos are attached");
   });
 
-  test("a photo added later joins the strip instead of replacing it", async ({ page }) => {
+  test("a camera shot after a gallery pick joins the strip instead of replacing it", async ({ page }) => {
     await openAILog(page);
     await picker(page).setInputFiles(IMG[0]);
     await expect(page.getByRole("button", { name: "ANALYSE PHOTO" })).toBeVisible();
-    await picker(page).setInputFiles(IMG[1]);
+    await page.getByTestId("photo-camera").setInputFiles(IMG[1]);
     await expect(thumbs(page)).toHaveCount(2);
     await expect(page.getByRole("button", { name: "ANALYSE 2 PHOTOS" })).toBeVisible();
   });
 
-  test("picking more than three keeps the first three, says so, and disables the Photo button", async ({ page }) => {
+  test("picking more than three keeps the first three, says so, and disables both photo buttons", async ({ page }) => {
     await openAILog(page);
     await picker(page).setInputFiles(IMG);
     await expect(thumbs(page)).toHaveCount(3);
     await expect(page.getByText("Up to 3 photos per meal — 1 wasn't added.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "3 photos max" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "3 photos max" })).toHaveCount(2);
+    for (const b of await page.getByRole("button", { name: "3 photos max" }).all()) await expect(b).toBeDisabled();
   });
 
   test("removing one photo drops just that one; removing all goes back to a typed meal", async ({ page }) => {
@@ -101,7 +103,7 @@ test.describe("Photos from the gallery, and more than one (logging/10)", () => {
     await picker(page).setInputFiles(IMG.slice(0, 3));
     await page.getByRole("button", { name: "Remove photo 2 of 3" }).click();
     await expect(thumbs(page)).toHaveCount(2);
-    await expect(page.getByRole("button", { name: "Add photos" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Choose photos" })).toBeEnabled();
     await page.getByRole("button", { name: "Remove photo 1 of 2" }).click();
     await page.getByRole("button", { name: "Remove photo 1 of 1" }).click();
     await expect(thumbs(page)).toHaveCount(0);

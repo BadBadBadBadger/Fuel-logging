@@ -14,8 +14,11 @@
 #   • ONE 📷 button in the action row (🎤 · 📷 · ANALYSE). One input, accept="image/*" multiple, NO
 #     `capture`: the phone's own picker offers the camera and the photo reel in one place. (The
 #     first cut had separate Camera / Gallery buttons; founder: "just tap the Photo button and you
-#     have the camera reel at the bottom".) No separate camera fallback is built — if a phone's
-#     picker lacks a camera option, that is the founder's call, not a quiet second control.
+#     have the camera reel at the bottom".)
+#   • v109 (same evening): on the founder's phone the single button opened Android's own photo
+#     picker (Google Photos) — gallery fine, NO camera option, and a web page can't add one. The
+#     founder chose two icons in the row: 🎤 · 📷 (capture → camera) · 🖼 (multiple → picker) ·
+#     ANALYSE. Both disabled at the cap.
 #   • ONE sentence on screen (founder: "all that AI-generated text… one small sentence"):
 #     "Describe it, snap it, or both — photos go to our AI once and are never stored." It is also
 #     the on-screen privacy layer; the detail lives in the privacy policy. The accuracy tip lives in
@@ -57,9 +60,10 @@ Feature: Photos from the gallery, up to three per meal
   Background:
     Given I am on the AI logging screen
 
-  Scenario: One photo button, camera and reel in one place
-    Then I see one 📷 button beside the microphone and ANALYSE
-    And it opens the phone's picker without forcing the camera, choosing one or several
+  Scenario: Camera and gallery, one tap each
+    Then the row reads 🎤 · 📷 · 🖼 · ANALYSE
+    And 📷 opens the camera straight away
+    And 🖼 opens the phone's photo picker, choosing one or several
 
   Scenario: One sentence, not paragraphs
     Then the only guidance on screen is "Describe it, snap it, or both — photos go to our AI once and are never stored."
@@ -71,19 +75,19 @@ Feature: Photos from the gallery, up to three per meal
 
   Scenario: A photo added later joins the others
     Given I have attached 1 photo
-    When I tap 📷 again and take or choose another
+    When I take another with 📷
     Then I have 2 photos attached, not 1
 
   Scenario: No more than three
     When I choose 4 photos
     Then the first 3 are attached
     And I am told "Up to 3 photos per meal — 1 wasn't added."
-    And the 📷 button is disabled until I remove one
+    And 📷 and 🖼 are disabled until I remove one
 
   Scenario: Removing one photo
     Given I have attached 3 photos
     When I tap the ✕ on photo 2
-    Then only that photo is removed and 📷 works again
+    Then only that photo is removed and 📷 and 🖼 work again
 
   Scenario: Removing every photo returns to a typed meal
     Given I have attached 1 photo

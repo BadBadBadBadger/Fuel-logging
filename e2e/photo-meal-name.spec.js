@@ -30,7 +30,7 @@ async function logPhoto(page, reply, notes = "") {
     };
   });
   await page.getByRole("button", { name: /AI LOG/ }).click();
-  await page.getByTestId("photo-input").setInputFiles(path.join(__dirname, "..", "icon-192.png"));
+  await page.getByTestId("photo-gallery").setInputFiles(path.join(__dirname, "..", "icon-192.png"));
   if (notes) await page.getByRole("textbox", { name: "Notes for the photo" }).fill(notes);
   await page.getByRole("button", { name: /ANALYSE PHOTO/ }).click();
   await page.getByRole("button", { name: /LOG ALL AS ONE ENTRY/ }).click();
