@@ -5549,7 +5549,8 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   const [fuDone,       setFuDone]        = useState({});   // idx -> true once answered/skipped
   const [fuLog,        setFuLog]        = useState([]);    // [{q, a}] persisted with the meal
   const recRef  = React.useRef(null);
-  const fileRef = React.useRef(null); // the phone's picker: camera + photo reel, several at once
+  const cameraRef  = React.useRef(null); // 📷 straight to the camera (capture)
+  const galleryRef = React.useRef(null); // 🖼 the phone's photo picker, several at once
 
   // Stop any in-flight speech recognition if we leave the screen.
   useEffect(() => () => { try { recRef.current && recRef.current.stop(); } catch(e) {} }, []);
@@ -5758,13 +5759,14 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
         {hasPhoto ? photos.length + (photos.length === 1 ? " photo" : " photos") + " attached" : ""}
       </div>
 
-      {/* Action row: 🎤 voice · 📷 photo · Analyse. ONE photo button: no `capture`, so the phone's
-          own picker offers the camera and the photo reel in one place, several at once. At the
-          cap it is disabled (not hidden), so the row doesn't jump. */}
+      {/* Action row: 🎤 voice · 📷 camera · 🖼 gallery · Analyse (logging/10). Two photo buttons
+          because Android's own photo picker (Google Photos) has NO camera option — seen on the
+          founder's phone 2026-11-20 — and a web page can't add one. 📷 opens the camera (capture);
+          🖼 opens the picker, several at once. At the cap both are disabled, not hidden. */}
       <div style={{ display:"flex", gap:8, marginTop:12 }}>
         {voiceAvailable && (
           <button onClick={listening ? stopVoice : startVoice} aria-label="Dictate meal"
-            style={{ flexShrink:0, width:54, padding:"15px 0", borderRadius:14,
+            style={{ flexShrink:0, width:48, padding:"15px 0", borderRadius:14,
               background: listening ? A : "var(--surface-2)",
               color: listening ? "var(--bg)" : A,
               border:`1px solid ${listening ? A : aA("44")}`, fontSize:18, cursor:"pointer",
@@ -5772,17 +5774,21 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
             {listening ? "⏹" : "🎤"}
           </button>
         )}
-        <button onClick={() => fileRef.current && fileRef.current.click()}
-          disabled={photos.length >= MAX_PHOTOS}
-          aria-label={photos.length >= MAX_PHOTOS ? MAX_PHOTOS + " photos max" : "Add photos"}
-          style={{ flexShrink:0, width:54, padding:"15px 0", borderRadius:14,
-            background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`, fontSize:18,
-            opacity: photos.length >= MAX_PHOTOS ? 0.4 : 1,
-            cursor: photos.length >= MAX_PHOTOS ? "not-allowed" : "pointer" }}>📷</button>
-        <input ref={fileRef} type="file" accept="image/*" multiple
-          data-testid="photo-input" onChange={onPickPhotos} style={{ display:"none" }}/>
+        {[["camera", "📷", "Take a photo", cameraRef], ["gallery", "🖼\uFE0F", "Choose photos", galleryRef]].map(([k, icon, aria, ref]) => (
+          <button key={k} onClick={() => ref.current && ref.current.click()}
+            disabled={photos.length >= MAX_PHOTOS}
+            aria-label={photos.length >= MAX_PHOTOS ? MAX_PHOTOS + " photos max" : aria}
+            style={{ flexShrink:0, width:48, padding:"15px 0", borderRadius:14,
+              background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`, fontSize:18,
+              opacity: photos.length >= MAX_PHOTOS ? 0.4 : 1,
+              cursor: photos.length >= MAX_PHOTOS ? "not-allowed" : "pointer" }}>{icon}</button>
+        ))}
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+          data-testid="photo-camera" onChange={onPickPhotos} style={{ display:"none" }}/>
+        <input ref={galleryRef} type="file" accept="image/*" multiple
+          data-testid="photo-gallery" onChange={onPickPhotos} style={{ display:"none" }}/>
         <button onClick={() => estimate()} disabled={loading || (!desc.trim() && !hasPhoto)}
-          style={{ flex:1, padding:"15px",
+          style={{ flex:1, minWidth:0, padding:"15px 8px", whiteSpace:"nowrap",
             background: loading || (!desc.trim() && !hasPhoto) ? "var(--surface-2)" : A,
             color:      loading || (!desc.trim() && !hasPhoto) ? "var(--border-strong)" : "var(--bg)",
             border:"none", borderRadius:14, fontSize:14, fontWeight:900,
