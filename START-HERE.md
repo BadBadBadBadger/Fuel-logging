@@ -1,8 +1,12 @@
 # Fuel Log — Start Here 🧭
 
-**Updated:** 2026-11-20 (cloud). **Jest 501/501 · Playwright 177/177 · sw v109 on branch
+**Updated:** 2026-11-20 (cloud). **Jest 501/501 · Playwright 177/177 · sw v110 on branch
 `claude/photo-meal-redesign-9fou0d` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
 (PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
+
+> **v110 (2026-11-20, cloud): version + patch date at the foot of the ⚙️ profile screen.**
+> `APP_VERSION` / `APP_PATCH_DATE` near the top of app.jsx — bump them with sw.js's `CACHE` every
+> release; `__tests__/version.test.js` fails if the version and sw.js disagree.
 
 > **v108 (2026-11-20, cloud, branch `claude/photo-meal-redesign-9fou0d`): photos from the gallery, up
 > to 3 per meal.** User feedback: no way to pick a stored photo (the one input had

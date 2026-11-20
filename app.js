@@ -332,6 +332,11 @@ var scanAllergens = function scanAllergens(text, allergens) {
   }
   return hits;
 };
+
+// Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
+// CACHE ("fuel-log-v110" ↔ "v110") — __tests__/version.test.js fails if they drift apart.
+var APP_VERSION = "v110";
+var APP_PATCH_DATE = "2026-11-20";
 var AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
 // ── Legal / compliance (LEGAL_ROADMAP Phase B) ────────────────
@@ -7257,7 +7262,18 @@ function ProfileScreen(_ref78) {
       marginTop: 10,
       lineHeight: 1.5
     }
-  }, "System follows your device\u2019s light/dark setting.")));
+  }, "System follows your device\u2019s light/dark setting.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      fontSize: 11,
+      color: "var(--text-lo-2)",
+      marginTop: 24
+    }
+  }, "Fuel Log ", APP_VERSION, " \xB7 updated ", new Date(APP_PATCH_DATE + "T12:00:00").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  })));
 }
 
 // ── Meal Form ─────────────────────────────────────────────────

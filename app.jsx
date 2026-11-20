@@ -161,6 +161,11 @@ const scanAllergens = (text, allergens) => {
   return hits;
 };
 
+// Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
+// CACHE ("fuel-log-v110" ↔ "v110") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v110";
+const APP_PATCH_DATE = "2026-11-20";
+
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
 // ── Legal / compliance (LEGAL_ROADMAP Phase B) ────────────────
@@ -3402,6 +3407,12 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
         <div style={{ fontSize:11, color:"var(--text-mid-2)", marginTop:10, lineHeight:1.5 }}>
           System follows your device’s light/dark setting.
         </div>
+      </div>
+
+      {/* Version + latest patch date — the very bottom of the config page (founder 2026-11-20) */}
+      <div style={{ textAlign:"center", fontSize:11, color:"var(--text-lo-2)", marginTop:24 }}>
+        Fuel Log {APP_VERSION} · updated {new Date(APP_PATCH_DATE + "T12:00:00")
+          .toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })}
       </div>
     </div>
   );
