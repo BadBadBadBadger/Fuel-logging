@@ -123,7 +123,7 @@ describe("The model's numbers are the numbers (logging/07)", () => {
   });
   test("a stated total short-circuits the model call, and never for a photo", () => {
     const body = fnBody("function AILog(");
-    expect(body).toMatch(/const stated = photo \? null : parseStatedTotals\(desc\)/);
+    expect(body).toMatch(/const stated = hasPhoto \? null : parseStatedTotals\(desc\)/);
     expect(body).toMatch(/if \(stated\) \{ setItems\(\[statedTotalsItem\(stated\)\]\);.*return; \}/);
   });
   test("estimate() runs the model's rows through dropDuplicateTotalRow", () => {
@@ -229,7 +229,7 @@ describe("A photo meal is named after what the model saw, not \"Photo meal\"", (
     expect(photoPrompt).toMatch(/brand or product name is visible on packaging.*, use it/);
   });
   test("logAll uses it for photo meals", () => {
-    expect(src).toMatch(/photo \? photoMealName\(mealName, desc, items\)/);
+    expect(src).toMatch(/hasPhoto \? photoMealName\(mealName, desc, items\)/);
     expect(src).not.toMatch(/\|\| "Photo meal"\), kcal/);
   });
 });
@@ -277,7 +277,79 @@ describe("Text typed with a photo guides the estimate (logging/08)", () => {
     expect(without).toMatch(/kcal ≈ 4×protein \+ 4×carbs \+ 9×fat/);
   });
   test("the screen sends what was typed with the photo", () => {
-    expect(src).toMatch(/text: AI_PHOTO_PROMPT\(desc\)/);
+    expect(src).toMatch(/text: AI_PHOTO_PROMPT\(desc, photos\.length\)/);
+  });
+});
+
+describe("Several photos of one meal (logging/10)", () => {
+  const AI_PHOTO_PROMPT = (() => {
+    const start = src.indexOf("const AI_PHOTO_PROMPT");
+    const end   = src.indexOf("const AI_REESTIMATE_PROMPT", start);
+    return new Function(src.slice(start, end) + "\nreturn AI_PHOTO_PROMPT;")();
+  })();
+  const { addPhotos, MAX_PHOTOS } = (() => {
+    const start = src.indexOf("const MAX_PHOTOS");
+    const end   = src.indexOf("// \"Report estimate as wrong\"", start);
+    return new Function(src.slice(start, end) + "\nreturn { addPhotos, MAX_PHOTOS };")();
+  })();
+
+  test("one photo reads exactly as before — no multi-photo wording", () => {
+    expect(AI_PHOTO_PROMPT("", 1)).toBe(AI_PHOTO_PROMPT(""));
+    expect(AI_PHOTO_PROMPT("")).toMatch(/A photo of a meal is attached/);
+    expect(AI_PHOTO_PROMPT("")).not.toMatch(/photos are attached/);
+  });
+  test("two photos are ONE meal: the same product's front and back is one item", () => {
+    const p = AI_PHOTO_PROMPT("", 2);
+    expect(p).toMatch(/2 photos are attached\. They are views of ONE meal being logged — not 2 meals/);
+    expect(p).toMatch(/front, back, side or label of one packet.*is ONE item/s);
+    expect(p).toMatch(/Never return the same product twice/);
+    expect(p).toMatch(/the packet IDENTIFIES the food and the plate shows the PORTION/);
+    expect(p).toMatch(/never count it twice/);
+    expect(p).not.toMatch(/A photo of a meal is attached/);
+  });
+  test("a readable nutrition label is fact, per 100 g scaled to the portion", () => {
+    const p = AI_PHOTO_PROMPT("", 2);
+    expect(p).toMatch(/NUTRITION LABELS: .*figures are FACT/);
+    expect(p).toMatch(/Per-100 g figures are the reference; scale them to the portion eaten/);
+  });
+  test("notes still win across all the photos, and a named product identifies a packet's back", () => {
+    const p = AI_PHOTO_PROMPT("Tesco chicken tikka", 2);
+    expect(p).toContain(`USER'S NOTES about these photos: "Tesco chicken tikka"`);
+    expect(p).toMatch(/the NOTES WIN/);
+    expect(p).toMatch(/identifies any packet in the photos, even one shot only from the back/);
+  });
+  test("the meal name and kcal rules still hold with several photos", () => {
+    const p = AI_PHOTO_PROMPT("", 3);
+    expect(p).toMatch(/"meal": "short name for the whole meal"/);
+    expect(p).toMatch(/even if other photos show only the back or the plate/);
+    expect(p).toMatch(/kcal ≈ 4×protein \+ 4×carbs \+ 9×fat/);
+  });
+  test("the screen sends one image block per photo, then the prompt", () => {
+    expect(src).toMatch(/\.\.\.photos\.map\(p => \(\{ type:"image"/);
+  });
+
+  const read = async f => { if (f === "bad") throw new Error("x"); return { base64: f, mediaType: "image/jpeg", preview: f }; };
+  test("the cap is three photos", () => expect(MAX_PHOTOS).toBe(3));
+  test("photos are added in the order picked, after the ones already attached", async () => {
+    const one = await addPhotos([], ["a"], read);
+    const two = await addPhotos(one.photos, ["b", "c"], read);
+    expect(two.photos.map(p => p.base64)).toEqual(["a", "b", "c"]);
+    expect(two.notice).toBe("");
+    expect(new Set(two.photos.map(p => p.id)).size).toBe(3);
+  });
+  test("picking past the cap keeps the first ones and says so", async () => {
+    const r = await addPhotos([], ["a", "b", "c", "d", "e"], read);
+    expect(r.photos.map(p => p.base64)).toEqual(["a", "b", "c"]);
+    expect(r.notice).toBe("Up to 3 photos per meal — 2 weren't added.");
+  });
+  test("one unreadable file never throws away the good ones", async () => {
+    const r = await addPhotos([], ["a", "bad", "c"], read);
+    expect(r.photos.map(p => p.base64)).toEqual(["a", "c"]);
+    expect(r.notice).toMatch(/1 photo couldn't be read/);
+  });
+  test("the same file picked twice is two photos (the user chose it twice)", async () => {
+    const r = await addPhotos([], ["a", "a"], read);
+    expect(r.photos).toHaveLength(2);
   });
 });
 

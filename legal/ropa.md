@@ -11,7 +11,7 @@
 
 ## Purposes of processing
 - Provide a fitness/nutrition tracking app and sync user data across devices.
-- Estimate calories/nutrition from meal and workout descriptions.
+- Estimate calories/nutrition from meal descriptions, meal photos (sent once, never stored) and workout descriptions.
 - Manage premium entitlement (when payments are introduced — not yet live).
 
 ## Categories of data subjects

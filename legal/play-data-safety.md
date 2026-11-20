@@ -26,6 +26,7 @@ None used for advertising or analytics.
 | User IDs | Yes | No | Account management | Google OAuth identifier |
 | **Health & fitness** (weight, body fat, sex, weigh-ins, workouts, calories/nutrition, dietary requirements & allergies) | Yes | **Yes** | App functionality | Weight, body-fat % and dietary requirements/allergies sent to AI (Anthropic) **without identifiers**. Diet choices may reveal religious belief — covered by explicit consent. |
 | App activity / other user-generated content (food/water logs, notes, meal text) | Yes | **Yes** | App functionality | Meal/workout text sent to AI **without identifiers** |
+| **Photos** (meal photos — taken with the camera or chosen from the gallery, up to 3 per meal) | Yes | **Yes** | App functionality | Re-encoded on the device (EXIF/location stripped), sent once to AI (Anthropic) **without identifiers**, processed ephemerally, **never stored**. Human to confirm the "ephemeral" answer at submission. |
 | App info & performance / diagnostics | Minimal | No | App functionality | Server logs only; no analytics SDK |
 
 \* "Shared" here reflects transfer to Anthropic for processing. Confirm how Play wants AI-processor
