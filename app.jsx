@@ -162,8 +162,8 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v113" ↔ "v113") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v113";
+// CACHE ("fuel-log-v114" ↔ "v114") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v114";
 const APP_PATCH_DATE = "2026-11-21";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
@@ -9406,6 +9406,9 @@ function App() {
   const [hist,       setHist]       = useState([]);
   const [meals,      setMeals]      = useState([...DEF_MEALS]);
   const [workouts,   setWorkouts]   = useState([]);
+  // Today's TRAINING/REST flag when set by hand from History (null = follow logged workouts).
+  // Whichever was changed last wins: logging or removing a workout clears it.
+  const [trainingOverride, setTrainingOverride] = useState(null);
   // Prior two days' total workout kcal [yesterday, 2 days ago] — feeds the smoothed
   // earn-to-eat window (energy-model Step 3). Today's comes from `workouts` live.
   const [priorWorkoutKcal, setPriorWorkoutKcal] = useState([0, 0]);
@@ -9507,6 +9510,7 @@ function App() {
       let loadedMeals = [...DEF_MEALS];
       const mv2 = await sg("meals");      if (mv2) { loadedMeals = JSON.parse(mv2); setMeals(loadedMeals); }
       const wkv = await sg("workouts__" + k); if (wkv) setWorkouts(JSON.parse(wkv));
+      const tov = await sg("training__" + k); if (tov === "1" || tov === "0") setTrainingOverride(tov === "1");
       // Prior two days' workout kcal for the smoothed earn-to-eat window (Step 3).
       const prior = [];
       for (let d = 1; d <= 2; d++) {
@@ -9658,8 +9662,13 @@ function App() {
     if (authState === "premium" && authUser?.id)
       syncProfile(authUser.id, p).catch(() => {});
   };
+  const saveTrainingOverride = async t => {
+    setTrainingOverride(t);
+    await ss("training__" + todayKey(), t == null ? "" : t ? "1" : "0");
+  };
   const saveWorkouts = async w => {
     setWorkouts(w);
+    if (trainingOverride != null) saveTrainingOverride(null);   // the latest action wins
     await ss("workouts__" + todayKey(), JSON.stringify(w));
     if (authState === "premium" && authUser?.id)
       syncWorkouts(authUser.id, todayKey(), w).catch(() => {});
@@ -9831,7 +9840,7 @@ function App() {
       }
     } catch(e) {}
     setAuthState("anonymous"); setAuthUser(null);
-    setLogs([]); setWater(0); setMode("cut"); setProf(null);
+    setLogs([]); setWater(0); setTrainingOverride(null); setMode("cut"); setProf(null);
     setHist([]); setMeals([...DEF_MEALS]); setWorkouts([]);
     setEarnedBdgs([]); setWeighIns([]); setTdeeAdj(0); setAdjLog([]); setWeighNudgeAt(null); setCustomKcal(null);
     setBodyMeasurements([]); setMuteMeasurements(false); setMeasurementNote(""); setMeasurementNudgeAt(null);
@@ -9899,6 +9908,19 @@ function App() {
   };
 
   const updateDay = async upd => {
+    // TODAY is one day, not two copies. An edit made to today from History goes through the
+    // same live handlers Today uses, so the Today screen shows it at once and the snapshot
+    // effect (which rebuilds today's row from live state) keeps it instead of overwriting it.
+    // Fixed 2026-11-21: food, water and training edits to today from History used to be
+    // wiped by the next change on Today.
+    if (upd.date === todayKey()) {
+      const cur = hist.find(d => d.date === upd.date) || {};
+      if (upd.logs && upd.logs !== cur.logs) await saveLogs(upd.logs);
+      if (upd.water !== undefined && upd.water !== water) await saveWater(upd.water);
+      if (upd.training !== undefined && upd.training !== (trainingOverride ?? workouts.length > 0))
+        await saveTrainingOverride(upd.training === (workouts.length > 0) ? null : upd.training);
+      return;   // the snapshot effect writes today's history row from the live state
+    }
     const nh = [...hist.filter(d => d.date !== upd.date), upd]
       .sort((a, b) => a.date.localeCompare(b.date));
     setHist(nh);
@@ -10099,7 +10121,7 @@ function App() {
       protein: Math.round(tots.protein * 10) / 10,
       carbs:   Math.round(tots.carbs   * 10) / 10,
       fat:     Math.round(tots.fat     * 10) / 10,
-      water, training: workouts.length > 0, logs:[...logs],
+      water, training: trainingOverride ?? workouts.length > 0, logs:[...logs],
       targetKcal: Math.round(targets.kcal), targetProtein: Math.round(targets.protein),
       targetFat: Math.round(targets.fat),
       targetFatFloor: Math.round((Number(p.weight) || 80) * FAT_FLOOR_PER_KG),
@@ -10114,7 +10136,7 @@ function App() {
     ss("history", JSON.stringify(upd));
     if (authState === "premium" && authUser?.id)
       syncHistory(authUser.id, upd).catch(() => {});
-  }, [logs, water, workouts, mode, ready, prof, tdeeAdj, customKcal]); // eslint-disable-line
+  }, [logs, water, workouts, trainingOverride, mode, ready, prof, tdeeAdj, customKcal]); // eslint-disable-line
 
   // ── Cut cycling (energy Step 5; features/energy-safety/02) ──────
   // How much today weighs comes from the PRESCRIBED deficit depth. Whether it counts at
