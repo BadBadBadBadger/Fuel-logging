@@ -8167,27 +8167,475 @@ function V2Last7(props) {
 // ██ REGION D — HEADER · MODE LAMPS · CUT-LOAD TAPE · BREAK SHEETS · CAUTION STRIP
 //               (§3.1–3.3, §7, D10, D13, D14–D16, O1 proposal)
 // ─────────────────────────────────────────────────────────────────────────────
-function V2Header(props) {
-  return <div data-testid="v2-header"><Label>Fuel/Log (stub)</Label></div>;
+// Shared helpers for this region. Display only: every rule here READS App state; nothing
+// in Region D writes the mode, the cut block or a snooze except through App's handlers.
+const v2TodayDate = () => new Date(Date.now() + getDevDateOffset() * 86400000);
+// Fixed 3-letter names ("Sep", not en-GB's "Sept") so the date line matches the design.
+const V2_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const V2_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const v2DayMonth = d => `${d.getDate()} ${V2_MONTHS[d.getMonth()]}`;
+const v2DayKeyBack = (todayK, n) => dateKey(new Date(new Date(todayK + "T12:00:00").getTime() - n * 86400000));
+// Maintenance as App computes it (effectiveTDEE): the adaptive adjustment can lift it but
+// never pull it below sedentary.
+const v2Maintenance = ({ baseTDEE = 0, tdeeAdj = 0, tdeeFloor }) =>
+  Math.max(tdeeFloor != null ? tdeeFloor : 0, (baseTDEE || 0) + (tdeeAdj || 0));
+const V2_BANK_FRAC = 0.9;   // D15 / O4: a break day is banked at ≥ 90 % of maintenance
+const v2Plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// Banking, for DISPLAY ONLY (HANDOVER §7.2). The drain logic in stepCutBlock still counts every
+// non-cut day; until it is changed, this reads history to show which finished break days would
+// have banked. Today is always "in progress" and never judged here.
+// Break days are the rest days the block has counted (offRun includes today when today is not
+// a cut day), so the finished ones are the offRun − 1 days ending yesterday.
+function v2BreakDays({ restDays, hist = [], todayK, bankLine }) {
+  const byDate = new Map((hist || []).map(h => [h.date, h]));
+  const days = [];
+  for (let i = Math.max(0, restDays - 1); i >= 1; i--) {
+    const date = v2DayKeyBack(todayK, i);
+    const h = byDate.get(date);
+    const kcal = h ? (Number(h.kcal) || (h.logs && h.logs.length ? sumLogs(h.logs).kcal : 0)) : 0;
+    const logged = !!(h && (kcal > 0 || (h.logs && h.logs.length > 0)));
+    days.push({ date, kcal, state: !logged ? "pending" : kcal >= bankLine ? "banked" : "under" });
+  }
+  const banked = days.filter(d => d.state === "banked").length;
+  const under  = days.filter(d => d.state === "under").length;
+  let run = 0;
+  for (let i = days.length - 1; i >= 0 && days[i].state === "banked"; i--) run++;
+  const yesterday = days.length ? days[days.length - 1].state : null;
+  // One status line, priority W5 > W4 > W6 > W10 (§7.3).
+  const line = under >= 2 ? "W5" : yesterday === "under" ? "W4" : yesterday === "pending" ? "W6"
+             : run >= 2 ? "W10" : null;
+  return { days, banked, under, run, line };
 }
-function V2ModeLamps(props) {
-  return <div data-testid="v2-lamps"><Label>Mode lamps (stub)</Label></div>;
+
+// ── Header (§3.1, D13) ──
+function V2NavButton({ testid, label, icon, onClick, children }) {
+  return (
+    <button data-testid={testid} aria-label={label} title={label} onClick={onClick}
+      style={{ width: 36, height: 36, borderRadius: 10, background: "var(--panel-2)",
+        boxShadow: "var(--panel-shadow)", border: "none", color: "var(--dim)", padding: 0,
+        display: "grid", placeItems: "center", position: "relative", cursor: "pointer" }}>
+      <Icon name={icon} size={20}/>
+      {children}
+    </button>
+  );
 }
-function V2CutTape(props) {
-  return null;
+function V2AvatarChip({ user, onClick }) {
+  const [failed, setFailed] = useState(false);
+  const letter = (user?.name || user?.email || "?").trim()[0] || "?";
+  const photo = user?.picture && !failed;
+  return (
+    <button data-testid="v2-nav-account" aria-label="Account" title="Account" onClick={onClick}
+      style={{ width: 36, height: 36, borderRadius: "50%", padding: 0, overflow: "hidden",
+        background: "var(--panel-2)", border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)",
+        display: "grid", placeItems: "center", cursor: "pointer",
+        fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, textTransform: "uppercase" }}>
+      {photo
+        ? <img src={user.picture} alt="" width={33} height={33} referrerPolicy="no-referrer"
+            onError={() => setFailed(true)} style={{ display: "block", borderRadius: "50%" }}/>
+        : <span aria-hidden="true">{letter}</span>}
+    </button>
+  );
+}
+function V2Header({ streak = 0, setView = () => {}, badgeGlow = false, newBadgeCount = 0,
+    authUser = null, onOpenAccount, isOnline = true, syncMsg = "" }) {
+  const now = v2TodayDate();
+  const date = `${V2_DAYS[now.getDay()]} ${v2DayMonth(now)}`;
+  const bubble = newBadgeCount > 0 ? String(newBadgeCount) : badgeGlow ? "1" : null;
+  return (
+    <header data-testid="v2-header" style={{ position: "sticky", top: 0, zIndex: 20,
+      background: "var(--panel)", margin: "0 -20px", padding: "22px 20px 10px",
+      display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ minWidth: 0 }}>
+        <div aria-label="Fuel Log" style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 26,
+          lineHeight: 1, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink)" }}>
+          Fuel<span style={{ color: "var(--amber-ink)" }}>/</span>Log
+        </div>
+        <div data-testid="v2-date" className="v2-num" style={{ fontSize: 11, fontWeight: 500,
+          color: "var(--dim)", letterSpacing: ".06em", marginTop: 6, textTransform: "uppercase",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {date}
+          {streak > 0 && <span data-testid="v2-streak"> · Day {streak} streak</span>}
+          {!isOnline && <span data-testid="v2-offline" style={{ color: "var(--amber-ink)", fontWeight: 600 }}> · Offline</span>}
+          {syncMsg && <span data-testid="v2-sync" style={{ textTransform: "none" }}> · {syncMsg}</span>}
+        </div>
+      </div>
+      <nav aria-label="Main" style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+        <V2NavButton testid="v2-nav-history" label="History" icon="history" onClick={() => setView("history")}/>
+        <V2NavButton testid="v2-nav-badges" label={bubble ? "Badges, new" : "Badges"} icon="trophy"
+          onClick={() => setView("achievements")}>
+          {bubble && <span data-testid="v2-badge-count" className="v2-num" style={{ position: "absolute",
+            top: -4, right: -4, fontSize: 10, fontWeight: 700, lineHeight: 1, background: "var(--amber)",
+            color: "var(--amber-on)", borderRadius: 6, padding: "3px 4px" }}>{bubble}</span>}
+        </V2NavButton>
+        <V2NavButton testid="v2-nav-settings" label="Settings" icon="settings" onClick={() => setView("profile")}/>
+        {authUser && <V2AvatarChip user={authUser} onClick={onOpenAccount || (() => setView("account"))}/>}
+      </nav>
+    </header>
+  );
+}
+
+// ── Mode lamps (§3.2, D10, D14). Taps ask; they never write the mode. ──
+function V2ModeLamps({ mode, isCustomMode = false, requestMode = () => {} }) {
+  return (
+    <div data-testid="v2-lamps" role="group" aria-label="Mode"
+      style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
+      {["cut", "maintain", "bulk"].map(k => {
+        const on = !isCustomMode && mode === k;
+        return (
+          <button key={k} data-testid={`v2-lamp-${k}`} aria-pressed={on} data-lit={on ? "1" : "0"}
+            onClick={() => { haptic(); requestMode(k, "today"); }}
+            style={{ fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 12, lineHeight: 1,
+              letterSpacing: ".14em", textTransform: "uppercase", textAlign: "center",
+              padding: "11px 0 10px", minHeight: 36, borderRadius: 6, cursor: "pointer",
+              background: on ? "var(--amber-bg)" : "var(--well)", boxShadow: on ? "none" : "var(--well-shadow)",
+              color: on ? "var(--amber-ink)" : "var(--dim)", opacity: on ? 1 : .8,
+              border: `1px solid ${on ? "var(--amber-edge)" : "transparent"}` }}>
+            {k}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Cut-load tape (§7.1–7.4) ──
+const V2_TAPE_TICKS = "repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px calc(100% / 12)) bottom/100% 5px no-repeat";
+function V2Tape({ fillPct, fillColor, nudgePct, pointerColor, children }) {
+  return (
+    <div style={{ position: "relative", height: 18, marginTop: 4, background: V2_TAPE_TICKS }}>
+      <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, background: "var(--faint)" }}/>
+      <span style={{ position: "absolute", left: `${nudgePct}%`, bottom: 0, width: 1, height: 11, background: "var(--dim)" }}/>
+      <span style={{ position: "absolute", right: 0, bottom: 0, width: 1, height: 11, background: "var(--dim)" }}/>
+      <span data-testid="v2-tape-fill" style={{ position: "absolute", left: 0, bottom: 0, height: 5,
+        width: `${fillPct}%`, background: fillColor, transition: "width .4s ease" }}/>
+      {children}
+      <span aria-hidden="true" style={{ position: "absolute", top: 0, left: `${fillPct}%`, width: 0, height: 0,
+        border: "4px solid transparent", borderTop: `6px solid ${pointerColor}`,
+        transform: fillPct >= 99 ? "translateX(-8px)" : "translateX(-4px)" }}/>
+    </div>
+  );
+}
+function V2TapeScale({ nudgePct }) {
+  const s = { position: "absolute", top: 0 };
+  return (
+    <div aria-hidden="true" className="v2-num" style={{ position: "relative", height: 12, fontSize: 9,
+      color: "var(--dim)", opacity: .75, marginTop: 3, letterSpacing: ".06em", textTransform: "uppercase" }}>
+      <span style={{ ...s, left: 0 }}>0</span>
+      <span style={{ ...s, left: `${nudgePct}%`, transform: "translateX(-50%)" }}>Nudge</span>
+      <span style={{ ...s, right: 0 }}>Break</span>
+    </div>
+  );
+}
+const V2_LINE = { fontFamily: V2_FONT.body, fontSize: 13, lineHeight: 1.35, color: "var(--dim)", marginTop: 8 };
+
+function V2BreakDueSheet({ level, weeks, bigLoss, stalled, stallWeeks, full, maintenance,
+    onStart, onSnooze, onNotYet, onClose }) {
+  const hard = level === "hard";
+  const eyebrow = full ? "Cut load full" : bigLoss && hard ? "5% lost this block" : stalled ? "Loss stalled" : "Cut load";
+  const headline = hard ? "Time for a diet break" : stalled ? "Your loss has stalled" : `You've been cutting for ${weeks} weeks`;
+  const body = hard
+    ? (bigLoss && !full ? "You've lost 5% of your bodyweight this block, a great point to consolidate."
+                        : `${weeks} weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance.`)
+    : stalled
+      ? `The scale hasn't moved in about ${stallWeeks} weeks. A couple of weeks at maintenance is how you reset it.`
+      : "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier.";
+  return (
+    <V2Sheet label={headline} onScrim={onClose}>
+      <div data-testid="v2-break-sheet" data-level={level}>
+        <div className="v2-label" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ color: "var(--amber-ink)" }}>{eyebrow}</span>
+          <span>{weeks} weeks in a deficit</span>
+        </div>
+        <h2 style={{ margin: "8px 0 0", fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 28,
+          lineHeight: 1.05, letterSpacing: ".02em" }}>{headline}</h2>
+        <p style={{ margin: "8px 0 0", fontSize: 15, lineHeight: 1.45, color: "var(--ink)", opacity: .85 }}>{body}</p>
+        <button data-testid="v2-break-start" onClick={onStart}
+          style={{ ...V2_BTN.primary, width: "100%", marginTop: 18, height: 54, borderRadius: 14, fontSize: 20,
+            letterSpacing: ".08em" }}>Start a 2-week break</button>
+        {hard
+          ? <button data-testid="v2-break-snooze" onClick={onSnooze}
+              style={{ width: "100%", marginTop: 8, height: 46, borderRadius: 12, background: "var(--well)",
+                boxShadow: "var(--well-shadow)", border: "none", color: "var(--ink)", fontFamily: V2_FONT.body,
+                fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Remind me in 3 days</button>
+          : <button data-testid="v2-break-notyet" onClick={onNotYet}
+              style={{ width: "100%", marginTop: 8, height: 46, borderRadius: 12, background: "var(--well)",
+                boxShadow: "var(--well-shadow)", border: "none", color: "var(--ink)", fontFamily: V2_FONT.body,
+                fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Not yet</button>}
+        <div style={{ textAlign: "center", fontSize: 12, color: "var(--dim)", marginTop: 10 }}>
+          Your target moves to maintenance, about <span className="v2-num">{v2fmt(maintenance)}</span> kcal.
+        </div>
+      </div>
+    </V2Sheet>
+  );
+}
+
+function V2CutTape({ cutBar = null, cutBlock = null, cutPrompt = null, prof, hist = [], totals = { kcal: 0 },
+    baseTDEE = 0, tdeeAdj = 0, tdeeFloor, setView = () => {},
+    onStartDietBreak = () => {}, onCutPromptSnooze = () => {}, onCutNudgeDismiss = () => {} }) {
+  const [sheet, setSheet] = useState(false);
+  const [details, setDetails] = useState(false);
+  const block = cutBlock || {};
+  const draining = !!(cutBar && cutBar.draining);
+  // Shown when App's cutBar says so (from CUT_BAR_MIN_LOAD while cutting, while load remains
+  // otherwise); also while cutting with a live prompt, so a prompt can never lose its home.
+  if (!cutBar && !(cutPrompt && block.start)) return null;
+
+  const th = cutThresholds(prof || DEF_PROFILE);
+  const load = Math.max(0, Number(block.load) || 0);
+  const pctOf = v => Math.max(0, Math.min(100, (v / th.hard) * 100));
+  const nudgePct = pctOf(th.soft);
+  const fillPct = pctOf(load);
+  const M = v2Maintenance({ baseTDEE, tdeeAdj, tdeeFloor });
+  const todayK = todayKey();
+  const head = (left, right, rightColor, extra = {}) => (
+    <div className="v2-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+      <span>{left}</span>
+      <span data-testid="v2-tape-status" {...extra} style={{ color: rightColor, letterSpacing: ".1em" }}>{right}</span>
+    </div>
+  );
+
+  if (draining) {
+    const bankLine = Math.round(M * V2_BANK_FRAC);
+    const bd = v2BreakDays({ restDays: cutBar.restDays || 0, hist, todayK, bankLine });
+    const breakLoad = Number(block.breakLoad) || load;
+    const dayW = pctOf(breakLoad / DIET_BREAK_DAYS);
+    const gaps = bd.days.filter(d => d.state !== "banked");
+    const gapsEnd = Math.min(100, fillPct + gaps.length * dayW);
+    const topPct = pctOf(breakLoad);
+    const hatch = c => `repeating-linear-gradient(135deg, ${c} 0 1.5px, transparent 1.5px 4px)`;
+    const gapColor = bd.under >= 2 ? "var(--amber-mark)" : "var(--dim)";
+    const lineText = {
+      W5: "You're not taking an effective break. Eat at maintenance.",
+      W4: "Yesterday was under maintenance, so it didn't count towards your break.",
+      W6: "Yesterday wasn't logged.",
+      W10: `${bd.run} for ${bd.run}. This is what a break looks like.`,
+    }[bd.line];
+    const lineColor = bd.line === "W5" ? "var(--amber-ink)" : bd.line === "W10" ? "var(--teal)" : "var(--dim)";
+    return (
+      <div data-testid="v2-cut-tape" data-state="break">
+        <button onClick={() => setDetails(v => !v)} aria-expanded={details}
+          aria-label={`Cut load. On a break, ${bd.banked} of 14 days banked. Show details`}
+          style={{ display: "block", width: "100%", background: "none", border: "none", padding: 0,
+            textAlign: "left", cursor: "pointer" }}>
+          {head("Cut load", `On a break · ${bd.banked} of 14 days banked`, "var(--teal)")}
+        </button>
+        <V2Tape fillPct={fillPct} fillColor="var(--teal)" nudgePct={nudgePct} pointerColor="var(--teal)">
+          {topPct > gapsEnd && (
+            <span aria-hidden="true" style={{ position: "absolute", bottom: 0, height: 5, left: `${gapsEnd}%`,
+              width: `${topPct - gapsEnd}%`, border: "1px dashed var(--teal-edge)", borderLeft: 0 }}/>
+          )}
+          {gaps.map((g, i) => {
+            const left = fillPct + i * dayW;
+            if (left >= 100) return null;
+            const pend = g.state === "pending";
+            return (
+              <span key={g.date} data-testid="v2-tape-gap" data-kind={g.state} role="img"
+                aria-label={pend ? "Not banked yet, not logged" : "Not banked, under maintenance"}
+                style={{ position: "absolute", bottom: 0, height: 9, left: `${left}%`,
+                  width: `${Math.min(dayW, 100 - left)}%`,
+                  ...(pend
+                    ? { border: "1px dashed var(--dim)", borderBottom: 0 }
+                    : { background: hatch(gapColor), borderLeft: `1px solid ${gapColor}`, borderRight: `1px solid ${gapColor}` }) }}/>
+            );
+          })}
+        </V2Tape>
+        <V2TapeScale nudgePct={nudgePct}/>
+        {lineText && (
+          <div data-testid="v2-break-line" data-line={bd.line}
+            style={{ ...V2_LINE, color: lineColor, fontWeight: bd.line === "W5" ? 500 : 400 }}>
+            {lineText}
+            {bd.line === "W6" && (
+              <button data-testid="v2-break-logit" onClick={() => setView("history")}
+                style={{ background: "none", border: "none", padding: 0, marginLeft: 6, color: "var(--amber-ink)",
+                  fontWeight: 600, fontSize: 13, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Log it</button>
+            )}
+          </div>
+        )}
+        <div data-testid="v2-bank-today" style={{ ...V2_LINE, marginTop: lineText ? 4 : 8 }}>
+          Today <Num size={12.5} color="var(--ink)">{v2fmt(totals.kcal)}</Num> of{" "}
+          <Num size={12.5} color="var(--ink)">{v2fmt(bankLine)}</Num> to bank it
+        </div>
+        {details && (
+          <div data-testid="v2-break-details" style={{ ...V2_LINE, marginTop: 4 }}>
+            About {v2Plural(cutBar.daysLeft, "day", "days")} to fully recharged. Recharging now sets up your next block.
+            {cutBar.weightUp && " Weight up a little on a break is normal, usually water and glycogen, not fat."}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Cutting.
+  const weeks = (cutBar && cutBar.weeks) || (cutPrompt && cutPrompt.weeks) ||
+    Math.max(1, Math.round(daysBetween(block.start, todayK) / 7));
+  const full = load >= th.hard;
+  const hot  = load >= th.soft || !!cutPrompt;
+  const level = (full || (cutPrompt && cutPrompt.level === "hard")) ? "hard" : hot ? "soft" : null;
+  const status = full ? `Break due · ${weeks} weeks` : `${weeks} weeks`;
+  const open = () => { if (level) setSheet(true); };
+  return (
+    <div data-testid="v2-cut-tape" data-state={full ? "due" : hot ? "hot" : "cutting"}>
+      <div role={level ? "button" : undefined} tabIndex={level ? 0 : undefined}
+        aria-label={level ? `Cut load, ${status}. Open break options` : `Cut load, ${status}`}
+        onClick={open} onKeyDown={e => { if (level && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }}
+        style={{ cursor: level ? "pointer" : "default" }}>
+        {head("Cut load", status, hot ? "var(--amber-ink)" : "var(--ink)")}
+        <V2Tape fillPct={fillPct} fillColor={hot ? "var(--amber)" : "var(--dim)"} nudgePct={nudgePct}
+          pointerColor={hot ? "var(--amber-mark)" : "var(--dim)"}/>
+        <V2TapeScale nudgePct={nudgePct}/>
+      </div>
+      {sheet && level && (
+        <V2BreakDueSheet level={level} weeks={weeks} full={full} maintenance={M}
+          bigLoss={!!(cutPrompt && cutPrompt.bigLoss)} stalled={!!(cutPrompt && cutPrompt.stalled)}
+          stallWeeks={(cutPrompt && cutPrompt.stallWeeks) || STALL_WEEKS}
+          onStart={() => { setSheet(false); onStartDietBreak(); }}
+          onSnooze={() => { setSheet(false); onCutPromptSnooze(); }}
+          onNotYet={() => { setSheet(false); onCutNudgeDismiss(); }}
+          onClose={() => setSheet(false)}/>
+      )}
+    </div>
+  );
+}
+
+// ── Caution strip (O1 proposal) ──
+// One strip under the gauge: the highest-priority safety caution, with "+N more". Conditions
+// and meaning come from v1 Dashboard's cards; the copy is plainer. The safe-minimum notice is
+// gone (D6) and there is no AI coach card.
+function v2Cautions({ targets = {}, isCustomMode = false, customKcal = null, aggressiveCutAcked = false,
+    baseTDEE = 0, tdeeAdj = 0, tdeeFloor, workouts = [], showGainWhileCutting = false,
+    showRecharged = false, mode = "cut" }) {
+  const out = [];
+  const tdee = v2Maintenance({ baseTDEE, tdeeAdj, tdeeFloor });
+  const kcal = v2fmt(targets.kcal);
+  // Aggressive custom target — v1's targetWarning (red needs an answer; amber variants inform).
+  if (isCustomMode && !targets.safeMinApplied && customKcal != null) {
+    const diff = customKcal - tdee;
+    if (diff < -1000) out.push({ kind: "aggressive", rank: aggressiveCutAcked ? 6 : 0, ack: !aggressiveCutAcked,
+      title: "Not recommended",
+      text: "This deficit is very deep. Extreme cuts cost muscle and energy, and slow your metabolism." });
+    else if (diff < -750) out.push({ kind: "aggressive", rank: 6, title: "Aggressive deficit",
+      text: `You may lose muscle alongside fat. Consider ${v2fmt(tdee - 750)} kcal or above.` });
+    else if (targets.deficitFloor && customKcal < targets.deficitFloor) out.push({ kind: "aggressive", rank: 6,
+      title: "Below your steady pace",
+      text: `That's under the ${v2fmt(targets.deficitFloor)} kcal we'd set as your lowest safe target. Faster than that mostly costs muscle.` });
+  }
+  if (targets.lowFuel) {
+    const burn = (workouts || []).reduce((s, w) => s + (w.kcal || 0), 0);
+    out.push({ kind: "low-fuel", rank: 1, title: "Low on fuel today",
+      text: `Today's training used about ${v2fmt(burn)} kcal, which doesn't leave much for recovery. Eating a bit more today would be worth it.`,
+      why: "What matters is what's left once training has taken its share. At your body composition there isn't much spare, and running short for weeks tends to show up as flat training, poor sleep and low mood. One light day is nothing to worry about." });
+  }
+  if (showGainWhileCutting) out.push({ kind: "gain", rank: 2, title: "Weight up while cutting",
+    text: "This is usually water, glycogen or muscle, not a slower metabolism. Your target hasn't been lowered.",
+    why: "The scale weighs everything, not just fat. Under-eating and stress both make you hold water, and glycogen swings a kilo either way. None of that means you burn less, so your number stays where it is." });
+  if (targets.bmrFloorApplied && !targets.safeMinApplied) out.push({ kind: "held", rank: 3,
+    title: "Held at your minimum maintenance",
+    text: `Maintenance can't sit below your body's resting needs, so today's target is held at ${kcal} kcal. If the scale keeps rising, a short diet break usually beats eating less.` });
+  if (targets.deficitFloorApplied && !targets.safeMinApplied && !targets.bmrFloorApplied) out.push({ kind: "eased", rank: 4,
+    title: "Eased to a steady pace",
+    text: `A ${(MODES[mode] || MODES.cut).label.toLowerCase()} at your size would take too big a bite, so today's target is ${kcal} kcal.`,
+    why: "Your lowest safe target is a quarter below what we think you burn, so it moves as you do. Losing faster mostly costs muscle, sleep and training, and is harder to stick to." });
+  if (targets.floorsExceedKcal) out.push({ kind: "floors", rank: 7, title: "Protein and fat kept",
+    text: "This target is too low to fit your minimum protein and fat, so those are kept and your macros add up to a bit more." });
+  if (showRecharged) out.push({ kind: "recharged", rank: 8, good: true, dismiss: true, title: "Recharged",
+    text: "You're in good shape to cut again, if you want to." });
+  return out.sort((a, b) => a.rank - b.rank);
+}
+function V2CautionItem({ c, onAck, onDismiss, first }) {
+  const [why, setWhy] = useState(false);
+  const tone = c.good ? "var(--teal)" : "var(--amber-ink)";
+  return (
+    <div data-testid="v2-caution-item" data-kind={c.kind}
+      style={{ display: "flex", gap: 10, alignItems: "flex-start",
+        ...(first ? {} : { borderTop: "1px solid var(--hair)", paddingTop: 10, marginTop: 10 }) }}>
+      <span style={{ color: c.good ? "var(--teal)" : "var(--amber-mark)", marginTop: 1 }}>
+        <Icon name={c.good ? "check" : "warning"} size={18}/>
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Label color={tone}>{c.title}</Label>
+        <div style={{ fontSize: 13, lineHeight: 1.4, color: "var(--ink)", marginTop: 3 }}>
+          {c.text}
+          {c.why && (
+            <button onClick={() => setWhy(v => !v)} aria-expanded={why}
+              style={{ ...V2_BTN.text, padding: "0 0 0 6px", color: tone, fontWeight: 600, textDecoration: "underline",
+                textUnderlineOffset: 3 }}>Why?</button>
+          )}
+        </div>
+        {why && <div style={{ fontSize: 12.5, lineHeight: 1.45, color: "var(--dim)", marginTop: 4 }}>{c.why}</div>}
+        {c.ack && (
+          <button data-testid="v2-caution-ack" onClick={onAck}
+            style={{ ...V2_BTN.outline, marginTop: 8, minHeight: 36, fontSize: 14 }}>Yes, I understand</button>
+        )}
+      </div>
+      {c.dismiss && (
+        <button data-testid="v2-caution-dismiss" aria-label="Dismiss" onClick={onDismiss}
+          style={{ background: "none", border: "none", color: "var(--dim)", padding: 4, cursor: "pointer" }}>
+          <Icon name="x" size={18}/>
+        </button>
+      )}
+    </div>
+  );
 }
 function V2CautionStrip(props) {
-  return null;
+  const [expanded, setExpanded] = useState(false);
+  const list = v2Cautions(props);
+  if (!list.length) return null;
+  const shown = expanded ? list : list.slice(0, 1);
+  const more = list.length - 1;
+  const onAck = props.onAckAggressiveCut || (() => {});
+  const onDismiss = props.onDismissRecharged || (() => {});
+  return (
+    <Panel data-testid="v2-caution" data-top={list[0].kind} pad={12} role="status">
+      {shown.map((c, i) => <V2CautionItem key={c.kind} c={c} first={i === 0} onAck={onAck} onDismiss={onDismiss}/>)}
+      {more > 0 && (
+        <button data-testid="v2-caution-more" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}
+          className="v2-label" style={{ background: "none", border: "none", padding: "8px 0 0 28px",
+            color: "var(--dim)", cursor: "pointer" }}>
+          {expanded ? "Show less" : `+${more} more`}
+        </button>
+      )}
+    </Panel>
+  );
 }
-// Early-return confirm (§7.5). Rendered by App whenever requestMode() is guarded, from
-// any source (Today lamps, Settings, custom target). Props: { guard, block, onKeep, onCut }.
-function V2EarlyReturnSheet({ guard, onKeep, onCut }) {
+
+// Early-return confirm (§7.5, ruling in reviews/early-return-ruling.md). Rendered by App whenever
+// requestMode() is guarded, from any source. The forecast is computed at render from the remaining
+// load at the CUT target's deficit (today's maintenance target would give infinity), forecasts the
+// soft nudge, and says "a few days" once the load is already at or above it. Never stored.
+function V2EarlyReturnSheet({ guard, block, profile, targets = {}, baseTDEE = 0, tdeeAdj, onKeep, onCut }) {
+  const p = profile || DEF_PROFILE;
+  const th = cutThresholds(p);
+  const adj = tdeeAdj != null ? tdeeAdj : (targets.tdee != null ? targets.tdee - (baseTDEE || 0) : 0);
+  const M = Math.max(sedentaryFloorOf(p), (baseTDEE || 0) + adj);
+  const cutKcal = calcTargets(p, "cut", 0, adj).kcal;
+  const perDay = dayCutLoad(cutKcal, M) || 1;
+  const load = Math.max(0, Number(block && block.load) || 0);
+  const fewDays = load >= th.soft;
+  const w = Math.max(1, Math.round((th.soft - load) / perDay / 7));
+  const d = Math.max(1, (guard && guard.daysLeft) || 1);
+  const began = block && block.start
+    ? v2DayMonth(new Date(block.start + "T12:00:00")) : null;
   return (
     <V2Sheet label="Back to cutting already?" onScrim={onKeep}>
-      <div style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 24 }}>Back to cutting already?</div>
-      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button style={{ ...V2_BTN.primary, flex: 1 }} onClick={onKeep}>Keep resting</button>
-        <button style={{ ...V2_BTN.quiet, flex: 1 }} onClick={onCut}>Cut anyway</button>
+      <div data-testid="v2-early-return">
+        <h2 style={{ margin: 0, fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 28, lineHeight: 1.05,
+          letterSpacing: ".02em" }}>Back to cutting already?</h2>
+        <p data-testid="v2-er-forecast" style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.45, color: "var(--ink)", opacity: .85 }}>
+          About {v2Plural(d, "more rest day", "more rest days")} would finish this break, and if you cut now{" "}
+          {fewDays ? "the break reminder will be back in a few days."
+                   : `the next break reminder is likely in about ${v2Plural(w, "week", "weeks")} at your cut target.`}
+        </p>
+        {began && <p data-testid="v2-er-began" style={{ margin: "8px 0 0", fontSize: 13, color: "var(--dim)" }}>
+          This block began on {began}.</p>}
+        <button data-testid="v2-er-keep" onClick={onKeep}
+          style={{ ...V2_BTN.primary, width: "100%", marginTop: 18, height: 54, borderRadius: 14, fontSize: 20,
+            letterSpacing: ".08em" }}>Keep resting</button>
+        <button data-testid="v2-er-cut" onClick={onCut}
+          style={{ width: "100%", marginTop: 8, height: 46, borderRadius: 12, background: "var(--well)",
+            boxShadow: "var(--well-shadow)", border: "none", color: "var(--ink)", fontFamily: V2_FONT.body,
+            fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Cut anyway</button>
       </div>
     </V2Sheet>
   );
