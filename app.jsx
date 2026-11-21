@@ -8118,7 +8118,7 @@ function App() {
   );
 
   return (
-    <div className={UI_V2 ? "ui-v2" : undefined} style={{ minHeight:"100vh", background: UI_V2 ? "var(--panel)" : BG, color:"#fff",
+    <div className={UI_V2 ? "ui-v2" : undefined} style={{ minHeight:"100vh", background: UI_V2 ? "var(--panel)" : BG, color: UI_V2 ? "var(--ink)" : "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       {UI_V2 && <V2Styles/>}
       <style>{`
@@ -8193,7 +8193,7 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} onOpenAccount={() => setView("account")}
+      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals} onOpenAccount={() => setView("account")}
           logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
