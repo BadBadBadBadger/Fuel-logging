@@ -8222,11 +8222,710 @@ function TodayV2(props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ██ REGION E — SETTINGS v2 (§6, D11, D13). Same props as ProfileScreen, plus account bits.
 // ─────────────────────────────────────────────────────────────────────────────
-function SettingsV2(props) {
+// Theme-dependent looks that differ between the two mockups (settings.png / settings-light.png):
+// the readout is a recessed well in dark but a raised card in light; a lit goal lamp is an amber
+// tint in dark but an amber fill in light. Scoped to .v2s so nothing leaks.
+const V2S_DARK = `--v2s-readout:var(--well); --v2s-readout-shadow:none;
+  --v2s-lit-bg:var(--amber-bg); --v2s-lit-fg:var(--amber-ink); --v2s-lit-edge:var(--amber-edge);
+  --v2s-seg-on:var(--panel); --v2s-seg-edge:var(--amber-edge); --v2s-field-edge:rgba(0,0,0,.35);
+  --v2s-pill-bg:var(--amber-bg); --v2s-pill-fg:var(--amber-ink); --v2s-pill-edge:var(--amber-edge);`;
+const V2S_LIGHT = `--v2s-readout:var(--panel-2); --v2s-readout-shadow:var(--panel-shadow);
+  --v2s-lit-bg:var(--amber); --v2s-lit-fg:var(--amber-on); --v2s-lit-edge:var(--amber);
+  --v2s-seg-on:var(--panel-2); --v2s-seg-edge:var(--amber-mark); --v2s-field-edge:transparent;
+  --v2s-pill-bg:var(--amber); --v2s-pill-fg:var(--amber-on); --v2s-pill-edge:var(--amber);`;
+const V2S_CSS = `
+  .ui-v2 .v2s { ${V2S_LIGHT} }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ui-v2 .v2s { ${V2S_DARK} } }
+  :root[data-theme="dark"] .ui-v2 .v2s { ${V2S_DARK} }
+  .ui-v2 .v2s .v2s-field:focus-within { border-color: var(--amber-mark); }
+  .ui-v2 .v2s .v2s-field input { background: transparent; border: none; outline: none; color: var(--ink);
+    font-size: 20px; font-weight: 500; width: 100%; min-width: 0; padding: 0; }
+  .ui-v2 .v2s .v2s-row:hover { background: var(--well); }
+  .ui-v2 .v2s a { color: var(--dim); }
+`;
+
+// Plain labels with step ranges (§6). Keys and multipliers stay v1's ACTIVITY.
+const V2S_ACTIVITY = {
+  sedentary: { label: "Mostly sitting", steps: "<5k steps",   short: "Sitting" },
+  light:     { label: "Lightly active", steps: "5–8k steps",  short: "Light" },
+  active:    { label: "Active",         steps: "8–12k steps", short: "Active" },
+  very:      { label: "Very active",    steps: "12k+ steps",  short: "Very active" },
+};
+const V2S_WEIGH = [["daily", "Daily"], ["few", "Few / wk"], ["weekly", "Weekly"], ["off", "Off"]];
+const V2S_MODES = [["cut", "Cut"], ["maintain", "Maintain"], ["bulk", "Bulk"]];
+const V2S_WUNITS = [["kg", "kg"], ["st", "st + lb"], ["lb", "lb"]];
+const V2S_HUNITS = [["cm", "cm"], ["ftin", "ft + in"], ["in", "in"]];
+const V2S_THEMES = [["dark", "Dark"], ["light", "Light"], ["system", "System"]];
+const v2sDate = ts => new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+// Stored metric → display parts [[number, unit], …] in the chosen unit (reuses v1 converters).
+const v2sWeightParts = (kg, u) => {
+  if (u === "st") { const x = kgToStLb(kg); return [[x.st, "st"], [x.lb, "lb"]]; }
+  if (u === "lb") return [[kgToLb(kg), "lb"]];
+  return [[Number(kg) || 0, "kg"]];
+};
+const v2sHeightParts = (cm, u) => {
+  if (u === "ftin") { const x = cmToFtIn(cm); return [[x.ft, "ft"], [x.in, "in"]]; }
+  if (u === "in") return [[cmToInch(cm), "in"]];
+  return [[Number(cm) || 0, "cm"]];
+};
+
+function V2SGlyph({ d, size = 20 }) {
   return (
-    <div data-testid="settings-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "16px 20px 40px" }}>
-      <button style={V2_BTN.text} onClick={props.onBack}>Back</button>
-      <Label>Settings (stub)</Label>
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.75"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
+      {d.map((p, i) => <path key={i} d={p}/>)}
+    </svg>
+  );
+}
+const V2S_BACK = ["M19.6 12.1c-4.9-.1-9.8.1-14.7-.1", "M10.4 6.2c-1.9 2-3.8 3.9-5.6 5.9 1.8 2 3.7 3.9 5.6 5.8"];
+const V2S_CHEV = ["M9.2 5.9c2 2 4.1 4 6 6.1-1.9 2-4 4-6 6.1"];
+
+function V2SAvatar({ user, size = 40 }) {
+  const [failed, setFailed] = useState(false);
+  const letter = ((user && user.name) || "?")[0].toUpperCase();
+  const box = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
+  if (user && user.picture && !failed) {
+    return <img src={user.picture} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}
+      style={{ ...box, display: "block", objectFit: "cover" }}/>;
+  }
+  return (
+    <span aria-hidden="true" style={{ ...box, background: "var(--well)", boxShadow: "var(--well-shadow)",
+      color: "var(--ink)", display: "grid", placeItems: "center",
+      fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 18 }}>{letter}</span>
+  );
+}
+
+function V2SHeader({ title, meta, onBack, backLabel, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "20px 0 0" }}>
+      <button data-testid="v2-settings-back" aria-label={backLabel} onClick={onBack}
+        style={{ width: 38, height: 38, borderRadius: 10, background: "var(--panel-2)", boxShadow: "var(--panel-shadow)",
+          border: "none", color: "var(--dim)", display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer" }}>
+        <V2SGlyph d={V2S_BACK}/>
+      </button>
+      <div style={{ minWidth: 0 }}>
+        <h1 style={{ margin: 0, fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 26, lineHeight: 1,
+          letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink)" }}>{title}</h1>
+        <div style={{ fontFamily: V2_FONT.mono, fontWeight: 500, fontSize: 11, letterSpacing: ".1em",
+          textTransform: "uppercase", color: "var(--dim)", marginTop: 5 }}>{meta}</div>
+      </div>
+      <div style={{ marginLeft: "auto" }}>{right}</div>
+    </div>
+  );
+}
+
+function V2SSect({ children }) {
+  return <h2 style={{ margin: 0, fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 12, letterSpacing: ".16em",
+    textTransform: "uppercase", color: "var(--dim)", padding: "22px 4px 8px" }}>{children}</h2>;
+}
+function V2SCard({ children, style, ...rest }) {
+  return <Panel pad="14px 14px 16px" {...rest} style={{ borderRadius: 14, ...style }}>{children}</Panel>;
+}
+function V2SField({ children, aside, style, id }) {
+  return (
+    <div id={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8,
+      fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 13, letterSpacing: ".14em", textTransform: "uppercase",
+      color: "var(--ink)", ...style }}>
+      <span>{children}</span>
+      {aside && <span style={{ fontFamily: V2_FONT.body, fontWeight: 400, fontSize: 12, letterSpacing: 0,
+        textTransform: "none", color: "var(--dim)", textAlign: "right" }}>{aside}</span>}
+    </div>
+  );
+}
+function V2SHint({ children, warn, style, ...rest }) {
+  return <p {...rest} style={{ margin: "8px 0 0", fontFamily: V2_FONT.body, fontSize: 12.5, lineHeight: 1.45,
+    color: warn ? "var(--amber-ink)" : "var(--dim)", ...style }}>{children}</p>;
+}
+
+// Segmented choice (radio group). value === null lights nothing.
+function V2SSeg({ options, value, onChange, label, testid }) {
+  return (
+    <div role="radiogroup" aria-label={label} data-testid={testid}
+      style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "1fr", gap: 3, background: "var(--well)",
+        boxShadow: "var(--well-shadow)", borderRadius: 9, padding: 3, marginTop: 10 }}>
+      {options.map(([v, lbl, extra]) => {
+        const on = value === v;
+        return (
+          <button key={v} role="radio" aria-checked={on} data-testid={testid && `${testid}-${v}`}
+            onClick={() => onChange(v)}
+            style={{ minHeight: 36, borderRadius: 6, border: "none", cursor: "pointer", padding: "0 4px",
+              background: on ? "var(--v2s-seg-on)" : "transparent",
+              boxShadow: on ? "inset 0 0 0 1px var(--v2s-seg-edge)" : "none",
+              color: on ? "var(--ink)" : "var(--dim)", fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 13,
+              letterSpacing: ".12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+            {lbl}
+            {extra != null && <span className="v2-num" style={{ fontSize: 12, fontWeight: 500, letterSpacing: 0,
+              color: "var(--amber-ink)", marginLeft: 6 }}>{extra}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Number box with its unit inside, on the well.
+function V2SBox({ children, unit }) {
+  return (
+    <label className="v2s-field" style={{ display: "flex", alignItems: "baseline", gap: 6, background: "var(--well)",
+      boxShadow: "var(--well-shadow)", border: "1px solid var(--v2s-field-edge)", borderRadius: 9,
+      padding: "10px 12px 9px", marginTop: 8, flex: 1, minWidth: 0, cursor: "text" }}>
+      {children}
+      <span className="v2-num" style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".1em",
+        textTransform: "uppercase", color: "var(--dim)" }}>{unit}</span>
+    </label>
+  );
+}
+
+// Weight / height editor. Same glue as v1 MeasureField (seed once from the stored metric value,
+// edit local strings, rebuild metric on every keystroke) and the SAME MEASURE_CFG converters —
+// only the look differs. The parent keys it by unit so a unit switch reseeds it.
+function V2SMeasure({ metric, unit, onChange, name, testid }) {
+  const cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
+  const [vals, setVals] = useState(() => cfg.seed(metric));
+  const commit = (i, raw) => {
+    const next = vals.slice(); next[i] = raw;
+    setVals(next);
+    onChange(cfg.build(next));
+  };
+  const compound = cfg.f.length > 1;
+  return (
+    <div data-testid={testid} style={{ display: "flex", gap: 6 }}>
+      {cfg.f.map((u, i) => (
+        <V2SBox key={i} unit={u}>
+          <input type="number" min="0" value={vals[i]} aria-label={`${name} ${u}`}
+            max={u === "lb" && compound ? "13" : u === "in" && compound ? "11" : undefined}
+            inputMode={u === "kg" || u === "lb" ? "decimal" : "numeric"}
+            onChange={e => commit(i, e.target.value)}/>
+        </V2SBox>
+      ))}
+    </div>
+  );
+}
+
+function V2SNavRow({ title, sub, onClick, testid }) {
+  return (
+    <button className="v2s-row" data-testid={testid} onClick={onClick}
+      style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minHeight: 60, textAlign: "left",
+        padding: "14px 14px 14px 16px", background: "transparent", border: "none", cursor: "pointer" }}>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 17, lineHeight: 1.1,
+          letterSpacing: ".05em", textTransform: "uppercase", color: "var(--ink)" }}>{title}</span>
+        <span style={{ display: "block", fontFamily: V2_FONT.body, fontSize: 13, lineHeight: 1.3, color: "var(--dim)",
+          marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</span>
+      </span>
+      <span style={{ color: "var(--dim)" }}><V2SGlyph d={V2S_CHEV} size={16}/></span>
+    </button>
+  );
+}
+function V2SList({ children }) {
+  const kids = React.Children.toArray(children).filter(Boolean);
+  return (
+    <Panel pad={0} style={{ borderRadius: 14, overflow: "hidden" }}>
+      {kids.map((c, i) => <div key={i} style={i ? { borderTop: "1px solid var(--panel)" } : undefined}>{c}</div>)}
+    </Panel>
+  );
+}
+// A read-only label / value line (Advanced, Account).
+function V2SStat({ label, children, testid }) {
+  return (
+    <div data-testid={testid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+      gap: 12, padding: "9px 0", borderBottom: "1px solid var(--hair)" }}>
+      <span style={{ fontFamily: V2_FONT.body, fontSize: 13.5, color: "var(--dim)" }}>{label}</span>
+      <span className="v2-num" style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)", textAlign: "right" }}>{children}</span>
+    </div>
+  );
+}
+function V2SUnitNum({ parts }) {
+  return parts.map(([n, u], i) => (
+    <React.Fragment key={i}>{i ? " " : ""}{n}<span style={{ fontSize: 11, color: "var(--dim)" }}> {u}</span></React.Fragment>
+  ));
+}
+
+function SettingsV2(props) {
+  const { profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false,
+    onResetAdjustment = () => {}, muteMeasurements = false, onToggleMuteMeasurements = () => {},
+    requestMode, mode = "cut", customKcal = null, onSetCustomKcal = () => {}, targets,
+    authState, authUser, consentInfo, onExport = () => {}, onSignOut = () => {}, onDelete = async () => {},
+    onSignIn = () => {} } = props;
+
+  const [view, setView]   = useState("top");         // top | body | units | account | advanced
+  const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
+  const [saved, setSaved] = useState(false);
+  const [savedNote, setSavedNote] = useState("Saved");
+  const prevSex  = React.useRef(profile ? profile.sex || null : null);
+  const firstRun = React.useRef(true);
+  const rootRef  = React.useRef(null);
+  const [wUnit, setWU]    = useState(getWUnit());     // display only — storage stays kg
+  const [hUnit, setHU]    = useState(getHUnit());     // display only — storage stays cm
+  const [theme, setThemeChoice] = useState(getTheme());
+  const [ownEditing, setOwnEditing] = useState(false);
+  const [ownVal, setOwnVal] = useState("");
+  const [askReset, setAskReset] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  // Same validity and auto-save as v1 ProfileScreen (600 ms debounce, same watched fields, same
+  // sex-change note). f carries every stored field, dietary included, so nothing is dropped (D6:
+  // diet settings are not shown, but stored data is left alone). The first run saves silently,
+  // as v1 does, so a brand-new user's defaults become their profile without a "Saved" flash.
+  const valid = Number(f.weight) > 0 && Number(f.height) > 0 && Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
+  useEffect(() => {
+    if (!valid) return;
+    const quiet = firstRun.current;
+    firstRun.current = false;
+    const t = setTimeout(() => {
+      onSave(f);
+      if (quiet) return;
+      haptic();
+      const sexChanged = prevSex.current != null && prevSex.current !== f.sex;
+      prevSex.current = f.sex;
+      setSavedNote(sexChanged ? "Targets updated" : "Saved");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [f.weight, f.height, f.bodyFat, f.sex, f.activity, f.weighCadence]); // eslint-disable-line
+
+  const firstView = React.useRef(true);
+  useEffect(() => {
+    if (firstView.current) { firstView.current = false; return; }
+    try { rootRef.current && rootRef.current.scrollIntoView({ block: "start" }); } catch (e) {}
+    setAskReset(false); setConfirmDel(false); setTyped(""); setErr("");
+  }, [view]);
+
+  const signedIn = authState === "premium" && !!authUser;
+  const isCustom = customKcal != null;
+  const kcal     = targets ? targets.kcal : calcTargets(f, mode, 0, tdeeAdj).kcal;
+  // "Auto N": the live target when auto is on. While a custom target is set the stored goal isn't
+  // a prop, so N is the worked-out target for the mode the custom number implies.
+  const autoKcal = isCustom ? calcTargets(f, mode, 0, tdeeAdj).kcal : kcal;
+  const modeLabel = (V2S_MODES.find(([k]) => k === mode) || V2S_MODES[0])[1];
+  const actKey   = f.activity && V2S_ACTIVITY[f.activity] ? f.activity : null;
+  const bfVal    = Number(f.bodyFat);
+  const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
+  const consentTs = consentInfo && (consentInfo.healthConsentAt || consentInfo.agreedAt);
+  const themeName = (V2S_THEMES.find(([k]) => k === theme) || V2S_THEMES[2])[1].toLowerCase();
+
+  const savedTag = saved && (
+    <span data-testid="v2-settings-saved" role="status" className="v2-num"
+      style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase",
+        color: "var(--amber-ink)" }}>{savedNote}</span>
+  );
+  const sub = (title, children) => (
+    <>
+      <V2SHeader title={title} meta="Settings" backLabel="Back to Settings" onBack={() => setView("top")} right={savedTag}/>
+      {children}
+    </>
+  );
+
+  const pickGoal = k => { haptic(); if (requestMode) requestMode(k, "settings"); };
+  const commitOwn = () => {
+    const v = parseInt(ownVal);
+    if (v > 0) { haptic(); onSetCustomKcal(v); }
+    setOwnEditing(false);
+  };
+  const runDelete = async () => {
+    setBusy(true); setErr("");
+    try { await onDelete(); }
+    catch (e) { setErr(e.message || "Deletion failed."); setBusy(false); }
+  };
+  const delReady = typed.trim().toUpperCase() === "DELETE" && !busy;
+
+  // ── Top screen ────────────────────────────────────────────────────────────
+  const top = (
+    <>
+      <V2SHeader title="Settings" meta="Changes save automatically" backLabel="Back to Today" onBack={onBack} right={savedTag}/>
+
+      <div data-testid="v2-settings-identity" style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 4px 0" }}>
+        <V2SAvatar user={signedIn ? authUser : null}/>
+        {signedIn ? (
+          <>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden",
+                textOverflow: "ellipsis" }}>{authUser.name || "Signed in"}</div>
+              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>Signed in with Google</div>
+              {authUser.email && <div style={{ fontSize: 12.5, color: "var(--dim)", whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis" }}>{authUser.email}</div>}
+            </div>
+            <span data-testid="v2-settings-premium-tag" className="v2-num" style={{ fontSize: 10, fontWeight: 700,
+              letterSpacing: ".12em", textTransform: "uppercase", color: "var(--amber-ink)",
+              border: "1px solid var(--amber-edge)", borderRadius: 4, padding: "4px 5px 3px" }}>Premium</span>
+          </>
+        ) : (
+          <>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.2 }}>Not signed in</div>
+              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>Your data stays on this phone</div>
+            </div>
+            <button data-testid="v2-settings-signin" onClick={onSignIn}
+              style={{ ...V2_BTN.outline, minHeight: 36, fontSize: 15 }}>Sign in</button>
+          </>
+        )}
+      </div>
+
+      <div data-testid="v2-settings-readout" aria-label="Your numbers"
+        style={{ marginTop: 18, background: "var(--v2s-readout)", boxShadow: "var(--v2s-readout-shadow)",
+          borderRadius: 18, padding: "16px 16px 14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Label>Daily target{isCustom ? " · your own" : ""}</Label>
+          <span data-testid="v2-readout-mode" className="v2-num" style={{ fontSize: 11, fontWeight: 700, lineHeight: 1,
+            letterSpacing: ".14em", textTransform: "uppercase", color: "var(--v2s-pill-fg)", background: "var(--v2s-pill-bg)",
+            border: "1px solid var(--v2s-pill-edge)", borderRadius: 5, padding: "6px 9px 5px" }}>{modeLabel}</span>
+        </div>
+        <div style={{ marginTop: 10, display: "flex", alignItems: "baseline" }}>
+          <Num data-testid="v2-readout-target" size={44} weight={600} color="var(--amber-ink)"
+            style={{ lineHeight: 1, letterSpacing: "-.03em" }}>{v2fmt(kcal)}</Num>
+          <Num size={12} color="var(--dim)" style={{ letterSpacing: ".14em", marginLeft: 6, textTransform: "uppercase" }}>kcal</Num>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, auto)", justifyContent: "space-between", gap: 8,
+          marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--hair)" }}>
+          {[["Weight", "v2-readout-weight", <V2SUnitNum parts={v2sWeightParts(f.weight, wUnit)}/>],
+            ["Height", "v2-readout-height", <V2SUnitNum parts={v2sHeightParts(f.height, hUnit)}/>],
+            ["Body fat", "v2-readout-bf", <V2SUnitNum parts={[[f.bodyFat, "%"]]}/>],
+            ["Activity", "v2-readout-activity", actKey ? V2S_ACTIVITY[actKey].short : "Not set"]].map(([l, id, v]) => (
+            <div key={l} style={{ minWidth: 0 }}>
+              <Label style={{ display: "block", fontSize: 9.5, marginBottom: 4 }}>{l}</Label>
+              <Num data-testid={id} size={14}>{v}</Num>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <V2SSect>You</V2SSect>
+      <V2SList>
+        <V2SNavRow testid="v2-settings-row-body" title="Body & goal" onClick={() => setView("body")}
+          sub="Goal, daily target, body stats, activity, reminders"/>
+        <V2SNavRow testid="v2-settings-row-units" title="Units & look" onClick={() => setView("units")}
+          sub={`Weight in ${(V2S_WUNITS.find(([k]) => k === wUnit) || V2S_WUNITS[0])[1]} · height in ${(V2S_HUNITS.find(([k]) => k === hUnit) || V2S_HUNITS[0])[1]} · ${themeName}`}/>
+      </V2SList>
+
+      <V2SSect>App</V2SSect>
+      <V2SList>
+        <V2SNavRow testid="v2-settings-row-account" title="Account & data" onClick={() => setView("account")}
+          sub={signedIn ? "Download my data, sign out, delete account" : "Sign in, Premium, download my data"}/>
+        <V2SNavRow testid="v2-settings-row-advanced" title="Advanced" onClick={() => setView("advanced")}
+          sub="How your target is worked out, reset learning"/>
+      </V2SList>
+
+      <footer data-testid="v2-settings-footer" style={{ padding: "22px 4px 0", textAlign: "center" }}>
+        <nav aria-label="Legal" style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "4px 14px",
+          fontSize: 13, fontWeight: 500 }}>
+          {[["Privacy", LEGAL.privacy], ["Terms", LEGAL.terms], ["Who handles my data", LEGAL.subprocessors]].map(([l, h]) => (
+            <a key={l} href={h} target="_blank" rel="noopener" style={{ color: "var(--dim)",
+              textDecorationColor: "var(--faint)", textUnderlineOffset: 3 }}>{l}</a>
+          ))}
+        </nav>
+        {consentTs && (
+          <div data-testid="v2-settings-consent" style={{ fontSize: 12, color: "var(--dim)", marginTop: 10 }}>
+            Health-data consent given {v2sDate(consentTs)} (policy v{consentInfo.version || consentInfo.policyVersion || POLICY_VERSION})
+          </div>
+        )}
+        <div data-testid="v2-settings-version" className="v2-num" style={{ fontSize: 11, fontWeight: 500,
+          letterSpacing: ".12em", textTransform: "uppercase", color: "var(--dim)", marginTop: 12 }}>
+          Fuel Log {APP_VERSION} · updated {new Date(APP_PATCH_DATE + "T12:00:00")
+            .toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+        </div>
+      </footer>
+    </>
+  );
+
+  // ── 1. Body & goal ───────────────────────────────────────────────────────
+  const ownOn = isCustom || ownEditing;
+  const body = sub("Body & goal", (
+    <>
+      <V2SSect>Goal</V2SSect>
+      <V2SCard data-testid="v2-settings-goal">
+        <V2SField id="v2s-goal-lbl">What are you doing?</V2SField>
+        <div role="radiogroup" aria-labelledby="v2s-goal-lbl"
+          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 10 }}>
+          {V2S_MODES.map(([k, lbl]) => {
+            const lit = !isCustom && mode === k;
+            return (
+              <button key={k} role="radio" aria-checked={lit} data-testid={`v2-goal-${k}`} onClick={() => pickGoal(k)}
+                style={{ minHeight: 40, borderRadius: 6, cursor: "pointer", fontFamily: V2_FONT.mono, fontWeight: 700,
+                  fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase",
+                  background: lit ? "var(--v2s-lit-bg)" : "var(--well)", color: lit ? "var(--v2s-lit-fg)" : "var(--dim)",
+                  border: `1px solid ${lit ? "var(--v2s-lit-edge)" : "var(--v2s-field-edge)"}`,
+                  boxShadow: lit ? "none" : "var(--well-shadow)" }}>{lbl}</button>
+            );
+          })}
+        </div>
+        <V2SField style={{ marginTop: 16 }}>Daily target</V2SField>
+        <V2SSeg label="Daily target" testid="v2-target" value={ownOn ? "own" : "auto"}
+          options={[["auto", "Auto", v2fmt(autoKcal)], ["own", "Set my own"]]}
+          onChange={v => {
+            if (v === "auto") { setOwnEditing(false); if (isCustom) onSetCustomKcal(null); }
+            else if (!ownOn) { setOwnVal(String(kcal)); setOwnEditing(true); }
+          }}/>
+        {ownOn && (
+          <V2SBox unit="kcal">
+            <input data-testid="v2-target-own-input" type="number" inputMode="numeric" min="0" aria-label="My daily target in kcal"
+              value={ownEditing ? ownVal : String(customKcal)} autoFocus={ownEditing}
+              onFocus={() => { if (!ownEditing) { setOwnVal(String(customKcal)); setOwnEditing(true); } }}
+              onChange={e => { setOwnVal(e.target.value); setOwnEditing(true); }}
+              onBlur={commitOwn}
+              onKeyDown={e => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setOwnEditing(false); }}/>
+          </V2SBox>
+        )}
+        <V2SHint>
+          {ownOn ? "Your own number. Picking a goal above goes back to auto." :
+            "Worked out from your body and goal. Workouts are added on top when you log them."}
+        </V2SHint>
+        {isCustom && targets && targets.safeMinApplied && (
+          <V2SHint warn>Held at the safe minimum, {v2fmt(targets.kcal)} kcal.</V2SHint>
+        )}
+      </V2SCard>
+
+      <V2SSect>Body</V2SSect>
+      <V2SCard data-testid="v2-settings-body">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <V2SField>Weight</V2SField>
+            <V2SMeasure key={wUnit} testid="v2-weight" name="Weight" metric={f.weight} unit={wUnit} onChange={v => set("weight", v)}/>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <V2SField>Height</V2SField>
+            <V2SMeasure key={hUnit} testid="v2-height" name="Height" metric={f.height} unit={hUnit} onChange={v => set("height", v)}/>
+          </div>
+        </div>
+        <V2SField style={{ marginTop: 14 }}>Body fat</V2SField>
+        <V2SBox unit="%">
+          <input data-testid="v2-bodyfat" type="number" min="0" max="99" inputMode="decimal" aria-label="Body fat %"
+            value={f.bodyFat} onChange={e => set("bodyFat", e.target.value)}/>
+        </V2SBox>
+        {bfImplausible
+          ? <V2SHint warn>That seems unusual. Double-check it, as it sets your targets.</V2SHint>
+          : <V2SHint data-testid="v2-bodyfat-hint">Not sure? Start with <b style={{ color: "var(--ink)", fontWeight: 500 }}>25%</b> for
+              men or <b style={{ color: "var(--ink)", fontWeight: 500 }}>30%</b> for women. A closer figure gives a better target.</V2SHint>}
+        <V2SField style={{ marginTop: 14 }} aside="sets your safe minimum">Sex</V2SField>
+        <V2SSeg label="Sex" testid="v2-sex" value={f.sex || null} onChange={v => set("sex", v)}
+          options={[["male", "Male"], ["female", "Female"]]}/>
+        {!f.sex && <V2SHint warn>Not set yet. Targets use the male figures until you choose.</V2SHint>}
+      </V2SCard>
+
+      <V2SCard style={{ marginTop: 10 }}>
+        <V2SField id="v2s-act-lbl" aside="your day, not counting workouts">Activity</V2SField>
+        <div role="radiogroup" aria-labelledby="v2s-act-lbl" style={{ display: "grid", gap: 4, marginTop: 10 }}>
+          {ACTIVITY_ORDER.map(k => {
+            const on = actKey === k;
+            return (
+              <button key={k} role="radio" aria-checked={on} data-testid={`v2-activity-${k}`} onClick={() => set("activity", k)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", minHeight: 40, borderRadius: 9,
+                  background: on ? "var(--v2s-seg-on)" : "var(--well)", boxShadow: on ? "none" : "var(--well-shadow)",
+                  border: `1px solid ${on ? "var(--v2s-seg-edge)" : "var(--v2s-field-edge)"}`, cursor: "pointer", textAlign: "left" }}>
+                <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  border: `1.5px solid ${on ? "var(--amber-mark)" : "var(--faint)"}`,
+                  background: on ? "radial-gradient(circle, var(--amber-mark) 0 3.5px, transparent 4px)" : "none" }}/>
+                <span style={{ fontWeight: 500, fontSize: 14, color: "var(--ink)" }}>{V2S_ACTIVITY[k].label}</span>
+                <span className="v2-num" style={{ marginLeft: "auto", fontSize: 12, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                  {V2S_ACTIVITY[k].steps}</span>
+              </button>
+            );
+          })}
+        </div>
+        {!actKey && <V2SHint warn>Pick your usual day. Until then targets assume mostly sitting.</V2SHint>}
+      </V2SCard>
+
+      <V2SSect>Reminders</V2SSect>
+      <V2SCard data-testid="v2-settings-reminders">
+        <V2SField aside="uses your 7-day trend">Weigh-ins</V2SField>
+        <V2SSeg label="Weigh-in reminders" testid="v2-weigh" value={weighCadenceOf(f)} options={V2S_WEIGH}
+          onChange={v => set("weighCadence", v)}/>
+        <V2SField style={{ marginTop: 14 }} aside={f.sex === "female" ? "neck, waist, hip" : "neck, waist"}>Measurements</V2SField>
+        <V2SSeg label="Measurement reminders" testid="v2-measure" value={muteMeasurements ? "off" : "weekly"}
+          options={[["weekly", "Weekly"], ["off", "Off"]]}
+          onChange={v => { const mute = v === "off"; if (mute !== muteMeasurements) onToggleMuteMeasurements(mute); }}/>
+        <V2SHint>You can always log either from the weight panel on Today.</V2SHint>
+      </V2SCard>
+    </>
+  ));
+
+  // ── 2. Units & look ──────────────────────────────────────────────────────
+  const units = sub("Units & look", (
+    <>
+      <V2SSect>Units</V2SSect>
+      <V2SCard>
+        <V2SField>Weight</V2SField>
+        <V2SSeg label="Weight unit" testid="v2-wunit" value={wUnit} options={V2S_WUNITS}
+          onChange={u => { setWU(u); setWUnit(u); haptic(); }}/>
+        <V2SField style={{ marginTop: 14 }}>Height</V2SField>
+        <V2SSeg label="Height unit" testid="v2-hunit" value={hUnit} options={V2S_HUNITS}
+          onChange={u => { setHU(u); setHUnit(u); haptic(); }}/>
+        <V2SHint>Only changes how numbers are shown. What's stored stays the same.</V2SHint>
+      </V2SCard>
+      <V2SSect>Look</V2SSect>
+      <V2SCard>
+        <V2SField>Theme</V2SField>
+        <V2SSeg label="Theme" testid="v2-theme" value={theme} options={V2S_THEMES}
+          onChange={v => { applyTheme(v); setThemeChoice(v); haptic(); }}/>
+        <V2SHint>System follows your phone's light or dark setting.</V2SHint>
+      </V2SCard>
+    </>
+  ));
+
+  // ── 3. Account & data (everyone) ─────────────────────────────────────────
+  const account = sub("Account & data", (
+    <>
+      <V2SSect>Premium</V2SSect>
+      <V2SCard data-testid="v2-account-premium">
+        {signedIn ? (
+          <>
+            <V2SStat label="Status">Active</V2SStat>
+            {authUser.subExpiry && <V2SStat label="Until">{v2sDate(authUser.subExpiry)}</V2SStat>}
+            <V2SHint>Signed in as {authUser.email || authUser.name}. Your log syncs across devices.</V2SHint>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, lineHeight: 1.45 }}>Premium adds AI food logging and sync across devices.</div>
+            <button data-testid="v2-account-upgrade" onClick={onSignIn}
+              style={{ ...V2_BTN.primary, width: "100%", marginTop: 12, fontSize: 17 }}>Upgrade</button>
+            <V2SHint>Already have it? Upgrade signs you in.</V2SHint>
+          </>
+        )}
+      </V2SCard>
+
+      <V2SSect>Your data</V2SSect>
+      <V2SCard>
+        <button data-testid="v2-account-export" onClick={onExport} style={{ ...V2_BTN.quiet, width: "100%",
+          display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Download my data</span><span className="v2-num" style={{ fontSize: 11, color: "var(--dim)" }}>JSON</span>
+        </button>
+        <V2SHint>A copy of everything stored, in a portable file.</V2SHint>
+      </V2SCard>
+
+      {signedIn && (
+        <>
+          <V2SSect>Session</V2SSect>
+          <V2SCard>
+            <button data-testid="v2-account-signout" onClick={onSignOut} style={{ ...V2_BTN.quiet, width: "100%" }}>Sign out</button>
+          </V2SCard>
+
+          <V2SSect>Delete</V2SSect>
+          <V2SCard>
+            {!confirmDel ? (
+              <button data-testid="v2-account-delete" onClick={() => { setConfirmDel(true); setErr(""); }}
+                style={{ ...V2_BTN.quiet, width: "100%", color: "var(--rust)" }}>Delete account</button>
+            ) : (
+              <div data-testid="v2-account-delete-confirm">
+                <div style={{ fontSize: 13.5, lineHeight: 1.55 }}>
+                  This permanently deletes your account and <strong>all</strong> your data (profile, weigh-ins,
+                  logs, history, badges). This cannot be undone. Type <strong>DELETE</strong> to confirm.
+                </div>
+                <input data-testid="v2-account-delete-input" aria-label="Type DELETE to confirm" value={typed}
+                  onChange={e => setTyped(e.target.value)} placeholder="DELETE" disabled={busy}
+                  style={{ ...V2_INPUT, marginTop: 12 }}/>
+                {err && <div role="alert" style={{ fontSize: 12.5, color: "var(--rust)", marginTop: 8 }}>{err}</div>}
+                <button data-testid="v2-account-delete-go" onClick={runDelete} disabled={!delReady}
+                  style={{ ...V2_BTN.quiet, width: "100%", marginTop: 12, color: "var(--rust)",
+                    borderColor: "var(--rust)", opacity: delReady ? 1 : 0.5 }}>
+                  {busy ? "Deleting…" : "Permanently delete everything"}
+                </button>
+                <button onClick={() => { setConfirmDel(false); setTyped(""); setErr(""); }} disabled={busy}
+                  style={{ ...V2_BTN.text, width: "100%", marginTop: 4 }}>Cancel</button>
+              </div>
+            )}
+            <V2SHint>Prefer email? Contact <a href="mailto:fuellogadmin@gmail.com">fuellogadmin@gmail.com</a>.</V2SHint>
+          </V2SCard>
+        </>
+      )}
+    </>
+  ));
+
+  // ── 4. Advanced ──────────────────────────────────────────────────────────
+  // Same arithmetic as v1 ProfileScreen's Calculated stats (calcTargets / sedentaryFloorOf).
+  const prev        = calcTargets(f, "cut", 0, 0);
+  const formulaTDEE = prev.tdee;
+  const tdeeFloor   = sedentaryFloorOf(f);
+  const adjTDEE     = Math.max(tdeeFloor, formulaTDEE + tdeeAdj);
+  const tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor;
+  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 6 ? "Estimating" : "Not enough weigh-ins yet";
+  const advanced = sub("Advanced", (
+    <>
+      <V2SSect>How your target is worked out</V2SSect>
+      <V2SCard data-testid="v2-adv-how">
+        <V2SHint style={{ marginTop: 0, marginBottom: 6 }}>
+          Lean mass sets your resting burn. Your usual day turns that into maintenance, and your weigh-ins
+          fine-tune it over time. Each goal then sits below, at or above maintenance.
+        </V2SHint>
+        {valid ? (
+          <>
+            <V2SStat label="Lean mass">{prev.lbm} kg</V2SStat>
+            <V2SStat label="Resting burn (BMR)">{v2fmt(prev.bmr)} kcal</V2SStat>
+            <V2SStat label="Maintenance from your body">{v2fmt(formulaTDEE)} kcal</V2SStat>
+            <V2SStat label="Learned adjustment" testid="v2-adv-adj">{tdeeAdj > 0 ? "+" : ""}{tdeeAdj} kcal</V2SStat>
+            <V2SStat label="Maintenance now">{v2fmt(adjTDEE)} kcal</V2SStat>
+            <V2SStat label="Confidence">{confidence}</V2SStat>
+            {tdeeFloored && <V2SHint warn>Held at your minimum maintenance. It can't sit below sedentary energy use.</V2SHint>}
+            <div style={{ marginTop: 14 }}><Label>Targets for each goal</Label></div>
+            <div role="table" aria-label="Targets for each goal" style={{ marginTop: 6 }}>
+              <div role="row" style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr .7fr .7fr .7fr", gap: 6, padding: "4px 0" }}>
+                {["Goal", "kcal", "P", "C", "F"].map((h, i) => <Label key={h} role="columnheader"
+                  style={{ fontSize: 9.5, textAlign: i ? "right" : "left" }}>{h}</Label>)}
+              </div>
+              {V2S_MODES.map(([k, lbl]) => {
+                const t = calcTargets(f, k, 0, tdeeAdj);
+                return (
+                  <div key={k} role="row" data-testid={`v2-adv-target-${k}`} style={{ display: "grid",
+                    gridTemplateColumns: "1.3fr 1fr .7fr .7fr .7fr", gap: 6, padding: "7px 0", borderTop: "1px solid var(--hair)" }}>
+                    <span role="cell" style={{ fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 14, letterSpacing: ".1em",
+                      textTransform: "uppercase" }}>{lbl}</span>
+                    {[v2fmt(t.kcal), t.protein + "g", t.carbs + "g", t.fat + "g"].map((v, i) =>
+                      <Num key={i} role="cell" size={13.5} style={{ textAlign: "right" }}>{v}</Num>)}
+                  </div>
+                );
+              })}
+            </div>
+            <V2SHint>Workout calories are added when you log a session.</V2SHint>
+          </>
+        ) : <V2SHint warn>Fill in weight, height and body fat in Body & goal to see the working.</V2SHint>}
+      </V2SCard>
+
+      <V2SSect>Learning</V2SSect>
+      <V2SCard>
+        {!askReset ? (
+          <>
+            <button data-testid="v2-adv-reset" onClick={() => setAskReset(true)} disabled={tdeeAdj === 0}
+              style={{ ...V2_BTN.quiet, width: "100%", opacity: tdeeAdj === 0 ? 0.5 : 1 }}>Reset learned adjustment</button>
+            <V2SHint>{tdeeAdj === 0 ? "Nothing learned yet. Keep weighing in."
+              : "Starts again from your body stats. Weigh-ins and history are kept."}</V2SHint>
+          </>
+        ) : (
+          <div data-testid="v2-adv-reset-confirm">
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Reset what's been learned?</div>
+            <V2SHint>Maintenance goes back to {v2fmt(formulaTDEE)} kcal, {tdeeAdj > 0 ? "down" : "up"} {Math.abs(tdeeAdj)}.
+              It takes a few weeks of weigh-ins to learn it again. Nothing else is lost.</V2SHint>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => setAskReset(false)} style={{ ...V2_BTN.primary, flex: 1 }}>Keep it</button>
+              <button data-testid="v2-adv-reset-yes" onClick={() => { setAskReset(false); onResetAdjustment(); }}
+                style={{ ...V2_BTN.quiet, flex: 1 }}>Yes, reset</button>
+            </div>
+          </div>
+        )}
+      </V2SCard>
+
+      <V2SSect>Aggressive cut</V2SSect>
+      <V2SCard data-testid="v2-adv-aggressive">
+        <V2SStat label="Warning">{aggressiveCutAcked ? "Acknowledged" : "Not shown"}</V2SStat>
+        <V2SHint>{aggressiveCutAcked
+          ? "You've accepted an aggressive cut target before. Review your stats if things have changed."
+          : "Shown on Today if a target would cut harder than is safe."}</V2SHint>
+      </V2SCard>
+    </>
+  ));
+
+  return (
+    <div ref={rootRef} className="v2s" data-testid="settings-v2" data-view={view}
+      style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px", color: "var(--ink)", fontFamily: V2_FONT.body }}>
+      <style>{V2S_CSS}</style>
+      {view === "top" && top}
+      {view === "body" && body}
+      {view === "units" && units}
+      {view === "account" && account}
+      {view === "advanced" && advanced}
     </div>
   );
 }
