@@ -64,6 +64,8 @@ test.describe("Today v2 — log buttons", () => {
     const qa = page.getByTestId("v2-quick-add");
     await expect(lf).toContainText(/log food/i);
     await expect(lf).toContainText("AI");
+    // The button itself carries no glyph strip any more — those live in the drop-down
+    await expect(lf.locator("svg")).toHaveCount(0);
     await expect(qa).toContainText(/quick add/i);
     await expect(qa).toContainText("saved meals");
     const lfBox = await lf.boundingBox();
@@ -73,10 +75,44 @@ test.describe("Today v2 — log buttons", () => {
     await expect(page.getByTestId("v2-log-food-lock")).toHaveCount(0);
   });
 
-  test("premium: LOG FOOD opens the AI meal log", async ({ page }) => {
+  test("premium: LOG FOOD drops the AI log open in place — no separate screen", async ({ page }) => {
     await openV2(page, { premium: true });
+    const lf = page.getByTestId("v2-log-food");
+    await expect(lf).toHaveAttribute("aria-expanded", "false");
+    await lf.click();
+    await expect(lf).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("v2-ailog")).toBeVisible();
+    await expect(page.getByTestId("today-v2")).toBeVisible();          // still on Today
+    await expect(page.getByText("AI MEAL LOG", { exact: true })).toHaveCount(0);
+    // The strip is real buttons with icons, not emoji
+    await expect(page.getByRole("button", { name: "Take a photo" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Choose photos" })).toBeVisible();
+    const strip = await page.getByTestId("v2-ailog").innerText();
+    expect(strip).not.toMatch(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u);
+    // Tapping LOG FOOD again folds it away
+    await lf.click();
+    await expect(page.getByTestId("v2-ailog")).toHaveCount(0);
+  });
+
+  test("premium: a meal analysed in the drop-down is logged and the panel closes", async ({ page }) => {
+    await openV2(page, { premium: true });
+    await page.route("https://fuellog.adriandavidrichards.workers.dev", route => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ content: [{ text: JSON.stringify({ items: [
+        { name: "Banana", kcal: 105, protein: 1.3, carbs: 27, fat: 0.4, confidence: 90 }] }) }] }),
+    }));
+    await page.evaluate(() => {
+      window.supabaseClient = {
+        auth: { getSession: async () => ({ data: { session: { access_token: "e2e-fake-token" } } }) },
+      };
+    });
     await page.getByTestId("v2-log-food").click();
-    await expect(page.getByText("AI MEAL LOG", { exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Describe your meal" }).fill("a banana");
+    await page.getByRole("button", { name: /ANALYSE MEAL/ }).click();
+    await page.getByRole("button", { name: /LOG ALL AS ONE ENTRY/ }).click();
+    await expect(page.getByTestId("v2-ailog")).toHaveCount(0);
+    await expect(page.getByTestId("v2-meal-row")).toHaveCount(1);
+    expect((await stored(page))[0].kcal).toBe(105);
   });
 
   test("free: LOG FOOD opens the premium gate, not the AI log", async ({ page }) => {

@@ -162,8 +162,8 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v111" ↔ "v111") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v111";
+// CACHE ("fuel-log-v112" ↔ "v112") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v112";
 const APP_PATCH_DATE = "2026-11-21";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
@@ -5482,7 +5482,7 @@ const reportEstimate = (desc, items, totals) => {
     + "&body=" + encodeURIComponent(body);
 };
 
-function ItemRow({ item, onReestimate, reestimating }) {
+function ItemRow({ item, onReestimate, reestimating, inline = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(item.name);
   const cc = confColor(item.confidence);
@@ -5503,13 +5503,15 @@ function ItemRow({ item, onReestimate, reestimating }) {
               <button onClick={submit}
                 style={{ padding:"6px 12px", background:A, color:"var(--bg)",
                   border:"none", borderRadius:8, fontSize:12, fontWeight:900, cursor:"pointer" }}>
-                {reestimating ? "..." : "↺"}
+                {reestimating ? "..." : inline ? "Redo" : "↺"}
               </button>
             </div>
           ) : (
             <div style={{ fontSize:13, fontWeight:600, color:"var(--text-hi)", cursor:"pointer" }}
               onClick={() => setEditing(true)}>
-              {item.name} <span style={{ fontSize:11, color:"var(--text-lo-2)" }}>✏️</span>
+              {item.name} {inline
+                ? <span style={{ display:"inline-block", verticalAlign:"middle", color:"var(--text-lo-2)" }}><Icon name="pencil" size={13}/></span>
+                : <span style={{ fontSize:11, color:"var(--text-lo-2)" }}>✏️</span>}
             </div>
           )}
         </div>
@@ -5530,14 +5532,16 @@ function ItemRow({ item, onReestimate, reestimating }) {
       )}
       {itemAllergens.length > 0 && (
         <div style={{ marginTop:6, fontSize:11, color:"var(--bulk-2)", fontWeight:700, lineHeight:1.4 }}>
-          ⚠️ Contains {itemAllergens.join(", ")} — flagged from your allergies.
+          {inline ? "" : "⚠️ "}Contains {itemAllergens.join(", ")} — flagged from your allergies.
         </div>
       )}
     </div>
   );
 }
 
-function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
+// `inline` (UI v2): the same flow rendered as a drop-down under LOG FOOD on Today — no header,
+// no separate screen, clean icon buttons instead of emoji. v1 calls it without `inline`.
+function AILog({ onAdd, onBack, pastDays = [], meals = [], inline = false }) {
   const [desc,         setDesc]         = useState("");
   const [reused,       setReused]       = useState(null); // the findPastMeal result reused (logging/09), else null
   const [loading,      setLoading]      = useState(false);
@@ -5726,8 +5730,9 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
   };
 
   return (
-    <div style={{ padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
-      <BackHdr title="AI MEAL LOG" onBack={onBack}/>
+    <div data-testid={inline ? "v2-ailog" : undefined}
+      style={inline ? { ...V2_AILOG_VARS, color:"var(--ink)" } : { padding:"20px 16px 40px", maxWidth:500, margin:"0 auto" }}>
+      {!inline && <BackHdr title="AI MEAL LOG" onBack={onBack}/>}
       <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={4}
         aria-label={hasPhoto ? "Notes for the photos" : "Describe your meal"}
         placeholder={hasPhoto
@@ -5782,17 +5787,18 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
               color: listening ? "var(--bg)" : A,
               border:`1px solid ${listening ? A : aA("44")}`, fontSize:18, cursor:"pointer",
               animation: listening ? "blink_add 1s ease-in-out infinite" : "none" }}>
-            {listening ? "⏹" : "🎤"}
+            {inline ? <Icon name={listening ? "x" : "mic"} size={20} style={{ margin:"0 auto" }}/> : listening ? "⏹" : "🎤"}
           </button>
         )}
-        {[["camera", "📷", "Take a photo", cameraRef], ["gallery", "🖼\uFE0F", "Choose photos", galleryRef]].map(([k, icon, aria, ref]) => (
+        {[["camera", "📷", "Take a photo", cameraRef], ["gallery", "🖼\uFE0F", "Choose photos", galleryRef]].map(([k, emoji, aria, ref]) => (
           <button key={k} onClick={() => ref.current && ref.current.click()}
             disabled={photos.length >= MAX_PHOTOS}
             aria-label={photos.length >= MAX_PHOTOS ? MAX_PHOTOS + " photos max" : aria}
             style={{ flexShrink:0, width:48, padding:"15px 0", borderRadius:14,
               background:"var(--surface-2)", color:A, border:`1px solid ${aA("44")}`, fontSize:18,
               opacity: photos.length >= MAX_PHOTOS ? 0.4 : 1,
-              cursor: photos.length >= MAX_PHOTOS ? "not-allowed" : "pointer" }}>{icon}</button>
+              cursor: photos.length >= MAX_PHOTOS ? "not-allowed" : "pointer" }}>
+            {inline ? <Icon name={k === "camera" ? "camera" : "photos"} size={20} style={{ margin:"0 auto" }}/> : emoji}</button>
         ))}
         <input ref={cameraRef} type="file" accept="image/*" capture="environment"
           data-testid="photo-camera" onChange={onPickPhotos} style={{ display:"none" }}/>
@@ -5800,11 +5806,11 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
           data-testid="photo-gallery" onChange={onPickPhotos} style={{ display:"none" }}/>
         <button onClick={() => estimate()} disabled={loading || (!desc.trim() && !hasPhoto)}
           style={{ flex:1, minWidth:0, padding:"15px 8px", whiteSpace:"nowrap",
-            background: loading || (!desc.trim() && !hasPhoto) ? "var(--surface-2)" : A,
-            color:      loading || (!desc.trim() && !hasPhoto) ? "var(--border-strong)" : "var(--bg)",
+            background: loading || (!desc.trim() && !hasPhoto) ? "var(--surface-2)" : inline ? "var(--amber)" : A,
+            color:      loading || (!desc.trim() && !hasPhoto) ? "var(--border-strong)" : inline ? "var(--amber-on)" : "var(--bg)",
             border:"none", borderRadius:14, fontSize:14, fontWeight:900,
             letterSpacing:"0.08em", cursor: loading || (!desc.trim() && !hasPhoto) ? "not-allowed" : "pointer" }}>
-          {loading ? "⚡ ANALYSING..." : photos.length > 1 ? "ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "ANALYSE PHOTO" : "ANALYSE MEAL"}
+          {loading ? (inline ? "ANALYSING…" : "⚡ ANALYSING...") : photos.length > 1 ? "ANALYSE " + photos.length + " PHOTOS" : hasPhoto ? "ANALYSE PHOTO" : "ANALYSE MEAL"}
         </button>
       </div>
 
@@ -5833,7 +5839,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
             <div role="status" style={{ background:CARD, border:`1px solid ${aA("44")}`, borderRadius:14,
               padding:"12px 16px", marginBottom:12, fontSize:12, color:"var(--text-mid)", lineHeight:1.5 }}>
               <div style={{ fontSize:11, color:A, letterSpacing:"0.1em", fontWeight:800, marginBottom:4 }}>
-                ↺ LOGGED BEFORE
+                {inline ? "" : "↺ "}LOGGED BEFORE
               </div>
               {(() => {
                 const when  = reused.date === todayKey() ? "earlier today" : "on " + fmtDay(reused.date);
@@ -5871,7 +5877,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
 
           {/* Items */}
           {items.map((item, i) => (
-            <ItemRow key={i} item={item}
+            <ItemRow key={i} item={item} inline={inline}
               reestimating={reestIdx === i}
               onReestimate={newName => reestimate(i, newName)}/>
           ))}
@@ -5928,20 +5934,20 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
 
           {/* Actions — always available; the follow-ups above are optional */}
           <button onClick={logAll}
-            style={{ width:"100%", padding:"14px", background:A, color:"var(--bg)",
+            style={{ width:"100%", padding:"14px", background: inline ? "var(--amber)" : A, color: inline ? "var(--amber-on)" : "var(--bg)",
               border:"none", borderRadius:12, fontSize:14, fontWeight:900,
               cursor:"pointer", marginBottom:8 }}>
             + LOG ALL AS ONE ENTRY
           </button>
 
           <div style={{ fontSize:11, color:"var(--text-lo-2)", textAlign:"center", marginBottom:12 }}>
-            or tap individual items to log them separately ↑
+            or tap individual items to log them separately{inline ? "" : " ↑"}
           </div>
 
           {items.map((item, i) => {
             const count = loggedCount[i] || 0;
             const added = count > 0;
-            const tag   = added ? "✓ Added" + (count > 1 ? " ×" + count : "") + " · " : "+ ";
+            const tag   = added ? (inline ? "Added" : "✓ Added") + (count > 1 ? " ×" + count : "") + " · " : "+ ";
             return (
             // key includes the count so each repeat tap remounts the row and re-runs blink_add
             <button key={i + "-" + count} onClick={() => logItem(item, i)}
@@ -5963,7 +5969,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [] }) {
             style={{ display:"block", margin:"10px auto 0", padding:"6px 10px", background:"none",
               border:"none", color:"var(--text-lo-2)", fontSize:11, fontWeight:600,
               cursor:"pointer", textDecoration:"underline" }}>
-            ⚐ Report estimate as wrong
+            {inline ? "" : "⚐ "}Report estimate as wrong
           </button>
         </div>
       )}
@@ -7377,50 +7383,61 @@ function V2Macros({ totals, targets }) {
 // Presentation only: every write goes through App's handlers (updateLog, removeLog, addToQA),
 // and the re-estimate reuses AI_REESTIMATE_PROMPT + callAIJson exactly as v1's EntryEditor does.
 
-// "Text" glyph for LOG FOOD (three lines). Not one of the 15 icons — it is a mark inside the
-// button, not a meaning of its own — drawn on the same 24px grid and stroke.
-function V2TextGlyph({ size = 20 }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
-      strokeWidth="1.75" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
-      <path d="M4 6.5h16M4 12h16M4 17.5h10"/>
-    </svg>
-  );
-}
-
 const V2_CHIP = { fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9, letterSpacing: ".1em",
   border: "1px solid currentColor", borderRadius: 4, padding: "2px 4px", lineHeight: 1 };
 
-function V2LogButtons({ setView, authState, onPremiumGate = () => {} }) {
+// The AI log's v1 colour tokens, re-pointed at v2 ones inside the drop-down, so the existing
+// flow (photos, voice, follow-ups, reuse, items, totals) reads as v2 without being rewritten.
+const V2_AILOG_VARS = {
+  "--bg": "var(--well)", "--surface": "var(--panel-2)", "--surface-2": "var(--well)",
+  "--border": "var(--hair)", "--border-strong": "var(--faint)", "--accent": "var(--amber-ink)",
+  "--text-hi": "var(--ink)", "--text-mid": "var(--dim)", "--text-mid-6": "var(--ink)",
+  "--text-label": "var(--dim)", "--text-lo-2": "var(--dim)",
+  "--cut": "var(--ink)", "--warn": "var(--ink)", "--bulk": "var(--ink)",
+};
+
+// LOG FOOD opens the AI log as a drop-down right here on Today — no separate screen. The panel
+// holds the text box and a strip of real buttons (mic · camera · photos) plus Analyse.
+function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, pastDays = [], meals = [] }) {
   const isPremium = authState === "premium";
+  const [open, setOpen] = useState(false);
   // Free users: as v1 Dashboard — the AI log is premium, so the tap opens the premium gate.
-  const logFood = () => isPremium ? setView("ai") : onPremiumGate({ emoji: "🤖", name: "AI LOG" });
+  const logFood = () => {
+    if (!isPremium) return onPremiumGate({ emoji: "🤖", name: "AI LOG" });
+    if (!onAddLog) return setView("ai");       // older App wiring: fall back to the screen
+    setOpen(o => !o);
+  };
   return (
-    <div data-testid="v2-log-buttons" style={{ display: "flex", gap: 8, marginTop: 12 }}>
-      <button type="button" data-testid="v2-log-food" onClick={logFood}
-        aria-label={isPremium ? "Log food" : "Log food (premium)"}
-        style={{ flex: 1, minWidth: 0, height: 60, borderRadius: 14, border: "none", cursor: "pointer",
-          background: "var(--amber)", color: "var(--amber-on)", display: "flex", alignItems: "center",
-          gap: 8, padding: "0 12px 0 14px", overflow: "hidden" }}>
-        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 21, letterSpacing: ".04em",
-          textTransform: "uppercase", flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Log food</span>
-        <span style={{ display: "flex", gap: 6, color: "var(--amber-on)" }}>
-          <Icon name="camera" size={18}/><Icon name="mic" size={18}/><V2TextGlyph size={18}/>
-        </span>
-        {/* Free users: the lock takes the AI chip's place, so the button fits at 360–390px. */}
-        {isPremium ? <span style={V2_CHIP}>AI</span>
-          : <span data-testid="v2-log-food-lock" style={{ display: "flex" }}><Icon name="lock" size={16}/></span>}
-      </button>
-      <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
-        aria-label="Quick add, saved meals"
-        style={{ width: 94, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
-          background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
-          display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
-        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
-          textTransform: "uppercase" }}>Quick add</span>
-        <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
-          opacity: .75 }}>saved meals</span>
-      </button>
+    <div>
+      <div data-testid="v2-log-buttons" style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <button type="button" data-testid="v2-log-food" onClick={logFood}
+          aria-label={isPremium ? "Log food" : "Log food (premium)"}
+          aria-expanded={isPremium ? open : undefined} aria-controls="v2-ailog-panel"
+          style={{ flex: 1, minWidth: 0, height: 60, borderRadius: 14, border: "none", cursor: "pointer",
+            background: "var(--amber)", color: "var(--amber-on)", display: "flex", alignItems: "center",
+            gap: 10, padding: "0 16px 0 18px", overflow: "hidden" }}>
+          <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 22, letterSpacing: ".06em",
+            textTransform: "uppercase", flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Log food</span>
+          {/* Free users: the lock takes the AI chip's place. */}
+          {!isPremium ? <span data-testid="v2-log-food-lock" style={{ display: "flex" }}><Icon name="lock" size={16}/></span>
+            : open ? <Icon name="x" size={18}/> : <span style={V2_CHIP}>AI</span>}
+        </button>
+        <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
+          aria-label="Quick add, saved meals"
+          style={{ width: 104, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
+            background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
+            display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
+          <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
+            textTransform: "uppercase" }}>Quick add</span>
+          <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
+            opacity: .75 }}>saved meals</span>
+        </button>
+      </div>
+      {open && (
+        <Panel id="v2-ailog-panel" style={{ marginTop: 8 }}>
+          <AILog inline onAdd={onAddLog} onBack={() => setOpen(false)} pastDays={pastDays} meals={meals}/>
+        </Panel>
+      )}
     </div>
   );
 }
@@ -10285,6 +10302,7 @@ function App() {
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
       {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals}
+          onAddLog={addLog} pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
           autoKcal={calcTargets(p, MODES[mode] ? mode : "cut", smoothedBonus, tdeeAdj, todayWorkoutKcal).kcal} onOpenAccount={() => setView("account")}
           logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
           water={water} setWater={saveWater}

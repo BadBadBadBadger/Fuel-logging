@@ -12,7 +12,7 @@ Feature: Tap a meal row to edit it (Today v2)
   # ── Log buttons (D7) ──────────────────────────────────────────
 
   Scenario: LOG FOOD and QUICK ADD sit above the meal list
-    Then I see LOG FOOD, an amber button with camera, voice and text marks and an "AI" chip (a lock in its place for free users)
+    Then I see LOG FOOD, a plain amber button with an "AI" chip (a lock in its place for free users)
     And beside it QUICK ADD, an amber outline with "saved meals" underneath
     And both sit above "EATEN TODAY"
 
@@ -121,3 +121,20 @@ Feature: Tap a meal row to edit it (Today v2)
     When I tap "Re-estimate from name" and the estimate cannot be reached
     Then a short message says so
     And the fields keep their values
+
+
+  # v112 — owner feedback: the glyphs on LOG FOOD looked tappable but weren't, and the separate
+  # AI MEAL LOG screen felt like the old app. LOG FOOD now drops the AI log open in place.
+  Scenario: LOG FOOD opens the AI log as a drop-down on Today
+    Given I am a premium user on Today v2
+    When I tap LOG FOOD
+    Then the AI log opens directly beneath it, and I stay on Today
+    And it has a text box and a strip of real buttons: mic, camera, photos, and Analyse
+    And none of them is an emoji
+    When I tap LOG FOOD again
+    Then the drop-down folds away
+
+  Scenario: Logging from the drop-down
+    Given the drop-down is open
+    When I describe a meal, analyse it and log it
+    Then it appears in EATEN TODAY and the drop-down closes
