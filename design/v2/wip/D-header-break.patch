@@ -1,0 +1,310 @@
+diff --git a/features/app-shell/05-today-v2-layout.feature b/features/app-shell/05-today-v2-layout.feature
+new file mode 100644
+index 0000000..0e961d6
+--- /dev/null
++++ b/features/app-shell/05-today-v2-layout.feature
+@@ -0,0 +1,92 @@
++# ─────────────────────────────────────────────────────────────
++# Today v2 ("Instrument") — layout, header and mode lamps.
++# Source of truth: design/v2/HANDOVER.md §3 (order), D10, D13, D14, §2.5.
++# Mockups: design/v2/mockups/a2.png (dark), a2-light.png (light).
++# Behind the ?ui=v2 flag (remembered in localStorage.ui_v2) until the default flips.
++# v1 (Dashboard) is untouched and keeps its own specs.
++# ─────────────────────────────────────────────────────────────
++Feature: Today v2 layout — header, mode lamps and element order
++
++  Background:
++    Given the v2 UI is on (opened with ?ui=v2)
++
++  # ── Order (§3) ───────────────────────────────────────────────
++
++  Scenario: Today reads top to bottom in the designed order
++    When I open Today
++    Then I see, in order: the header, the mode lamps, the cut-load tape (when shown),
++      the gauge, the caution strip (when shown), TARGET · EATEN, the macro tapes,
++      LOG FOOD | QUICK ADD, the meal list, water, weight | est. TDEE, measurements,
++      workout, last 7 days
++    And there is no AI coach card
++
++  # ── Header (§3.1, D13) ───────────────────────────────────────
++
++  Scenario: The header shows the wordmark and a date line with the streak as text
++    When I open Today
++    Then the header reads "FUEL/LOG" with the slash in amber
++    And under it a date line like "FRI 20 NOV · DAY 3 STREAK"
++    And the streak is plain text in the date line, with no flame chip
++    And the uppercase is set by CSS, not typed into the text
++
++  Scenario: No streak yet
++    Given nothing has been logged today
++    Then the date line shows only the date
++
++  Scenario: The header stays visible while scrolling
++    When I scroll down Today
++    Then the header stays pinned at the top
++
++  Scenario: Offline and sync status live in the date line
++    Given the device is offline
++    Then the date line ends with "OFFLINE" in amber
++    When a sync message is showing
++    Then it appears in the date line, quietly, after the date
++
++  Scenario Outline: Header buttons open their screens
++    When I tap the "<button>" header button
++    Then the "<screen>" screen opens
++    Examples:
++      | button   | screen        |
++      | History  | history       |
++      | Badges   | achievements  |
++      | Settings | profile       |
++
++  Scenario: A new badge shows on the Badges button
++    Given a badge has just been earned
++    Then the Badges button carries an amber count bubble
++    And there is no glow
++
++  Scenario: The account chip appears only when signed in
++    Given I am signed in with Google
++    Then the header ends with a round avatar chip showing my Google photo
++    And when the photo is missing or fails, it shows my initial instead
++    When I tap the chip
++    Then Account opens
++    Given I am signed out
++    Then there is no avatar chip
++
++  # ── Mode lamps (§3.2, D10, D14) ──────────────────────────────
++
++  Scenario: One lamp is lit for the current mode
++    Given my mode is Cut
++    Then the CUT lamp is lit (amber tint, amber outline) and MAINTAIN and BULK are dark
++
++  Scenario: No lamp is lit while a custom target is set
++    Given I have set my own daily target
++    Then none of CUT, MAINTAIN or BULK is lit
++
++  Scenario: A diet break is Maintain, not a fourth lamp
++    Given I am on a diet break
++    Then MAINTAIN is lit
++    And there is no BREAK lamp and no BREAK label
++
++  Scenario Outline: Tapping a lamp asks for the mode through the one guarded path
++    When I tap the "<lamp>" lamp
++    Then requestMode("<mode>", "today") is called
++    And the lamp never writes the mode directly
++    Examples:
++      | lamp     | mode     |
++      | CUT      | cut      |
++      | MAINTAIN | maintain |
++      | BULK     | bulk     |
+diff --git a/features/app-shell/06-mode-guard.feature b/features/app-shell/06-mode-guard.feature
+new file mode 100644
+index 0000000..2c89abf
+--- /dev/null
++++ b/features/app-shell/06-mode-guard.feature
+@@ -0,0 +1,62 @@
++# ─────────────────────────────────────────────────────────────
++# One guarded mode path — design/v2/HANDOVER.md §7.5, §7.6, D10, D16.
++# Ruling: design/v2/reviews/early-return-ruling.md.
++# v2 only for now: v1's Dashboard keeps its own local guard (features/energy-safety/03).
++# ─────────────────────────────────────────────────────────────
++Feature: Every mode change goes through requestMode
++
++  Background:
++    Given the v2 UI is on
++
++  Scenario: Every surface that changes mode uses requestMode(mode, source)
++    Then the Today lamps, Settings › Body & goal, committing a custom target and the
++      break-due sheet all call requestMode
++    And nothing else writes the mode
++    # TODO (Phase 0): a static test, in the styles.test.js pattern, that fails if any code
++    # calls handleSetMode/saveMode outside requestMode. Custom target (bug B4) still bypasses it.
++
++  Scenario: Maintain and Bulk are never guarded
++    Given I am mid-break with load remaining
++    When I request Maintain or Bulk
++    Then the mode changes at once with no confirm
++
++  Scenario: A short casual cut never sees the guard
++    Given my break began with load below the soft-nudge threshold
++    When I request Cut
++    Then the mode changes at once with no confirm
++
++  Scenario: Going back to Cut early asks once
++    Given I am mid-break and the break began at or above the soft-nudge threshold
++    When I request Cut from any surface
++    Then a bottom sheet asks "Back to cutting already?"
++    And the mode is not changed until I answer
++
++  Scenario: The confirm states the cost honestly, as an estimate
++    Given the confirm sheet is showing
++    Then it says "About {d} more rest days would finish this break"
++    And, when the remaining load is below the soft threshold, continues
++      "and if you cut now the next break reminder is likely in about {w} weeks at your cut target."
++    And, when the remaining load is at or above the soft threshold, continues
++      "and if you cut now the break reminder will be back in a few days."
++    And it always shows the factual line "This block began on {date}."
++    # {w} is computed at render from the remaining load at the CUT target's deficit
++    # ((soft − load) / dayCutLoad(cutTarget, maintenance)), never today's maintenance target
++    # (which would be infinite). It is whole weeks, "about", and never stored or shown again.
++
++  Scenario: Keep resting is the primary answer
++    When I tap "Keep resting"
++    Then the sheet closes and my mode stays Maintain
++
++  Scenario: Cut anyway is respected immediately
++    When I tap "Cut anyway"
++    Then my mode becomes Cut at once
++    And there is no second confirm, no cooldown and no "why?" form
++    And the tape resumes at its true level, amber at once if at or above the nudge
++    And no forecast or percentage recharged is shown afterwards
++    # Known bug B1 (out of scope for the UI slice): startDietBreak clears both snoozes,
++    # so after "Cut anyway" the nudge can reappear at once. Fix on main: Cut anyway sets
++    # nudgeAt = snoozeAt = now.
++
++  Scenario: Tapping the dimmed screen behind the sheet keeps resting
++    When I tap outside the sheet
++    Then it behaves as "Keep resting"
+diff --git a/features/energy-safety/03-diet-break-intervention.feature b/features/energy-safety/03-diet-break-intervention.feature
+index 840b5ff..2054374 100644
+--- a/features/energy-safety/03-diet-break-intervention.feature
++++ b/features/energy-safety/03-diet-break-intervention.feature
+@@ -394,3 +394,139 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
+     When I sign in on a different device
+     Then that device shows the same remaining load and keeps draining from it
+     And the guard behaves the same as it would have on my phone
++
++# ═════════════════════════════════════════════════════════════
++# v2 UI ADDITIONS (2026-11) — design/v2/HANDOVER.md §7, D14–D16.
++# Applies only behind ?ui=v2. Every v1 scenario above still governs v1 and the logic.
++# Mockups: design/v2/mockups/a2-break.png, a2-break2.png.
++#
++# DISPLAY ONLY, LOGIC UNCHANGED: banking at 90 % of maintenance (D15) changes the DRAIN —
++# only banked days should pay down the load. That logic is NOT built yet: the drain still
++# counts every non-cut day as above. Until it is, v2 computes banked / under / unlogged per
++# day from history for display only, so the tape's "N OF 14 DAYS BANKED" can run behind
++# the fill (which still drains on every rest day). Spec 02 must record, when the logic
++# lands, that the food log is read ONLY to grant break credit.
++# ═════════════════════════════════════════════════════════════
++
++Feature: Diet break — v2 cut-load tape, banking and sheets
++
++  Background:
++    Given the v2 UI is on
++
++  # ── The tape (§7.1) ────────────────────────────────────────
++
++  Scenario: The tape sits under the lamps as an instrument
++    When the tape is shown
++    Then it is labelled "CUT LOAD" on the left with the status on the right
++    And it has ticks over 0–84, a taller mark at the lean-adjusted nudge point and at the end
++    And it is captioned "0 · NUDGE · BREAK"
++    And the load number itself is never shown
++
++  Scenario: Hidden when there is nothing to show
++    Given I am cutting with less than CUT_BAR_MIN_LOAD of load, or I have no open block
++    Then there is no tape
++
++  Scenario: Cutting, below the nudge
++    Given I am cutting with load between CUT_BAR_MIN_LOAD and the nudge
++    Then the fill is neutral grey
++    And the right label is "{n} WEEKS", real weeks since the block began (rest days included)
++    And tapping the tape does nothing
++
++  Scenario: Cutting, at or above the nudge
++    Given I am cutting with load at or above the nudge
++    Then the fill and label are amber
++    When I tap the tape
++    Then the soft decision sheet opens: "Start a 2-week break" / "Not yet"
++    And "Not yet" hides the nudge for 7 days (onCutNudgeDismiss)
++
++  Scenario: Break due
++    Given my load is full (the hard threshold)
++    Then the right label reads "BREAK DUE · {n} WEEKS" in amber
++    When I tap the tape
++    Then a bottom sheet opens over a dimmed screen with the eyebrow "CUT LOAD FULL · {n} WEEKS IN A DEFICIT"
++    And the headline "Time for a diet break"
++    And "{n} weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance."
++    And the primary button "Start a 2-week break" sets Maintain in one tap (onStartDietBreak)
++    And the secondary button "Remind me in 3 days" snoozes it (onCutPromptSnooze)
++    And there is no close and no "never ask again"
++    And the footnote reads "Your target moves to maintenance, about {M} kcal."
++
++  # ── On a break (§7.1–7.3) ──────────────────────────────────
++
++  Scenario: The tape drains in teal while on a break
++    Given I am in Maintain (or Bulk) with load remaining
++    Then MAINTAIN is lit and the tape fill is teal
++    And the right label reads "ON A BREAK · {banked} OF 14 DAYS BANKED"
++    And what has already drained shows as a dashed outline
++
++  Scenario Outline: Each finished break day is judged against 90 % of maintenance
++    Given yesterday was a break day with <intake>
++    Then it is <state>
++    Examples:
++      | intake                        | state                                         |
++      | at least 0.9 × maintenance    | banked (solid)                                |
++      | logged but under 0.9 × M      | a hatched gap, labelled "Not banked, under maintenance" |
++      | nothing logged                | a dashed pending gap, labelled "Not banked yet, not logged" |
++
++  Scenario: Hatched gaps turn amber at two or more
++    Given one break day was under
++    Then its gap is neutral grey
++    Given two or more break days were under
++    Then the gaps are amber
++
++  Scenario: Today is always in progress
++    Then the line "Today {eaten} of {0.9 × M} to bank it" sits under the tape
++
++  Scenario Outline: One status line, by priority W5 > W4 > W6 > W10
++    Given <situation>
++    Then the status line reads "<line>"
++    And "Today … to bank it" sits beneath it
++    Examples:
++      | situation                              | line                                                                   |
++      | two or more break days were under      | You're not taking an effective break. Eat at maintenance.             |
++      | yesterday was under                    | Yesterday was under maintenance, so it didn't count towards your break. |
++      | yesterday wasn't logged                | Yesterday wasn't logged. Log it                                        |
++      | the last 3 break days were all banked  | 3 for 3. This is what a break looks like.                              |
++
++  Scenario: "Log it" opens History to fill in yesterday
++    Given the status line reads "Yesterday wasn't logged."
++    When I tap "Log it"
++    Then the History screen opens
++
++  Scenario: Tapping the break tape explains it
++    When I tap the tape on a break
++    Then it shows "About {d} days to fully recharged." and "Recharging now sets up your next block."
++
++  # ── Going back to Cut early (§7.5) — see app-shell/06 ───────
++
++  Scenario: The early-return confirm uses the agreed copy
++    Given I am mid-break and the break began at or above the soft threshold
++    When I tap the CUT lamp
++    Then the sheet reads "Back to cutting already?"
++    And "About {d} more rest days would finish this break, …" with the forecast
++    And "This block began on {date}."
++    And offers "Keep resting" (primary) and "Cut anyway"
++
++  # ── Caution strip (O1 proposal, not yet approved) ──────────
++
++  Scenario: Only the most important caution shows, with a count of the rest
++    Given more than one caution applies today
++    Then one strip under the gauge shows the highest-priority caution
++    And a "+{n} more" control expands the others in place
++    # Priority: aggressive-cut acknowledgement (needs an answer) > low on fuel >
++    # weight up while cutting > held at minimum maintenance > eased to a steady pace >
++    # other target warnings > recharged.
++
++  Scenario: The aggressive-cut acknowledgement stays actionable
++    Given my own target is more than 1,000 kcal under maintenance and I have not acknowledged it
++    Then the strip shows "Not recommended" with "Yes, I understand"
++    When I tap it
++    Then onAckAggressiveCut is called
++
++  Scenario: Recharged can be dismissed from the strip
++    Given the block has just fully drained
++    Then the strip can show "Recharged" with a dismiss control (onDismissRecharged)
++
++  Scenario: The safe-minimum notice is gone (D6)
++    Given the safe minimum is applied
++    Then no notice says so; the floor itself still applies

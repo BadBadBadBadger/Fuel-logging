@@ -1,0 +1,116 @@
+diff --git a/features/profile/05-settings-v2.feature b/features/profile/05-settings-v2.feature
+new file mode 100644
+index 0000000..82d4b4e
+--- /dev/null
++++ b/features/profile/05-settings-v2.feature
+@@ -0,0 +1,110 @@
++# UI v2 (design/v2/HANDOVER.md §6, D6, D10, D11, D13). Behind the ?ui=v2 flag; v1 ProfileScreen
++# and AccountScreen are unchanged. 30 settings → 19, in four groups and a footer.
++# Every v2 screen is presentation only: saves go through the same App handlers as v1
++# (onSave → saveProf, onSetCustomKcal, onToggleMuteMeasurements, requestMode).
++# e2e: e2e/v2-settings.spec.js
++Feature: Settings v2 — groups, identity row, Account for everyone, no sums
++
++  Background:
++    Given the v2 UI is on
++    And I open Settings from the Today header
++
++  # ── Top screen ──────────────────────────────────────────────
++  Scenario: The top screen shows who I am, a read-only readout, then the groups
++    Then I see the identity row
++    And I see a read-only readout of my daily target, mode, weight, height, body fat and activity
++    And I see the group "You" with "Body & goal" and "Units & look"
++    And I see the group "App" with "Account & data" and "Advanced"
++    And the footer links to Privacy, Terms and Who handles my data
++    And the footer reads "Fuel Log {version} · updated {patch date}"
++
++  Scenario: Signed-in identity row
++    Given I am signed in with Google as Premium
++    Then the identity row shows my avatar, my name, "Signed in with Google", my email and PREMIUM
++    And the footer shows the date I gave health-data consent
++
++  Scenario: Signed-out identity row
++    Given I am not signed in
++    Then the identity row says I am not signed in
++    And it offers "Sign in"
++
++  # ── Body & goal ─────────────────────────────────────────────
++  Scenario: Body & goal edits save automatically and survive a reload
++    When I open "Body & goal"
++    And I change my weight, height, body fat, sex and activity
++    Then "Saved" shows briefly
++    And after a reload the new values are still there
++
++  Scenario: Changing sex says the targets were updated
++    Given my sex is already set
++    When I change it
++    Then the confirmation reads "Targets updated"
++
++  Scenario: The body fat hint is always shown
++    When I open "Body & goal"
++    Then I read "Not sure? Start with 25% for men or 30% for women."
++
++  Scenario: Goal changes go through the one guarded mode path
++    When I tap MAINTAIN under "What are you doing?"
++    Then the mode is set through requestMode with source "settings"
++    And MAINTAIN is lit
++
++  Scenario: Going back to Cut early asks once
++    Given I am on a diet break with cut load remaining
++    When I tap CUT in Body & goal
++    Then the sheet "Back to cutting already?" opens
++    And the mode is unchanged until I choose "Cut anyway"
++
++  Scenario: Daily target is Auto or my own
++    Then "Auto" is selected and shows the worked-out target
++    When I choose "Set my own" and enter 2000
++    Then my daily target is 2,000 kcal and no goal lamp is lit
++    When I choose "Auto"
++    Then the worked-out target is back
++
++  Scenario: Activity uses plain labels with step ranges
++    Then the activity choices are "Mostly sitting", "Lightly active", "Active" and "Very active"
++    And each shows its step range
++
++  Scenario: Reminders
++    Then Weigh-ins offers Daily, Few / wk, Weekly and Off, stored as the weigh-in cadence
++    And Measurements offers Weekly and Off, where Off mutes the measurement reminder
++
++  Scenario: There is no sum row
++    Then nothing on Body & goal shows "target − eaten = left" or any other sum
++
++  # ── Units & look ────────────────────────────────────────────
++  Scenario: Units are chosen in one place
++    When I open "Units & look" and choose stone and pounds
++    Then the readout shows my weight in stone and pounds
++    And my stored weight is unchanged
++
++  Scenario: Theme
++    When I choose Light
++    Then the app switches to the light theme and remembers it
++
++  # ── Account & data, for everyone ────────────────────────────
++  Scenario: Signed-out users can still reach Account & data
++    Given I am not signed in
++    When I open "Account & data"
++    Then I can Download my data
++    And I am offered "Upgrade" to Premium, which opens sign-in
++    And there is no Sign out or Delete account
++
++  Scenario: Signed-in users can sign out and delete their account
++    Given I am signed in with Google as Premium
++    When I open "Account & data"
++    Then I see my Premium status, Download my data, Sign out and Delete account
++    And deleting asks me to type DELETE, exactly as v1 Account & Privacy does
++
++  # ── Advanced ────────────────────────────────────────────────
++  Scenario: Advanced explains the target
++    When I open "Advanced"
++    Then I see lean mass, BMR, maintenance, the learned adjustment, confidence and targets for each mode
++    And I can reset the learned adjustment after one confirm
++    And the aggressive-cut status is read-only (open issue O8: no Undo)
++
++  # ── Removed (D6) ────────────────────────────────────────────
++  Scenario: Diet, allergy and dislike settings are gone
++    Then no screen in Settings offers diet type, allergies or dislikes
++    And any stored diet data is left untouched

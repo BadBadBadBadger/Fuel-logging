@@ -1,0 +1,647 @@
+diff --git a/app.jsx b/app.jsx
+index 13fdad1..8768d8b 100644
+--- a/app.jsx
++++ b/app.jsx
+@@ -7192,11 +7192,238 @@ function V2Macros(props) {
+ // ─────────────────────────────────────────────────────────────────────────────
+ // ██ REGION B — LOG FOOD · QUICK ADD · MEAL ROWS + INLINE EDITOR (§3.7–3.8, §5, D7, D8)
+ // ─────────────────────────────────────────────────────────────────────────────
+-function V2LogButtons(props) {
+-  return <div data-testid="v2-log-buttons"><Label>Log food · quick add (stub)</Label></div>;
++// Spec: features/logging/11-tap-row-to-edit.feature · e2e/v2-meals.spec.js
++// Presentation only: every write goes through App's handlers (updateLog, removeLog, addToQA),
++// and the re-estimate reuses AI_REESTIMATE_PROMPT + callAIJson exactly as v1's EntryEditor does.
++
++// "Text" glyph for LOG FOOD (three lines). Not one of the 15 icons — it is a mark inside the
++// button, not a meaning of its own — drawn on the same 24px grid and stroke.
++function V2TextGlyph({ size = 20 }) {
++  return (
++    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
++      strokeWidth="1.75" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
++      <path d="M4 6.5h16M4 12h16M4 17.5h10"/>
++    </svg>
++  );
+ }
+-function V2MealList(props) {
+-  return <div data-testid="v2-meals"><Label>Eaten today (stub)</Label></div>;
++
++const V2_CHIP = { fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9, letterSpacing: ".1em",
++  border: "1px solid currentColor", borderRadius: 4, padding: "2px 4px", lineHeight: 1 };
++
++function V2LogButtons({ setView, authState, onPremiumGate = () => {} }) {
++  const isPremium = authState === "premium";
++  // Free users: as v1 Dashboard — the AI log is premium, so the tap opens the premium gate.
++  const logFood = () => isPremium ? setView("ai") : onPremiumGate({ emoji: "🤖", name: "AI LOG" });
++  return (
++    <div data-testid="v2-log-buttons" style={{ display: "flex", gap: 8, marginTop: 12 }}>
++      <button type="button" data-testid="v2-log-food" onClick={logFood}
++        aria-label={isPremium ? "Log food" : "Log food (premium)"}
++        style={{ flex: 1, minWidth: 0, height: 60, borderRadius: 14, border: "none", cursor: "pointer",
++          background: "var(--amber)", color: "var(--amber-on)", display: "flex", alignItems: "center",
++          gap: 10, padding: "0 14px 0 16px" }}>
++        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 22, letterSpacing: ".08em",
++          textTransform: "uppercase", flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Log food</span>
++        <span style={{ display: "flex", gap: 8, color: "var(--amber-on)" }}>
++          <Icon name="camera" size={20}/><Icon name="mic" size={20}/><V2TextGlyph size={20}/>
++        </span>
++        {!isPremium && <span data-testid="v2-log-food-lock"><Icon name="lock" size={16}/></span>}
++        <span style={V2_CHIP}>AI</span>
++      </button>
++      <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
++        aria-label="Quick add, saved meals"
++        style={{ width: 104, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
++          background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
++          display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
++        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
++          textTransform: "uppercase" }}>Quick add</span>
++        <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
++          opacity: .75 }}>saved meals</span>
++      </button>
++    </div>
++  );
++}
++
++const v2g = n => Math.round(Number(n) || 0);   // grams on the collapsed row: whole numbers
++
++// One collapsed or expanded meal row. The editor's state lives here and is reset from the
++// stored entry every time the row opens, so collapsing (or opening another row) throws
++// unsaved edits away — open issue O5.
++function V2MealRow({ log, open, onToggle, updateLog, removeLog, addToQA, isPremium, onPremiumGate }) {
++  const blank = () => ({ name: log.name, kcal: String(log.kcal), protein: String(log.protein),
++    carbs: String(log.carbs), fat: String(log.fat) });
++  const [f, setF] = useState(blank);
++  const [reest, setReest] = useState(false);
++  const [reestMsg, setReestMsg] = useState("");   // "" | "done" | error text
++  const [qaSaved, setQaSaved] = useState(0);      // taps on Save to Quick Add (re-blinks each)
++  useEffect(() => { if (open) { setF(blank()); setReest(false); setReestMsg(""); setQaSaved(0); } },
++    [open]); // eslint-disable-line react-hooks/exhaustive-deps
++  const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setReestMsg(""); };
++
++  const patch = () => ({
++    name:    f.name.trim() || log.name,
++    kcal:    Math.round(Number(f.kcal) || 0),
++    protein: Math.round((Number(f.protein) || 0) * 10) / 10,
++    carbs:   Math.round((Number(f.carbs)   || 0) * 10) / 10,
++    fat:     Math.round((Number(f.fat)     || 0) * 10) / 10,
++  });
++  const save   = () => { updateLog(log.id, patch()); onToggle(null); };
++  const del    = () => { removeLog(log.id); onToggle(null); };
++  // Saves what is in the editor now (the name as typed), without saving the entry itself.
++  const saveQA = async () => { await addToQA({ ...log, ...patch() }); setQaSaved(n => n + 1); };
++
++  // Same call, same guards as v1 EntryEditor.reestimate (features/logging/01, /07).
++  const reestimate = async () => {
++    if (!isPremium) { onPremiumGate({ emoji: "✨", name: "AI re-estimate" }); return; }
++    if (!f.name.trim() || reest) return;
++    setReest(true); setReestMsg("");
++    let upd;
++    try { upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300); }
++    catch (e) { setReestMsg("Couldn't reach the estimate. Check your connection and try again."); setReest(false); return; }
++    // Never claim "Updated" with blank fields (v1 F4): a silent zero would reach calibration.
++    if (!upd || !isFinite(Number(upd.kcal))) {
++      setReestMsg("Couldn't estimate that. Try rephrasing the name."); setReest(false); return;
++    }
++    setF(p => ({ ...p,
++      kcal:    String(Math.round(upd.kcal)),
++      protein: String(Math.round(upd.protein * 10) / 10),
++      carbs:   String(Math.round(upd.carbs   * 10) / 10),
++      fat:     String(Math.round(upd.fat     * 10) / 10),
++    }));
++    setReestMsg("done"); setReest(false);
++  };
++
++  const time = { fontFamily: V2_FONT.mono, fontSize: 12, lineHeight: "22px", fontVariantNumeric: "tabular-nums" };
++  const fl = { display: "block", fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9.5, letterSpacing: ".16em",
++    textTransform: "uppercase", color: "var(--dim)", marginBottom: 5 };
++  const inp = { ...V2_INPUT, height: 40, boxSizing: "border-box", padding: "9px 9px", fontWeight: 500, minWidth: 0 };
++  const act = { height: 36, padding: "0 12px", borderRadius: 8, border: "none", cursor: "pointer",
++    fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
++    display: "inline-flex", alignItems: "center", gap: 6 };
++  const num = (k, label, mode) => (
++    <label style={{ minWidth: 0 }}>
++      <span style={fl}>{label}</span>
++      <input value={f[k]} onChange={e => set(k, e.target.value)} inputMode={mode}
++        data-testid={"v2-meal-" + k} style={inp}/>
++    </label>
++  );
++
++  if (!open) return (
++    <button type="button" data-testid="v2-meal-row" data-id={log.id} aria-expanded="false"
++      onClick={() => onToggle(log.id)}
++      style={{ display: "grid", gridTemplateColumns: "52px 1fr auto", columnGap: 8, width: "100%",
++        padding: "14px 0", background: "transparent", border: "none", borderBottom: "1px solid var(--hair)",
++        textAlign: "left", cursor: "pointer", color: "var(--ink)" }}>
++      <span style={{ ...time, color: "var(--dim)" }}>{log.time}</span>
++      <span data-testid="v2-meal-title" style={{ fontFamily: V2_FONT.body, fontWeight: 500, fontSize: 16,
++        lineHeight: "22px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.name}</span>
++      <Num size={16} style={{ lineHeight: "22px", textAlign: "right" }} data-testid="v2-meal-kcal">{v2fmt(log.kcal)}</Num>
++      <span className="v2-num" data-testid="v2-meal-macros"
++        style={{ gridColumn: 2, fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
++        <b style={{ fontWeight: 500, color: "var(--ink)" }}>P {v2g(log.protein)}</b> · C {v2g(log.carbs)} · F {v2g(log.fat)}
++      </span>
++    </button>
++  );
++
++  return (
++    <div data-testid="v2-meal-editor" data-id={log.id} role="group" aria-label={"Editing " + log.name}
++      style={{ background: "var(--panel-2)", boxShadow: "var(--panel-shadow)", margin: "0 -12px",
++        padding: "10px 12px 16px", borderRadius: 12 }}>
++      <div style={{ display: "flex", alignItems: "center" }}>
++        {/* Tapping the header collapses and discards (O5) */}
++        <button type="button" data-testid="v2-meal-row" data-id={log.id} aria-expanded="true"
++          aria-label={log.name + ", editing. Close without saving"} onClick={() => onToggle(null)}
++          style={{ flex: 1, display: "grid", gridTemplateColumns: "52px 1fr", columnGap: 8, background: "transparent",
++            border: "none", padding: 0, textAlign: "left", cursor: "pointer", minHeight: 36, alignItems: "center" }}>
++          <span style={{ ...time, color: "var(--amber-ink)" }}>{log.time}</span>
++          <span style={{ fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, lineHeight: "22px",
++            letterSpacing: ".16em", textTransform: "uppercase", color: "var(--dim)" }}>Editing</span>
++        </button>
++        <button type="button" data-testid="v2-meal-cancel" onClick={() => onToggle(null)}
++          style={{ ...V2_BTN.text, minHeight: 36 }}>Cancel</button>
++      </div>
++
++      <div style={{ marginTop: 6 }}>
++        <label style={{ display: "block" }}>
++          <span style={fl}>Name</span>
++          <input value={f.name} onChange={e => set("name", e.target.value)} data-testid="v2-meal-name"
++            style={{ ...inp, fontFamily: V2_FONT.body, fontWeight: 400, padding: "9px 11px" }}/>
++        </label>
++        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr 1fr 1fr", gap: 6, marginTop: 12 }}>
++          {num("kcal", "Kcal", "numeric")}
++          {num("protein", "Protein", "decimal")}
++          {num("carbs", "Carbs", "decimal")}
++          {num("fat", "Fat", "decimal")}
++        </div>
++
++        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14, alignItems: "center" }}>
++          <button type="button" data-testid="v2-meal-save" onClick={save}
++            style={{ ...act, background: "var(--amber)", color: "var(--amber-on)", padding: "0 18px" }}>Save</button>
++          <button type="button" data-testid="v2-meal-saveqa" onClick={saveQA}
++            key={"qa-" + qaSaved} aria-pressed={qaSaved > 0}
++            style={{ ...act, background: "var(--well)", color: qaSaved ? "var(--amber-ink)" : "var(--ink)",
++              animation: qaSaved ? "blink_add 0.4s ease-out" : "none" }}>
++            {qaSaved > 0 && <Icon name="bookmark" size={15} filled/>}
++            {qaSaved > 0 ? "Saved to Quick Add" : "Save to Quick Add"}
++          </button>
++          <button type="button" data-testid="v2-meal-delete" onClick={del}
++            style={{ ...act, background: "transparent", color: "var(--rust)", padding: "0 4px", marginLeft: "auto" }}>Delete</button>
++        </div>
++
++        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10,
++          borderTop: "1px solid var(--faint)" }}>
++          <button type="button" data-testid="v2-meal-reestimate" onClick={reestimate} disabled={reest}
++            aria-busy={reest || undefined}
++            style={{ ...act, flex: 1, justifyContent: "center", background: "var(--well)",
++              border: "1px solid var(--amber-edge)", color: "var(--amber-ink)", opacity: reest ? .7 : 1 }}>
++            {reestMsg === "done" && !reest && <Icon name="check" size={15}/>}
++            {reest ? "Re-estimating…" : reestMsg === "done" ? "Updated" : "Re-estimate from name"}
++          </button>
++          <span data-testid="v2-meal-pro" style={{ fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9,
++            letterSpacing: ".1em", textTransform: "uppercase", color: "var(--dim)" }}>Pro</span>
++        </div>
++        {reestMsg && reestMsg !== "done" && (
++          <div role="alert" data-testid="v2-meal-reestimate-error"
++            style={{ fontSize: 12, color: "var(--rust)", marginTop: 8, lineHeight: 1.4 }}>{reestMsg}</div>
++        )}
++      </div>
++    </div>
++  );
++}
++
++function V2MealList({ logs = [], totals, updateLog, removeLog, addToQA, authState, onPremiumGate = () => {} }) {
++  const [openId, setOpenId] = useState(null);
++  const isPremium = authState === "premium";
++  // A row deleted elsewhere (or a new day) cannot stay "open".
++  const openLive = logs.some(l => l.id === openId) ? openId : null;
++  const kcal = totals ? totals.kcal : logs.reduce((s, l) => s + (Number(l.kcal) || 0), 0);
++  const n = logs.length;
++  return (
++    <section data-testid="v2-meals" aria-label="Eaten today" style={{ marginTop: 10 }}>
++      <div data-testid="v2-meals-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
++        paddingBottom: 10, borderBottom: "1px solid var(--faint)" }}>
++        <Label style={{ fontSize: 11, letterSpacing: ".16em" }}>Eaten today</Label>
++        {n > 0 && <Num size={12} data-testid="v2-meals-summary" style={{ letterSpacing: ".04em" }}>
++          {n} item{n !== 1 ? "s" : ""} · {v2fmt(kcal)}</Num>}
++      </div>
++      {n === 0 ? (
++        <div data-testid="v2-meals-empty" style={{ fontSize: 13, color: "var(--dim)", padding: "14px 0 0" }}>
++          Nothing logged yet today.
++        </div>
++      ) : (
++        <>
++          {/* Chronological, as logged (mockup a2: 07:45 → 12:30 → 15:10) */}
++          {logs.map(log => (
++            <V2MealRow key={log.id} log={log} open={openLive === log.id} onToggle={setOpenId}
++              updateLog={updateLog} removeLog={removeLog} addToQA={addToQA}
++              isPremium={isPremium} onPremiumGate={onPremiumGate}/>
++          ))}
++          <p data-testid="v2-meals-hint" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)", padding: "12px 0 0 60px" }}>
++            Tap a meal to edit.
++          </p>
++        </>
++      )}
++    </section>
++  );
+ }
+ // ── end REGION B ─────────────────────────────────────────────────────────────
+ 
+diff --git a/e2e/v2-meals.spec.js b/e2e/v2-meals.spec.js
+new file mode 100644
+index 0000000..523d8e4
+--- /dev/null
++++ b/e2e/v2-meals.spec.js
+@@ -0,0 +1,265 @@
++// Feature: Tap a meal row to edit it — Today v2 (features/logging/11-tap-row-to-edit.feature)
++//
++// v2 is behind ?ui=v2. The harness clears localStorage on seed, so the flag comes back from the
++// query string on every load (the app re-latches localStorage.ui_v2 from it).
++//
++// Locators are data-testid / role hooks, never copy, except where the copy IS the claim
++// ("Saved to Quick Add", "Re-estimating…", "Updated", "Tap a meal to edit.").
++//
++// The re-estimate is stubbed exactly as entry-editor.spec.js does: the worker answer is fulfilled
++// locally and the session token is faked. Nothing leaves the machine.
++
++const { test, expect } = require("@playwright/test");
++const { seed, shot, PROFILE, TODAY_KEY_EXPR } = require("./harness");
++
++const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
++
++// Distinct numbers in every field so a locator can't pick the wrong box and still pass.
++const LOGS = [
++  { id: 1755000000001, name: "Porridge with banana", time: "07:45", kcal: 420, protein: 14, carbs: 72, fat: 8 },
++  { id: 1755000000002, name: "Chicken and rice",     time: "12:30", kcal: 620, protein: 45, carbs: 70, fat: 14 },
++  { id: 1755000000003, name: "Flat white",           time: "15:10", kcal: 110, protein: 6,  carbs: 9,  fat: 6 },
++];
++
++async function openV2(page, state = {}) {
++  await seed(page, { profile: PROFILE, ...state });
++  await page.goto("/preview.html?ui=v2");
++  await expect(page.getByTestId("today-v2")).toBeVisible({ timeout: 15_000 });
++}
++
++const meals = page => page.getByTestId("v2-meals");
++const row = (page, name) => meals(page).getByTestId("v2-meal-row").filter({ hasText: name });
++const editor = page => page.getByTestId("v2-meal-editor");
++const stored = page => page.evaluate(k => JSON.parse(localStorage.getItem("logs__" + eval(k)) || "[]"), TODAY_KEY_EXPR);
++const savedMeals = page => page.evaluate(() => JSON.parse(localStorage.getItem("meals") || "[]"));
++
++async function stubAI(page, ai, { delay = 0, fail = false } = {}) {
++  page.aiCalls = 0;
++  await page.route(AI_ENDPOINT, async route => {
++    page.aiCalls++;
++    if (delay) await new Promise(r => setTimeout(r, delay));
++    if (fail) return route.abort();
++    return route.fulfill({ status: 200, contentType: "application/json",
++      body: JSON.stringify({ content: [{ text: JSON.stringify(ai) }] }) });
++  });
++  await page.evaluate(() => {
++    window.supabaseClient = {
++      auth: { getSession: async () => ({ data: { session: { access_token: "e2e-fake-token" } } }) },
++    };
++  });
++}
++
++test.describe("Today v2 — log buttons", () => {
++  test("LOG FOOD and QUICK ADD sit above the meal list", async ({ page }) => {
++    await openV2(page, { premium: true, logs: LOGS });
++    const lf = page.getByTestId("v2-log-food");
++    const qa = page.getByTestId("v2-quick-add");
++    await expect(lf).toContainText(/log food/i);
++    await expect(lf).toContainText("AI");
++    await expect(qa).toContainText(/quick add/i);
++    await expect(qa).toContainText("saved meals");
++    const lfBox = await lf.boundingBox();
++    const listBox = await page.getByTestId("v2-meals-head").boundingBox();
++    expect(lfBox.y + lfBox.height).toBeLessThanOrEqual(listBox.y);
++    // Premium: no lock mark
++    await expect(page.getByTestId("v2-log-food-lock")).toHaveCount(0);
++  });
++
++  test("premium: LOG FOOD opens the AI meal log", async ({ page }) => {
++    await openV2(page, { premium: true });
++    await page.getByTestId("v2-log-food").click();
++    await expect(page.getByText("AI MEAL LOG")).toBeVisible();
++  });
++
++  test("free: LOG FOOD opens the premium gate, not the AI log", async ({ page }) => {
++    await openV2(page);
++    await expect(page.getByTestId("v2-log-food-lock")).toBeVisible();
++    await page.getByTestId("v2-log-food").click();
++    await expect(page.getByText("PREMIUM FEATURE")).toBeVisible();
++    await expect(page.getByText("AI MEAL LOG")).toHaveCount(0);
++  });
++
++  test("QUICK ADD opens saved meals", async ({ page }) => {
++    await openV2(page);
++    await page.getByTestId("v2-quick-add").click();
++    await expect(page.getByText("QUICK ADD", { exact: true })).toBeVisible();
++  });
++});
++
++test.describe("Today v2 — meal rows and the inline editor", () => {
++  test("rows: time, name, macros with P emphasised, kcal; header count; hint; no per-row buttons", async ({ page }) => {
++    await openV2(page, { logs: LOGS });
++    await expect(page.getByTestId("v2-meals-summary")).toHaveText("3 items · 1,150");
++    const rows = meals(page).getByTestId("v2-meal-row");
++    await expect(rows).toHaveCount(3);
++    // Order as logged
++    await expect(rows.nth(0)).toContainText("07:45");
++    await expect(rows.nth(2)).toContainText("Flat white");
++    const r = row(page, "Chicken and rice");
++    await expect(r).toHaveAttribute("aria-expanded", "false");
++    await expect(r.getByTestId("v2-meal-macros")).toHaveText("P 45 · C 70 · F 14");
++    await expect(r.getByTestId("v2-meal-macros").locator("b")).toHaveText("P 45");
++    await expect(r.getByTestId("v2-meal-kcal")).toHaveText("620");
++    // The row itself is the only control: no buttons nested in it, none beside it.
++    await expect(r.locator("button")).toHaveCount(0);
++    await expect(meals(page).getByRole("button")).toHaveCount(3);
++    await expect(page.getByTestId("v2-meals-hint")).toHaveText("Tap a meal to edit.");
++  });
++
++  test("empty day: one quiet line, no hint", async ({ page }) => {
++    await openV2(page);
++    await expect(page.getByTestId("v2-meals-empty")).toHaveText("Nothing logged yet today.");
++    await expect(page.getByTestId("v2-meals-hint")).toHaveCount(0);
++    await expect(page.getByTestId("v2-meals-summary")).toHaveCount(0);
++  });
++
++  test("tap expands in place, pre-filled, with the full action set", async ({ page }) => {
++    await openV2(page, { logs: LOGS });
++    await row(page, "Chicken and rice").click();
++    const ed = editor(page);
++    await expect(ed).toBeVisible();
++    await expect(ed.getByTestId("v2-meal-row")).toHaveAttribute("aria-expanded", "true");
++    await expect(ed).toContainText("12:30");
++    await expect(ed).toContainText(/editing/i);
++    await expect(ed.getByLabel("Name")).toHaveValue("Chicken and rice");
++    await expect(ed.getByLabel("Kcal")).toHaveValue("620");
++    await expect(ed.getByLabel("Protein")).toHaveValue("45");
++    await expect(ed.getByLabel("Carbs")).toHaveValue("70");
++    await expect(ed.getByLabel("Fat")).toHaveValue("14");
++    await expect(ed.getByRole("button", { name: "Save", exact: true })).toBeVisible();
++    await expect(ed.getByRole("button", { name: "Save to Quick Add" })).toBeVisible();
++    await expect(ed.getByRole("button", { name: "Delete" })).toBeVisible();
++    await expect(ed.getByRole("button", { name: "Re-estimate from name" })).toBeVisible();
++    await expect(ed.getByTestId("v2-meal-pro")).toBeVisible();
++    // Editor sits inside the list, between its neighbours — no overlay.
++    const order = await meals(page).locator('[data-testid="v2-meal-row"], [data-testid="v2-meal-editor"]')
++      .evaluateAll(els => els.map(e => e.dataset.testid));
++    expect(order).toEqual(["v2-meal-row", "v2-meal-editor", "v2-meal-row", "v2-meal-row"]);
++    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
++    await shot(page, "v2-meals-open");
++  });
++
++  test("only one row is open at a time", async ({ page }) => {
++    await openV2(page, { logs: LOGS });
++    await row(page, "Porridge with banana").click();
++    await editor(page).getByLabel("Kcal").fill("999");
++    await row(page, "Flat white").click();
++    await expect(editor(page)).toHaveCount(1);
++    await expect(editor(page).getByLabel("Name")).toHaveValue("Flat white");
++    // The first one collapsed with its stored values — the 999 went nowhere.
++    await expect(row(page, "Porridge with banana").getByTestId("v2-meal-kcal")).toHaveText("420");
++    expect((await stored(page))[0].kcal).toBe(420);
++  });
++
++  test("save updates the row, the totals, and the record", async ({ page }) => {
++    await openV2(page, { logs: LOGS });
++    await row(page, "Chicken and rice").click();
++    const ed = editor(page);
++    await ed.getByLabel("Name").fill("Chicken thigh and rice");
++    await ed.getByLabel("Kcal").fill("700");
++    await ed.getByLabel("Protein").fill("50");
++    await ed.getByLabel("Carbs").fill("72");
++    await ed.getByLabel("Fat").fill("20");
++    await ed.getByTestId("v2-meal-save").click();
++    await expect(editor(page)).toHaveCount(0);
++    const r = row(page, "Chicken thigh and rice");
++    await expect(r.getByTestId("v2-meal-kcal")).toHaveText("700");
++    await expect(r.getByTestId("v2-meal-macros")).toHaveText("P 50 · C 72 · F 20");
++    await expect(page.getByTestId("v2-meals-summary")).toHaveText("3 items · 1,230");
++    await page.reload();
++    await expect(row(page, "Chicken thigh and rice").getByTestId("v2-meal-kcal")).toHaveText("700");
++    expect((await stored(page))[1]).toMatchObject({ name: "Chicken thigh and rice", kcal: 700, protein: 50 });
++  });
++
++  for (const how of ["header", "cancel"]) {
++    test(`collapsing via ${how} discards changes (O5)`, async ({ page }) => {
++      await openV2(page, { logs: LOGS });
++      await row(page, "Chicken and rice").click();
++      await editor(page).getByLabel("Kcal").fill("9999");
++      await editor(page).getByLabel("Name").fill("Something else");
++      if (how === "header") await editor(page).getByTestId("v2-meal-row").click();
++      else await editor(page).getByRole("button", { name: "Cancel" }).click();
++      await expect(editor(page)).toHaveCount(0);
++      await expect(row(page, "Chicken and rice").getByTestId("v2-meal-kcal")).toHaveText("620");
++      await expect(page.getByTestId("v2-meals-summary")).toHaveText("3 items · 1,150");
++      // Re-open: the typed values are gone.
++      await row(page, "Chicken and rice").click();
++      await expect(editor(page).getByLabel("Kcal")).toHaveValue("620");
++      await expect(editor(page).getByLabel("Name")).toHaveValue("Chicken and rice");
++    });
++  }
++
++  test("delete removes the meal and its kcal", async ({ page }) => {
++    await openV2(page, { logs: LOGS });
++    await row(page, "Chicken and rice").click();
++    await editor(page).getByTestId("v2-meal-delete").click();
++    await expect(row(page, "Chicken and rice")).toHaveCount(0);
++    await expect(editor(page)).toHaveCount(0);
++    await expect(page.getByTestId("v2-meals-summary")).toHaveText("2 items · 530");
++    expect((await stored(page)).map(l => l.name)).toEqual(["Porridge with banana", "Flat white"]);
++  });
++
++  test("save to Quick Add: filled bookmark, label, re-blink, entry untouched", async ({ page }) => {
++    await openV2(page, { logs: LOGS, meals: [] });
++    await row(page, "Flat white").click();
++    const btn = editor(page).getByTestId("v2-meal-saveqa");
++    await expect(btn).toHaveText("Save to Quick Add");
++    await expect(btn).toHaveAttribute("aria-pressed", "false");
++    await btn.click();
++    await expect(btn).toHaveText("Saved to Quick Add");
++    await expect(btn).toHaveAttribute("aria-pressed", "true");
++    await expect(btn.locator('svg[fill="currentColor"]')).toHaveCount(1);   // the filled bookmark
++    const m = await savedMeals(page);
++    expect(m).toEqual([{ name: "Flat white", kcal: 110, protein: 6, carbs: 9, fat: 6 }]);
++    // Re-blink on a second tap: the button is re-mounted with the animation each time.
++    const anim = () => btn.evaluate(el => getComputedStyle(el).animationName);
++    expect(await anim()).toBe("blink_add");
++    await btn.click();
++    await expect(btn).toHaveText("Saved to Quick Add");
++    expect((await savedMeals(page)).length).toBe(1);   // addToQA does not duplicate a name
++    // Still open; the logged entry is unchanged.
++    await expect(editor(page)).toBeVisible();
++    expect((await stored(page))[2].kcal).toBe(110);
++    await shot(page, "v2-meals-saved-qa");
++  });
++
++  test("free: re-estimate opens the premium gate and asks nothing", async ({ page }) => {
++    await openV2(page, { logs: LOGS });
++    await stubAI(page, { kcal: 1, protein: 1, carbs: 1, fat: 1 });
++    await row(page, "Chicken and rice").click();
++    await editor(page).getByTestId("v2-meal-reestimate").click();
++    await expect(page.getByText("PREMIUM FEATURE")).toBeVisible();
++    expect(page.aiCalls).toBe(0);
++    await expect(editor(page).getByLabel("Kcal")).toHaveValue("620");
++  });
++
++  test("premium: re-estimate shows progress, then refills from the typed name", async ({ page }) => {
++    await openV2(page, { premium: true, logs: LOGS });
++    await stubAI(page, { name: "Chicken thigh and rice", kcal: 815, protein: 52, carbs: 71, fat: 33,
++      confidence: 92, reasoning: "e2e fixture" }, { delay: 800 });
++    await row(page, "Chicken and rice").click();
++    const ed = editor(page);
++    await ed.getByLabel("Name").fill("Chicken thigh and rice");
++    await ed.getByTestId("v2-meal-reestimate").click();
++    await expect(ed.getByTestId("v2-meal-reestimate")).toHaveText("Re-estimating…");
++    await expect(ed.getByTestId("v2-meal-reestimate")).toHaveText("Updated", { timeout: 15_000 });
++    await expect(ed.getByLabel("Kcal")).toHaveValue("815");
++    await expect(ed.getByLabel("Protein")).toHaveValue("52");
++    await expect(ed.getByLabel("Carbs")).toHaveValue("71");
++    await expect(ed.getByLabel("Fat")).toHaveValue("33");
++    await expect(ed.getByLabel("Name")).toHaveValue("Chicken thigh and rice");
++    expect((await stored(page))[1].kcal).toBe(620);   // nothing saved yet
++    await ed.getByTestId("v2-meal-save").click();
++    await expect(row(page, "Chicken thigh and rice").getByTestId("v2-meal-kcal")).toHaveText("815");
++  });
++
++  test("premium: a failed re-estimate says so and keeps the fields", async ({ page }) => {
++    await openV2(page, { premium: true, logs: LOGS });
++    await stubAI(page, {}, { fail: true });
++    await row(page, "Chicken and rice").click();
++    await editor(page).getByTestId("v2-meal-reestimate").click();
++    await expect(editor(page).getByTestId("v2-meal-reestimate-error")).toBeVisible({ timeout: 15_000 });
++    await expect(editor(page).getByTestId("v2-meal-reestimate")).toHaveText("Re-estimate from name");
++    await expect(editor(page).getByLabel("Kcal")).toHaveValue("620");
++  });
++});
+diff --git a/features/logging/11-tap-row-to-edit.feature b/features/logging/11-tap-row-to-edit.feature
+new file mode 100644
+index 0000000..b4cd394
+--- /dev/null
++++ b/features/logging/11-tap-row-to-edit.feature
+@@ -0,0 +1,123 @@
++# Today v2 (design/v2/HANDOVER.md §3 items 7–8, §5, D7, D8, open issue O5).
++# Behind the ?ui=v2 flag. v1's today list (features/logging/01) is unchanged.
++#
++# The v2 meal list has NO per-row buttons. Tapping a row opens it in place into the editor;
++# every action lives there. LOG FOOD and QUICK ADD sit above the list.
++# Proof: e2e/v2-meals.spec.js
++Feature: Tap a meal row to edit it (Today v2)
++
++  Background:
++    Given the v2 Today screen is on
++
++  # ── Log buttons (D7) ──────────────────────────────────────────
++
++  Scenario: LOG FOOD and QUICK ADD sit above the meal list
++    Then I see LOG FOOD, an amber button with camera, voice and text marks and an "AI" chip
++    And beside it QUICK ADD, an amber outline with "saved meals" underneath
++    And both sit above "EATEN TODAY"
++
++  Scenario: A premium user opens the AI log from LOG FOOD
++    Given I am a premium user
++    When I tap LOG FOOD
++    Then the AI meal log opens
++
++  Scenario: A free user tapping LOG FOOD sees the premium gate
++    # As v1 today: the AI log is a premium feature. The button shows a lock mark.
++    Given I am a free user
++    When I tap LOG FOOD
++    Then the premium gate opens
++    And the AI meal log does not open
++
++  Scenario: QUICK ADD opens saved meals for everyone
++    When I tap QUICK ADD
++    Then the Quick Add screen opens
++
++  # ── The list ──────────────────────────────────────────────────
++
++  Scenario: The list shows each meal as a quiet row
++    Given I have logged meals today
++    Then the header reads "EATEN TODAY" with the item count and the day's kcal, e.g. "3 items · 1,150"
++    And each row shows the time, the name, "P 14 · C 72 · F 8" with protein emphasised, and the kcal
++    And rows are in the order they were logged
++    And no row carries a button of its own
++    And under the last row it says "Tap a meal to edit."
++
++  Scenario: An empty day says so in one quiet line
++    Given I have logged nothing today
++    Then the list says "Nothing logged yet today."
++    And there is no "Tap a meal to edit." hint
++
++  # ── The inline editor (D8) ────────────────────────────────────
++
++  Scenario: Tapping a row expands it into an editor in place
++    Given I have a meal in today's list
++    When I tap its row
++    Then the row expands in place, with its time in amber and "EDITING"
++    And the NAME, KCAL, PROTEIN, CARBS and FAT fields hold the meal's current values
++    And I see Save, Save to Quick Add and Delete
++    And below a divider, "Re-estimate from name" with a PRO tag
++    And no modal or separate screen opens
++
++  Scenario: Only one row is open at a time
++    Given one meal row is open
++    When I tap another meal row
++    Then that row opens
++    And the first row collapses, keeping its stored values
++
++  Scenario: Saving updates the meal and the day
++    Given a meal row is open
++    When I change its values and tap Save
++    Then the row collapses and shows the new values
++    And the day's totals update
++    And the change persists after reload
++
++  Scenario Outline: Collapsing without saving discards the changes (O5)
++    Given a meal row is open
++    And I have changed some values
++    When I <close it>
++    Then the row collapses
++    And the meal keeps its original values
++    And opening it again shows the original values
++
++    Examples:
++      | close it                    |
++      | tap the row header          |
++      | tap Cancel                  |
++
++  Scenario: Delete removes the meal
++    Given a meal row is open
++    When I tap Delete
++    Then the meal is removed from today's list and from the day's totals
++
++  Scenario: Save to Quick Add keeps the meal for next time
++    Given a meal row is open
++    When I tap "Save to Quick Add"
++    Then the meal, with the values in the editor, is added to my saved meals
++    And the button shows a filled bookmark and reads "Saved to Quick Add"
++    And it blinks again on every further tap
++    And the row stays open, and the logged meal itself is unchanged until I tap Save
++
++  # ── Re-estimate from name (PRO) ───────────────────────────────
++
++  Scenario: A free user tapping Re-estimate sees the premium gate
++    Given I am a free user with a meal row open
++    When I tap "Re-estimate from name"
++    Then the premium gate opens
++    And no estimate is requested
++    And the fields keep their values
++
++  Scenario: A premium user re-estimates from the name as typed
++    Given I am a premium user with a meal row open
++    And I have corrected the name
++    When I tap "Re-estimate from name"
++    Then the button reads "Re-estimating…" while it works
++    And then the kcal and macros are refilled from the corrected name and the button reads "Updated"
++    And nothing is saved until I tap Save
++    # The same prompt and guards as v1 (logging/01, /07): an empty or malformed answer never
++    # reads "Updated" and never writes a zero.
++
++  Scenario: A failed re-estimate says so and keeps the fields
++    Given I am a premium user with a meal row open
++    When I tap "Re-estimate from name" and the estimate cannot be reached
++    Then a short message says so
++    And the fields keep their values
