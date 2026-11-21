@@ -7203,20 +7203,555 @@ function V2MealList(props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ██ REGION C — WATER · WEIGHT/TDEE · MEASUREMENTS · WORKOUT · LAST 7 DAYS (§3.9–3.13, D9)
 // ─────────────────────────────────────────────────────────────────────────────
-function V2Water(props) {
-  return <div data-testid="v2-water"><Label>Water (stub)</Label></div>;
+// Shared bits for this region. A "cell" is one small raised group (mockup .cell): radius 14,
+// a micro-label cap row, then the content. Kept local so regions stay independent.
+const V2C_CELL = { borderRadius: 14, padding: "13px 14px 14px", color: "var(--ink)" }; // explicit ink: App's wrapper sets an inline #fff
+const V2C_SUB = { fontFamily: V2_FONT.body, fontSize: 12, color: "var(--dim)", marginTop: 4, lineHeight: 1.35 };
+// The small "go" action in a row (mockup .go): well background, amber text.
+const V2C_GO = { height: 36, padding: "0 12px", borderRadius: 8, background: "var(--well)",
+  boxShadow: "var(--well-shadow)", border: "none", color: "var(--amber-ink)", fontFamily: V2_FONT.body,
+  fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer", flexShrink: 0 };
+const V2C_SQ = { width: 36, height: 36, borderRadius: 9, background: "var(--well)", boxShadow: "var(--well-shadow)",
+  border: "none", color: "var(--ink)", display: "grid", placeItems: "center", fontFamily: V2_FONT.mono,
+  fontWeight: 500, fontSize: 18, cursor: "pointer", flexShrink: 0, padding: 0 };
+// A label-styled button (cap-row actions such as "Paste log · Pro", "Log" beside the kg field).
+const V2C_CAPBTN = { background: "none", border: "none", padding: "6px 0", margin: "-6px 0", cursor: "pointer",
+  fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase" };
+
+function V2Cap({ children, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 14 }}>
+      <Label>{children}</Label>
+      {right}
+    </div>
+  );
 }
-function V2WeightTdee(props) {
-  return <div data-testid="v2-weight"><Label>Weight · TDEE (stub)</Label></div>;
+// The quiet due state (D9): an amber dot plus "DUE". Never a pop-up.
+function V2Due({ testid, what }) {
+  return (
+    <span data-testid={testid} role="status" aria-label={`${what} due`}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--amber-mark)" }}/>
+      <Label color="var(--amber-ink)">Due</Label>
+    </span>
+  );
 }
-function V2Measurements(props) {
-  return <div data-testid="v2-measurements"><Label>Measurements (stub)</Label></div>;
+const v2DaysAgo = key => key == null ? null
+  : Math.max(0, Math.floor((new Date(todayKey() + "T00:00:00").getTime() - new Date(key + "T00:00:00").getTime()) / 86400000));
+const v2AgoText = n => n === 0 ? "today" : n === 1 ? "1 day ago" : `${n} days ago`;
+const v2Cap1 = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+
+// ── 9. WATER ────────────────────────────────────────────────────────────────
+function V2Water({ water = 0, setWater = () => {} }) {
+  const n = Math.max(0, Number(water) || 0);
+  return (
+    <Panel data-testid="v2-water" style={V2C_CELL}>
+      <V2Cap right={<Label data-testid="v2-water-count">{n} / 8 glasses</Label>}>Water</V2Cap>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+        <button data-testid="v2-water-minus" aria-label="Remove a glass of water" disabled={n === 0}
+          onClick={() => { haptic(); setWater(Math.max(0, n - 1)); }}
+          style={{ ...V2C_SQ, opacity: n === 0 ? 0.5 : 1, cursor: n === 0 ? "default" : "pointer" }}>−</button>
+        <div role="meter" aria-label="Water today" aria-valuemin={0} aria-valuemax={8} aria-valuenow={Math.min(n, 8)}
+          aria-valuetext={`${n} of 8 glasses`}
+          style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 3 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <i key={i} data-filled={i < n ? "1" : "0"}
+              style={{ height: 18, borderRadius: 2, transition: "background .2s",
+                background: i < n ? "var(--dim)" : "var(--well)", boxShadow: i < n ? "none" : "var(--well-shadow)",
+                border: "1px solid var(--hair)" }}/>
+          ))}
+        </div>
+        <button data-testid="v2-water-plus" aria-label="Add a glass of water"
+          onClick={() => { haptic(); setWater(n + 1); }} style={V2C_SQ}>+</button>
+      </div>
+    </Panel>
+  );
 }
-function V2Workout(props) {
-  return <div data-testid="v2-workout"><Label>Workout (stub)</Label></div>;
+
+// ── 10. WEIGHT | EST. TDEE ──────────────────────────────────────────────────
+// Same handlers and rules as v1 WeighInWidget: onWeighIn upserts by date, so "Change" on
+// today's reading just re-shows the field (v96). Units come from the same getWUnit() the
+// profile writes. The weigh-in nudge becomes a quiet DUE on the cap instead of a card.
+function V2WeightTdee({ weighIns = [], onWeighIn = () => {}, tdeeAdj = 0, baseTDEE = 0, tdeeFloor,
+    correctionHeld = false, showWeighNudge = false }) {
+  const [val, setVal]   = useState("");
+  const [val2, setVal2] = useState("");
+  const [editing, setEditing] = useState(false);
+  const wUnit = getWUnit();
+  const entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0)
+                : wUnit === "lb" ? lbToKg(val || 0)
+                : Number(val);
+  const todayEntry = weighIns.find(w => w.date === todayKey());
+  const showInput  = !todayEntry || editing;
+  const canLog     = entryKg > 0;
+  const submit = () => {
+    if (!canLog) return;
+    haptic(); onWeighIn(entryKg); setVal(""); setVal2(""); setEditing(false);
+  };
+  const cancel = () => { setEditing(false); setVal(""); setVal2(""); };
+  const due = showWeighNudge && !todayEntry;
+
+  // Rolling-average trend — the same two-window comparison v1's badge uses.
+  const trend7 = (() => {
+    const now = new Date(Date.now() + getDevDateOffset() * 86400000);
+    const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+    const recentAvg = weighRollingAvg(weighIns, dateKey(new Date(now.getTime() + 86400000)), 7);
+    const olderAvg  = weighRollingAvg(weighIns, dateKey(weekAgo), 7);
+    if (recentAvg == null || olderAvg == null) return null;
+    const t = Math.round((recentAvg - olderAvg) * 10) / 10;
+    return wUnit === "kg" ? t : Math.round(t * LB_PER_KG * 10) / 10;
+  })();
+
+  const n = weighIns.length;
+  const confidence  = n >= 28 ? "Calibrated" : n >= 14 ? "Learning" : "Estimating";
+  const calibrating = n >= CAL_MIN_WEIGHINS;
+  const tdee = Math.max(tdeeFloor == null ? baseTDEE : tdeeFloor, baseTDEE + tdeeAdj);
+  const tdeeSub = !calibrating ? "Settles as you weigh in"
+    : correctionHeld ? "Held while you cut"
+    : tdeeAdj === 0 ? "Matches your trend"
+    : `Adjusted ${tdeeAdj > 0 ? "up" : "down"} to your trend`;
+
+  const inp = { ...V2_INPUT, height: 36, padding: "6px 10px", fontSize: 14, minWidth: 0 };
+  return (
+    <div data-testid="v2-weight" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <Panel data-testid="v2-weight-cell" style={V2C_CELL}>
+        <V2Cap right={due ? <V2Due testid="v2-weight-due" what="Weigh-in"/> : null}>Weight</V2Cap>
+        {showInput ? (
+          <>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+              {wUnit === "st" ? (
+                <>
+                  <input data-testid="v2-weight-input" type="number" min="0" inputMode="numeric" value={val}
+                    aria-label="stone today" placeholder="st" onChange={e => setVal(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && submit()} style={{ ...inp, flex: 1 }}/>
+                  <input data-testid="v2-weight-input-lb" type="number" min="0" max="13" inputMode="numeric" value={val2}
+                    aria-label="pounds today" placeholder="lb" onChange={e => setVal2(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && submit()} style={{ ...inp, flex: 1 }}/>
+                </>
+              ) : (
+                <input data-testid="v2-weight-input" type="number" step="0.1" min="0" inputMode="decimal"
+                  max={wUnit === "lb" ? 660 : 300} value={val} placeholder={wUnit}
+                  aria-label={`Weight today in ${wUnit}`} onChange={e => setVal(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && submit()} style={{ ...inp, flex: 1 }}/>
+              )}
+              <button data-testid="v2-weight-log" onClick={submit} disabled={!canLog}
+                aria-label={todayEntry ? "Update today's weight" : "Log weight"}
+                style={{ ...V2C_CAPBTN, fontSize: 11, padding: "10px 2px", margin: 0,
+                  color: canLog ? "var(--amber-ink)" : "var(--dim)", cursor: canLog ? "pointer" : "default" }}>
+                {todayEntry ? "Update" : "Log"}
+              </button>
+            </div>
+            {editing
+              ? <button onClick={cancel} style={{ ...V2_BTN.text, padding: "4px 0", fontSize: 12 }}>Cancel</button>
+              : <div style={V2C_SUB}>{due ? "A quick weigh-in keeps targets true" : "Not logged today"}</div>}
+          </>
+        ) : (
+          <>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+              <Num data-testid="v2-weight-today" size={22}>
+                {wUnit === "st"
+                  ? (() => { const { st, lb } = kgToStLb(todayEntry.weight);
+                      return <>{st}<span style={{ fontSize: 12, color: "var(--dim)" }}> st </span>{lb}</>; })()
+                  : wChartNum(todayEntry.weight, wUnit)}
+                <span style={{ fontSize: 12, color: "var(--dim)" }}> {wUnit === "st" ? "lb" : wChartUnit(wUnit)}</span>
+              </Num>
+              <button data-testid="v2-weight-change" onClick={() => setEditing(true)} aria-label="Change today's weight"
+                style={{ ...V2_BTN.text, padding: "2px 0", fontSize: 12, textDecoration: "underline dashed",
+                  textUnderlineOffset: 4 }}>Change</button>
+            </div>
+            <div style={V2C_SUB}>
+              {trend7 == null ? "Logged today"
+                : <><Num size={12} color="var(--ink)">{trend7 > 0 ? "+" : trend7 < 0 ? "−" : ""}{Math.abs(trend7)} {wUnit === "kg" ? "kg" : "lb"}</Num> a week</>}
+            </div>
+          </>
+        )}
+      </Panel>
+      <Panel data-testid="v2-tdee-cell" style={V2C_CELL}>
+        <V2Cap right={<Label data-testid="v2-tdee-confidence"
+          color={calibrating && n >= 28 ? "var(--dim)" : "var(--amber-ink)"}>{confidence}</Label>}>Est. TDEE</V2Cap>
+        <div style={{ marginTop: 8 }}>
+          <Num data-testid="v2-tdee" size={22}>~{v2fmt(tdee)}<span style={{ fontSize: 12, color: "var(--dim)" }}> kcal</span></Num>
+        </div>
+        <div style={V2C_SUB}>{tdeeSub}</div>
+      </Panel>
+    </div>
+  );
 }
+
+// ── 11. MEASUREMENTS (D9) ───────────────────────────────────────────────────
+// A permanent row. Due = amber dot + DUE (showMeasurementNudge, the same signal v1's pop-up
+// used). Log opens an inline form; the save path is v1 MeasurementRow's, verbatim in logic.
+function V2Measurements({ bodyMeasurements = [], onMeasurement = () => {}, measurementNote = "",
+    onSaveMeasurementNote = () => {}, showMeasurementNudge = false, prof }) {
+  const measurements = bodyMeasurements;
+  const sex = prof?.sex;
+  const [open, setOpen] = useState(false);
+  const [neck,  setNeck]  = useState("");
+  const [waist, setWaist] = useState("");
+  const [hip,   setHip]   = useState("");
+  const [localNote, setLocalNote] = useState("");
+  const [justSaved, setJustSaved] = useState(null);
+
+  const formula = bodyMeasurementFormula(sex);
+  const last = measurements.length ? measurements[measurements.length - 1] : null;
+  const isFirstEver = measurements.length === 0;
+  const neckNum = Number(neck), waistNum = Number(waist), hipNum = Number(hip);
+  const filledIn = neckNum > 0 && waistNum > 0 && (formula === "male" || hipNum > 0);
+  const domainOk = formula === "male" ? waistNum > neckNum : (waistNum + hipNum - neckNum > 0);
+  const canSave  = filledIn && domainOk;
+  const prevReading = (() => {
+    const before = measurements.filter(m => m.date < todayKey());
+    return before.length ? before[before.length - 1] : null;
+  })();
+  const remindersOn = weighCadenceOf(prof) !== "off";
+
+  const save = async () => {
+    if (!canSave) return;
+    haptic();
+    const before = prevReading;
+    const entered = { neck: neckNum, waist: waistNum, hip: formula === "female" ? hipNum : null };
+    const bf = await onMeasurement(entered);
+    if (isFirstEver && localNote.trim()) onSaveMeasurementNote(localNote.trim());
+    if (bf != null) {
+      const after = [...measurements.filter(m => m.date !== todayKey()),
+        { ...entered, date: todayKey(), formula, computed_bf: bf }]
+        .sort((a, b) => a.date.localeCompare(b.date));
+      setJustSaved({ bf, daysAgo: v2DaysAgo(before?.date),
+        changes: measurementSiteChanges(before, entered),
+        windowChange: bodyFatWindowChange(after, sex),
+        windowFrom: bodyFatWindowRows(after, sex)?.before.date });
+    }
+    setNeck(""); setWaist(""); setHip(""); setLocalNote("");
+  };
+  const close = () => { setOpen(false); setJustSaved(null); setNeck(""); setWaist(""); setHip(""); };
+
+  const fmtCm = v => (Math.round(Number(v) * 10) / 10).toString();
+  const reading = last
+    ? [["Neck", last.neck], ["Waist", last.waist], ...(last.hip != null ? [["Hip", last.hip]] : [])]
+        .map(([k, v]) => `${k} ${fmtCm(v)}`).join(" · ") + " cm"
+    : null;
+  const inp = { ...V2_INPUT, flex: 1, minWidth: 0, textAlign: "center", height: 38 };
+
+  return (
+    <Panel data-testid="v2-measurements" style={V2C_CELL}>
+      <V2Cap right={showMeasurementNudge ? <V2Due testid="v2-measure-due" what="Measurements"/> : null}>Measurements</V2Cap>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div data-testid="v2-measure-reading" className="v2-num"
+            style={{ fontSize: 14, fontWeight: 500, color: reading ? "var(--ink)" : "var(--dim)" }}>
+            {reading || "No measurements yet"}
+          </div>
+          <div data-testid="v2-measure-when" style={{ ...V2C_SUB, marginTop: 2 }}>
+            {last ? `Last logged ${v2AgoText(v2DaysAgo(last.date))}` : `${formula === "male" ? "Neck and waist" : "Neck, waist and hip"}, for a body-fat estimate`}
+            {remindersOn ? " · weekly" : ""}
+          </div>
+        </div>
+        {!open && (
+          <button data-testid="v2-measure-open" onClick={() => setOpen(true)} aria-label="Log measurements"
+            style={V2C_GO}>Log</button>
+        )}
+      </div>
+
+      {open && (
+        <div data-testid="v2-measure-form" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--hair)" }}>
+          {!sex && <div style={{ ...V2C_SUB, marginTop: 0, marginBottom: 8 }}>Set your sex in Settings for an accurate read.</div>}
+          {note(measurementNote)}
+          <div style={{ display: "flex", gap: 6 }}>
+            <input type="number" inputMode="decimal" value={neck} onChange={e => setNeck(e.target.value)}
+              placeholder="neck cm" aria-label="neck cm" style={inp}/>
+            <input type="number" inputMode="decimal" value={waist} onChange={e => setWaist(e.target.value)}
+              placeholder="waist cm" aria-label="waist cm" style={inp}/>
+            {formula === "female" && (
+              <input type="number" inputMode="decimal" value={hip} onChange={e => setHip(e.target.value)}
+                placeholder="hip cm" aria-label="hip cm" style={inp}/>
+            )}
+          </div>
+          {filledIn && !domainOk && (
+            <div role="alert" style={{ ...V2C_SUB, color: "var(--rust)" }}>
+              {formula === "male"
+                ? "Waist needs to be bigger than neck for the calculation to work."
+                : "Waist plus hip needs to be bigger than neck for the calculation to work."}
+            </div>
+          )}
+          {isFirstEver && (
+            <input type="text" value={localNote} onChange={e => setLocalNote(e.target.value)}
+              placeholder="Your usual conditions (e.g. mornings, fasted) — optional"
+              aria-label="Your usual measuring conditions"
+              style={{ ...V2_INPUT, fontFamily: V2_FONT.body, fontSize: 13, marginTop: 8 }}/>
+          )}
+          {justSaved != null && (
+            <div data-testid="v2-measure-result" role="status" style={{ ...V2C_SUB, color: "var(--ink)", marginTop: 10, fontSize: 13 }}>
+              <div>Estimated body fat <Num size={13} weight={600}>{justSaved.bf}%</Num></div>
+              {justSaved.changes ? (
+                <div style={{ color: "var(--dim)" }}>
+                  Since {justSaved.daysAgo === 1 ? "1 day" : justSaved.daysAgo + " days"} ago:{" "}
+                  {justSaved.changes.map((c, i) => (
+                    <span key={c.site}>{i > 0 && " · "}{v2Cap1(c.site)}{" "}
+                      <Num size={12} color="var(--ink)" data-site={c.site}>{formatSiteChange(c.change)}</Num></span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: "var(--dim)" }}>First reading. The next one shows what changed.</div>
+              )}
+              {justSaved.windowChange != null && (
+                <div style={{ color: "var(--dim)" }}>
+                  <Num size={12} color="var(--ink)">{justSaved.windowChange > 0 ? "+" : justSaved.windowChange < 0 ? "−" : ""}{Math.abs(justSaved.windowChange)}</Num>
+                  {" "}points of body fat since {fmtDay(justSaved.windowFrom)}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button data-testid="v2-measure-save" onClick={save} disabled={!canSave} aria-label="Save measurement"
+              style={{ ...V2_BTN.primary, fontSize: 15, minHeight: 36,
+                ...(canSave ? {} : { background: "var(--well)", color: "var(--dim)", cursor: "default" }) }}>Save</button>
+            <button data-testid="v2-measure-close" onClick={close} style={{ ...V2_BTN.quiet, fontSize: 14, minHeight: 36 }}>Close</button>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+
+  function note(text) {
+    return text ? (
+      <div style={{ ...V2C_SUB, marginTop: 0, marginBottom: 8, fontStyle: "italic" }}>You usually measure: {text}</div>
+    ) : null;
+  }
+}
+
+// ── 12. WORKOUT ─────────────────────────────────────────────────────────────
+// v1 WorkoutLogger's behaviour: the same estimateSessionKcal, the same workout object handed
+// to onAddWorkout, the same paste-log prompt via callAIJson (premium; free users get the gate).
+function V2Workout({ workouts = [], onAddWorkout = () => {}, onRemoveWorkout = () => {}, prof,
+    targets = {}, authState, onPremiumGate }) {
+  const isPremium = authState === "premium";
+  const [type,      setType]      = useState("legs");
+  const [dur,       setDur]       = useState(45);
+  const [intensity, setIntensity] = useState("moderate");
+  const [editing,   setEditing]   = useState(false);
+  const [paste,     setPaste]     = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [parsing,   setParsing]   = useState(false);
+  const [parsed,    setParsed]    = useState(null);
+
+  const p = prof || DEF_PROFILE;
+  const estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
+  const nowTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const logWorkout = () => {
+    onAddWorkout({ id: Date.now(), type, duration: dur, intensity, kcal: estKcal, time: nowTime() });
+    setEditing(false);
+  };
+  const openPaste = () => isPremium ? setPaste(true) : onPremiumGate && onPremiumGate({ name: "Workout AI Parser" });
+  const parseWorkout = async () => {
+    if (!pasteText.trim() || parsing) return;
+    setParsing(true); setParsed(null);
+    try {
+      const prompt = `Parse this workout log and estimate calories burned. User: ${p.weight}kg bodyweight, ${p.bodyFat}% body fat.\n\nWorkout:\n${pasteText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`;
+      setParsed(await callAIJson(prompt, 200));
+    } catch (e) {
+      setParsed({ error: "Couldn't read that log. Try again in a moment." });
+    }
+    setParsing(false);
+  };
+  const logParsed = () => {
+    if (!parsed || parsed.error) return;
+    onAddWorkout({ id: Date.now(), type: parsed.type || "fullbody", duration: 60,
+      intensity: parsed.intensity || "moderate", kcal: parsed.estimatedKcal, notes: parsed.summary, time: nowTime() });
+    setPaste(false); setPasteText(""); setParsed(null);
+  };
+  const closePaste = () => { setPaste(false); setPasteText(""); setParsed(null); };
+  const sel = { ...V2_INPUT, width: "auto", height: 36, padding: "6px 8px", fontSize: 13, fontFamily: V2_FONT.body };
+
+  return (
+    <Panel data-testid="v2-workout" style={V2C_CELL}>
+      <V2Cap right={!paste && (
+        <button data-testid="v2-workout-paste" onClick={openPaste}
+          aria-label={isPremium ? "Paste a workout log" : "Paste a workout log, Pro feature"}
+          style={{ ...V2C_CAPBTN, color: isPremium ? "var(--amber-ink)" : "var(--dim)",
+            display: "inline-flex", alignItems: "center", gap: 5 }}>
+          {!isPremium && <Icon name="lock" size={12}/>}Paste log · Pro
+        </button>
+      )}>Workout</V2Cap>
+
+      {workouts.length > 0 && (
+        <div data-testid="v2-workout-list" style={{ marginTop: 8 }}>
+          {workouts.map(w => (
+            <div key={w.id} data-testid="v2-workout-item"
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--hair)" }}>
+              <Num size={12} color="var(--dim)" style={{ flexShrink: 0 }}>{w.time}</Num>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {w.notes || `${v2Cap1(w.type)} · ${w.duration} min · ${w.intensity}`}
+              </span>
+              <Num size={13} style={{ flexShrink: 0 }}>{v2fmt(w.kcal)} kcal</Num>
+              <button onClick={() => onRemoveWorkout(w.id)} aria-label={`Remove workout ${w.notes || w.type}`}
+                style={{ ...V2_BTN.text, padding: 6, color: "var(--dim)", display: "grid", placeItems: "center" }}>
+                <Icon name="x" size={16}/>
+              </button>
+            </div>
+          ))}
+          {(targets.bonus || 0) > 0 && (
+            <div data-testid="v2-workout-bonus" style={V2C_SUB}>
+              <Num size={12} color="var(--ink)">+{v2fmt(targets.bonus)}</Num> kcal added to today; the rest spreads over the next days.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!paste ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+            <button data-testid="v2-workout-summary" onClick={() => setEditing(e => !e)} aria-expanded={editing}
+              aria-label="Change workout type, length and intensity"
+              style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+              <div style={{ fontSize: 15, fontWeight: 500 }}>{v2Cap1(type)}</div>
+              <div className="v2-num" style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>
+                {dur} min · {intensity} · {v2fmt(estKcal)} kcal
+              </div>
+            </button>
+            <button data-testid="v2-workout-log" onClick={logWorkout} style={V2C_GO}>Log workout</button>
+          </div>
+          {editing && (
+            <div data-testid="v2-workout-edit" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+              <select value={type} onChange={e => setType(e.target.value)} aria-label="Workout type" style={sel}>
+                {SESS_TYPES.map(t => <option key={t} value={t}>{v2Cap1(t)}</option>)}
+              </select>
+              <input type="number" min="10" max="180" value={dur} aria-label="Minutes"
+                onChange={e => setDur(parseInt(e.target.value) || 45)}
+                style={{ ...V2_INPUT, width: 64, height: 36, padding: "6px 8px", textAlign: "center", fontSize: 13 }}/>
+              <Label>min</Label>
+              <select value={intensity} onChange={e => setIntensity(e.target.value)} aria-label="Intensity" style={sel}>
+                {SESS_INT.map(i => <option key={i} value={i}>{v2Cap1(i)}</option>)}
+              </select>
+            </div>
+          )}
+        </>
+      ) : (
+        <div data-testid="v2-workout-paste-form" style={{ marginTop: 8 }}>
+          <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5}
+            aria-label="Workout log"
+            placeholder={"Paste your workout log\n\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg"}
+            style={{ ...V2_INPUT, fontFamily: V2_FONT.body, fontSize: 13, resize: "none", lineHeight: 1.5, boxSizing: "border-box" }}/>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button onClick={parseWorkout} disabled={parsing || !pasteText.trim()}
+              style={{ ...V2_BTN.primary, flex: 1, fontSize: 15, minHeight: 36,
+                ...(pasteText.trim() && !parsing ? {} : { background: "var(--well)", color: "var(--dim)", cursor: "default" }) }}>
+              {parsing ? "Reading…" : "Read log"}
+            </button>
+            <button onClick={closePaste} style={{ ...V2_BTN.quiet, fontSize: 14, minHeight: 36 }}>Back</button>
+          </div>
+          {parsed && !parsed.error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{parsed.summary}</span>
+              <Num size={14}>{v2fmt(parsed.estimatedKcal)} kcal</Num>
+              <button onClick={logParsed} style={V2C_GO}>Log this</button>
+            </div>
+          )}
+          {parsed && parsed.error && <div role="alert" style={{ ...V2C_SUB, color: "var(--rust)" }}>{parsed.error}</div>}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ── 13. LAST 7 DAYS ─────────────────────────────────────────────────────────
+// The same week v1's THIS WEEK card reads: the last 7 COMPLETE days ending yesterday, each day
+// graded by calorieDayScore against its own snapshot target (calories only, founder 2026-10-01),
+// and the verdict from weeklyIntakeScore. This mirrors Dashboard's derivation call for call —
+// it lives inside Dashboard's body in v1, and HANDOVER §12 Phase 0.3 moves it out for both.
+// D19: a Maintain or Bulk day carries no colour, only logged / not logged.
+function v2WeekRead({ hist = [], mode = "cut", prof, tdeeAdj = 0 }) {
+  const last7Keys = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - (i + 1));
+    return dateKey(d);
+  }).reverse();
+  const weekDays = last7Keys.map(k => {
+    const h = hist.find(d => d.date === k);
+    const dayMode = (h && h.mode) || mode;
+    const hasRealTarget = h && h.targetKcal != null;
+    const fallback = hasRealTarget ? null : calcTargets(prof || {}, dayMode, 0, tdeeAdj, 0);
+    const dayTargetKcal = hasRealTarget ? h.targetKcal : fallback.kcal;
+    const dayFloored = hasRealTarget ? !!h.floored
+      : !!(fallback.safeMinApplied || fallback.deficitFloorApplied || fallback.bmrFloorApplied);
+    const loggedAnything = hasIntake(h);
+    const colour = loggedAnything
+      ? calorieDayScore({ mode: dayMode, dayClosed: true, kcalDelta: (h.kcal || 0) - dayTargetKcal }).colour
+      : null;
+    return { date: k, dayMode, kcal: (h && h.kcal) || 0, bonus: (h && h.workoutBonus) || 0,
+      loggedAnything, floored: dayFloored, colour };
+  });
+  const accountIsNew = hist.length < WEEK_MIN_HISTORY_DAYS;
+  const loggedSnapshots = hist.filter(hasIntake).length;
+  const tdeeBaseline = Math.max(sedentaryFloorOf(prof || {}), bmrOf(prof || {}) * activityMult(prof || {}) + tdeeAdj);
+  const weekScore = accountIsNew
+    ? { state: "filling-in", daysUsed: loggedSnapshots, totalDays: hist.length }
+    : weeklyIntakeScore({ days: weekDays, selectedMode: mode, tdeeBaseline });
+  return { last7Keys, weekDays, weekScore, from: last7Keys[0], to: last7Keys[6] };
+}
+// Short verdicts for the one-line v2 row (§2.5: plain, short, blameless). Same keys as
+// WEEK_READ_COPY: [selected mode][what the week read as].
+const V2_WEEK_VERDICT = {
+  cut:      { cut: "A real cut.", maintain: "Not a cut this week.", bulk: "Ran as a surplus." },
+  maintain: { cut: "Ran a bit under.", maintain: "Right at maintenance.", bulk: "Ran a bit over." },
+  bulk:     { cut: "Ran as a deficit.", maintain: "Not a bulk this week.", bulk: "A real bulk." },
+};
+const V2_DAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
+const V2_DAY_NAME = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const V2_DAY_SAYS = { green: "on target", amber: "a little over", red: "over" };
+
 function V2Last7(props) {
-  return <div data-testid="v2-last7"><Label>Last 7 days (stub)</Label></div>;
+  const mode = props.mode || "cut";
+  const { weekDays, weekScore, from, to } = v2WeekRead({ ...props, mode });
+  const fillingIn = weekScore.state === "filling-in";
+  const verdict = fillingIn
+    ? (weekScore.daysUsed > 0 ? "Still filling in." : "Nothing logged yet.")
+    : (V2_WEEK_VERDICT[mode] || V2_WEEK_VERDICT.cut)[weekScore.readsAs];
+  const detail = fillingIn
+    ? (weekScore.daysUsed > 0 ? `${weekScore.daysUsed} of 7 days so far.` : "Log a day and this comes back.")
+    : `${weekScore.daysUsed} of ${weekScore.totalDays} days logged.`;
+
+  // Lamp styles. Lit (logged) uses the lit-lamp tint, as in the mockup. On a CUT day graded
+  // amber/red the lamp is lit with the band colour as its outline and letter; Maintain/Bulk
+  // days stay neutral (D19). While filling in, no grading is shown (v1 rule, 2026-09-09).
+  const lamp = d => {
+    const base = { width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center",
+      fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9, fontStyle: "normal", boxSizing: "border-box" };
+    if (!d.loggedAnything)
+      return { ...base, background: "var(--well)", border: "1px dashed var(--faint)", color: "var(--dim)" };
+    if (d.dayMode !== "cut" || fillingIn)
+      return { ...base, background: "var(--well)", border: "1px solid var(--dim)", color: "var(--ink)" };
+    if (d.colour === "red")
+      return { ...base, background: "var(--amber-bg)", border: "1.5px solid var(--over)", color: "var(--over)" };
+    if (d.colour === "amber")
+      return { ...base, background: "var(--amber-bg)", border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)" };
+    return { ...base, background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)" };
+  };
+  const says = d => !d.loggedAnything ? "not logged"
+    : (d.dayMode !== "cut" || fillingIn) ? "logged" : (V2_DAY_SAYS[d.colour] || "logged");
+
+  return (
+    <Panel data-testid="v2-last7" style={V2C_CELL}>
+      <V2Cap>Last 7 days · {fmtRange(from, to)}</V2Cap>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+        <div role="list" aria-label="Last 7 days" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          {weekDays.map(d => {
+            const dt = new Date(d.date + "T12:00:00");
+            return (
+              <i key={d.date} role="listitem" data-testid="v2-last7-day" data-date={d.date}
+                data-state={!d.loggedAnything ? "unlogged" : (d.dayMode !== "cut" || fillingIn) ? "neutral" : (d.colour || "neutral")}
+                aria-label={`${V2_DAY_NAME[dt.getDay()]} ${fmtDay(d.date)}: ${says(d)}`}
+                style={lamp(d)}>{V2_DAY_INITIAL[dt.getDay()]}</i>
+            );
+          })}
+        </div>
+        <p data-testid="v2-last7-verdict" style={{ margin: 0, fontFamily: V2_FONT.body, fontWeight: 500, fontSize: 13, lineHeight: 1.3 }}>
+          {verdict}
+          <span data-testid="v2-last7-count" style={{ display: "block", color: "var(--dim)", fontWeight: 400, fontSize: 12 }}>{detail}</span>
+        </p>
+      </div>
+    </Panel>
+  );
 }
 // ── end REGION C ─────────────────────────────────────────────────────────────
 
