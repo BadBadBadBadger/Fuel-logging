@@ -162,9 +162,9 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v110" ↔ "v110") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v110";
-const APP_PATCH_DATE = "2026-11-20";
+// CACHE ("fuel-log-v111" ↔ "v111") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v111";
+const APP_PATCH_DATE = "2026-11-21";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
@@ -7023,6 +7023,2363 @@ function NoteToast({ text, onDone }) {
 
 // ── Root ──────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ██  UI v2 — "Instrument"  (design/v2/HANDOVER.md is the source of truth)
+// ═════════════════════════════════════════════════════════════════════════════
+// Built ALONGSIDE v1, behind a flag. v1 (Dashboard / ProfileScreen) is untouched.
+//   ?ui=v2  → turns v2 on (remembered in localStorage.ui_v2)
+//   ?ui=v1  → turns it off again
+// Both screens receive exactly the same App state and handlers as v1, so no logic is
+// duplicated: v2 is presentation only. Each region below is owned by one slice of work.
+
+const UI_V2 = (() => {
+  try {
+    if (typeof location === "undefined") return false;
+    const q = new URLSearchParams(location.search).get("ui");
+    if (q === "v2") localStorage.setItem("ui_v2", "1");
+    if (q === "v1") localStorage.removeItem("ui_v2");
+    return localStorage.getItem("ui_v2") === "1";
+  } catch { return false; }
+})();
+
+// ── V2 FOUNDATION: tokens (§2.1), fonts (§2.2) ───────────────────────────────
+// Tokens are scoped to .ui-v2 so they cannot leak into v1. Light is the default (as v1);
+// dark follows the OS unless the user picked light, or is forced by data-theme="dark".
+// Light --teal / --good / --over are PROPOSED values (open decision O2) — derived to
+// ≥4.5:1 as text on --panel-2 (#f8fafb); check with the owner before the flip.
+const V2_DARK = `
+  --stage:#0d1114; --panel:#1c2327; --panel-2:#232c31; --well:#11171a; --well-shadow:none;
+  --panel-shadow:none;
+  --ink:#dbe2df; --dim:#7f8c8e; --faint:#3a464c; --hair:#2c363b;
+  --amber:#ffb23e; --amber-on:#1d1406; --amber-ink:#ffb23e; --amber-mark:#ffb23e;
+  --amber-bg:#2a2012; --amber-edge:#4d3714;
+  --rust:#c9836f; --teal:#7cbfb4; --teal-bg:#15302d; --teal-edge:#275049;
+  --good:#8cc47a; --over:#e8604c; --scrim:rgba(5,8,10,.62);
+  color-scheme: dark;`;
+const V2_LIGHT = `
+  --stage:#c5ced4; --panel:#e6ebee; --panel-2:#f8fafb; --well:#dce2e6;
+  --well-shadow:inset 0 1px 2px rgba(25,40,52,.14); --panel-shadow:0 1px 2px rgba(25,40,52,.10);
+  --ink:#1e2529; --dim:#56626a; --faint:#b3bec4; --hair:#d2d9dd;
+  --amber:#ffb23e; --amber-on:#1d1406; --amber-ink:#9a5a00; --amber-mark:#b86e00;
+  --amber-bg:#fff1d9; --amber-edge:#e9c58c;
+  --rust:#b0412e; --teal:#1f7a6e; --teal-bg:#dcefeb; --teal-edge:#9fcfc6;
+  --good:#2e7d32; --over:#cf2b1a; --scrim:rgba(20,30,38,.45);
+  color-scheme: light;`;
+const V2_FONT = {
+  cond: '"Barlow Condensed", "Arial Narrow", system-ui, sans-serif',
+  body: 'Barlow, system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+};
+const V2_CSS = `
+  .ui-v2 { ${V2_LIGHT} }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ui-v2 { ${V2_DARK} } }
+  :root[data-theme="dark"] .ui-v2 { ${V2_DARK} }
+  .ui-v2 { background: var(--panel); color: var(--ink); font-family: ${V2_FONT.body}; }
+  .ui-v2 .v2-num { font-family: ${V2_FONT.mono}; font-variant-numeric: tabular-nums; }
+  .ui-v2 .v2-label { font-family: ${V2_FONT.mono}; font-weight: 600; font-size: 10px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .ui-v2 button { font-family: inherit; color: inherit; }
+  .ui-v2 input { font-family: ${V2_FONT.mono}; font-variant-numeric: tabular-nums; }
+  .ui-v2 :focus-visible { outline: 2px solid var(--amber-mark); outline-offset: 2px; }
+`;
+// Fonts load from Google; offline they fall back to the stacks above (sw.js passes
+// googleapis through and caches gstatic).
+const V2_FONTS_HREF = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap";
+
+function V2Styles() {
+  useEffect(() => {
+    if (document.getElementById("v2-fonts")) return;
+    const l = document.createElement("link");
+    l.id = "v2-fonts"; l.rel = "stylesheet"; l.href = V2_FONTS_HREF;
+    document.head.appendChild(l);
+  }, []);
+  return <style>{V2_CSS}</style>;
+}
+
+// ── V2 FOUNDATION: icons (§2.4, D12) — the 15-icon line set from mockups/icons.html ──
+// One meaning per icon. `filled` is only for the saved bookmark.
+const V2_ICONS = {
+  settings: `<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>`,
+  history:  `<path d="M4 20h16"/><path d="M7 16v-4M12 16V6M17 16V9"/>`,
+  trophy:   `<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5v1.5A3 3 0 0 0 8.5 10.5M16 6h2.5v1.5a3 3 0 0 1-3 3"/><path d="M12 13v5M8.5 20h7"/>`,
+  sparkle:  `<path d="M11 4l1.7 4.8L17.5 10.5l-4.8 1.7L11 17l-1.7-4.8L4.5 10.5l4.8-1.7z"/><path d="M18.5 15v5M16 17.5h5"/>`,
+  bookmark: `<path d="M7 4h10v16l-5-3.5L7 20z"/>`,
+  warning:  `<path d="M10.3 4.9 3.2 17.5A2 2 0 0 0 4.9 20.5h14.2a2 2 0 0 0 1.7-3L13.7 4.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/>`,
+  check:    `<path d="M5 12.5l4.5 4.5L19 7.5"/>`,
+  pencil:   `<path d="M15 5l4 4L9 19H5v-4z"/><path d="M13 7l4 4"/>`,
+  x:        `<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>`,
+  camera:   `<path d="M4 8.5a1.5 1.5 0 0 1 1.5-1.5H8l1.5-2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5V18a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.5"/>`,
+  photos:   `<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9.5" cy="10" r="1.5"/><path d="M20 15.5l-4.5-4.5L7 19"/>`,
+  mic:      `<rect x="9" y="3.5" width="6" height="10.5" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3.5"/>`,
+  lock:     `<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>`,
+  flame:    `<path d="M12 20.5a6 6 0 0 0 6-6c0-3.8-2.6-6-4-10-1.9 1.7-3 3.7-3 6-1-.8-1.5-1.8-1.6-3C7.6 9.3 6 11.7 6 14.5a6 6 0 0 0 6 6z"/>`,
+  water:    `<path d="M12 3.8c3 3.6 6 6.9 6 10.2a6 6 0 0 1-12 0c0-3.3 3-6.6 6-10.2z"/>`,
+};
+function Icon({ name, size = 20, filled = false, title, style }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill={filled ? "currentColor" : "none"}
+      stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+      role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : "true"}
+      style={{ flexShrink: 0, display: "block", ...style }}
+      dangerouslySetInnerHTML={{ __html: (title ? `<title>${title}</title>` : "") + (V2_ICONS[name] || "") }}/>
+  );
+}
+
+// ── V2 FOUNDATION: shared primitives (§2.3) — use these instead of pasting card styles ──
+// Panel: one raised group. `well` gives the recessed variant (gauge well, inputs).
+function Panel({ children, well = false, pad = 16, style, ...rest }) {
+  return (
+    <div {...rest} style={{ background: well ? "var(--well)" : "var(--panel-2)",
+      boxShadow: well ? "var(--well-shadow)" : "var(--panel-shadow)",
+      borderRadius: 16, padding: pad, ...style }}>{children}</div>
+  );
+}
+// Label: micro-label. Uppercase comes from CSS — type the text in normal case.
+function Label({ children, color, style, ...rest }) {
+  return <span {...rest} className="v2-label" style={{ ...(color ? { color } : {}), ...style }}>{children}</span>;
+}
+// Num: every figure is mono, tabular.
+function Num({ children, size = 15, weight = 500, color, style, ...rest }) {
+  return <span {...rest} className="v2-num" style={{ fontSize: size, fontWeight: weight,
+    ...(color ? { color } : {}), ...style }}>{children}</span>;
+}
+const v2fmt = n => Math.round(Number(n) || 0).toLocaleString("en-GB");
+// Buttons
+const V2_BTN = {
+  primary: { background: "var(--amber)", color: "var(--amber-on)", border: "none", borderRadius: 10,
+    fontFamily: V2_FONT.cond, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
+    minHeight: 40, padding: "0 16px", cursor: "pointer" },
+  outline: { background: "var(--amber-bg)", color: "var(--amber-ink)", border: "1px solid var(--amber-edge)",
+    borderRadius: 10, fontFamily: V2_FONT.cond, fontWeight: 700, letterSpacing: ".04em",
+    textTransform: "uppercase", minHeight: 40, padding: "0 16px", cursor: "pointer" },
+  quiet: { background: "transparent", color: "var(--ink)", border: "1px solid var(--hair)", borderRadius: 10,
+    fontFamily: V2_FONT.cond, fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase",
+    minHeight: 40, padding: "0 14px", cursor: "pointer" },
+  text: { background: "transparent", border: "none", color: "var(--dim)", padding: "6px 4px",
+    fontFamily: V2_FONT.body, fontSize: 13, cursor: "pointer" },
+};
+const V2_INPUT = { background: "var(--well)", boxShadow: "var(--well-shadow)", border: "1px solid var(--hair)",
+  borderRadius: 8, color: "var(--ink)", padding: "9px 10px", fontSize: 15, width: "100%", outline: "none" };
+// Bottom sheet over a dimmed screen (break-due, early-return confirm, …).
+function V2Sheet({ children, onScrim, label }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-label={label}
+      onClick={e => { if (e.target === e.currentTarget && onScrim) onScrim(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 900, background: "var(--scrim)",
+        display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 480, background: "var(--panel-2)", color: "var(--ink)",
+        borderRadius: "18px 18px 0 0", padding: "22px 20px calc(22px + env(safe-area-inset-bottom))" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION A — GAUGE · TARGET/EATEN · MACROS (§3.4–3.6, §4, D2–D4, D17, D19)
+// ─────────────────────────────────────────────────────────────────────────────
+// Spec: features/dashboard/07-gauge.feature, features/targets/02 (v2 scenarios).
+// Pure presentation over App's props (totals, targets, mode, prof, …).
+//
+// Layout note: TARGET · EATEN sit INSIDE the gauge well, as in every mockup, so V2Gauge
+// renders <V2TargetPair>. V2TargetEaten is kept (the shell calls it) but renders nothing,
+// which leaves the caution strip directly under the whole gauge (O1 proposal).
+
+// Gauge geometry, from mockups/a2.html: viewBox 0 -12 320 186, centre (160,150), r 138.
+const V2G = { cx: 160, cy: 150, r: 138 };
+const v2gPt = (f, r) => {           // f: 0 = E (left), 1 = F (right)
+  const t = Math.PI * (1 - f);
+  return [V2G.cx + r * Math.cos(t), V2G.cy - r * Math.sin(t)];
+};
+const v2gXY = ([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`;
+
+// The gauge's state (§4).
+//   band: "good" | "amber" | "over" (CUT only) | "neutral" (MAINTAIN / BULK, D19)
+//   fill: eaten / target, capped at 1 — no over-zone past F (D17)
+function v2GaugeState(eaten, target, mode) {
+  const e = Math.round(Number(eaten) || 0);
+  const t = Math.round(Number(target) || 0);
+  const overBy = e - t;                                        // > 0 means over
+  const fill = t > 0 ? Math.max(0, Math.min(1, e / t)) : 0;
+  let band = "neutral";
+  if (mode === "cut") band = overBy <= 0 ? "good" : overBy <= 250 ? "amber" : "over";
+  const mark = { good: "var(--good)", amber: "var(--amber-mark)", over: "var(--over)", neutral: "var(--dim)" }[band];
+  const text = { good: "var(--ink)", amber: "var(--amber-ink)", over: "var(--over)", neutral: "var(--ink)" }[band];
+  return { over: overBy > 0, left: Math.abs(overBy), fill, band, mark, text };
+}
+
+// "Auto would be N" — the automatic target for this mode. App doesn't hand v2 its baseTargets,
+// so derive it the way App does (calcTargets with the applied workout bonus, which targets
+// carries as `bonus`). An `autoKcal` prop wins if App ever passes one.
+function v2AutoKcal({ autoKcal, isCustomMode, targets, prof, mode, tdeeAdj }) {
+  if (autoKcal != null) return autoKcal;
+  if (!isCustomMode) return targets.kcal;
+  try {
+    return calcTargets(prof || DEF_PROFILE, MODES[mode] ? mode : "cut", targets.bonus || 0, tdeeAdj || 0, 0).kcal;
+  } catch { return null; }
+}
+
+function V2Gauge(props) {
+  const { totals, targets, mode } = props;
+  const g = v2GaugeState(totals.kcal, targets.kcal, mode);
+  const end = v2gPt(g.fill, V2G.r);
+  // Pointer: a small triangle just outside the arc, pointing in at it. At F it points left.
+  const tip = v2gPt(g.fill, V2G.r + 5), base = v2gPt(g.fill, V2G.r + 16);
+  const ang = Math.PI * (1 - g.fill), px = 5 * Math.sin(ang), py = 5 * Math.cos(ang);
+  const pointer = `M${v2gXY(tip)} L${v2gXY([base[0] + px, base[1] + py])} L${v2gXY([base[0] - px, base[1] - py])} Z`;
+  const ticks = Array.from({ length: 11 }, (_, i) => {
+    const f = i / 10, a = v2gPt(f, 130), b = v2gPt(f, i === 0 || i === 10 ? 114 : 118);
+    return <line key={i} x1={a[0].toFixed(1)} y1={a[1].toFixed(1)} x2={b[0].toFixed(1)} y2={b[1].toFixed(1)}
+      style={{ stroke: i === 5 ? "color-mix(in srgb, var(--faint) 55%, var(--dim))" : "var(--faint)" }}/>;
+  });
+  const caption = g.over ? "over" : "still to go";
+  return (
+    <Panel well pad="14px 16px 18px" data-testid="v2-gauge" data-band={g.band} data-fill={g.fill.toFixed(3)}
+      style={{ borderRadius: 22 }} role="group" aria-label={`${v2fmt(g.left)} kcal ${caption}`}>
+      <svg viewBox="0 -12 320 186" aria-hidden="true" style={{ display: "block", width: "100%", height: "auto" }}>
+        <g strokeWidth="2" strokeLinecap="round">{ticks}</g>
+        <path d="M22 150 A 138 138 0 0 1 298 150" fill="none" strokeWidth="4" style={{ stroke: "var(--hair)" }}/>
+        {g.fill > 0 && (
+          <path data-testid="v2-gauge-arc" d={`M22 150 A 138 138 0 0 1 ${v2gXY(end)}`} fill="none" strokeWidth="4"
+            style={{ stroke: g.mark }}/>
+        )}
+        <path data-testid="v2-gauge-pointer" d={pointer} style={{ fill: g.mark }}/>
+        <text x="16" y="172" style={{ fill: "var(--dim)", fontFamily: V2_FONT.mono, fontSize: 12, fontWeight: 700 }}>E</text>
+        <text x="296" y="172" style={{ fill: "var(--dim)", fontFamily: V2_FONT.mono, fontSize: 12, fontWeight: 700 }}>F</text>
+      </svg>
+      <div style={{ textAlign: "center", marginTop: -86, position: "relative" }}>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, color: g.text }}>
+          <Num data-testid="v2-gauge-readout" size={68} weight={600}
+            style={{ lineHeight: 1, letterSpacing: "-.04em" }}>{v2fmt(g.left)}</Num>
+          <Num size={15} weight={500}>kcal</Num>
+        </span>
+        <span data-testid="v2-gauge-caption" style={{ display: "block", fontFamily: V2_FONT.body, fontWeight: 500,
+          fontSize: 14, marginTop: 4, color: g.over ? "var(--ink)" : "var(--dim)" }}>{caption}</span>
+      </div>
+      <V2TargetPair {...props}/>
+    </Panel>
+  );
+}
+
+// TARGET · EATEN, centred, no sum (D3). TARGET opens the inline override (D4, targets/02) with
+// v1's behaviour (Enter/blur commits, Escape cancels) plus "Auto would be N · Use auto".
+// It calls onSetCustomKcal exactly as v1's pill does (so bug B4 behaves as in v1).
+function V2TargetPair(props) {
+  const { totals, targets, onSetCustomKcal = () => {}, isCustomMode } = props;
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  const cancelled = React.useRef(false);
+  const auto = v2AutoKcal(props);
+
+  const open = () => { cancelled.current = false; setVal(String(targets.kcal)); setEditing(true); };
+  const commit = () => {
+    if (cancelled.current) { cancelled.current = false; return; }
+    const v = parseInt(val, 10);
+    // Unchanged → the target stays as it was (targets/02 "taps away without changing").
+    if (v > 0 && v !== targets.kcal) { haptic(); onSetCustomKcal(v); }
+    setEditing(false);
+  };
+  const useAuto = () => { cancelled.current = true; haptic(); onSetCustomKcal(null); setEditing(false); };
+
+  const lab = { fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, letterSpacing: ".16em",
+    textTransform: "uppercase", color: "var(--dim)", textAlign: "center" };
+  const fig = { display: "block", fontFamily: V2_FONT.mono, fontWeight: 500, fontSize: 17,
+    fontVariantNumeric: "tabular-nums", letterSpacing: 0, textTransform: "none", color: "var(--ink)", marginTop: 4 };
+  return (
+    <div data-testid="v2-target-eaten">
+      <div style={{ display: "flex", justifyContent: "center", gap: 44, marginTop: 20 }}>
+        <div style={{ ...lab, ...(editing ? { color: "var(--amber-ink)" } : {}) }}>
+          <span id="v2-target-label">Target</span>
+          {editing ? (
+            <input data-testid="v2-target-input" aria-labelledby="v2-target-label"
+              type="number" inputMode="numeric" value={val} autoFocus
+              onChange={e => setVal(e.target.value)} onBlur={commit}
+              onFocus={e => e.target.select()}
+              onKeyDown={e => {
+                if (e.key === "Enter") e.target.blur();
+                if (e.key === "Escape") { cancelled.current = true; setEditing(false); }
+              }}
+              style={{ ...fig, width: "6ch", margin: "4px auto 0", padding: 0, textAlign: "center",
+                background: "none", border: "none", borderBottom: "2px solid var(--amber-ink)", borderRadius: 0,
+                color: "var(--amber-ink)", outline: "none", MozAppearance: "textfield" }}/>
+          ) : (
+            <button data-testid="v2-target" data-custom={isCustomMode ? "1" : "0"} onClick={open}
+              aria-label={`Target ${v2fmt(targets.kcal)} kcal, tap to set your own`}
+              style={{ ...fig, background: "none", border: "none", padding: 0, cursor: "pointer",
+                textDecoration: "underline dashed", textDecorationColor: "var(--dim)",
+                textDecorationThickness: 1, textUnderlineOffset: 6 }}>{v2fmt(targets.kcal)}</button>
+          )}
+        </div>
+        <div style={lab}>
+          <span>Eaten</span>
+          <span data-testid="v2-eaten" style={fig}>{v2fmt(totals.kcal)}</span>
+        </div>
+      </div>
+      {editing && (
+        <div data-testid="v2-target-edit" style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          marginTop: 18, paddingTop: 12, borderTop: "1px solid var(--faint)",
+          fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>
+          <span>Auto would be <Num data-testid="v2-target-auto" size={13} color="var(--ink)">{auto != null ? v2fmt(auto) : "–"}</Num></span>
+          {isCustomMode && (
+            <button data-testid="v2-target-use-auto" onMouseDown={e => e.preventDefault()} onClick={useAuto}
+              style={{ background: "none", border: "none", padding: "6px 0", cursor: "pointer",
+                fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, color: "var(--amber-ink)" }}>Use auto</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+function V2TargetEaten() {
+  return null;   // rendered inside the gauge well by V2Gauge (see the note at the top of REGION A)
+}
+
+// Macro tapes: PRO · CARB · FAT on one row. Neutral fill, amber pointer, no good/bad colour.
+function V2Tape({ id, label, value, target }) {
+  const v = Math.round(Number(value) || 0), t = Math.round(Number(target) || 0);
+  const pct = t > 0 ? Math.max(0, Math.min(100, (v / t) * 100)) : 0;
+  return (
+    <div data-testid={`v2-macro-${id}`} data-pct={pct.toFixed(1)} style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: V2_FONT.mono, fontWeight: 600,
+        fontSize: 11, letterSpacing: ".14em", color: "var(--dim)" }}>
+        <span style={{ textTransform: "uppercase" }}>{label}</span><span>g</span>
+      </div>
+      <div data-testid={`v2-macro-${id}-value`} className="v2-num" style={{ fontSize: 15, fontWeight: 500, marginTop: 6, color: "var(--ink)" }}>
+        {v}<span style={{ color: "var(--dim)", fontSize: 12 }}>/{t}</span>
+      </div>
+      <div aria-hidden="true" style={{ height: 16, marginTop: 6, position: "relative",
+        background: "repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px 10%) bottom / 100% 6px no-repeat" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, background: "var(--faint)" }}/>
+        <div style={{ position: "absolute", left: 0, bottom: 0, height: 6, width: `${pct}%`,
+          background: "var(--ink)", opacity: .85, transition: "width .4s" }}/>
+        <div data-testid={`v2-macro-${id}-pointer`} style={{ position: "absolute", top: 0, left: `${pct}%`, width: 0, height: 0,
+          borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+          borderTop: "6px solid var(--amber-mark)", transform: "translateX(-5px)", transition: "left .4s" }}/>
+      </div>
+    </div>
+  );
+}
+function V2Macros({ totals, targets }) {
+  return (
+    <div data-testid="v2-macros" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, paddingTop: 8 }}>
+      <V2Tape id="protein" label="Pro"  value={totals.protein} target={targets.protein}/>
+      <V2Tape id="carbs"   label="Carb" value={totals.carbs}   target={targets.carbs}/>
+      <V2Tape id="fat"     label="Fat"  value={totals.fat}     target={targets.fat}/>
+    </div>
+  );
+}
+// ── end REGION A ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION B — LOG FOOD · QUICK ADD · MEAL ROWS + INLINE EDITOR (§3.7–3.8, §5, D7, D8)
+// ─────────────────────────────────────────────────────────────────────────────
+// Spec: features/logging/11-tap-row-to-edit.feature · e2e/v2-meals.spec.js
+// Presentation only: every write goes through App's handlers (updateLog, removeLog, addToQA),
+// and the re-estimate reuses AI_REESTIMATE_PROMPT + callAIJson exactly as v1's EntryEditor does.
+
+// "Text" glyph for LOG FOOD (three lines). Not one of the 15 icons — it is a mark inside the
+// button, not a meaning of its own — drawn on the same 24px grid and stroke.
+function V2TextGlyph({ size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
+      strokeWidth="1.75" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
+      <path d="M4 6.5h16M4 12h16M4 17.5h10"/>
+    </svg>
+  );
+}
+
+const V2_CHIP = { fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9, letterSpacing: ".1em",
+  border: "1px solid currentColor", borderRadius: 4, padding: "2px 4px", lineHeight: 1 };
+
+function V2LogButtons({ setView, authState, onPremiumGate = () => {} }) {
+  const isPremium = authState === "premium";
+  // Free users: as v1 Dashboard — the AI log is premium, so the tap opens the premium gate.
+  const logFood = () => isPremium ? setView("ai") : onPremiumGate({ emoji: "🤖", name: "AI LOG" });
+  return (
+    <div data-testid="v2-log-buttons" style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <button type="button" data-testid="v2-log-food" onClick={logFood}
+        aria-label={isPremium ? "Log food" : "Log food (premium)"}
+        style={{ flex: 1, minWidth: 0, height: 60, borderRadius: 14, border: "none", cursor: "pointer",
+          background: "var(--amber)", color: "var(--amber-on)", display: "flex", alignItems: "center",
+          gap: 8, padding: "0 12px 0 14px", overflow: "hidden" }}>
+        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 21, letterSpacing: ".04em",
+          textTransform: "uppercase", flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Log food</span>
+        <span style={{ display: "flex", gap: 6, color: "var(--amber-on)" }}>
+          <Icon name="camera" size={18}/><Icon name="mic" size={18}/><V2TextGlyph size={18}/>
+        </span>
+        {/* Free users: the lock takes the AI chip's place, so the button fits at 360–390px. */}
+        {isPremium ? <span style={V2_CHIP}>AI</span>
+          : <span data-testid="v2-log-food-lock" style={{ display: "flex" }}><Icon name="lock" size={16}/></span>}
+      </button>
+      <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
+        aria-label="Quick add, saved meals"
+        style={{ width: 94, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
+          background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
+          display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
+        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
+          textTransform: "uppercase" }}>Quick add</span>
+        <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
+          opacity: .75 }}>saved meals</span>
+      </button>
+    </div>
+  );
+}
+
+const v2g = n => Math.round(Number(n) || 0);   // grams on the collapsed row: whole numbers
+
+// One collapsed or expanded meal row. The editor's state lives here and is reset from the
+// stored entry every time the row opens, so collapsing (or opening another row) throws
+// unsaved edits away — open issue O5.
+function V2MealRow({ log, open, onToggle, updateLog, removeLog, addToQA, isPremium, onPremiumGate }) {
+  const blank = () => ({ name: log.name, kcal: String(log.kcal), protein: String(log.protein),
+    carbs: String(log.carbs), fat: String(log.fat) });
+  const [f, setF] = useState(blank);
+  const [reest, setReest] = useState(false);
+  const [reestMsg, setReestMsg] = useState("");   // "" | "done" | error text
+  const [qaSaved, setQaSaved] = useState(0);      // taps on Save to Quick Add (re-blinks each)
+  useEffect(() => { if (open) { setF(blank()); setReest(false); setReestMsg(""); setQaSaved(0); } },
+    [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setReestMsg(""); };
+
+  const patch = () => ({
+    name:    f.name.trim() || log.name,
+    kcal:    Math.round(Number(f.kcal) || 0),
+    protein: Math.round((Number(f.protein) || 0) * 10) / 10,
+    carbs:   Math.round((Number(f.carbs)   || 0) * 10) / 10,
+    fat:     Math.round((Number(f.fat)     || 0) * 10) / 10,
+  });
+  const save   = () => { updateLog(log.id, patch()); onToggle(null); };
+  const del    = () => { removeLog(log.id); onToggle(null); };
+  // Saves what is in the editor now (the name as typed), without saving the entry itself.
+  const saveQA = async () => { await addToQA({ ...log, ...patch() }); setQaSaved(n => n + 1); };
+
+  // Same call, same guards as v1 EntryEditor.reestimate (features/logging/01, /07).
+  const reestimate = async () => {
+    if (!isPremium) { onPremiumGate({ emoji: "✨", name: "AI re-estimate" }); return; }
+    if (!f.name.trim() || reest) return;
+    setReest(true); setReestMsg("");
+    let upd;
+    try { upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300); }
+    catch (e) { setReestMsg("Couldn't reach the estimate. Check your connection and try again."); setReest(false); return; }
+    // Never claim "Updated" with blank fields (v1 F4): a silent zero would reach calibration.
+    if (!upd || !isFinite(Number(upd.kcal))) {
+      setReestMsg("Couldn't estimate that. Try rephrasing the name."); setReest(false); return;
+    }
+    setF(p => ({ ...p,
+      kcal:    String(Math.round(upd.kcal)),
+      protein: String(Math.round(upd.protein * 10) / 10),
+      carbs:   String(Math.round(upd.carbs   * 10) / 10),
+      fat:     String(Math.round(upd.fat     * 10) / 10),
+    }));
+    setReestMsg("done"); setReest(false);
+  };
+
+  const time = { fontFamily: V2_FONT.mono, fontSize: 12, lineHeight: "22px", fontVariantNumeric: "tabular-nums" };
+  const fl = { display: "block", fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9.5, letterSpacing: ".16em",
+    textTransform: "uppercase", color: "var(--dim)", marginBottom: 5 };
+  const inp = { ...V2_INPUT, height: 40, boxSizing: "border-box", padding: "9px 9px", fontWeight: 500, minWidth: 0 };
+  const act = { height: 36, padding: "0 12px", borderRadius: 8, border: "none", cursor: "pointer",
+    fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
+    display: "inline-flex", alignItems: "center", gap: 6 };
+  const num = (k, label, mode) => (
+    <label style={{ minWidth: 0 }}>
+      <span style={fl}>{label}</span>
+      <input value={f[k]} onChange={e => set(k, e.target.value)} inputMode={mode}
+        data-testid={"v2-meal-" + k} style={inp}/>
+    </label>
+  );
+
+  if (!open) return (
+    <button type="button" data-testid="v2-meal-row" data-id={log.id} aria-expanded="false"
+      onClick={() => onToggle(log.id)}
+      style={{ display: "grid", gridTemplateColumns: "52px 1fr auto", columnGap: 8, width: "100%",
+        padding: "14px 0", background: "transparent", border: "none", borderBottom: "1px solid var(--hair)",
+        textAlign: "left", cursor: "pointer", color: "var(--ink)" }}>
+      <span style={{ ...time, color: "var(--dim)" }}>{log.time}</span>
+      <span data-testid="v2-meal-title" style={{ fontFamily: V2_FONT.body, fontWeight: 500, fontSize: 16,
+        lineHeight: "22px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.name}</span>
+      <Num size={16} style={{ lineHeight: "22px", textAlign: "right" }} data-testid="v2-meal-kcal">{v2fmt(log.kcal)}</Num>
+      <span className="v2-num" data-testid="v2-meal-macros"
+        style={{ gridColumn: 2, fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
+        <b style={{ fontWeight: 500, color: "var(--ink)" }}>P {v2g(log.protein)}</b> · C {v2g(log.carbs)} · F {v2g(log.fat)}
+      </span>
+    </button>
+  );
+
+  return (
+    <div data-testid="v2-meal-editor" data-id={log.id} role="group" aria-label={"Editing " + log.name}
+      style={{ background: "var(--panel-2)", boxShadow: "var(--panel-shadow)", margin: "0 -12px", color: "var(--ink)",
+        padding: "10px 12px 16px", borderRadius: 12 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {/* Tapping the header collapses and discards (O5) */}
+        <button type="button" data-testid="v2-meal-row" data-id={log.id} aria-expanded="true"
+          aria-label={log.name + ", editing. Close without saving"} onClick={() => onToggle(null)}
+          style={{ flex: 1, display: "grid", gridTemplateColumns: "52px 1fr", columnGap: 8, background: "transparent",
+            border: "none", padding: 0, textAlign: "left", cursor: "pointer", minHeight: 36, alignItems: "center" }}>
+          <span style={{ ...time, color: "var(--amber-ink)" }}>{log.time}</span>
+          <span style={{ fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, lineHeight: "22px",
+            letterSpacing: ".16em", textTransform: "uppercase", color: "var(--dim)" }}>Editing</span>
+        </button>
+        <button type="button" data-testid="v2-meal-cancel" onClick={() => onToggle(null)}
+          style={{ ...V2_BTN.text, minHeight: 36 }}>Cancel</button>
+      </div>
+
+      <div style={{ marginTop: 6 }}>
+        <label style={{ display: "block" }}>
+          <span style={fl}>Name</span>
+          <input value={f.name} onChange={e => set("name", e.target.value)} data-testid="v2-meal-name"
+            style={{ ...inp, fontFamily: V2_FONT.body, fontWeight: 400, padding: "9px 11px" }}/>
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr 1fr 1fr", gap: 6, marginTop: 12 }}>
+          {num("kcal", "Kcal", "numeric")}
+          {num("protein", "Protein", "decimal")}
+          {num("carbs", "Carbs", "decimal")}
+          {num("fat", "Fat", "decimal")}
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14, alignItems: "center" }}>
+          <button type="button" data-testid="v2-meal-save" onClick={save}
+            style={{ ...act, background: "var(--amber)", color: "var(--amber-on)", padding: "0 18px" }}>Save</button>
+          <button type="button" data-testid="v2-meal-saveqa" onClick={saveQA}
+            key={"qa-" + qaSaved} aria-pressed={qaSaved > 0}
+            style={{ ...act, background: "var(--well)", color: qaSaved ? "var(--amber-ink)" : "var(--ink)",
+              animation: qaSaved ? "blink_add 0.4s ease-out" : "none" }}>
+            {qaSaved > 0 && <Icon name="bookmark" size={15} filled/>}
+            {qaSaved > 0 ? "Saved to Quick Add" : "Save to Quick Add"}
+          </button>
+          <button type="button" data-testid="v2-meal-delete" onClick={del}
+            style={{ ...act, background: "transparent", color: "var(--rust)", padding: "0 4px", marginLeft: "auto" }}>Delete</button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10,
+          borderTop: "1px solid var(--faint)" }}>
+          <button type="button" data-testid="v2-meal-reestimate" onClick={reestimate} disabled={reest}
+            aria-busy={reest || undefined}
+            style={{ ...act, flex: 1, justifyContent: "center", background: "var(--well)",
+              border: "1px solid var(--amber-edge)", color: "var(--amber-ink)", opacity: reest ? .7 : 1 }}>
+            {reestMsg === "done" && !reest && <Icon name="check" size={15}/>}
+            {reest ? "Re-estimating…" : reestMsg === "done" ? "Updated" : "Re-estimate from name"}
+          </button>
+          <span data-testid="v2-meal-pro" style={{ fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9,
+            letterSpacing: ".1em", textTransform: "uppercase", color: "var(--dim)" }}>Pro</span>
+        </div>
+        {reestMsg && reestMsg !== "done" && (
+          <div role="alert" data-testid="v2-meal-reestimate-error"
+            style={{ fontSize: 12, color: "var(--rust)", marginTop: 8, lineHeight: 1.4 }}>{reestMsg}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function V2MealList({ logs = [], totals, updateLog, removeLog, addToQA, authState, onPremiumGate = () => {} }) {
+  const [openId, setOpenId] = useState(null);
+  const isPremium = authState === "premium";
+  // A row deleted elsewhere (or a new day) cannot stay "open".
+  const openLive = logs.some(l => l.id === openId) ? openId : null;
+  const kcal = totals ? totals.kcal : logs.reduce((s, l) => s + (Number(l.kcal) || 0), 0);
+  const n = logs.length;
+  return (
+    <section data-testid="v2-meals" aria-label="Eaten today" style={{ marginTop: 10, color: "var(--ink)" }}>
+      <div data-testid="v2-meals-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        paddingBottom: 10, borderBottom: "1px solid var(--faint)" }}>
+        <Label style={{ fontSize: 11, letterSpacing: ".16em" }}>Eaten today</Label>
+        {n > 0 && <Num size={12} data-testid="v2-meals-summary" style={{ letterSpacing: ".04em" }}>
+          {n} item{n !== 1 ? "s" : ""} · {v2fmt(kcal)}</Num>}
+      </div>
+      {n === 0 ? (
+        <div data-testid="v2-meals-empty" style={{ fontSize: 13, color: "var(--dim)", padding: "14px 0 0" }}>
+          Nothing logged yet today.
+        </div>
+      ) : (
+        <>
+          {/* Chronological, as logged (mockup a2: 07:45 → 12:30 → 15:10) */}
+          {logs.map(log => (
+            <V2MealRow key={log.id} log={log} open={openLive === log.id} onToggle={setOpenId}
+              updateLog={updateLog} removeLog={removeLog} addToQA={addToQA}
+              isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+          ))}
+          <p data-testid="v2-meals-hint" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)", padding: "12px 0 0 60px" }}>
+            Tap a meal to edit.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+// ── end REGION B ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION C — WATER · WEIGHT/TDEE · MEASUREMENTS · WORKOUT · LAST 7 DAYS (§3.9–3.13, D9)
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared bits for this region. A "cell" is one small raised group (mockup .cell): radius 14,
+// a micro-label cap row, then the content. Kept local so regions stay independent.
+const V2C_CELL = { borderRadius: 14, padding: "13px 14px 14px", color: "var(--ink)" }; // explicit ink: App's wrapper sets an inline #fff
+const V2C_SUB = { fontFamily: V2_FONT.body, fontSize: 12, color: "var(--dim)", marginTop: 4, lineHeight: 1.35 };
+// The small "go" action in a row (mockup .go): well background, amber text.
+const V2C_GO = { height: 36, padding: "0 12px", borderRadius: 8, background: "var(--well)",
+  boxShadow: "var(--well-shadow)", border: "none", color: "var(--amber-ink)", fontFamily: V2_FONT.body,
+  fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer", flexShrink: 0 };
+const V2C_SQ = { width: 36, height: 36, borderRadius: 9, background: "var(--well)", boxShadow: "var(--well-shadow)",
+  border: "none", color: "var(--ink)", display: "grid", placeItems: "center", fontFamily: V2_FONT.mono,
+  fontWeight: 500, fontSize: 18, cursor: "pointer", flexShrink: 0, padding: 0 };
+// A label-styled button (cap-row actions such as "Paste log · Pro", "Log" beside the kg field).
+const V2C_CAPBTN = { background: "none", border: "none", padding: "6px 0", margin: "-6px 0", cursor: "pointer",
+  fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase" };
+
+function V2Cap({ children, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, minHeight: 14 }}>
+      <Label>{children}</Label>
+      {right}
+    </div>
+  );
+}
+// The quiet due state (D9): an amber dot plus "DUE". Never a pop-up.
+function V2Due({ testid, what }) {
+  return (
+    <span data-testid={testid} role="status" aria-label={`${what} due`}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--amber-mark)" }}/>
+      <Label color="var(--amber-ink)">Due</Label>
+    </span>
+  );
+}
+const v2DaysAgo = key => key == null ? null
+  : Math.max(0, Math.floor((new Date(todayKey() + "T00:00:00").getTime() - new Date(key + "T00:00:00").getTime()) / 86400000));
+const v2AgoText = n => n === 0 ? "today" : n === 1 ? "1 day ago" : `${n} days ago`;
+const v2Cap1 = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+
+// ── 9. WATER ────────────────────────────────────────────────────────────────
+function V2Water({ water = 0, setWater = () => {} }) {
+  const n = Math.max(0, Number(water) || 0);
+  return (
+    <Panel data-testid="v2-water" style={V2C_CELL}>
+      <V2Cap right={<Label data-testid="v2-water-count">{n} / 8 glasses</Label>}>Water</V2Cap>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+        <button data-testid="v2-water-minus" aria-label="Remove a glass of water" disabled={n === 0}
+          onClick={() => { haptic(); setWater(Math.max(0, n - 1)); }}
+          style={{ ...V2C_SQ, opacity: n === 0 ? 0.5 : 1, cursor: n === 0 ? "default" : "pointer" }}>−</button>
+        <div role="meter" aria-label="Water today" aria-valuemin={0} aria-valuemax={8} aria-valuenow={Math.min(n, 8)}
+          aria-valuetext={`${n} of 8 glasses`}
+          style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 3 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <i key={i} data-filled={i < n ? "1" : "0"}
+              style={{ height: 18, borderRadius: 2, transition: "background .2s",
+                background: i < n ? "var(--dim)" : "var(--well)", boxShadow: i < n ? "none" : "var(--well-shadow)",
+                border: "1px solid var(--hair)" }}/>
+          ))}
+        </div>
+        <button data-testid="v2-water-plus" aria-label="Add a glass of water"
+          onClick={() => { haptic(); setWater(n + 1); }} style={V2C_SQ}>+</button>
+      </div>
+    </Panel>
+  );
+}
+
+// ── 10. WEIGHT | EST. TDEE ──────────────────────────────────────────────────
+// Same handlers and rules as v1 WeighInWidget: onWeighIn upserts by date, so "Change" on
+// today's reading just re-shows the field (v96). Units come from the same getWUnit() the
+// profile writes. The weigh-in nudge becomes a quiet DUE on the cap instead of a card.
+function V2WeightTdee({ weighIns = [], onWeighIn = () => {}, tdeeAdj = 0, baseTDEE = 0, tdeeFloor,
+    correctionHeld = false, showWeighNudge = false }) {
+  const [val, setVal]   = useState("");
+  const [val2, setVal2] = useState("");
+  const [editing, setEditing] = useState(false);
+  const wUnit = getWUnit();
+  const entryKg = wUnit === "st" ? stLbToKg(val || 0, val2 || 0)
+                : wUnit === "lb" ? lbToKg(val || 0)
+                : Number(val);
+  const todayEntry = weighIns.find(w => w.date === todayKey());
+  const showInput  = !todayEntry || editing;
+  const canLog     = entryKg > 0;
+  const submit = () => {
+    if (!canLog) return;
+    haptic(); onWeighIn(entryKg); setVal(""); setVal2(""); setEditing(false);
+  };
+  const cancel = () => { setEditing(false); setVal(""); setVal2(""); };
+  const due = showWeighNudge && !todayEntry;
+
+  // Rolling-average trend — the same two-window comparison v1's badge uses.
+  const trend7 = (() => {
+    const now = new Date(Date.now() + getDevDateOffset() * 86400000);
+    const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+    const recentAvg = weighRollingAvg(weighIns, dateKey(new Date(now.getTime() + 86400000)), 7);
+    const olderAvg  = weighRollingAvg(weighIns, dateKey(weekAgo), 7);
+    if (recentAvg == null || olderAvg == null) return null;
+    const t = Math.round((recentAvg - olderAvg) * 10) / 10;
+    return wUnit === "kg" ? t : Math.round(t * LB_PER_KG * 10) / 10;
+  })();
+
+  const n = weighIns.length;
+  const confidence  = n >= 28 ? "Calibrated" : n >= 14 ? "Learning" : "Estimating";
+  const calibrating = n >= CAL_MIN_WEIGHINS;
+  const tdee = Math.max(tdeeFloor == null ? baseTDEE : tdeeFloor, baseTDEE + tdeeAdj);
+  const tdeeSub = !calibrating ? "Settles as you weigh in"
+    : correctionHeld ? "Held while you cut"
+    : tdeeAdj === 0 ? "Matches your trend"
+    : `Adjusted ${tdeeAdj > 0 ? "up" : "down"} to your trend`;
+
+  const inp = { ...V2_INPUT, height: 36, padding: "6px 10px", fontSize: 14, minWidth: 0 };
+  return (
+    <div data-testid="v2-weight" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <Panel data-testid="v2-weight-cell" style={V2C_CELL}>
+        <V2Cap right={due ? <V2Due testid="v2-weight-due" what="Weigh-in"/> : null}>Weight</V2Cap>
+        {showInput ? (
+          <>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+              {wUnit === "st" ? (
+                <>
+                  <input data-testid="v2-weight-input" type="number" min="0" inputMode="numeric" value={val}
+                    aria-label="stone today" placeholder="st" onChange={e => setVal(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && submit()} style={{ ...inp, flex: 1 }}/>
+                  <input data-testid="v2-weight-input-lb" type="number" min="0" max="13" inputMode="numeric" value={val2}
+                    aria-label="pounds today" placeholder="lb" onChange={e => setVal2(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && submit()} style={{ ...inp, flex: 1 }}/>
+                </>
+              ) : (
+                <input data-testid="v2-weight-input" type="number" step="0.1" min="0" inputMode="decimal"
+                  max={wUnit === "lb" ? 660 : 300} value={val} placeholder={wUnit}
+                  aria-label={`Weight today in ${wUnit}`} onChange={e => setVal(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && submit()} style={{ ...inp, flex: 1 }}/>
+              )}
+              <button data-testid="v2-weight-log" onClick={submit} disabled={!canLog}
+                aria-label={todayEntry ? "Update today's weight" : "Log weight"}
+                style={{ ...V2C_CAPBTN, fontSize: 11, padding: "10px 2px", margin: 0,
+                  color: canLog ? "var(--amber-ink)" : "var(--dim)", cursor: canLog ? "pointer" : "default" }}>
+                {todayEntry ? "Update" : "Log"}
+              </button>
+            </div>
+            {editing
+              ? <button onClick={cancel} style={{ ...V2_BTN.text, padding: "4px 0", fontSize: 12 }}>Cancel</button>
+              : <div style={V2C_SUB}>{due ? "A quick weigh-in keeps targets true" : "Not logged today"}</div>}
+          </>
+        ) : (
+          <>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+              <Num data-testid="v2-weight-today" size={22}>
+                {wUnit === "st"
+                  ? (() => { const { st, lb } = kgToStLb(todayEntry.weight);
+                      return <>{st}<span style={{ fontSize: 12, color: "var(--dim)" }}> st </span>{lb}</>; })()
+                  : wChartNum(todayEntry.weight, wUnit)}
+                <span style={{ fontSize: 12, color: "var(--dim)" }}> {wUnit === "st" ? "lb" : wChartUnit(wUnit)}</span>
+              </Num>
+              <button data-testid="v2-weight-change" onClick={() => setEditing(true)} aria-label="Change today's weight"
+                style={{ ...V2_BTN.text, padding: "2px 0", fontSize: 12, textDecoration: "underline dashed",
+                  textUnderlineOffset: 4 }}>Change</button>
+            </div>
+            <div style={V2C_SUB}>
+              {trend7 == null ? "Logged today"
+                : <><Num size={12} color="var(--ink)">{trend7 > 0 ? "+" : trend7 < 0 ? "−" : ""}{Math.abs(trend7)} {wUnit === "kg" ? "kg" : "lb"}</Num> a week</>}
+            </div>
+          </>
+        )}
+      </Panel>
+      <Panel data-testid="v2-tdee-cell" style={V2C_CELL}>
+        <V2Cap right={<Label data-testid="v2-tdee-confidence"
+          color={calibrating && n >= 28 ? "var(--dim)" : "var(--amber-ink)"}>{confidence}</Label>}>Est. TDEE</V2Cap>
+        <div style={{ marginTop: 8 }}>
+          <Num data-testid="v2-tdee" size={22}>~{v2fmt(tdee)}<span style={{ fontSize: 12, color: "var(--dim)" }}> kcal</span></Num>
+        </div>
+        <div style={V2C_SUB}>{tdeeSub}</div>
+      </Panel>
+    </div>
+  );
+}
+
+// ── 11. MEASUREMENTS (D9) ───────────────────────────────────────────────────
+// A permanent row. Due = amber dot + DUE (showMeasurementNudge, the same signal v1's pop-up
+// used). Log opens an inline form; the save path is v1 MeasurementRow's, verbatim in logic.
+function V2Measurements({ bodyMeasurements = [], onMeasurement = () => {}, measurementNote = "",
+    onSaveMeasurementNote = () => {}, showMeasurementNudge = false, prof }) {
+  const measurements = bodyMeasurements;
+  const sex = prof?.sex;
+  const [open, setOpen] = useState(false);
+  const [neck,  setNeck]  = useState("");
+  const [waist, setWaist] = useState("");
+  const [hip,   setHip]   = useState("");
+  const [localNote, setLocalNote] = useState("");
+  const [justSaved, setJustSaved] = useState(null);
+
+  const formula = bodyMeasurementFormula(sex);
+  const last = measurements.length ? measurements[measurements.length - 1] : null;
+  const isFirstEver = measurements.length === 0;
+  const neckNum = Number(neck), waistNum = Number(waist), hipNum = Number(hip);
+  const filledIn = neckNum > 0 && waistNum > 0 && (formula === "male" || hipNum > 0);
+  const domainOk = formula === "male" ? waistNum > neckNum : (waistNum + hipNum - neckNum > 0);
+  const canSave  = filledIn && domainOk;
+  const prevReading = (() => {
+    const before = measurements.filter(m => m.date < todayKey());
+    return before.length ? before[before.length - 1] : null;
+  })();
+  const remindersOn = weighCadenceOf(prof) !== "off";
+
+  const save = async () => {
+    if (!canSave) return;
+    haptic();
+    const before = prevReading;
+    const entered = { neck: neckNum, waist: waistNum, hip: formula === "female" ? hipNum : null };
+    const bf = await onMeasurement(entered);
+    if (isFirstEver && localNote.trim()) onSaveMeasurementNote(localNote.trim());
+    if (bf != null) {
+      const after = [...measurements.filter(m => m.date !== todayKey()),
+        { ...entered, date: todayKey(), formula, computed_bf: bf }]
+        .sort((a, b) => a.date.localeCompare(b.date));
+      setJustSaved({ bf, daysAgo: v2DaysAgo(before?.date),
+        changes: measurementSiteChanges(before, entered),
+        windowChange: bodyFatWindowChange(after, sex),
+        windowFrom: bodyFatWindowRows(after, sex)?.before.date });
+    }
+    setNeck(""); setWaist(""); setHip(""); setLocalNote("");
+  };
+  const close = () => { setOpen(false); setJustSaved(null); setNeck(""); setWaist(""); setHip(""); };
+
+  const fmtCm = v => (Math.round(Number(v) * 10) / 10).toString();
+  const reading = last
+    ? [["Neck", last.neck], ["Waist", last.waist], ...(last.hip != null ? [["Hip", last.hip]] : [])]
+        .map(([k, v]) => `${k} ${fmtCm(v)}`).join(" · ") + " cm"
+    : null;
+  const inp = { ...V2_INPUT, flex: 1, minWidth: 0, textAlign: "center", height: 38 };
+
+  return (
+    <Panel data-testid="v2-measurements" style={V2C_CELL}>
+      <V2Cap right={showMeasurementNudge ? <V2Due testid="v2-measure-due" what="Measurements"/> : null}>Measurements</V2Cap>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div data-testid="v2-measure-reading" className="v2-num"
+            style={{ fontSize: 14, fontWeight: 500, color: reading ? "var(--ink)" : "var(--dim)" }}>
+            {reading || "No measurements yet"}
+          </div>
+          <div data-testid="v2-measure-when" style={{ ...V2C_SUB, marginTop: 2 }}>
+            {last ? `Last logged ${v2AgoText(v2DaysAgo(last.date))}` : `${formula === "male" ? "Neck and waist" : "Neck, waist and hip"}, for a body-fat estimate`}
+            {remindersOn ? " · weekly" : ""}
+          </div>
+        </div>
+        {!open && (
+          <button data-testid="v2-measure-open" onClick={() => setOpen(true)} aria-label="Log measurements"
+            style={V2C_GO}>Log</button>
+        )}
+      </div>
+
+      {open && (
+        <div data-testid="v2-measure-form" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--hair)" }}>
+          {!sex && <div style={{ ...V2C_SUB, marginTop: 0, marginBottom: 8 }}>Set your sex in Settings for an accurate read.</div>}
+          {note(measurementNote)}
+          <div style={{ display: "flex", gap: 6 }}>
+            <input type="number" inputMode="decimal" value={neck} onChange={e => setNeck(e.target.value)}
+              placeholder="neck cm" aria-label="neck cm" style={inp}/>
+            <input type="number" inputMode="decimal" value={waist} onChange={e => setWaist(e.target.value)}
+              placeholder="waist cm" aria-label="waist cm" style={inp}/>
+            {formula === "female" && (
+              <input type="number" inputMode="decimal" value={hip} onChange={e => setHip(e.target.value)}
+                placeholder="hip cm" aria-label="hip cm" style={inp}/>
+            )}
+          </div>
+          {filledIn && !domainOk && (
+            <div role="alert" style={{ ...V2C_SUB, color: "var(--rust)" }}>
+              {formula === "male"
+                ? "Waist needs to be bigger than neck for the calculation to work."
+                : "Waist plus hip needs to be bigger than neck for the calculation to work."}
+            </div>
+          )}
+          {isFirstEver && (
+            <input type="text" value={localNote} onChange={e => setLocalNote(e.target.value)}
+              placeholder="Your usual conditions (e.g. mornings, fasted) — optional"
+              aria-label="Your usual measuring conditions"
+              style={{ ...V2_INPUT, fontFamily: V2_FONT.body, fontSize: 13, marginTop: 8 }}/>
+          )}
+          {justSaved != null && (
+            <div data-testid="v2-measure-result" role="status" style={{ ...V2C_SUB, color: "var(--ink)", marginTop: 10, fontSize: 13 }}>
+              <div>Estimated body fat <Num size={13} weight={600}>{justSaved.bf}%</Num></div>
+              {justSaved.changes ? (
+                <div style={{ color: "var(--dim)" }}>
+                  Since {justSaved.daysAgo === 1 ? "1 day" : justSaved.daysAgo + " days"} ago:{" "}
+                  {justSaved.changes.map((c, i) => (
+                    <span key={c.site}>{i > 0 && " · "}{v2Cap1(c.site)}{" "}
+                      <Num size={12} color="var(--ink)" data-site={c.site}>{formatSiteChange(c.change)}</Num></span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: "var(--dim)" }}>First reading. The next one shows what changed.</div>
+              )}
+              {justSaved.windowChange != null && (
+                <div style={{ color: "var(--dim)" }}>
+                  <Num size={12} color="var(--ink)">{justSaved.windowChange > 0 ? "+" : justSaved.windowChange < 0 ? "−" : ""}{Math.abs(justSaved.windowChange)}</Num>
+                  {" "}points of body fat since {fmtDay(justSaved.windowFrom)}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button data-testid="v2-measure-save" onClick={save} disabled={!canSave} aria-label="Save measurement"
+              style={{ ...V2_BTN.primary, fontSize: 15, minHeight: 36,
+                ...(canSave ? {} : { background: "var(--well)", color: "var(--dim)", cursor: "default" }) }}>Save</button>
+            <button data-testid="v2-measure-close" onClick={close} style={{ ...V2_BTN.quiet, fontSize: 14, minHeight: 36 }}>Close</button>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+
+  function note(text) {
+    return text ? (
+      <div style={{ ...V2C_SUB, marginTop: 0, marginBottom: 8, fontStyle: "italic" }}>You usually measure: {text}</div>
+    ) : null;
+  }
+}
+
+// ── 12. WORKOUT ─────────────────────────────────────────────────────────────
+// v1 WorkoutLogger's behaviour: the same estimateSessionKcal, the same workout object handed
+// to onAddWorkout, the same paste-log prompt via callAIJson (premium; free users get the gate).
+function V2Workout({ workouts = [], onAddWorkout = () => {}, onRemoveWorkout = () => {}, prof,
+    targets = {}, authState, onPremiumGate }) {
+  const isPremium = authState === "premium";
+  const [type,      setType]      = useState("legs");
+  const [dur,       setDur]       = useState(45);
+  const [intensity, setIntensity] = useState("moderate");
+  const [editing,   setEditing]   = useState(false);
+  const [paste,     setPaste]     = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [parsing,   setParsing]   = useState(false);
+  const [parsed,    setParsed]    = useState(null);
+
+  const p = prof || DEF_PROFILE;
+  const estKcal = estimateSessionKcal(p.weight, p.bodyFat, type, dur, intensity);
+  const nowTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const logWorkout = () => {
+    onAddWorkout({ id: Date.now(), type, duration: dur, intensity, kcal: estKcal, time: nowTime() });
+    setEditing(false);
+  };
+  const openPaste = () => isPremium ? setPaste(true) : onPremiumGate && onPremiumGate({ name: "Workout AI Parser" });
+  const parseWorkout = async () => {
+    if (!pasteText.trim() || parsing) return;
+    setParsing(true); setParsed(null);
+    try {
+      const prompt = `Parse this workout log and estimate calories burned. User: ${p.weight}kg bodyweight, ${p.bodyFat}% body fat.\n\nWorkout:\n${pasteText}\n\nReturn ONLY valid JSON: {"estimatedKcal":number,"type":"legs|push|pull|fullbody|cardio","intensity":"light|moderate|heavy","summary":"brief 1 line description"}`;
+      setParsed(await callAIJson(prompt, 200));
+    } catch (e) {
+      setParsed({ error: "Couldn't read that log. Try again in a moment." });
+    }
+    setParsing(false);
+  };
+  const logParsed = () => {
+    if (!parsed || parsed.error) return;
+    onAddWorkout({ id: Date.now(), type: parsed.type || "fullbody", duration: 60,
+      intensity: parsed.intensity || "moderate", kcal: parsed.estimatedKcal, notes: parsed.summary, time: nowTime() });
+    setPaste(false); setPasteText(""); setParsed(null);
+  };
+  const closePaste = () => { setPaste(false); setPasteText(""); setParsed(null); };
+  const sel = { ...V2_INPUT, width: "auto", height: 36, padding: "6px 8px", fontSize: 13, fontFamily: V2_FONT.body };
+
+  return (
+    <Panel data-testid="v2-workout" style={V2C_CELL}>
+      <V2Cap right={!paste && (
+        <button data-testid="v2-workout-paste" onClick={openPaste}
+          aria-label={isPremium ? "Paste a workout log" : "Paste a workout log, Pro feature"}
+          style={{ ...V2C_CAPBTN, color: isPremium ? "var(--amber-ink)" : "var(--dim)",
+            display: "inline-flex", alignItems: "center", gap: 5 }}>
+          {!isPremium && <Icon name="lock" size={12}/>}Paste log · Pro
+        </button>
+      )}>Workout</V2Cap>
+
+      {workouts.length > 0 && (
+        <div data-testid="v2-workout-list" style={{ marginTop: 8 }}>
+          {workouts.map(w => (
+            <div key={w.id} data-testid="v2-workout-item"
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--hair)" }}>
+              <Num size={12} color="var(--dim)" style={{ flexShrink: 0 }}>{w.time}</Num>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {w.notes || `${v2Cap1(w.type)} · ${w.duration} min · ${w.intensity}`}
+              </span>
+              <Num size={13} style={{ flexShrink: 0 }}>{v2fmt(w.kcal)} kcal</Num>
+              <button onClick={() => onRemoveWorkout(w.id)} aria-label={`Remove workout ${w.notes || w.type}`}
+                style={{ ...V2_BTN.text, padding: 6, color: "var(--dim)", display: "grid", placeItems: "center" }}>
+                <Icon name="x" size={16}/>
+              </button>
+            </div>
+          ))}
+          {(targets.bonus || 0) > 0 && (
+            <div data-testid="v2-workout-bonus" style={V2C_SUB}>
+              <Num size={12} color="var(--ink)">+{v2fmt(targets.bonus)}</Num> kcal added to today; the rest spreads over the next days.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!paste ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+            <button data-testid="v2-workout-summary" onClick={() => setEditing(e => !e)} aria-expanded={editing}
+              aria-label="Change workout type, length and intensity"
+              style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+              <div style={{ fontSize: 15, fontWeight: 500 }}>{v2Cap1(type)}</div>
+              <div className="v2-num" style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>
+                {dur} min · {intensity} · {v2fmt(estKcal)} kcal
+              </div>
+            </button>
+            <button data-testid="v2-workout-log" onClick={logWorkout} style={V2C_GO}>Log workout</button>
+          </div>
+          {editing && (
+            <div data-testid="v2-workout-edit" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+              <select value={type} onChange={e => setType(e.target.value)} aria-label="Workout type" style={sel}>
+                {SESS_TYPES.map(t => <option key={t} value={t}>{v2Cap1(t)}</option>)}
+              </select>
+              <input type="number" min="10" max="180" value={dur} aria-label="Minutes"
+                onChange={e => setDur(parseInt(e.target.value) || 45)}
+                style={{ ...V2_INPUT, width: 64, height: 36, padding: "6px 8px", textAlign: "center", fontSize: 13 }}/>
+              <Label>min</Label>
+              <select value={intensity} onChange={e => setIntensity(e.target.value)} aria-label="Intensity" style={sel}>
+                {SESS_INT.map(i => <option key={i} value={i}>{v2Cap1(i)}</option>)}
+              </select>
+            </div>
+          )}
+        </>
+      ) : (
+        <div data-testid="v2-workout-paste-form" style={{ marginTop: 8 }}>
+          <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5}
+            aria-label="Workout log"
+            placeholder={"Paste your workout log\n\nBack Squat 4×5 @ 100kg\nRomanian Deadlift 3×10 @ 80kg"}
+            style={{ ...V2_INPUT, fontFamily: V2_FONT.body, fontSize: 13, resize: "none", lineHeight: 1.5, boxSizing: "border-box" }}/>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button onClick={parseWorkout} disabled={parsing || !pasteText.trim()}
+              style={{ ...V2_BTN.primary, flex: 1, fontSize: 15, minHeight: 36,
+                ...(pasteText.trim() && !parsing ? {} : { background: "var(--well)", color: "var(--dim)", cursor: "default" }) }}>
+              {parsing ? "Reading…" : "Read log"}
+            </button>
+            <button onClick={closePaste} style={{ ...V2_BTN.quiet, fontSize: 14, minHeight: 36 }}>Back</button>
+          </div>
+          {parsed && !parsed.error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{parsed.summary}</span>
+              <Num size={14}>{v2fmt(parsed.estimatedKcal)} kcal</Num>
+              <button onClick={logParsed} style={V2C_GO}>Log this</button>
+            </div>
+          )}
+          {parsed && parsed.error && <div role="alert" style={{ ...V2C_SUB, color: "var(--rust)" }}>{parsed.error}</div>}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ── 13. LAST 7 DAYS ─────────────────────────────────────────────────────────
+// The same week v1's THIS WEEK card reads: the last 7 COMPLETE days ending yesterday, each day
+// graded by calorieDayScore against its own snapshot target (calories only, founder 2026-10-01),
+// and the verdict from weeklyIntakeScore. This mirrors Dashboard's derivation call for call —
+// it lives inside Dashboard's body in v1, and HANDOVER §12 Phase 0.3 moves it out for both.
+// D19: a Maintain or Bulk day carries no colour, only logged / not logged.
+function v2WeekRead({ hist = [], mode = "cut", prof, tdeeAdj = 0 }) {
+  const last7Keys = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - (i + 1));
+    return dateKey(d);
+  }).reverse();
+  const weekDays = last7Keys.map(k => {
+    const h = hist.find(d => d.date === k);
+    const dayMode = (h && h.mode) || mode;
+    const hasRealTarget = h && h.targetKcal != null;
+    const fallback = hasRealTarget ? null : calcTargets(prof || {}, dayMode, 0, tdeeAdj, 0);
+    const dayTargetKcal = hasRealTarget ? h.targetKcal : fallback.kcal;
+    const dayFloored = hasRealTarget ? !!h.floored
+      : !!(fallback.safeMinApplied || fallback.deficitFloorApplied || fallback.bmrFloorApplied);
+    const loggedAnything = hasIntake(h);
+    const colour = loggedAnything
+      ? calorieDayScore({ mode: dayMode, dayClosed: true, kcalDelta: (h.kcal || 0) - dayTargetKcal }).colour
+      : null;
+    return { date: k, dayMode, kcal: (h && h.kcal) || 0, bonus: (h && h.workoutBonus) || 0,
+      loggedAnything, floored: dayFloored, colour };
+  });
+  const accountIsNew = hist.length < WEEK_MIN_HISTORY_DAYS;
+  const loggedSnapshots = hist.filter(hasIntake).length;
+  const tdeeBaseline = Math.max(sedentaryFloorOf(prof || {}), bmrOf(prof || {}) * activityMult(prof || {}) + tdeeAdj);
+  const weekScore = accountIsNew
+    ? { state: "filling-in", daysUsed: loggedSnapshots, totalDays: hist.length }
+    : weeklyIntakeScore({ days: weekDays, selectedMode: mode, tdeeBaseline });
+  return { last7Keys, weekDays, weekScore, from: last7Keys[0], to: last7Keys[6] };
+}
+// Short verdicts for the one-line v2 row (§2.5: plain, short, blameless). Same keys as
+// WEEK_READ_COPY: [selected mode][what the week read as].
+const V2_WEEK_VERDICT = {
+  cut:      { cut: "A real cut.", maintain: "Not a cut this week.", bulk: "Ran as a surplus." },
+  maintain: { cut: "Ran a bit under.", maintain: "Right at maintenance.", bulk: "Ran a bit over." },
+  bulk:     { cut: "Ran as a deficit.", maintain: "Not a bulk this week.", bulk: "A real bulk." },
+};
+const V2_DAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
+const V2_DAY_NAME = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const V2_DAY_SAYS = { green: "on target", amber: "a little over", red: "over" };
+
+function V2Last7(props) {
+  const mode = props.mode || "cut";
+  const { weekDays, weekScore, from, to } = v2WeekRead({ ...props, mode });
+  const fillingIn = weekScore.state === "filling-in";
+  const verdict = fillingIn
+    ? (weekScore.daysUsed > 0 ? "Still filling in." : "Nothing logged yet.")
+    : (V2_WEEK_VERDICT[mode] || V2_WEEK_VERDICT.cut)[weekScore.readsAs];
+  const detail = fillingIn
+    ? (weekScore.daysUsed > 0 ? `${weekScore.daysUsed} of 7 days so far.` : "Log a day and this comes back.")
+    : `${weekScore.daysUsed} of ${weekScore.totalDays} days logged.`;
+
+  // Lamp styles. Lit (logged) uses the lit-lamp tint, as in the mockup. On a CUT day graded
+  // amber/red the lamp is lit with the band colour as its outline and letter; Maintain/Bulk
+  // days stay neutral (D19). While filling in, no grading is shown (v1 rule, 2026-09-09).
+  const lamp = d => {
+    const base = { width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center",
+      fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9, fontStyle: "normal", boxSizing: "border-box" };
+    if (!d.loggedAnything)
+      return { ...base, background: "var(--well)", border: "1px dashed var(--faint)", color: "var(--dim)" };
+    if (d.dayMode !== "cut" || fillingIn)
+      return { ...base, background: "var(--well)", border: "1px solid var(--dim)", color: "var(--ink)" };
+    if (d.colour === "red")
+      return { ...base, background: "var(--amber-bg)", border: "1.5px solid var(--over)", color: "var(--over)" };
+    if (d.colour === "amber")
+      return { ...base, background: "var(--amber-bg)", border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)" };
+    return { ...base, background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)" };
+  };
+  const says = d => !d.loggedAnything ? "not logged"
+    : (d.dayMode !== "cut" || fillingIn) ? "logged" : (V2_DAY_SAYS[d.colour] || "logged");
+
+  return (
+    <Panel data-testid="v2-last7" style={V2C_CELL}>
+      <V2Cap>Last 7 days · {fmtRange(from, to)}</V2Cap>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+        <div role="list" aria-label="Last 7 days" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          {weekDays.map(d => {
+            const dt = new Date(d.date + "T12:00:00");
+            return (
+              <i key={d.date} role="listitem" data-testid="v2-last7-day" data-date={d.date}
+                data-state={!d.loggedAnything ? "unlogged" : (d.dayMode !== "cut" || fillingIn) ? "neutral" : (d.colour || "neutral")}
+                aria-label={`${V2_DAY_NAME[dt.getDay()]} ${fmtDay(d.date)}: ${says(d)}`}
+                style={lamp(d)}>{V2_DAY_INITIAL[dt.getDay()]}</i>
+            );
+          })}
+        </div>
+        <p data-testid="v2-last7-verdict" style={{ margin: 0, fontFamily: V2_FONT.body, fontWeight: 500, fontSize: 13, lineHeight: 1.3 }}>
+          {verdict}
+          <span data-testid="v2-last7-count" style={{ display: "block", color: "var(--dim)", fontWeight: 400, fontSize: 12 }}>{detail}</span>
+        </p>
+      </div>
+    </Panel>
+  );
+}
+// ── end REGION C ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION D — HEADER · MODE LAMPS · CUT-LOAD TAPE · BREAK SHEETS · CAUTION STRIP
+//               (§3.1–3.3, §7, D10, D13, D14–D16, O1 proposal)
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helpers for this region. Display only: every rule here READS App state; nothing
+// in Region D writes the mode, the cut block or a snooze except through App's handlers.
+const v2TodayDate = () => new Date(Date.now() + getDevDateOffset() * 86400000);
+// Fixed 3-letter names ("Sep", not en-GB's "Sept") so the date line matches the design.
+const V2_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const V2_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const v2DayMonth = d => `${d.getDate()} ${V2_MONTHS[d.getMonth()]}`;
+const v2DayKeyBack = (todayK, n) => dateKey(new Date(new Date(todayK + "T12:00:00").getTime() - n * 86400000));
+// Maintenance as App computes it (effectiveTDEE): the adaptive adjustment can lift it but
+// never pull it below sedentary.
+const v2Maintenance = ({ baseTDEE = 0, tdeeAdj = 0, tdeeFloor }) =>
+  Math.max(tdeeFloor != null ? tdeeFloor : 0, (baseTDEE || 0) + (tdeeAdj || 0));
+const V2_BANK_FRAC = 0.9;   // D15 / O4: a break day is banked at ≥ 90 % of maintenance
+const v2Plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// Banking, for DISPLAY ONLY (HANDOVER §7.2). The drain logic in stepCutBlock still counts every
+// non-cut day; until it is changed, this reads history to show which finished break days would
+// have banked. Today is always "in progress" and never judged here.
+// Break days are the rest days the block has counted (offRun includes today when today is not
+// a cut day), so the finished ones are the offRun − 1 days ending yesterday.
+function v2BreakDays({ restDays, hist = [], todayK, bankLine }) {
+  const byDate = new Map((hist || []).map(h => [h.date, h]));
+  const days = [];
+  for (let i = Math.max(0, restDays - 1); i >= 1; i--) {
+    const date = v2DayKeyBack(todayK, i);
+    const h = byDate.get(date);
+    const kcal = h ? (Number(h.kcal) || (h.logs && h.logs.length ? sumLogs(h.logs).kcal : 0)) : 0;
+    const logged = !!(h && (kcal > 0 || (h.logs && h.logs.length > 0)));
+    days.push({ date, kcal, state: !logged ? "pending" : kcal >= bankLine ? "banked" : "under" });
+  }
+  const banked = days.filter(d => d.state === "banked").length;
+  const under  = days.filter(d => d.state === "under").length;
+  let run = 0;
+  for (let i = days.length - 1; i >= 0 && days[i].state === "banked"; i--) run++;
+  const yesterday = days.length ? days[days.length - 1].state : null;
+  // One status line, priority W5 > W4 > W6 > W10 (§7.3).
+  const line = under >= 2 ? "W5" : yesterday === "under" ? "W4" : yesterday === "pending" ? "W6"
+             : run >= 2 ? "W10" : null;
+  return { days, banked, under, run, line };
+}
+
+// ── Header (§3.1, D13) ──
+function V2NavButton({ testid, label, icon, onClick, children }) {
+  return (
+    <button data-testid={testid} aria-label={label} title={label} onClick={onClick}
+      style={{ width: 36, height: 36, borderRadius: 10, background: "var(--panel-2)",
+        boxShadow: "var(--panel-shadow)", border: "none", color: "var(--dim)", padding: 0,
+        display: "grid", placeItems: "center", position: "relative", cursor: "pointer" }}>
+      <Icon name={icon} size={20}/>
+      {children}
+    </button>
+  );
+}
+function V2AvatarChip({ user, onClick }) {
+  const [failed, setFailed] = useState(false);
+  const letter = (user?.name || user?.email || "?").trim()[0] || "?";
+  const photo = user?.picture && !failed;
+  return (
+    <button data-testid="v2-nav-account" aria-label="Account" title="Account" onClick={onClick}
+      style={{ width: 36, height: 36, borderRadius: "50%", padding: 0, overflow: "hidden",
+        background: "var(--panel-2)", border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)",
+        display: "grid", placeItems: "center", cursor: "pointer",
+        fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, textTransform: "uppercase" }}>
+      {photo
+        ? <img src={user.picture} alt="" width={33} height={33} referrerPolicy="no-referrer"
+            onError={() => setFailed(true)} style={{ display: "block", borderRadius: "50%" }}/>
+        : <span aria-hidden="true">{letter}</span>}
+    </button>
+  );
+}
+function V2Header({ streak = 0, setView = () => {}, badgeGlow = false, newBadgeCount = 0,
+    authUser = null, onOpenAccount, isOnline = true, syncMsg = "" }) {
+  const now = v2TodayDate();
+  const date = `${V2_DAYS[now.getDay()]} ${v2DayMonth(now)}`;
+  const bubble = newBadgeCount > 0 ? String(newBadgeCount) : badgeGlow ? "1" : null;
+  return (
+    <header data-testid="v2-header" style={{ position: "sticky", top: 0, zIndex: 20,
+      background: "var(--panel)", margin: "0 -20px", padding: "22px 20px 10px",
+      display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ minWidth: 0 }}>
+        <div aria-label="Fuel Log" style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 26,
+          lineHeight: 1, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink)" }}>
+          Fuel<span style={{ color: "var(--amber-ink)" }}>/</span>Log
+        </div>
+        <div data-testid="v2-date" className="v2-num" style={{ fontSize: 11, fontWeight: 500,
+          color: "var(--dim)", letterSpacing: ".06em", marginTop: 6, textTransform: "uppercase",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {date}
+          {streak > 0 && <span data-testid="v2-streak"> · Day {streak} streak</span>}
+          {!isOnline && <span data-testid="v2-offline" style={{ color: "var(--amber-ink)", fontWeight: 600 }}> · Offline</span>}
+          {syncMsg && <span data-testid="v2-sync" style={{ textTransform: "none" }}> · {syncMsg}</span>}
+        </div>
+      </div>
+      <nav aria-label="Main" style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+        <V2NavButton testid="v2-nav-history" label="History" icon="history" onClick={() => setView("history")}/>
+        <V2NavButton testid="v2-nav-badges" label={bubble ? "Badges, new" : "Badges"} icon="trophy"
+          onClick={() => setView("achievements")}>
+          {bubble && <span data-testid="v2-badge-count" className="v2-num" style={{ position: "absolute",
+            top: -4, right: -4, fontSize: 10, fontWeight: 700, lineHeight: 1, background: "var(--amber)",
+            color: "var(--amber-on)", borderRadius: 6, padding: "3px 4px" }}>{bubble}</span>}
+        </V2NavButton>
+        <V2NavButton testid="v2-nav-settings" label="Settings" icon="settings" onClick={() => setView("profile")}/>
+        {authUser && <V2AvatarChip user={authUser} onClick={onOpenAccount || (() => setView("account"))}/>}
+      </nav>
+    </header>
+  );
+}
+
+// ── Mode lamps (§3.2, D10, D14). Taps ask; they never write the mode. ──
+function V2ModeLamps({ mode, isCustomMode = false, requestMode = () => {} }) {
+  return (
+    <div data-testid="v2-lamps" role="group" aria-label="Mode"
+      style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
+      {["cut", "maintain", "bulk"].map(k => {
+        const on = !isCustomMode && mode === k;
+        return (
+          <button key={k} data-testid={`v2-lamp-${k}`} aria-pressed={on} data-lit={on ? "1" : "0"}
+            onClick={() => { haptic(); requestMode(k, "today"); }}
+            style={{ fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 12, lineHeight: 1,
+              letterSpacing: ".14em", textTransform: "uppercase", textAlign: "center",
+              padding: "11px 0 10px", minHeight: 36, borderRadius: 6, cursor: "pointer",
+              background: on ? "var(--amber-bg)" : "var(--well)", boxShadow: on ? "none" : "var(--well-shadow)",
+              color: on ? "var(--amber-ink)" : "var(--dim)", opacity: on ? 1 : .8,
+              border: `1px solid ${on ? "var(--amber-edge)" : "transparent"}` }}>
+            {k}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Cut-load tape (§7.1–7.4) ──
+const V2_TAPE_TICKS = "repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px calc(100% / 12)) bottom/100% 5px no-repeat";
+function V2LoadTape({ fillPct, fillColor, nudgePct, pointerColor, children }) {
+  return (
+    <div style={{ position: "relative", height: 18, marginTop: 4, background: V2_TAPE_TICKS }}>
+      <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, background: "var(--faint)" }}/>
+      <span style={{ position: "absolute", left: `${nudgePct}%`, bottom: 0, width: 1, height: 11, background: "var(--dim)" }}/>
+      <span style={{ position: "absolute", right: 0, bottom: 0, width: 1, height: 11, background: "var(--dim)" }}/>
+      <span data-testid="v2-tape-fill" style={{ position: "absolute", left: 0, bottom: 0, height: 5,
+        width: `${fillPct}%`, background: fillColor, transition: "width .4s ease" }}/>
+      {children}
+      <span aria-hidden="true" style={{ position: "absolute", top: 0, left: `${fillPct}%`, width: 0, height: 0,
+        border: "4px solid transparent", borderTop: `6px solid ${pointerColor}`,
+        transform: fillPct >= 99 ? "translateX(-8px)" : "translateX(-4px)" }}/>
+    </div>
+  );
+}
+function V2TapeScale({ nudgePct }) {
+  const s = { position: "absolute", top: 0 };
+  return (
+    <div aria-hidden="true" className="v2-num" style={{ position: "relative", height: 12, fontSize: 9,
+      color: "var(--dim)", opacity: .75, marginTop: 3, letterSpacing: ".06em", textTransform: "uppercase" }}>
+      <span style={{ ...s, left: 0 }}>0</span>
+      <span style={{ ...s, left: `${nudgePct}%`, transform: "translateX(-50%)" }}>Nudge</span>
+      <span style={{ ...s, right: 0 }}>Break</span>
+    </div>
+  );
+}
+const V2_LINE = { fontFamily: V2_FONT.body, fontSize: 13, lineHeight: 1.35, color: "var(--dim)", marginTop: 8 };
+
+function V2BreakDueSheet({ level, weeks, bigLoss, stalled, stallWeeks, full, maintenance,
+    onStart, onSnooze, onNotYet, onClose }) {
+  const hard = level === "hard";
+  const eyebrow = full ? "Cut load full" : bigLoss && hard ? "5% lost this block" : stalled ? "Loss stalled" : "Cut load";
+  const headline = hard ? "Time for a diet break" : stalled ? "Your loss has stalled" : `You've been cutting for ${weeks} weeks`;
+  const body = hard
+    ? (bigLoss && !full ? "You've lost 5% of your bodyweight this block, a great point to consolidate."
+                        : `${weeks} weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance.`)
+    : stalled
+      ? `The scale hasn't moved in about ${stallWeeks} weeks. A couple of weeks at maintenance is how you reset it.`
+      : "A couple of weeks at maintenance now can ease diet fatigue and make the next stretch easier.";
+  return (
+    <V2Sheet label={headline} onScrim={onClose}>
+      <div data-testid="v2-break-sheet" data-level={level}>
+        <div className="v2-label" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ color: "var(--amber-ink)" }}>{eyebrow}</span>
+          <span>{weeks} weeks in a deficit</span>
+        </div>
+        <h2 style={{ margin: "8px 0 0", fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 28,
+          lineHeight: 1.05, letterSpacing: ".02em" }}>{headline}</h2>
+        <p style={{ margin: "8px 0 0", fontSize: 15, lineHeight: 1.45, color: "var(--ink)", opacity: .85 }}>{body}</p>
+        <button data-testid="v2-break-start" onClick={onStart}
+          style={{ ...V2_BTN.primary, width: "100%", marginTop: 18, height: 54, borderRadius: 14, fontSize: 20,
+            letterSpacing: ".08em" }}>Start a 2-week break</button>
+        {hard
+          ? <button data-testid="v2-break-snooze" onClick={onSnooze}
+              style={{ width: "100%", marginTop: 8, height: 46, borderRadius: 12, background: "var(--well)",
+                boxShadow: "var(--well-shadow)", border: "none", color: "var(--ink)", fontFamily: V2_FONT.body,
+                fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Remind me in 3 days</button>
+          : <button data-testid="v2-break-notyet" onClick={onNotYet}
+              style={{ width: "100%", marginTop: 8, height: 46, borderRadius: 12, background: "var(--well)",
+                boxShadow: "var(--well-shadow)", border: "none", color: "var(--ink)", fontFamily: V2_FONT.body,
+                fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Not yet</button>}
+        <div style={{ textAlign: "center", fontSize: 12, color: "var(--dim)", marginTop: 10 }}>
+          Your target moves to maintenance, about <span className="v2-num">{v2fmt(maintenance)}</span> kcal.
+        </div>
+      </div>
+    </V2Sheet>
+  );
+}
+
+function V2CutTape({ cutBar = null, cutBlock = null, cutPrompt = null, prof, hist = [], totals = { kcal: 0 },
+    baseTDEE = 0, tdeeAdj = 0, tdeeFloor, setView = () => {},
+    onStartDietBreak = () => {}, onCutPromptSnooze = () => {}, onCutNudgeDismiss = () => {} }) {
+  const [sheet, setSheet] = useState(false);
+  const [details, setDetails] = useState(false);
+  const block = cutBlock || {};
+  const draining = !!(cutBar && cutBar.draining);
+  // Shown when App's cutBar says so (from CUT_BAR_MIN_LOAD while cutting, while load remains
+  // otherwise); also while cutting with a live prompt, so a prompt can never lose its home.
+  if (!cutBar && !(cutPrompt && block.start)) return null;
+
+  const th = cutThresholds(prof || DEF_PROFILE);
+  const load = Math.max(0, Number(block.load) || 0);
+  const pctOf = v => Math.max(0, Math.min(100, (v / th.hard) * 100));
+  const nudgePct = pctOf(th.soft);
+  const fillPct = pctOf(load);
+  const M = v2Maintenance({ baseTDEE, tdeeAdj, tdeeFloor });
+  const todayK = todayKey();
+  const head = (left, right, rightColor, extra = {}) => (
+    <div className="v2-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+      <span>{left}</span>
+      <span data-testid="v2-tape-status" {...extra} style={{ color: rightColor, letterSpacing: ".1em" }}>{right}</span>
+    </div>
+  );
+
+  if (draining) {
+    const bankLine = Math.round(M * V2_BANK_FRAC);
+    const bd = v2BreakDays({ restDays: cutBar.restDays || 0, hist, todayK, bankLine });
+    const breakLoad = Number(block.breakLoad) || load;
+    const dayW = pctOf(breakLoad / DIET_BREAK_DAYS);
+    const gaps = bd.days.filter(d => d.state !== "banked");
+    const gapsEnd = Math.min(100, fillPct + gaps.length * dayW);
+    const topPct = pctOf(breakLoad);
+    const hatch = c => `repeating-linear-gradient(135deg, ${c} 0 1.5px, transparent 1.5px 4px)`;
+    const gapColor = bd.under >= 2 ? "var(--amber-mark)" : "var(--dim)";
+    const lineText = {
+      W5: "You're not taking an effective break. Eat at maintenance.",
+      W4: "Yesterday was under maintenance, so it didn't count towards your break.",
+      W6: "Yesterday wasn't logged.",
+      W10: `${bd.run} for ${bd.run}. This is what a break looks like.`,
+    }[bd.line];
+    const lineColor = bd.line === "W5" ? "var(--amber-ink)" : bd.line === "W10" ? "var(--teal)" : "var(--dim)";
+    return (
+      <div data-testid="v2-cut-tape" data-state="break">
+        <button onClick={() => setDetails(v => !v)} aria-expanded={details}
+          aria-label={`Cut load. On a break, ${bd.banked} of 14 days banked. Show details`}
+          style={{ display: "block", width: "100%", background: "none", border: "none", padding: 0,
+            textAlign: "left", cursor: "pointer" }}>
+          {head("Cut load", `On a break · ${bd.banked} of 14 days banked`, "var(--teal)")}
+        </button>
+        <V2LoadTape fillPct={fillPct} fillColor="var(--teal)" nudgePct={nudgePct} pointerColor="var(--teal)">
+          {topPct > gapsEnd && (
+            <span aria-hidden="true" style={{ position: "absolute", bottom: 0, height: 5, left: `${gapsEnd}%`,
+              width: `${topPct - gapsEnd}%`, border: "1px dashed var(--teal-edge)", borderLeft: 0 }}/>
+          )}
+          {gaps.map((g, i) => {
+            const left = fillPct + i * dayW;
+            if (left >= 100) return null;
+            const pend = g.state === "pending";
+            return (
+              <span key={g.date} data-testid="v2-tape-gap" data-kind={g.state} role="img"
+                aria-label={pend ? "Not banked yet, not logged" : "Not banked, under maintenance"}
+                style={{ position: "absolute", bottom: 0, height: 9, left: `${left}%`,
+                  width: `${Math.min(dayW, 100 - left)}%`,
+                  ...(pend
+                    ? { border: "1px dashed var(--dim)", borderBottom: 0 }
+                    : { background: hatch(gapColor), borderLeft: `1px solid ${gapColor}`, borderRight: `1px solid ${gapColor}` }) }}/>
+            );
+          })}
+        </V2LoadTape>
+        <V2TapeScale nudgePct={nudgePct}/>
+        {lineText && (
+          <div data-testid="v2-break-line" data-line={bd.line}
+            style={{ ...V2_LINE, color: lineColor, fontWeight: bd.line === "W5" ? 500 : 400 }}>
+            {lineText}
+            {bd.line === "W6" && (
+              <button data-testid="v2-break-logit" onClick={() => setView("history")}
+                style={{ background: "none", border: "none", padding: 0, marginLeft: 6, color: "var(--amber-ink)",
+                  fontWeight: 600, fontSize: 13, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Log it</button>
+            )}
+          </div>
+        )}
+        <div data-testid="v2-bank-today" style={{ ...V2_LINE, marginTop: lineText ? 4 : 8 }}>
+          Today <Num size={12.5} color="var(--ink)">{v2fmt(totals.kcal)}</Num> of{" "}
+          <Num size={12.5} color="var(--ink)">{v2fmt(bankLine)}</Num> to bank it
+        </div>
+        {details && (
+          <div data-testid="v2-break-details" style={{ ...V2_LINE, marginTop: 4 }}>
+            About {v2Plural(cutBar.daysLeft, "day", "days")} to fully recharged. Recharging now sets up your next block.
+            {cutBar.weightUp && " Weight up a little on a break is normal, usually water and glycogen, not fat."}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Cutting.
+  const weeks = (cutBar && cutBar.weeks) || (cutPrompt && cutPrompt.weeks) ||
+    Math.max(1, Math.round(daysBetween(block.start, todayK) / 7));
+  const full = load >= th.hard;
+  const hot  = load >= th.soft || !!cutPrompt;
+  const level = (full || (cutPrompt && cutPrompt.level === "hard")) ? "hard" : hot ? "soft" : null;
+  const status = full ? `Break due · ${weeks} weeks` : `${weeks} weeks`;
+  const open = () => { if (level) setSheet(true); };
+  return (
+    <div data-testid="v2-cut-tape" data-state={full ? "due" : hot ? "hot" : "cutting"}>
+      <div role={level ? "button" : undefined} tabIndex={level ? 0 : undefined}
+        aria-label={level ? `Cut load, ${status}. Open break options` : `Cut load, ${status}`}
+        onClick={open} onKeyDown={e => { if (level && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }}
+        style={{ cursor: level ? "pointer" : "default" }}>
+        {head("Cut load", status, hot ? "var(--amber-ink)" : "var(--ink)")}
+        <V2LoadTape fillPct={fillPct} fillColor={hot ? "var(--amber)" : "var(--dim)"} nudgePct={nudgePct}
+          pointerColor={hot ? "var(--amber-mark)" : "var(--dim)"}/>
+        <V2TapeScale nudgePct={nudgePct}/>
+      </div>
+      {sheet && level && (
+        <V2BreakDueSheet level={level} weeks={weeks} full={full} maintenance={M}
+          bigLoss={!!(cutPrompt && cutPrompt.bigLoss)} stalled={!!(cutPrompt && cutPrompt.stalled)}
+          stallWeeks={(cutPrompt && cutPrompt.stallWeeks) || STALL_WEEKS}
+          onStart={() => { setSheet(false); onStartDietBreak(); }}
+          onSnooze={() => { setSheet(false); onCutPromptSnooze(); }}
+          onNotYet={() => { setSheet(false); onCutNudgeDismiss(); }}
+          onClose={() => setSheet(false)}/>
+      )}
+    </div>
+  );
+}
+
+// ── Caution strip (O1 proposal) ──
+// One strip under the gauge: the highest-priority safety caution, with "+N more". Conditions
+// and meaning come from v1 Dashboard's cards; the copy is plainer. The safe-minimum notice is
+// gone (D6) and there is no AI coach card.
+function v2Cautions({ targets = {}, isCustomMode = false, customKcal = null, aggressiveCutAcked = false,
+    baseTDEE = 0, tdeeAdj = 0, tdeeFloor, workouts = [], showGainWhileCutting = false,
+    showRecharged = false, mode = "cut" }) {
+  const out = [];
+  const tdee = v2Maintenance({ baseTDEE, tdeeAdj, tdeeFloor });
+  const kcal = v2fmt(targets.kcal);
+  // Aggressive custom target — v1's targetWarning (red needs an answer; amber variants inform).
+  if (isCustomMode && !targets.safeMinApplied && customKcal != null) {
+    const diff = customKcal - tdee;
+    if (diff < -1000) out.push({ kind: "aggressive", rank: aggressiveCutAcked ? 6 : 0, ack: !aggressiveCutAcked,
+      title: "Not recommended",
+      text: "This deficit is very deep. Extreme cuts cost muscle and energy, and slow your metabolism." });
+    else if (diff < -750) out.push({ kind: "aggressive", rank: 6, title: "Aggressive deficit",
+      text: `You may lose muscle alongside fat. Consider ${v2fmt(tdee - 750)} kcal or above.` });
+    else if (targets.deficitFloor && customKcal < targets.deficitFloor) out.push({ kind: "aggressive", rank: 6,
+      title: "Below your steady pace",
+      text: `That's under the ${v2fmt(targets.deficitFloor)} kcal we'd set as your lowest safe target. Faster than that mostly costs muscle.` });
+  }
+  if (targets.lowFuel) {
+    const burn = (workouts || []).reduce((s, w) => s + (w.kcal || 0), 0);
+    out.push({ kind: "low-fuel", rank: 1, title: "Low on fuel today",
+      text: `Today's training used about ${v2fmt(burn)} kcal, which doesn't leave much for recovery. Eating a bit more today would be worth it.`,
+      why: "What matters is what's left once training has taken its share. At your body composition there isn't much spare, and running short for weeks tends to show up as flat training, poor sleep and low mood. One light day is nothing to worry about." });
+  }
+  if (showGainWhileCutting) out.push({ kind: "gain", rank: 2, title: "Weight up while cutting",
+    text: "This is usually water, glycogen or muscle, not a slower metabolism. Your target hasn't been lowered.",
+    why: "The scale weighs everything, not just fat. Under-eating and stress both make you hold water, and glycogen swings a kilo either way. None of that means you burn less, so your number stays where it is." });
+  if (targets.bmrFloorApplied && !targets.safeMinApplied) out.push({ kind: "held", rank: 3,
+    title: "Held at your minimum maintenance",
+    text: `Maintenance can't sit below your body's resting needs, so today's target is held at ${kcal} kcal. If the scale keeps rising, a short diet break usually beats eating less.` });
+  if (targets.deficitFloorApplied && !targets.safeMinApplied && !targets.bmrFloorApplied) out.push({ kind: "eased", rank: 4,
+    title: "Eased to a steady pace",
+    text: `A ${(MODES[mode] || MODES.cut).label.toLowerCase()} at your size would take too big a bite, so today's target is ${kcal} kcal.`,
+    why: "Your lowest safe target is a quarter below what we think you burn, so it moves as you do. Losing faster mostly costs muscle, sleep and training, and is harder to stick to." });
+  if (targets.floorsExceedKcal) out.push({ kind: "floors", rank: 7, title: "Protein and fat kept",
+    text: "This target is too low to fit your minimum protein and fat, so those are kept and your macros add up to a bit more." });
+  if (showRecharged) out.push({ kind: "recharged", rank: 8, good: true, dismiss: true, title: "Recharged",
+    text: "You're in good shape to cut again, if you want to." });
+  return out.sort((a, b) => a.rank - b.rank);
+}
+function V2CautionItem({ c, onAck, onDismiss, first }) {
+  const [why, setWhy] = useState(false);
+  const tone = c.good ? "var(--teal)" : "var(--amber-ink)";
+  return (
+    <div data-testid="v2-caution-item" data-kind={c.kind}
+      style={{ display: "flex", gap: 10, alignItems: "flex-start",
+        ...(first ? {} : { borderTop: "1px solid var(--hair)", paddingTop: 10, marginTop: 10 }) }}>
+      <span style={{ color: c.good ? "var(--teal)" : "var(--amber-mark)", marginTop: 1 }}>
+        <Icon name={c.good ? "check" : "warning"} size={18}/>
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Label color={tone}>{c.title}</Label>
+        <div style={{ fontSize: 13, lineHeight: 1.4, color: "var(--ink)", marginTop: 3 }}>
+          {c.text}
+          {c.why && (
+            <button onClick={() => setWhy(v => !v)} aria-expanded={why}
+              style={{ ...V2_BTN.text, padding: "0 0 0 6px", color: tone, fontWeight: 600, textDecoration: "underline",
+                textUnderlineOffset: 3 }}>Why?</button>
+          )}
+        </div>
+        {why && <div style={{ fontSize: 12.5, lineHeight: 1.45, color: "var(--dim)", marginTop: 4 }}>{c.why}</div>}
+        {c.ack && (
+          <button data-testid="v2-caution-ack" onClick={onAck}
+            style={{ ...V2_BTN.outline, marginTop: 8, minHeight: 36, fontSize: 14 }}>Yes, I understand</button>
+        )}
+      </div>
+      {c.dismiss && (
+        <button data-testid="v2-caution-dismiss" aria-label="Dismiss" onClick={onDismiss}
+          style={{ background: "none", border: "none", color: "var(--dim)", padding: 4, cursor: "pointer" }}>
+          <Icon name="x" size={18}/>
+        </button>
+      )}
+    </div>
+  );
+}
+function V2CautionStrip(props) {
+  const [expanded, setExpanded] = useState(false);
+  const list = v2Cautions(props);
+  if (!list.length) return null;
+  const shown = expanded ? list : list.slice(0, 1);
+  const more = list.length - 1;
+  const onAck = props.onAckAggressiveCut || (() => {});
+  const onDismiss = props.onDismissRecharged || (() => {});
+  return (
+    <Panel data-testid="v2-caution" data-top={list[0].kind} pad={12} role="status">
+      {shown.map((c, i) => <V2CautionItem key={c.kind} c={c} first={i === 0} onAck={onAck} onDismiss={onDismiss}/>)}
+      {more > 0 && (
+        <button data-testid="v2-caution-more" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}
+          className="v2-label" style={{ background: "none", border: "none", padding: "8px 0 0 28px",
+            color: "var(--dim)", cursor: "pointer" }}>
+          {expanded ? "Show less" : `+${more} more`}
+        </button>
+      )}
+    </Panel>
+  );
+}
+
+// Early-return confirm (§7.5, ruling in reviews/early-return-ruling.md). Rendered by App whenever
+// requestMode() is guarded, from any source. The forecast is computed at render from the remaining
+// load at the CUT target's deficit (today's maintenance target would give infinity), forecasts the
+// soft nudge, and says "a few days" once the load is already at or above it. Never stored.
+function V2EarlyReturnSheet({ guard, block, profile, targets = {}, baseTDEE = 0, tdeeAdj, onKeep, onCut }) {
+  const p = profile || DEF_PROFILE;
+  const th = cutThresholds(p);
+  const adj = tdeeAdj != null ? tdeeAdj : (targets.tdee != null ? targets.tdee - (baseTDEE || 0) : 0);
+  const M = Math.max(sedentaryFloorOf(p), (baseTDEE || 0) + adj);
+  const cutKcal = calcTargets(p, "cut", 0, adj).kcal;
+  const perDay = dayCutLoad(cutKcal, M) || 1;
+  const load = Math.max(0, Number(block && block.load) || 0);
+  const fewDays = load >= th.soft;
+  const w = Math.max(1, Math.round((th.soft - load) / perDay / 7));
+  const d = Math.max(1, (guard && guard.daysLeft) || 1);
+  const began = block && block.start
+    ? v2DayMonth(new Date(block.start + "T12:00:00")) : null;
+  return (
+    <V2Sheet label="Back to cutting already?" onScrim={onKeep}>
+      <div data-testid="v2-early-return">
+        <h2 style={{ margin: 0, fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 28, lineHeight: 1.05,
+          letterSpacing: ".02em" }}>Back to cutting already?</h2>
+        <p data-testid="v2-er-forecast" style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.45, color: "var(--ink)", opacity: .85 }}>
+          About {v2Plural(d, "more rest day", "more rest days")} would finish this break, and if you cut now{" "}
+          {fewDays ? "the break reminder will be back in a few days."
+                   : `the next break reminder is likely in about ${v2Plural(w, "week", "weeks")} at your cut target.`}
+        </p>
+        {began && <p data-testid="v2-er-began" style={{ margin: "8px 0 0", fontSize: 13, color: "var(--dim)" }}>
+          This block began on {began}.</p>}
+        <button data-testid="v2-er-keep" onClick={onKeep}
+          style={{ ...V2_BTN.primary, width: "100%", marginTop: 18, height: 54, borderRadius: 14, fontSize: 20,
+            letterSpacing: ".08em" }}>Keep resting</button>
+        <button data-testid="v2-er-cut" onClick={onCut}
+          style={{ width: "100%", marginTop: 8, height: 46, borderRadius: 12, background: "var(--well)",
+            boxShadow: "var(--well-shadow)", border: "none", color: "var(--ink)", fontFamily: V2_FONT.body,
+            fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Cut anyway</button>
+      </div>
+    </V2Sheet>
+  );
+}
+// ── end REGION D ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ TODAY v2 — the shell (§3 order). Same props as Dashboard, plus requestMode/onOpenAccount.
+// ─────────────────────────────────────────────────────────────────────────────
+function TodayV2(props) {
+  return (
+    <div data-testid="today-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px",
+      display: "flex", flexDirection: "column", gap: 14 }}>
+      <V2Header {...props}/>
+      <V2ModeLamps {...props}/>
+      <V2CutTape {...props}/>
+      <V2Gauge {...props}/>
+      <V2CautionStrip {...props}/>
+      <V2TargetEaten {...props}/>
+      <V2Macros {...props}/>
+      <V2LogButtons {...props}/>
+      <V2MealList {...props}/>
+      <V2Water {...props}/>
+      <V2WeightTdee {...props}/>
+      <V2Measurements {...props}/>
+      <V2Workout {...props}/>
+      <V2Last7 {...props}/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION E — SETTINGS v2 (§6, D11, D13). Same props as ProfileScreen, plus account bits.
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme-dependent looks that differ between the two mockups (settings.png / settings-light.png):
+// the readout is a recessed well in dark but a raised card in light; a lit goal lamp is an amber
+// tint in dark but an amber fill in light. Scoped to .v2s so nothing leaks.
+const V2S_DARK = `--v2s-readout:var(--well); --v2s-readout-shadow:none;
+  --v2s-lit-bg:var(--amber-bg); --v2s-lit-fg:var(--amber-ink); --v2s-lit-edge:var(--amber-edge);
+  --v2s-seg-on:var(--panel); --v2s-seg-edge:var(--amber-edge); --v2s-field-edge:rgba(0,0,0,.35);
+  --v2s-pill-bg:var(--amber-bg); --v2s-pill-fg:var(--amber-ink); --v2s-pill-edge:var(--amber-edge);`;
+const V2S_LIGHT = `--v2s-readout:var(--panel-2); --v2s-readout-shadow:var(--panel-shadow);
+  --v2s-lit-bg:var(--amber); --v2s-lit-fg:var(--amber-on); --v2s-lit-edge:var(--amber);
+  --v2s-seg-on:var(--panel-2); --v2s-seg-edge:var(--amber-mark); --v2s-field-edge:transparent;
+  --v2s-pill-bg:var(--amber); --v2s-pill-fg:var(--amber-on); --v2s-pill-edge:var(--amber);`;
+const V2S_CSS = `
+  .ui-v2 .v2s { ${V2S_LIGHT} }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ui-v2 .v2s { ${V2S_DARK} } }
+  :root[data-theme="dark"] .ui-v2 .v2s { ${V2S_DARK} }
+  .ui-v2 .v2s .v2s-field:focus-within { border-color: var(--amber-mark); }
+  .ui-v2 .v2s .v2s-field input { background: transparent; border: none; outline: none; color: var(--ink);
+    font-size: 20px; font-weight: 500; width: 100%; min-width: 0; padding: 0; }
+  .ui-v2 .v2s .v2s-row:hover { background: var(--well); }
+  .ui-v2 .v2s a { color: var(--dim); }
+`;
+
+// Plain labels with step ranges (§6). Keys and multipliers stay v1's ACTIVITY.
+const V2S_ACTIVITY = {
+  sedentary: { label: "Mostly sitting", steps: "<5k steps",   short: "Sitting" },
+  light:     { label: "Lightly active", steps: "5–8k steps",  short: "Light" },
+  active:    { label: "Active",         steps: "8–12k steps", short: "Active" },
+  very:      { label: "Very active",    steps: "12k+ steps",  short: "Very active" },
+};
+const V2S_WEIGH = [["daily", "Daily"], ["few", "Few / wk"], ["weekly", "Weekly"], ["off", "Off"]];
+const V2S_MODES = [["cut", "Cut"], ["maintain", "Maintain"], ["bulk", "Bulk"]];
+const V2S_WUNITS = [["kg", "kg"], ["st", "st + lb"], ["lb", "lb"]];
+const V2S_HUNITS = [["cm", "cm"], ["ftin", "ft + in"], ["in", "in"]];
+const V2S_THEMES = [["dark", "Dark"], ["light", "Light"], ["system", "System"]];
+const v2sDate = ts => new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+// Stored metric → display parts [[number, unit], …] in the chosen unit (reuses v1 converters).
+const v2sWeightParts = (kg, u) => {
+  if (u === "st") { const x = kgToStLb(kg); return [[x.st, "st"], [x.lb, "lb"]]; }
+  if (u === "lb") return [[kgToLb(kg), "lb"]];
+  return [[Number(kg) || 0, "kg"]];
+};
+const v2sHeightParts = (cm, u) => {
+  if (u === "ftin") { const x = cmToFtIn(cm); return [[x.ft, "ft"], [x.in, "in"]]; }
+  if (u === "in") return [[cmToInch(cm), "in"]];
+  return [[Number(cm) || 0, "cm"]];
+};
+
+function V2SGlyph({ d, size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.75"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
+      {d.map((p, i) => <path key={i} d={p}/>)}
+    </svg>
+  );
+}
+const V2S_BACK = ["M19.6 12.1c-4.9-.1-9.8.1-14.7-.1", "M10.4 6.2c-1.9 2-3.8 3.9-5.6 5.9 1.8 2 3.7 3.9 5.6 5.8"];
+const V2S_CHEV = ["M9.2 5.9c2 2 4.1 4 6 6.1-1.9 2-4 4-6 6.1"];
+
+function V2SAvatar({ user, size = 40 }) {
+  const [failed, setFailed] = useState(false);
+  const letter = ((user && user.name) || "?")[0].toUpperCase();
+  const box = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
+  if (user && user.picture && !failed) {
+    return <img src={user.picture} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}
+      style={{ ...box, display: "block", objectFit: "cover" }}/>;
+  }
+  return (
+    <span aria-hidden="true" style={{ ...box, background: "var(--well)", boxShadow: "var(--well-shadow)",
+      color: "var(--ink)", display: "grid", placeItems: "center",
+      fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 18 }}>{letter}</span>
+  );
+}
+
+function V2SHeader({ title, meta, onBack, backLabel, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "20px 0 0" }}>
+      <button data-testid="v2-settings-back" aria-label={backLabel} onClick={onBack}
+        style={{ width: 38, height: 38, borderRadius: 10, background: "var(--panel-2)", boxShadow: "var(--panel-shadow)",
+          border: "none", color: "var(--dim)", display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer" }}>
+        <V2SGlyph d={V2S_BACK}/>
+      </button>
+      <div style={{ minWidth: 0 }}>
+        <h1 style={{ margin: 0, fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 26, lineHeight: 1,
+          letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink)" }}>{title}</h1>
+        <div style={{ fontFamily: V2_FONT.mono, fontWeight: 500, fontSize: 11, letterSpacing: ".1em",
+          textTransform: "uppercase", color: "var(--dim)", marginTop: 5 }}>{meta}</div>
+      </div>
+      <div style={{ marginLeft: "auto" }}>{right}</div>
+    </div>
+  );
+}
+
+function V2SSect({ children }) {
+  return <h2 style={{ margin: 0, fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 12, letterSpacing: ".16em",
+    textTransform: "uppercase", color: "var(--dim)", padding: "22px 4px 8px" }}>{children}</h2>;
+}
+function V2SCard({ children, style, ...rest }) {
+  return <Panel pad="14px 14px 16px" {...rest} style={{ borderRadius: 14, ...style }}>{children}</Panel>;
+}
+function V2SField({ children, aside, style, id }) {
+  return (
+    <div id={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8,
+      fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 13, letterSpacing: ".14em", textTransform: "uppercase",
+      color: "var(--ink)", ...style }}>
+      <span>{children}</span>
+      {aside && <span style={{ fontFamily: V2_FONT.body, fontWeight: 400, fontSize: 12, letterSpacing: 0,
+        textTransform: "none", color: "var(--dim)", textAlign: "right" }}>{aside}</span>}
+    </div>
+  );
+}
+function V2SHint({ children, warn, style, ...rest }) {
+  return <p {...rest} style={{ margin: "8px 0 0", fontFamily: V2_FONT.body, fontSize: 12.5, lineHeight: 1.45,
+    color: warn ? "var(--amber-ink)" : "var(--dim)", ...style }}>{children}</p>;
+}
+
+// Segmented choice (radio group). value === null lights nothing.
+function V2SSeg({ options, value, onChange, label, testid }) {
+  return (
+    <div role="radiogroup" aria-label={label} data-testid={testid}
+      style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "1fr", gap: 3, background: "var(--well)",
+        boxShadow: "var(--well-shadow)", borderRadius: 9, padding: 3, marginTop: 10 }}>
+      {options.map(([v, lbl, extra]) => {
+        const on = value === v;
+        return (
+          <button key={v} role="radio" aria-checked={on} data-testid={testid && `${testid}-${v}`}
+            onClick={() => onChange(v)}
+            style={{ minHeight: 36, borderRadius: 6, border: "none", cursor: "pointer", padding: "0 4px",
+              background: on ? "var(--v2s-seg-on)" : "transparent",
+              boxShadow: on ? "inset 0 0 0 1px var(--v2s-seg-edge)" : "none",
+              color: on ? "var(--ink)" : "var(--dim)", fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 13,
+              letterSpacing: ".12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+            {lbl}
+            {extra != null && <span className="v2-num" style={{ fontSize: 12, fontWeight: 500, letterSpacing: 0,
+              color: "var(--amber-ink)", marginLeft: 6 }}>{extra}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Number box with its unit inside, on the well.
+function V2SBox({ children, unit }) {
+  return (
+    <label className="v2s-field" style={{ display: "flex", alignItems: "baseline", gap: 6, background: "var(--well)",
+      boxShadow: "var(--well-shadow)", border: "1px solid var(--v2s-field-edge)", borderRadius: 9,
+      padding: "10px 12px 9px", marginTop: 8, flex: 1, minWidth: 0, cursor: "text" }}>
+      {children}
+      <span className="v2-num" style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".1em",
+        textTransform: "uppercase", color: "var(--dim)" }}>{unit}</span>
+    </label>
+  );
+}
+
+// Weight / height editor. Same glue as v1 MeasureField (seed once from the stored metric value,
+// edit local strings, rebuild metric on every keystroke) and the SAME MEASURE_CFG converters —
+// only the look differs. The parent keys it by unit so a unit switch reseeds it.
+function V2SMeasure({ metric, unit, onChange, name, testid }) {
+  const cfg = MEASURE_CFG[unit] || MEASURE_CFG.kg;
+  const [vals, setVals] = useState(() => cfg.seed(metric));
+  const commit = (i, raw) => {
+    const next = vals.slice(); next[i] = raw;
+    setVals(next);
+    onChange(cfg.build(next));
+  };
+  const compound = cfg.f.length > 1;
+  return (
+    <div data-testid={testid} style={{ display: "flex", gap: 6 }}>
+      {cfg.f.map((u, i) => (
+        <V2SBox key={i} unit={u}>
+          <input type="number" min="0" value={vals[i]} aria-label={`${name} ${u}`}
+            max={u === "lb" && compound ? "13" : u === "in" && compound ? "11" : undefined}
+            inputMode={u === "kg" || u === "lb" ? "decimal" : "numeric"}
+            onChange={e => commit(i, e.target.value)}/>
+        </V2SBox>
+      ))}
+    </div>
+  );
+}
+
+function V2SNavRow({ title, sub, onClick, testid }) {
+  return (
+    <button className="v2s-row" data-testid={testid} onClick={onClick}
+      style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minHeight: 60, textAlign: "left",
+        padding: "14px 14px 14px 16px", background: "transparent", border: "none", cursor: "pointer" }}>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 17, lineHeight: 1.1,
+          letterSpacing: ".05em", textTransform: "uppercase", color: "var(--ink)" }}>{title}</span>
+        <span style={{ display: "block", fontFamily: V2_FONT.body, fontSize: 13, lineHeight: 1.3, color: "var(--dim)",
+          marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</span>
+      </span>
+      <span style={{ color: "var(--dim)" }}><V2SGlyph d={V2S_CHEV} size={16}/></span>
+    </button>
+  );
+}
+function V2SList({ children }) {
+  const kids = React.Children.toArray(children).filter(Boolean);
+  return (
+    <Panel pad={0} style={{ borderRadius: 14, overflow: "hidden" }}>
+      {kids.map((c, i) => <div key={i} style={i ? { borderTop: "1px solid var(--panel)" } : undefined}>{c}</div>)}
+    </Panel>
+  );
+}
+// A read-only label / value line (Advanced, Account).
+function V2SStat({ label, children, testid }) {
+  return (
+    <div data-testid={testid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+      gap: 12, padding: "9px 0", borderBottom: "1px solid var(--hair)" }}>
+      <span style={{ fontFamily: V2_FONT.body, fontSize: 13.5, color: "var(--dim)" }}>{label}</span>
+      <span className="v2-num" style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)", textAlign: "right" }}>{children}</span>
+    </div>
+  );
+}
+function V2SUnitNum({ parts }) {
+  return parts.map(([n, u], i) => (
+    <React.Fragment key={i}>{i ? " " : ""}{n}<span style={{ fontSize: 11, color: "var(--dim)" }}> {u}</span></React.Fragment>
+  ));
+}
+
+function SettingsV2(props) {
+  const { profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false,
+    onResetAdjustment = () => {}, muteMeasurements = false, onToggleMuteMeasurements = () => {},
+    requestMode, mode = "cut", customKcal = null, onSetCustomKcal = () => {}, targets,
+    authState, authUser, consentInfo, onExport = () => {}, onSignOut = () => {}, onDelete = async () => {},
+    onSignIn = () => {} } = props;
+
+  const [view, setView]   = useState("top");         // top | body | units | account | advanced
+  const [f, setF]         = useState({ ...DEF_PROFILE, ...profile });
+  const [saved, setSaved] = useState(false);
+  const [savedNote, setSavedNote] = useState("Saved");
+  const prevSex  = React.useRef(profile ? profile.sex || null : null);
+  const firstRun = React.useRef(true);
+  const rootRef  = React.useRef(null);
+  const [wUnit, setWU]    = useState(getWUnit());     // display only — storage stays kg
+  const [hUnit, setHU]    = useState(getHUnit());     // display only — storage stays cm
+  const [theme, setThemeChoice] = useState(getTheme());
+  const [ownEditing, setOwnEditing] = useState(false);
+  const [ownVal, setOwnVal] = useState("");
+  const [askReset, setAskReset] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  // Same validity and auto-save as v1 ProfileScreen (600 ms debounce, same watched fields, same
+  // sex-change note). f carries every stored field, dietary included, so nothing is dropped (D6:
+  // diet settings are not shown, but stored data is left alone). The first run saves silently,
+  // as v1 does, so a brand-new user's defaults become their profile without a "Saved" flash.
+  const valid = Number(f.weight) > 0 && Number(f.height) > 0 && Number(f.bodyFat) > 0 && Number(f.bodyFat) < 100;
+  useEffect(() => {
+    if (!valid) return;
+    const quiet = firstRun.current;
+    firstRun.current = false;
+    const t = setTimeout(() => {
+      onSave(f);
+      if (quiet) return;
+      haptic();
+      const sexChanged = prevSex.current != null && prevSex.current !== f.sex;
+      prevSex.current = f.sex;
+      setSavedNote(sexChanged ? "Targets updated" : "Saved");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [f.weight, f.height, f.bodyFat, f.sex, f.activity, f.weighCadence]); // eslint-disable-line
+
+  const firstView = React.useRef(true);
+  useEffect(() => {
+    if (firstView.current) { firstView.current = false; return; }
+    try { rootRef.current && rootRef.current.scrollIntoView({ block: "start" }); } catch (e) {}
+    setAskReset(false); setConfirmDel(false); setTyped(""); setErr("");
+  }, [view]);
+
+  const signedIn = authState === "premium" && !!authUser;
+  const isCustom = customKcal != null;
+  const kcal     = targets ? targets.kcal : calcTargets(f, mode, 0, tdeeAdj).kcal;
+  // "Auto N": the live target when auto is on. While a custom target is set the stored goal isn't
+  // a prop, so N is the worked-out target for the mode the custom number implies.
+  const autoKcal = isCustom ? calcTargets(f, mode, 0, tdeeAdj).kcal : kcal;
+  const modeLabel = (V2S_MODES.find(([k]) => k === mode) || V2S_MODES[0])[1];
+  const actKey   = f.activity && V2S_ACTIVITY[f.activity] ? f.activity : null;
+  const bfVal    = Number(f.bodyFat);
+  const bfImplausible = bfVal > 0 && (bfVal < 4 || bfVal > 50);
+  const consentTs = consentInfo && (consentInfo.healthConsentAt || consentInfo.agreedAt);
+  const themeName = (V2S_THEMES.find(([k]) => k === theme) || V2S_THEMES[2])[1].toLowerCase();
+
+  const savedTag = saved && (
+    <span data-testid="v2-settings-saved" role="status" className="v2-num"
+      style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase",
+        color: "var(--amber-ink)" }}>{savedNote}</span>
+  );
+  const sub = (title, children) => (
+    <>
+      <V2SHeader title={title} meta="Settings" backLabel="Back to Settings" onBack={() => setView("top")} right={savedTag}/>
+      {children}
+    </>
+  );
+
+  const pickGoal = k => { haptic(); if (requestMode) requestMode(k, "settings"); };
+  const commitOwn = () => {
+    const v = parseInt(ownVal);
+    if (v > 0) { haptic(); onSetCustomKcal(v); }
+    setOwnEditing(false);
+  };
+  const runDelete = async () => {
+    setBusy(true); setErr("");
+    try { await onDelete(); }
+    catch (e) { setErr(e.message || "Deletion failed."); setBusy(false); }
+  };
+  const delReady = typed.trim().toUpperCase() === "DELETE" && !busy;
+
+  // ── Top screen ────────────────────────────────────────────────────────────
+  const top = (
+    <>
+      <V2SHeader title="Settings" meta="Changes save automatically" backLabel="Back to Today" onBack={onBack} right={savedTag}/>
+
+      <div data-testid="v2-settings-identity" style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 4px 0" }}>
+        <V2SAvatar user={signedIn ? authUser : null}/>
+        {signedIn ? (
+          <>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden",
+                textOverflow: "ellipsis" }}>{authUser.name || "Signed in"}</div>
+              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>Signed in with Google</div>
+              {authUser.email && <div style={{ fontSize: 12.5, color: "var(--dim)", whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis" }}>{authUser.email}</div>}
+            </div>
+            <span data-testid="v2-settings-premium-tag" className="v2-num" style={{ fontSize: 10, fontWeight: 700,
+              letterSpacing: ".12em", textTransform: "uppercase", color: "var(--amber-ink)",
+              border: "1px solid var(--amber-edge)", borderRadius: 4, padding: "4px 5px 3px" }}>Premium</span>
+          </>
+        ) : (
+          <>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.2 }}>Not signed in</div>
+              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>Your data stays on this phone</div>
+            </div>
+            <button data-testid="v2-settings-signin" onClick={onSignIn}
+              style={{ ...V2_BTN.outline, minHeight: 36, fontSize: 15 }}>Sign in</button>
+          </>
+        )}
+      </div>
+
+      <div data-testid="v2-settings-readout" aria-label="Your numbers"
+        style={{ marginTop: 18, background: "var(--v2s-readout)", boxShadow: "var(--v2s-readout-shadow)",
+          borderRadius: 18, padding: "16px 16px 14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Label>Daily target{isCustom ? " · your own" : ""}</Label>
+          <span data-testid="v2-readout-mode" className="v2-num" style={{ fontSize: 11, fontWeight: 700, lineHeight: 1,
+            letterSpacing: ".14em", textTransform: "uppercase", color: "var(--v2s-pill-fg)", background: "var(--v2s-pill-bg)",
+            border: "1px solid var(--v2s-pill-edge)", borderRadius: 5, padding: "6px 9px 5px" }}>{modeLabel}</span>
+        </div>
+        <div style={{ marginTop: 10, display: "flex", alignItems: "baseline" }}>
+          <Num data-testid="v2-readout-target" size={44} weight={600} color="var(--amber-ink)"
+            style={{ lineHeight: 1, letterSpacing: "-.03em" }}>{v2fmt(kcal)}</Num>
+          <Num size={12} color="var(--dim)" style={{ letterSpacing: ".14em", marginLeft: 6, textTransform: "uppercase" }}>kcal</Num>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, auto)", justifyContent: "space-between", gap: 8,
+          marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--hair)" }}>
+          {[["Weight", "v2-readout-weight", <V2SUnitNum parts={v2sWeightParts(f.weight, wUnit)}/>],
+            ["Height", "v2-readout-height", <V2SUnitNum parts={v2sHeightParts(f.height, hUnit)}/>],
+            ["Body fat", "v2-readout-bf", <V2SUnitNum parts={[[f.bodyFat, "%"]]}/>],
+            ["Activity", "v2-readout-activity", actKey ? V2S_ACTIVITY[actKey].short : "Not set"]].map(([l, id, v]) => (
+            <div key={l} style={{ minWidth: 0 }}>
+              <Label style={{ display: "block", fontSize: 9.5, marginBottom: 4 }}>{l}</Label>
+              <Num data-testid={id} size={14}>{v}</Num>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <V2SSect>You</V2SSect>
+      <V2SList>
+        <V2SNavRow testid="v2-settings-row-body" title="Body & goal" onClick={() => setView("body")}
+          sub="Goal, daily target, body stats, activity, reminders"/>
+        <V2SNavRow testid="v2-settings-row-units" title="Units & look" onClick={() => setView("units")}
+          sub={`Weight in ${(V2S_WUNITS.find(([k]) => k === wUnit) || V2S_WUNITS[0])[1]} · height in ${(V2S_HUNITS.find(([k]) => k === hUnit) || V2S_HUNITS[0])[1]} · ${themeName}`}/>
+      </V2SList>
+
+      <V2SSect>App</V2SSect>
+      <V2SList>
+        <V2SNavRow testid="v2-settings-row-account" title="Account & data" onClick={() => setView("account")}
+          sub={signedIn ? "Download my data, sign out, delete account" : "Sign in, Premium, download my data"}/>
+        <V2SNavRow testid="v2-settings-row-advanced" title="Advanced" onClick={() => setView("advanced")}
+          sub="How your target is worked out, reset learning"/>
+      </V2SList>
+
+      <footer data-testid="v2-settings-footer" style={{ padding: "22px 4px 0", textAlign: "center" }}>
+        <nav aria-label="Legal" style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "4px 14px",
+          fontSize: 13, fontWeight: 500 }}>
+          {[["Privacy", LEGAL.privacy], ["Terms", LEGAL.terms], ["Who handles my data", LEGAL.subprocessors]].map(([l, h]) => (
+            <a key={l} href={h} target="_blank" rel="noopener" style={{ color: "var(--dim)",
+              textDecorationColor: "var(--faint)", textUnderlineOffset: 3 }}>{l}</a>
+          ))}
+        </nav>
+        {consentTs && (
+          <div data-testid="v2-settings-consent" style={{ fontSize: 12, color: "var(--dim)", marginTop: 10 }}>
+            Health-data consent given {v2sDate(consentTs)} (policy v{consentInfo.version || consentInfo.policyVersion || POLICY_VERSION})
+          </div>
+        )}
+        <div data-testid="v2-settings-version" className="v2-num" style={{ fontSize: 11, fontWeight: 500,
+          letterSpacing: ".12em", textTransform: "uppercase", color: "var(--dim)", marginTop: 12 }}>
+          Fuel Log {APP_VERSION} · updated {new Date(APP_PATCH_DATE + "T12:00:00")
+            .toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+        </div>
+      </footer>
+    </>
+  );
+
+  // ── 1. Body & goal ───────────────────────────────────────────────────────
+  const ownOn = isCustom || ownEditing;
+  const body = sub("Body & goal", (
+    <>
+      <V2SSect>Goal</V2SSect>
+      <V2SCard data-testid="v2-settings-goal">
+        <V2SField id="v2s-goal-lbl">What are you doing?</V2SField>
+        <div role="radiogroup" aria-labelledby="v2s-goal-lbl"
+          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 10 }}>
+          {V2S_MODES.map(([k, lbl]) => {
+            const lit = !isCustom && mode === k;
+            return (
+              <button key={k} role="radio" aria-checked={lit} data-testid={`v2-goal-${k}`} onClick={() => pickGoal(k)}
+                style={{ minHeight: 40, borderRadius: 6, cursor: "pointer", fontFamily: V2_FONT.mono, fontWeight: 700,
+                  fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase",
+                  background: lit ? "var(--v2s-lit-bg)" : "var(--well)", color: lit ? "var(--v2s-lit-fg)" : "var(--dim)",
+                  border: `1px solid ${lit ? "var(--v2s-lit-edge)" : "var(--v2s-field-edge)"}`,
+                  boxShadow: lit ? "none" : "var(--well-shadow)" }}>{lbl}</button>
+            );
+          })}
+        </div>
+        <V2SField style={{ marginTop: 16 }}>Daily target</V2SField>
+        <V2SSeg label="Daily target" testid="v2-target" value={ownOn ? "own" : "auto"}
+          options={[["auto", "Auto", v2fmt(autoKcal)], ["own", "Set my own"]]}
+          onChange={v => {
+            if (v === "auto") { setOwnEditing(false); if (isCustom) onSetCustomKcal(null); }
+            else if (!ownOn) { setOwnVal(String(kcal)); setOwnEditing(true); }
+          }}/>
+        {ownOn && (
+          <V2SBox unit="kcal">
+            <input data-testid="v2-target-own-input" type="number" inputMode="numeric" min="0" aria-label="My daily target in kcal"
+              value={ownEditing ? ownVal : String(customKcal)} autoFocus={ownEditing}
+              onFocus={() => { if (!ownEditing) { setOwnVal(String(customKcal)); setOwnEditing(true); } }}
+              onChange={e => { setOwnVal(e.target.value); setOwnEditing(true); }}
+              onBlur={commitOwn}
+              onKeyDown={e => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setOwnEditing(false); }}/>
+          </V2SBox>
+        )}
+        <V2SHint>
+          {ownOn ? "Your own number. Picking a goal above goes back to auto." :
+            "Worked out from your body and goal. Workouts are added on top when you log them."}
+        </V2SHint>
+        {isCustom && targets && targets.safeMinApplied && (
+          <V2SHint warn>Held at the safe minimum, {v2fmt(targets.kcal)} kcal.</V2SHint>
+        )}
+      </V2SCard>
+
+      <V2SSect>Body</V2SSect>
+      <V2SCard data-testid="v2-settings-body">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <V2SField>Weight</V2SField>
+            <V2SMeasure key={wUnit} testid="v2-weight" name="Weight" metric={f.weight} unit={wUnit} onChange={v => set("weight", v)}/>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <V2SField>Height</V2SField>
+            <V2SMeasure key={hUnit} testid="v2-height" name="Height" metric={f.height} unit={hUnit} onChange={v => set("height", v)}/>
+          </div>
+        </div>
+        <V2SField style={{ marginTop: 14 }}>Body fat</V2SField>
+        <V2SBox unit="%">
+          <input data-testid="v2-bodyfat" type="number" min="0" max="99" inputMode="decimal" aria-label="Body fat %"
+            value={f.bodyFat} onChange={e => set("bodyFat", e.target.value)}/>
+        </V2SBox>
+        {bfImplausible
+          ? <V2SHint warn>That seems unusual. Double-check it, as it sets your targets.</V2SHint>
+          : <V2SHint data-testid="v2-bodyfat-hint">Not sure? Start with <b style={{ color: "var(--ink)", fontWeight: 500 }}>25%</b> for
+              men or <b style={{ color: "var(--ink)", fontWeight: 500 }}>30%</b> for women. A closer figure gives a better target.</V2SHint>}
+        <V2SField style={{ marginTop: 14 }} aside="sets your safe minimum">Sex</V2SField>
+        <V2SSeg label="Sex" testid="v2-sex" value={f.sex || null} onChange={v => set("sex", v)}
+          options={[["male", "Male"], ["female", "Female"]]}/>
+        {!f.sex && <V2SHint warn>Not set yet. Targets use the male figures until you choose.</V2SHint>}
+      </V2SCard>
+
+      <V2SCard style={{ marginTop: 10 }}>
+        <V2SField id="v2s-act-lbl" aside="your day, not counting workouts">Activity</V2SField>
+        <div role="radiogroup" aria-labelledby="v2s-act-lbl" style={{ display: "grid", gap: 4, marginTop: 10 }}>
+          {ACTIVITY_ORDER.map(k => {
+            const on = actKey === k;
+            return (
+              <button key={k} role="radio" aria-checked={on} data-testid={`v2-activity-${k}`} onClick={() => set("activity", k)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", minHeight: 40, borderRadius: 9,
+                  background: on ? "var(--v2s-seg-on)" : "var(--well)", boxShadow: on ? "none" : "var(--well-shadow)",
+                  border: `1px solid ${on ? "var(--v2s-seg-edge)" : "var(--v2s-field-edge)"}`, cursor: "pointer", textAlign: "left" }}>
+                <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  border: `1.5px solid ${on ? "var(--amber-mark)" : "var(--faint)"}`,
+                  background: on ? "radial-gradient(circle, var(--amber-mark) 0 3.5px, transparent 4px)" : "none" }}/>
+                <span style={{ fontWeight: 500, fontSize: 14, color: "var(--ink)" }}>{V2S_ACTIVITY[k].label}</span>
+                <span className="v2-num" style={{ marginLeft: "auto", fontSize: 12, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                  {V2S_ACTIVITY[k].steps}</span>
+              </button>
+            );
+          })}
+        </div>
+        {!actKey && <V2SHint warn>Pick your usual day. Until then targets assume mostly sitting.</V2SHint>}
+      </V2SCard>
+
+      <V2SSect>Reminders</V2SSect>
+      <V2SCard data-testid="v2-settings-reminders">
+        <V2SField aside="uses your 7-day trend">Weigh-ins</V2SField>
+        <V2SSeg label="Weigh-in reminders" testid="v2-weigh" value={weighCadenceOf(f)} options={V2S_WEIGH}
+          onChange={v => set("weighCadence", v)}/>
+        <V2SField style={{ marginTop: 14 }} aside={f.sex === "female" ? "neck, waist, hip" : "neck, waist"}>Measurements</V2SField>
+        <V2SSeg label="Measurement reminders" testid="v2-measure" value={muteMeasurements ? "off" : "weekly"}
+          options={[["weekly", "Weekly"], ["off", "Off"]]}
+          onChange={v => { const mute = v === "off"; if (mute !== muteMeasurements) onToggleMuteMeasurements(mute); }}/>
+        <V2SHint>You can always log either from the weight panel on Today.</V2SHint>
+      </V2SCard>
+    </>
+  ));
+
+  // ── 2. Units & look ──────────────────────────────────────────────────────
+  const units = sub("Units & look", (
+    <>
+      <V2SSect>Units</V2SSect>
+      <V2SCard>
+        <V2SField>Weight</V2SField>
+        <V2SSeg label="Weight unit" testid="v2-wunit" value={wUnit} options={V2S_WUNITS}
+          onChange={u => { setWU(u); setWUnit(u); haptic(); }}/>
+        <V2SField style={{ marginTop: 14 }}>Height</V2SField>
+        <V2SSeg label="Height unit" testid="v2-hunit" value={hUnit} options={V2S_HUNITS}
+          onChange={u => { setHU(u); setHUnit(u); haptic(); }}/>
+        <V2SHint>Only changes how numbers are shown. What's stored stays the same.</V2SHint>
+      </V2SCard>
+      <V2SSect>Look</V2SSect>
+      <V2SCard>
+        <V2SField>Theme</V2SField>
+        <V2SSeg label="Theme" testid="v2-theme" value={theme} options={V2S_THEMES}
+          onChange={v => { applyTheme(v); setThemeChoice(v); haptic(); }}/>
+        <V2SHint>System follows your phone's light or dark setting.</V2SHint>
+      </V2SCard>
+    </>
+  ));
+
+  // ── 3. Account & data (everyone) ─────────────────────────────────────────
+  const account = sub("Account & data", (
+    <>
+      <V2SSect>Premium</V2SSect>
+      <V2SCard data-testid="v2-account-premium">
+        {signedIn ? (
+          <>
+            <V2SStat label="Status">Active</V2SStat>
+            {authUser.subExpiry && <V2SStat label="Until">{v2sDate(authUser.subExpiry)}</V2SStat>}
+            <V2SHint>Signed in as {authUser.email || authUser.name}. Your log syncs across devices.</V2SHint>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, lineHeight: 1.45 }}>Premium adds AI food logging and sync across devices.</div>
+            <button data-testid="v2-account-upgrade" onClick={onSignIn}
+              style={{ ...V2_BTN.primary, width: "100%", marginTop: 12, fontSize: 17 }}>Upgrade</button>
+            <V2SHint>Already have it? Upgrade signs you in.</V2SHint>
+          </>
+        )}
+      </V2SCard>
+
+      <V2SSect>Your data</V2SSect>
+      <V2SCard>
+        <button data-testid="v2-account-export" onClick={onExport} style={{ ...V2_BTN.quiet, width: "100%",
+          display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Download my data</span><span className="v2-num" style={{ fontSize: 11, color: "var(--dim)" }}>JSON</span>
+        </button>
+        <V2SHint>A copy of everything stored, in a portable file.</V2SHint>
+      </V2SCard>
+
+      {signedIn && (
+        <>
+          <V2SSect>Session</V2SSect>
+          <V2SCard>
+            <button data-testid="v2-account-signout" onClick={onSignOut} style={{ ...V2_BTN.quiet, width: "100%" }}>Sign out</button>
+          </V2SCard>
+
+          <V2SSect>Delete</V2SSect>
+          <V2SCard>
+            {!confirmDel ? (
+              <button data-testid="v2-account-delete" onClick={() => { setConfirmDel(true); setErr(""); }}
+                style={{ ...V2_BTN.quiet, width: "100%", color: "var(--rust)" }}>Delete account</button>
+            ) : (
+              <div data-testid="v2-account-delete-confirm">
+                <div style={{ fontSize: 13.5, lineHeight: 1.55 }}>
+                  This permanently deletes your account and <strong>all</strong> your data (profile, weigh-ins,
+                  logs, history, badges). This cannot be undone. Type <strong>DELETE</strong> to confirm.
+                </div>
+                <input data-testid="v2-account-delete-input" aria-label="Type DELETE to confirm" value={typed}
+                  onChange={e => setTyped(e.target.value)} placeholder="DELETE" disabled={busy}
+                  style={{ ...V2_INPUT, marginTop: 12 }}/>
+                {err && <div role="alert" style={{ fontSize: 12.5, color: "var(--rust)", marginTop: 8 }}>{err}</div>}
+                <button data-testid="v2-account-delete-go" onClick={runDelete} disabled={!delReady}
+                  style={{ ...V2_BTN.quiet, width: "100%", marginTop: 12, color: "var(--rust)",
+                    borderColor: "var(--rust)", opacity: delReady ? 1 : 0.5 }}>
+                  {busy ? "Deleting…" : "Permanently delete everything"}
+                </button>
+                <button onClick={() => { setConfirmDel(false); setTyped(""); setErr(""); }} disabled={busy}
+                  style={{ ...V2_BTN.text, width: "100%", marginTop: 4 }}>Cancel</button>
+              </div>
+            )}
+            <V2SHint>Prefer email? Contact <a href="mailto:fuellogadmin@gmail.com">fuellogadmin@gmail.com</a>.</V2SHint>
+          </V2SCard>
+        </>
+      )}
+    </>
+  ));
+
+  // ── 4. Advanced ──────────────────────────────────────────────────────────
+  // Same arithmetic as v1 ProfileScreen's Calculated stats (calcTargets / sedentaryFloorOf).
+  const prev        = calcTargets(f, "cut", 0, 0);
+  const formulaTDEE = prev.tdee;
+  const tdeeFloor   = sedentaryFloorOf(f);
+  const adjTDEE     = Math.max(tdeeFloor, formulaTDEE + tdeeAdj);
+  const tdeeFloored = formulaTDEE + tdeeAdj < tdeeFloor;
+  const confidence  = weighIns.length >= 28 ? "Calibrated" : weighIns.length >= 14 ? "Learning" : weighIns.length >= 6 ? "Estimating" : "Not enough weigh-ins yet";
+  const advanced = sub("Advanced", (
+    <>
+      <V2SSect>How your target is worked out</V2SSect>
+      <V2SCard data-testid="v2-adv-how">
+        <V2SHint style={{ marginTop: 0, marginBottom: 6 }}>
+          Lean mass sets your resting burn. Your usual day turns that into maintenance, and your weigh-ins
+          fine-tune it over time. Each goal then sits below, at or above maintenance.
+        </V2SHint>
+        {valid ? (
+          <>
+            <V2SStat label="Lean mass">{prev.lbm} kg</V2SStat>
+            <V2SStat label="Resting burn (BMR)">{v2fmt(prev.bmr)} kcal</V2SStat>
+            <V2SStat label="Maintenance from your body">{v2fmt(formulaTDEE)} kcal</V2SStat>
+            <V2SStat label="Learned adjustment" testid="v2-adv-adj">{tdeeAdj > 0 ? "+" : ""}{tdeeAdj} kcal</V2SStat>
+            <V2SStat label="Maintenance now">{v2fmt(adjTDEE)} kcal</V2SStat>
+            <V2SStat label="Confidence">{confidence}</V2SStat>
+            {tdeeFloored && <V2SHint warn>Held at your minimum maintenance. It can't sit below sedentary energy use.</V2SHint>}
+            <div style={{ marginTop: 14 }}><Label>Targets for each goal</Label></div>
+            <div role="table" aria-label="Targets for each goal" style={{ marginTop: 6 }}>
+              <div role="row" style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr .7fr .7fr .7fr", gap: 6, padding: "4px 0" }}>
+                {["Goal", "kcal", "P", "C", "F"].map((h, i) => <Label key={h} role="columnheader"
+                  style={{ fontSize: 9.5, textAlign: i ? "right" : "left" }}>{h}</Label>)}
+              </div>
+              {V2S_MODES.map(([k, lbl]) => {
+                const t = calcTargets(f, k, 0, tdeeAdj);
+                return (
+                  <div key={k} role="row" data-testid={`v2-adv-target-${k}`} style={{ display: "grid",
+                    gridTemplateColumns: "1.3fr 1fr .7fr .7fr .7fr", gap: 6, padding: "7px 0", borderTop: "1px solid var(--hair)" }}>
+                    <span role="cell" style={{ fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 14, letterSpacing: ".1em",
+                      textTransform: "uppercase" }}>{lbl}</span>
+                    {[v2fmt(t.kcal), t.protein + "g", t.carbs + "g", t.fat + "g"].map((v, i) =>
+                      <Num key={i} role="cell" size={13.5} style={{ textAlign: "right" }}>{v}</Num>)}
+                  </div>
+                );
+              })}
+            </div>
+            <V2SHint>Workout calories are added when you log a session.</V2SHint>
+          </>
+        ) : <V2SHint warn>Fill in weight, height and body fat in Body & goal to see the working.</V2SHint>}
+      </V2SCard>
+
+      <V2SSect>Learning</V2SSect>
+      <V2SCard>
+        {!askReset ? (
+          <>
+            <button data-testid="v2-adv-reset" onClick={() => setAskReset(true)} disabled={tdeeAdj === 0}
+              style={{ ...V2_BTN.quiet, width: "100%", opacity: tdeeAdj === 0 ? 0.5 : 1 }}>Reset learned adjustment</button>
+            <V2SHint>{tdeeAdj === 0 ? "Nothing learned yet. Keep weighing in."
+              : "Starts again from your body stats. Weigh-ins and history are kept."}</V2SHint>
+          </>
+        ) : (
+          <div data-testid="v2-adv-reset-confirm">
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Reset what's been learned?</div>
+            <V2SHint>Maintenance goes back to {v2fmt(formulaTDEE)} kcal, {tdeeAdj > 0 ? "down" : "up"} {Math.abs(tdeeAdj)}.
+              It takes a few weeks of weigh-ins to learn it again. Nothing else is lost.</V2SHint>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => setAskReset(false)} style={{ ...V2_BTN.primary, flex: 1 }}>Keep it</button>
+              <button data-testid="v2-adv-reset-yes" onClick={() => { setAskReset(false); onResetAdjustment(); }}
+                style={{ ...V2_BTN.quiet, flex: 1 }}>Yes, reset</button>
+            </div>
+          </div>
+        )}
+      </V2SCard>
+
+      <V2SSect>Aggressive cut</V2SSect>
+      <V2SCard data-testid="v2-adv-aggressive">
+        <V2SStat label="Warning">{aggressiveCutAcked ? "Acknowledged" : "Not shown"}</V2SStat>
+        <V2SHint>{aggressiveCutAcked
+          ? "You've accepted an aggressive cut target before. Review your stats if things have changed."
+          : "Shown on Today if a target would cut harder than is safe."}</V2SHint>
+      </V2SCard>
+    </>
+  ));
+
+  return (
+    <div ref={rootRef} className="v2s" data-testid="settings-v2" data-view={view}
+      style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px", color: "var(--ink)", fontFamily: V2_FONT.body }}>
+      <style>{V2S_CSS}</style>
+      {view === "top" && top}
+      {view === "body" && body}
+      {view === "units" && units}
+      {view === "account" && account}
+      {view === "advanced" && advanced}
+    </div>
+  );
+}
+// ── end REGION E ─────────────────────────────────────────────────────────────
+
 function App() {
   const [view,       setView]       = useState("dashboard");
   const [logs,       setLogs]       = useState([]);
@@ -7824,6 +10181,23 @@ function App() {
     setNoteToast("Break started — eat at maintenance and recharge");
   };
 
+  // ── UI v2: one guarded mode path (HANDOVER §7.6, D10) ──
+  // Every v2 mode change (Today lamps, Settings › Body & goal, custom target, break sheet)
+  // goes through requestMode. A guarded Cut opens the early-return sheet, rendered below,
+  // whichever screen asked. v1 keeps its own Dashboard-local guard and is unchanged.
+  const [modeGuardAsk, setModeGuardAsk] = useState(null);   // { mode, source } | null
+  const requestMode = async (m, source = "today") => {
+    if (m === "cut" && cutGuard) { setModeGuardAsk({ mode: m, source }); return false; }
+    await handleSetMode(m);
+    return true;
+  };
+  const confirmModeGuard = async () => {
+    const ask = modeGuardAsk; setModeGuardAsk(null);
+    if (ask) await handleSetMode(ask.mode);
+  };
+  const DashComp = UI_V2 ? TodayV2 : Dashboard;
+  const ProfComp = UI_V2 ? SettingsV2 : ProfileScreen;
+
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
   const streak    = calcStreak(hist);
@@ -7835,8 +10209,9 @@ function App() {
   );
 
   return (
-    <div style={{ minHeight:"100vh", background:BG, color:"#fff",
+    <div className={UI_V2 ? "ui-v2" : undefined} style={{ minHeight:"100vh", background: UI_V2 ? "var(--panel)" : BG, color: UI_V2 ? "var(--ink)" : "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+      {UI_V2 && <V2Styles/>}
       <style>{`
         * { box-sizing: border-box; }
         input::placeholder, textarea::placeholder { color: var(--text-faint-2); }
@@ -7872,6 +10247,13 @@ function App() {
       {badgeToast && <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />}
       {noteToast  && <NoteToast text={noteToast} onDone={() => setNoteToast(null)} />}
 
+      {/* UI v2: the early-return confirm, whichever screen asked (requestMode) */}
+      {UI_V2 && modeGuardAsk && cutGuard && (
+        <V2EarlyReturnSheet guard={cutGuard} tdeeAdj={tdeeAdj} block={cutBlock} profile={p} targets={targets} baseTDEE={baseTDEE}
+          source={modeGuardAsk.source}
+          onKeep={() => setModeGuardAsk(null)} onCut={confirmModeGuard}/>
+      )}
+
       {/* Auth modals */}
       {premiumGate && !showSignIn && (
         <PremiumModal
@@ -7902,7 +10284,9 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
+      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals}
+          autoKcal={calcTargets(p, MODES[mode] ? mode : "cut", smoothedBonus, tdeeAdj, todayWorkoutKcal).kcal} onOpenAccount={() => setView("account")}
+          logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}
@@ -7925,7 +10309,11 @@ function App() {
           onPremiumGate={feature => setPremiumGate(feature)}
           onSignOut={() => setShowSignOut(true)}
           isOnline={isOnline} syncMsg={syncMsg}/>}
-      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
+      {view === "profile"      && <ProfComp requestMode={requestMode} storedMode={mode} mode={effectiveMode} customKcal={customKcal} onSetCustomKcal={saveCustomKcal}
+          targets={targets} baseTDEE={baseTDEE} authState={authState} authUser={authUser} consentInfo={consentInfo}
+          onExport={handleExport} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
+          onSignIn={() => setShowSignIn(true)} onOpenAccount={() => setView("account")}
+          profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
           bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
           measurementNote={measurementNote} onSaveMeasurementNote={saveMeasurementNote}
           muteMeasurements={muteMeasurements} onToggleMuteMeasurements={toggleMuteMeasurements}/>}

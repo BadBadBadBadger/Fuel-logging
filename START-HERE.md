@@ -4,6 +4,11 @@
 `claude/photo-meal-redesign-9fou0d` (not yet merged).** Last confirmed live on Pages: `main` @ `33a8e8f`
 (PR #11, sw v101, deploy run succeeded 2026-10-12 16:29 UTC); v102–v104 merged to `main` since.
 
+> **v111 (2026-11-21, cloud, PR #21): UI v2 "Instrument" — Today + Settings — behind `?ui=v2`.**
+> Built alongside v1 per `design/v2/HANDOVER.md` (Phase 3/4); v1 stays the default, `?ui=v1` switches
+> back. Rollback baseline: branch `live-v110`. Still open: D15 banking is display-only, D18 not built,
+> B1–B5 unfixed, new copy and light-theme colours (O2) awaiting owner approval. Jest 503 · Playwright 257.
+
 > **v110 (2026-11-20, cloud): version + patch date at the foot of the ⚙️ profile screen.**
 > `APP_VERSION` / `APP_PATCH_DATE` near the top of app.jsx — bump them with sw.js's `CACHE` every
 > release; `__tests__/version.test.js` fails if the version and sw.js disagree.
