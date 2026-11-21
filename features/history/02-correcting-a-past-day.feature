@@ -151,3 +151,14 @@ Feature: Correcting a past day's mode and calorie target
     Given today's TRAINING/REST was set by hand in History
     When I log or remove a workout on Today
     Then today's training follows the workouts again
+
+  # ── Fixed 2026-11-21 (History review H2, H3) ──
+  Scenario: Set target on a day with no saved target
+    Given a past day saved before targets were stored
+    When I tap "Set target", type 2400 and save
+    Then the day is scored against 2,400 kcal and the target is stored on the day
+
+  Scenario: Deleting one food removes only that food
+    Given a past day whose foods have no ids, or share an id
+    When I tap × on one of them
+    Then only that food is removed; editing and deleting both pick the food by its position

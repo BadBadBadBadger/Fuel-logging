@@ -174,4 +174,54 @@ test.describe("A past day's calorie target", () => {
     await expect(page.getByText(/No target was saved for this day/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Set target" })).toBeVisible();
   });
+
+  // H2 (History review, 2026-11-21): the button used to set a draft that nothing displayed.
+  test("Set target on a day with none opens the input, and saving grades the day against it", async ({ page }) => {
+    await open(page, {
+      history: [
+        day(2, { targetKcal: null, targetProtein: null, targetFat: null, targetFatFloor: null }),
+        day(0, { mode: "cut", kcal: 0, protein: 0, carbs: 0, fat: 0, logs: [] }),
+      ],
+    });
+    await openPastDay(page);
+    await page.getByRole("button", { name: "Set target" }).click();
+    const input = page.locator('input[type="number"]');
+    await expect(input).toBeVisible();
+    await input.fill("2400");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(/No target was saved for this day/)).toHaveCount(0);
+    await expect(page.getByText(/target 2,400 kcal/)).toBeVisible();
+    const stored = await page.evaluate(k => JSON.parse(localStorage.getItem("history")).find(d => d.date === k), key(2));
+    expect(stored.targetKcal).toBe(2400);
+  });
+});
+
+// H3 (History review, 2026-11-21): delete matched on id, so it removed EVERY entry without an
+// id (or sharing one) at once, while edit matched differently. Both now go by position.
+test.describe("A past day's foods", () => {
+  const twoIdless = () => [
+    day(2, { logs: [
+      { name: "Toast", kcal: 200, protein: 6, carbs: 30, fat: 5 },
+      { name: "Eggs", kcal: 150, protein: 12, carbs: 1, fat: 10 },
+      { name: "Apple", kcal: 80, protein: 0, carbs: 20, fat: 0 },
+    ], kcal: 430 }),
+    day(0, { mode: "cut", kcal: 0, protein: 0, carbs: 0, fat: 0, logs: [] }),
+  ];
+  const storedLogs = page => page.evaluate(k => JSON.parse(localStorage.getItem("history")).find(d => d.date === k).logs, key(2));
+
+  test("delete removes only the food tapped, even when old entries have no id", async ({ page }) => {
+    await open(page, { history: twoIdless() });
+    await openPastDay(page);
+    await page.getByRole("button", { name: "×", exact: true }).nth(1).click();   // Eggs
+    await expect.poll(async () => (await storedLogs(page)).map(l => l.name)).toEqual(["Toast", "Apple"]);
+  });
+
+  test("delete removes only one of two entries that share an id", async ({ page }) => {
+    const h = twoIdless();
+    h[0].logs = h[0].logs.map(l => ({ ...l, id: 7 }));
+    await open(page, { history: h });
+    await openPastDay(page);
+    await page.getByRole("button", { name: "×", exact: true }).first().click();  // Toast
+    await expect.poll(async () => (await storedLogs(page)).map(l => l.name)).toEqual(["Eggs", "Apple"]);
+  });
 });
