@@ -162,8 +162,8 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v114" ↔ "v114") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v114";
+// CACHE ("fuel-log-v115" ↔ "v115") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v115";
 const APP_PATCH_DATE = "2026-11-21";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
@@ -6400,6 +6400,26 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                       which is how a correctly-scored day reads as a scoring bug. */}
                   {isPastDay && (() => {
                     const tgt = day.targetKcal;
+                    // One editor for both branches. It used to render only in the has-a-target
+                    // branch, so "Set target" on a day with none set a draft nothing displayed:
+                    // the button did nothing (fixed 2026-11-21, History review H2).
+                    const targetEditor = tgtDraft != null && (
+                        <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:10 }}>
+                          <input type="number" inputMode="numeric" value={tgtDraft} autoFocus
+                            onChange={e => setTgtDraft(e.target.value)}
+                            style={{ width:96, fontSize:14, fontWeight:800, padding:"7px 10px",
+                              background:"var(--bg)", color:"var(--text-hi)",
+                              border:`1px solid ${BD}`, borderRadius:10 }}/>
+                          <button onClick={() => {
+                            const n = parseInt(tgtDraft, 10);
+                            if (n > 0) setDayTarget(n);
+                            setTgtDraft(null);
+                          }} style={{ fontSize:12, fontWeight:800, padding:"7px 14px", borderRadius:10,
+                            background:A, color:"var(--bg)", border:"none" }}>Save</button>
+                          <button onClick={() => setTgtDraft(null)}
+                            style={{ fontSize:12, color:"var(--text-lo)", background:"none", border:"none" }}>Cancel</button>
+                        </div>
+                    );
                     if (tgt == null) return (
                       <div style={{ background:CARD, border:`1px solid ${BD}`, borderRadius:14,
                         padding:"12px 16px", marginBottom:14, fontSize:12, color:"var(--text-lo)", lineHeight:1.5 }}>
@@ -6408,6 +6428,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                         <button onClick={() => setTgtDraft(String(Math.round(dayTots.kcal) || 2000))}
                           style={{ marginLeft:8, fontSize:11, fontWeight:800, color:A, background:"none",
                             border:"none", textDecoration:"underline" }}>Set target</button>
+                        {targetEditor}
                       </div>
                     );
                     const delta = Math.round(dayTots.kcal) - tgt;
@@ -6424,23 +6445,7 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                           <button onClick={() => setTgtDraft(String(tgt))}
                             style={{ fontSize:11, color:A, background:"none", border:"none", padding:0 }}>✎</button>
                         </div>
-                        {tgtDraft != null && (
-                          <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:10 }}>
-                            <input type="number" inputMode="numeric" value={tgtDraft} autoFocus
-                              onChange={e => setTgtDraft(e.target.value)}
-                              style={{ width:96, fontSize:14, fontWeight:800, padding:"7px 10px",
-                                background:"var(--bg)", color:"var(--text-hi)",
-                                border:`1px solid ${BD}`, borderRadius:10 }}/>
-                            <button onClick={() => {
-                              const n = parseInt(tgtDraft, 10);
-                              if (n > 0) setDayTarget(n);
-                              setTgtDraft(null);
-                            }} style={{ fontSize:12, fontWeight:800, padding:"7px 14px", borderRadius:10,
-                              background:A, color:"var(--bg)", border:"none" }}>Save</button>
-                            <button onClick={() => setTgtDraft(null)}
-                              style={{ fontSize:12, color:"var(--text-lo)", background:"none", border:"none" }}>Cancel</button>
-                          </div>
-                        )}
+                        {targetEditor}
                       </div>
                     );
                   })()}
@@ -6536,17 +6541,18 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                     )}
                     {(day.logs || []).map((log, i) => (
                       <div key={log.id || i} style={{ borderBottom: i < day.logs.length - 1 ? `1px solid ${BD}` : "none" }}>
-                        {editId === (log.id || i) ? (
+                        {editId === i ? (
                           <EntryEditor entry={log} isPremium={isPremium} onPremiumGate={onPremiumGate}
                             onCancel={() => setEditId(null)}
                             onSave={p => {
-                              patch({ logs: (day.logs || []).map(l => (l.id || l) === (log.id || log) ? { ...l, ...p } : l) });
+                              // By position, like delete — ids can be missing or repeated in old data.
+                              patch({ logs: (day.logs || []).map((l, j) => j === i ? { ...l, ...p } : l) });
                               setEditId(null);
                             }}/>
                         ) : (
                           <div style={{ display:"flex", justifyContent:"space-between",
                             alignItems:"center", padding:"11px 16px" }}>
-                            <div onClick={() => setEditId(log.id || i)} style={{ flex:1, minWidth:0, paddingRight:10, cursor:"pointer" }}>
+                            <div onClick={() => setEditId(i)} style={{ flex:1, minWidth:0, paddingRight:10, cursor:"pointer" }}>
                               <div style={{ fontSize:13, color:"var(--text-hi)", overflow:"hidden",
                                 textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{log.name}</div>
                               <div style={{ fontSize:11, color:"var(--text-lo)", marginTop:2 }}>
@@ -6554,7 +6560,9 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
                               </div>
                             </div>
                             <span style={{ fontSize:15, fontWeight:900, color:A, flexShrink:0 }}>{Math.round(log.kcal)}</span>
-                            <button onClick={() => patch({ logs: (day.logs || []).filter(l => l.id !== log.id && l !== log) })}
+                            {/* By position: matching on id removed EVERY id-less (or same-id) entry at
+                                once (fixed 2026-11-21, History review H3). */}
+                            <button onClick={() => { setEditId(null); patch({ logs: (day.logs || []).filter((_, j) => j !== i) }); }}
                               style={{ background:"none", border:"none", color:"var(--text-disabled)", fontSize:18, padding:"2px 10px" }}>×</button>
                           </div>
                         )}

@@ -68,6 +68,10 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v115 — past-day target and delete fixes (2026-11-21)
+- [ ] History → a day from before targets were saved → "Set target": a number box appears; Save grades the day against it
+- [ ] Delete one food on a past day: only that food goes
+
 ### New in v114 — editing today from History sticks (2026-11-21)
 - [ ] History → 7 Days → tap TODAY → add a glass and delete a food → back: Today shows the same
 - [ ] Now add a glass on Today, reopen TODAY in History: the deleted food is still gone
