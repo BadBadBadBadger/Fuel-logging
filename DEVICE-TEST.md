@@ -68,6 +68,12 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v112 — LOG FOOD drops down in place (v2, 2026-11-21)
+- [ ] `?ui=v2`: tap LOG FOOD — the AI log opens under it on Today (no new screen); tap again (×) to fold it away
+- [ ] Mic, camera and photos are real buttons in the strip and each one works (camera opens the camera, photos the picker)
+- [ ] Describe a meal → Analyse → Log all: the meal appears in EATEN TODAY and the panel closes
+- [ ] v1 (no query) still opens the old AI MEAL LOG screen
+
 ### New in v111 — UI v2 "Instrument" behind `?ui=v2` (2026-11-21)
 v1 is still the default; nothing changes unless you opt in. Rollback baseline: branch `live-v110`.
 - [ ] Open the app with `?ui=v2` — Today shows FUEL/LOG, lamps, the gauge; reopen without the query and it stays on v2
