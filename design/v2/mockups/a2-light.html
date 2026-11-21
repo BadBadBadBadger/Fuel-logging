@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuel Log Daylight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+.mock-a2l {
+  --stage: #c5ced4;
+  --panel: #e6ebee;
+  --panel-2: #f8fafb;
+  --well: #dce2e6;
+  --ink: #1e2529;
+  --dim: #56626a;
+  --faint: #b3bec4;
+  --hair: #d2d9dd;
+  --amber: #ffb23e;
+  --amber-ink: #9a5a00;
+  --amber-mark: #b86e00;
+  --amber-bg: #fff1d9;
+  --amber-edge: #e9c58c;
+  --rust: #b0412e;
+  --recess: inset 0 1px 2px rgba(25,40,52,.14);
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --cond: "Barlow Condensed", sans-serif;
+  --sans: "Barlow", sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+  background: var(--stage); padding: 32px 16px 48px;
+  font-family: var(--sans);
+}
+.mock-a2l *, .mock-a2l *::before, .mock-a2l *::after { box-sizing: border-box; }
+
+/* phone */
+.mock-a2l .phone {
+  width: 390px; background: var(--panel); color: var(--ink);
+  border-radius: 44px; overflow: hidden; position: relative;
+  box-shadow: 0 0 0 10px #262d31, 0 0 0 11px #8e999f, 0 24px 48px rgba(30,45,60,.18);
+  padding-bottom: 12px;
+}
+.mock-a2l .sb { display: flex; justify-content: space-between; padding: 16px 30px 0; font: 600 14px var(--sans); }
+
+/* header */
+.mock-a2l .hd { display: flex; align-items: flex-end; justify-content: space-between; padding: 22px 20px 0; }
+.mock-a2l .wm { font: 700 26px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; }
+.mock-a2l .wm span { color: var(--amber-ink); }
+.mock-a2l .date { font: 500 11px var(--mono); color: var(--dim); letter-spacing: .06em; margin-top: 6px; white-space: nowrap; }
+.mock-a2l .nav { display: flex; gap: 5px; flex-shrink: 0; }
+.mock-a2l .nav a.me { border-radius: 50%; background: var(--panel-2); border: 1.5px solid var(--amber-mark); color: var(--amber-ink); font: 700 15px/1 var(--cond); letter-spacing: 0; }
+.mock-a2l .nav a { width: 36px; height: 36px; border-radius: 10px; background: var(--panel-2); box-shadow: 0 1px 2px rgba(30,45,60,.08); display: grid; place-items: center; color: var(--dim); position: relative; }
+.mock-a2l .ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.mock-a2l .nav .ct { position: absolute; top: -4px; right: -4px; font: 700 10px/1 var(--mono); background: var(--amber); color: #1a1206; border-radius: 6px; padding: 3px 4px; }
+
+/* mode lamps: flat, no glow */
+.mock-a2l .ann { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 18px 20px 0; }
+.mock-a2l .lamp { font: 700 12px/1 var(--mono); letter-spacing: .14em; text-align: center; padding: 11px 0 10px; border-radius: 6px; background: var(--well); color: #7d8a91; border: 1px solid transparent; box-shadow: var(--recess); }
+.mock-a2l .lamp.on { color: var(--amber-ink); background: var(--amber-bg); border-color: var(--amber-edge); }
+
+/* gauge */
+.mock-a2l .gauge { margin: 18px 20px 0; background: var(--well); box-shadow: inset 0 2px 6px rgba(25,40,52,.16); border-radius: 22px; padding: 14px 16px 18px; }
+.mock-a2l .gauge svg { display: block; width: 100%; height: auto; }
+.mock-a2l .readout { text-align: center; margin-top: -90px; }
+.mock-a2l .readout .fig { display: inline-flex; align-items: baseline; gap: 6px; color: var(--amber-ink); }
+.mock-a2l .readout b { font: 600 68px/1 var(--mono); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.mock-a2l .readout .fig span { font: 500 15px var(--mono); }
+.mock-a2l .readout .lab { display: block; font: 500 14px var(--sans); color: var(--dim); margin-top: 4px; }
+.mock-a2l .pair { display: flex; justify-content: center; gap: 44px; margin-top: 20px; font-variant-numeric: tabular-nums; }
+.mock-a2l .pair div { text-align: center; font: 600 10px var(--mono); letter-spacing: .16em; color: var(--dim); }
+.mock-a2l .pair em { display: block; font: 500 17px var(--mono); font-style: normal; letter-spacing: 0; color: var(--ink); margin-top: 4px; }
+
+/* macro tapes */
+.mock-a2l .tapes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 22px 20px 0; }
+.mock-a2l .tape h4 { margin: 0; display: flex; justify-content: space-between; font: 600 11px var(--mono); letter-spacing: .14em; color: var(--dim); }
+.mock-a2l .tape .v { font: 500 15px var(--mono); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.mock-a2l .tape .v span { color: var(--dim); font-size: 12px; }
+.mock-a2l .scale { height: 16px; margin-top: 6px; position: relative;
+  background: repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px 10%) bottom/100% 6px no-repeat; }
+.mock-a2l .scale::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--faint); }
+.mock-a2l .scale i { position: absolute; left: 0; bottom: 0; height: 6px; background: var(--ink); opacity: .85; }
+.mock-a2l .scale u { position: absolute; top: 0; width: 0; height: 0; border: 5px solid transparent; border-top: 6px solid var(--amber-mark); transform: translateX(-5px); }
+
+/* primary actions, in flow */
+.mock-a2l .acts { display: flex; gap: 8px; padding: 26px 20px 0; }
+.mock-a2l .log { flex: 1; height: 60px; border-radius: 14px; background: var(--amber); color: #1d1406; display: flex; align-items: center; padding: 0 14px 0 16px; gap: 10px; }
+.mock-a2l .log strong { font: 700 22px var(--cond); letter-spacing: .08em; flex: 1; white-space: nowrap; }
+.mock-a2l .log .ic { color: #1d1406; }
+.mock-a2l .log .ics { display: flex; gap: 8px; }
+.mock-a2l .log .pro { font: 700 9px var(--mono); border: 1px solid #1d1406; border-radius: 4px; padding: 2px 4px; letter-spacing: .1em; }
+.mock-a2l .qa { width: 104px; height: 60px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--amber-edge); color: var(--amber-ink); display: flex; flex-direction: column; justify-content: center; align-items: center; font: 700 15px var(--cond); letter-spacing: .1em; }
+.mock-a2l .qa span { font: 400 10px var(--mono); color: #8a5a10; letter-spacing: .04em; margin-top: 1px; }
+
+/* meal list */
+.mock-a2l .meals { padding: 24px 20px 0; }
+.mock-a2l .mh { display: flex; justify-content: space-between; align-items: baseline; font: 600 11px var(--mono); letter-spacing: .16em; color: var(--dim); padding-bottom: 10px; border-bottom: 1px solid var(--faint); }
+.mock-a2l .mh b { font-weight: 500; color: var(--ink); letter-spacing: .04em; font-size: 12px; }
+.mock-a2l .meal { display: grid; grid-template-columns: 52px 1fr auto; column-gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+.mock-a2l .meal .t { font: 400 12px/22px var(--mono); color: var(--dim); }
+.mock-a2l .meal .n { font: 500 16px/22px var(--sans); }
+.mock-a2l .meal .k { font: 500 16px/22px var(--mono); text-align: right; }
+.mock-a2l .meal .m { grid-column: 2; font: 400 11.5px var(--mono); color: var(--dim); margin-top: 2px; }
+.mock-a2l .meal .m b { font-weight: 500; color: #36424a; }
+.mock-a2l .hint { font: 400 12.5px var(--sans); color: var(--dim); padding: 12px 0 0 60px; }
+
+/* expanded row = edit mode */
+.mock-a2l .meal.open { box-shadow: 0 1px 2px rgba(30,45,60,.08); background: var(--panel-2); margin: 0 -12px; padding: 14px 12px 16px; border-radius: 12px; border-bottom-color: transparent; grid-template-columns: 52px 1fr; }
+.mock-a2l .meal.open .t { color: var(--amber-ink); }
+.mock-a2l .ed { grid-column: 1 / -1; margin-top: 10px; }
+.mock-a2l .meal.open .st { font: 600 10px/22px var(--mono); letter-spacing: .16em; color: var(--dim); }
+.mock-a2l .fl { display: block; font: 600 9.5px var(--mono); letter-spacing: .16em; color: var(--dim); margin-bottom: 5px; }
+.mock-a2l .inp { height: 40px; border-radius: 8px; background: #fff; border: 1px solid #c3ccd2; font: 400 15px var(--sans); color: var(--ink); padding: 10px 11px; white-space: nowrap; overflow: hidden; }
+.mock-a2l .inp.f { border-color: var(--amber-mark); box-shadow: 0 0 0 2px var(--amber-bg); }
+.mock-a2l .inp.f::after { content: ""; display: inline-block; width: 1px; height: 16px; background: var(--amber-ink); vertical-align: -3px; margin-left: 1px; }
+.mock-a2l .inp.num { font: 500 15px var(--mono); font-variant-numeric: tabular-nums; padding: 10px 9px; }
+.mock-a2l .flr { display: flex; justify-content: space-between; }
+.mock-a2l .flr .fl:last-child { color: var(--dim); }
+.mock-a2l .nrow { display: flex; gap: 6px; }
+.mock-a2l .nrow .inp { flex: 1; min-width: 0; }
+.mock-a2l .rx { height: 40px; padding: 0 10px; border-radius: 8px; background: #fff; border: 1px solid var(--amber-edge); color: var(--amber-ink); display: inline-flex; align-items: center; gap: 7px; font: 600 13px var(--sans); white-space: nowrap; }
+.mock-a2l .rerow { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--faint); }
+.mock-a2l .rerow .rx { flex: 1; justify-content: center; height: 36px; }
+.mock-a2l .rerow .pro { font: 700 9px var(--mono); letter-spacing: .1em; color: var(--dim); }
+.mock-a2l .rx i { font: 700 9px var(--mono); font-style: normal; border: 1px solid var(--amber-ink); border-radius: 4px; padding: 2px 4px; letter-spacing: .1em; }
+.mock-a2l .fields { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 6px; margin-top: 12px; }
+.mock-a2l .do { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.mock-a2l .b { height: 34px; padding: 0 12px; border-radius: 8px; font: 600 13px/34px var(--sans); white-space: nowrap; }
+.mock-a2l .b.save { background: var(--amber); color: #1d1406; padding: 0 18px; }
+.mock-a2l .b.sec { background: var(--well); color: var(--ink); }
+.mock-a2l .b.del { color: var(--rust); padding: 0 4px; margin-left: auto; }
+
+/* systems */
+.mock-a2l .sys { margin: 26px 20px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mock-a2l .cell { background: var(--panel-2); border-radius: 14px; padding: 13px 14px 14px; box-shadow: 0 1px 2px rgba(30,45,60,.08); }
+.mock-a2l .cell.wide { grid-column: 1 / -1; }
+.mock-a2l .cap { font: 600 10px var(--mono); letter-spacing: .16em; color: var(--dim); display: flex; justify-content: space-between; }
+.mock-a2l .cap .tag { color: var(--amber-ink); }
+.mock-a2l .water { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.mock-a2l .segs { flex: 1; display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
+.mock-a2l .segs i { height: 18px; border-radius: 2px; background: var(--well); box-shadow: var(--recess); }
+.mock-a2l .btn-sq { width: 34px; height: 34px; border-radius: 9px; background: var(--well); color: var(--ink); display: grid; place-items: center; font: 500 18px var(--mono); }
+.mock-a2l .num { font: 500 22px var(--mono); font-variant-numeric: tabular-nums; margin-top: 8px; }
+.mock-a2l .num span { font-size: 12px; color: var(--dim); }
+.mock-a2l .sub { font: 400 12px var(--sans); color: var(--dim); margin-top: 3px; }
+.mock-a2l .kg { margin-top: 8px; display: flex; gap: 6px; }
+.mock-a2l .kg div { flex: 1; height: 34px; border-radius: 8px; background: #fff; border: 1px solid #c3ccd2; font: 400 14px var(--mono); color: #7d8a91; padding: 8px 10px; }
+.mock-a2l .kg span { font: 600 11px var(--mono); letter-spacing: .1em; color: var(--dim); padding: 10px 4px; }
+.mock-a2l .wo { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.mock-a2l .wo p { flex: 1; margin: 0; font: 500 15px var(--sans); }
+.mock-a2l .wo p span { display: block; font: 400 12px var(--mono); color: var(--dim); margin-top: 2px; }
+.mock-a2l .wo .go, .mock-a2l .ms .go { height: 34px; padding: 0 12px; border-radius: 8px; background: var(--well); color: var(--amber-ink); font: 600 13px/34px var(--sans); white-space: nowrap; }
+.mock-a2l .ms { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.mock-a2l .ms p { flex: 1; margin: 0; font: 500 14px var(--mono); font-variant-numeric: tabular-nums; }
+.mock-a2l .ms p span { display: block; font: 400 12px var(--sans); color: var(--dim); margin-top: 2px; }
+.mock-a2l .due { display: inline-flex; align-items: center; gap: 6px; color: var(--amber-ink); }
+.mock-a2l .due::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--amber-mark); }
+.mock-a2l .weekline { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.mock-a2l .days { display: flex; gap: 4px; }
+.mock-a2l .days i { width: 22px; height: 22px; border-radius: 50%; background: var(--amber-bg); border: 1px solid var(--amber-edge); display: grid; place-items: center; font: 600 9px var(--mono); font-style: normal; color: var(--amber-ink); }
+.mock-a2l .weekline p { margin: 0; font: 500 13px/1.3 var(--sans); }
+.mock-a2l .weekline p span { display: block; color: var(--dim); font-weight: 400; font-size: 12px; }
+
+.mock-a2l .home { width: 134px; height: 5px; border-radius: 3px; background: var(--ink); margin: 26px auto 0; opacity: .8; }
+
+/* notes */
+.mock-a2l .pair .tap em { text-decoration: underline dashed #7d8a91; text-decoration-thickness: 1px; text-underline-offset: 6px; cursor: pointer; }
+.mock-a2l .pair .tap.editing { color: var(--amber-ink); }
+.mock-a2l .pair .tap.editing em { color: var(--amber-ink); text-decoration: underline solid var(--amber-ink); text-decoration-thickness: 2px; }
+.mock-a2l .caret { display: inline-block; width: 2px; height: 17px; background: var(--amber-ink); margin-left: 2px; vertical-align: -2px; }
+.mock-a2l .state { width: 390px; margin-top: 36px; }
+.mock-a2l .state-k { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+.mock-a2l .state-card { background: var(--panel-2); box-shadow: 0 1px 2px rgba(30,45,60,.10); border-radius: 18px; padding: 4px 20px 18px; }
+.mock-a2l .state-row { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--faint); font: 400 13px var(--sans); color: var(--dim); }
+.mock-a2l .state-row b { font: 500 13px var(--mono); color: var(--ink); }
+.mock-a2l .state-reset { font: 600 13px var(--sans); color: var(--amber-ink); }
+.mock-a2l .state-hint { margin: 10px 0 0; font: 400 12.5px/1.5 var(--sans); color: var(--dim); }
+.mock-a2l .notes { width: 390px; margin-top: 40px; font: 400 14px/1.5 var(--sans); color: #2f3a41; }
+.mock-a2l .notes h3 { font: 700 18px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--amber-ink); margin: 0 0 8px; }
+.mock-a2l .notes ul { margin: 0; padding-left: 18px; }
+.mock-a2l .notes li { margin-bottom: 8px; }
+.mock-a2l .notes b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="mock-a2l">
+<div class="phone">
+  <div class="sb"><span>9:41</span><span>5G</span></div>
+
+  <header class="hd">
+    <div>
+      <div class="wm">Fuel<span>/</span>Log</div>
+      <div class="date">FRI 20 NOV &middot; DAY 1 STREAK</div>
+    </div>
+    <nav class="nav">
+      <a aria-label="History"><svg class="ic" viewBox="0 0 24 24"><path d="M3.2 20.1c5.9.3 11.8-.2 17.7.1"/><path d="M6.1 17.2c-.2-2.6.1-5.1-.1-7.6"/><path d="M11.9 17.1c.2-3.9-.1-7.8.1-11.6"/><path d="M17.8 17.3c-.1-1.9.2-3.8 0-5.6"/></svg></a>
+      <a aria-label="Badges"><svg class="ic" viewBox="0 0 24 24"><path d="M12.1 3.6c2.9-.1 5 2 5 4.9s-2.2 5.1-5.1 5c-2.8.1-5-2.2-5-5 0-2.7 2.3-5 5.1-4.9z"/><path d="M8.9 12.6c-.4 2.6-.9 5.2-1.2 7.8l4.3-2.1 4.4 2.2c-.4-2.6-.8-5.2-1.3-7.8"/></svg><b class="ct">1</b></a>
+      <a aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M3.8 7.1c3.3-.2 6.6.1 9.9-.1M18.4 6.9h1.9M3.7 17.1c1.4.1 2.9-.1 4.3 0M12.2 16.9c2.7.2 5.4-.1 8.1.1"/><path d="M16.1 4.9c1.2 0 2.1 1 2.1 2.1s-1 2.1-2.2 2.1-2-1-2-2.1 1-2.1 2.1-2.1zM10.1 14.9c1.1 0 2 1 2 2.1s-.9 2.1-2.1 2.1-2-1-2-2.1.9-2.1 2.1-2.1z"/></svg></a>
+      <a class="me" aria-label="Account and privacy">D</a>
+    </nav>
+  </header>
+
+  <div class="ann">
+    <div class="lamp on">CUT</div>
+    <div class="lamp">MAINTAIN</div>
+    <div class="lamp">BULK</div>
+  </div>
+
+  <section class="gauge">
+    <svg viewBox="0 -12 320 186" aria-hidden="true">
+      <g stroke="#9ba7ae" stroke-width="2" stroke-linecap="round">
+        <line x1="30" y1="150" x2="39" y2="150"/>
+        <line x1="36.4" y1="109.8" x2="47.8" y2="113.5"/>
+        <line x1="54.8" y1="73.6" x2="64.5" y2="80.6"/>
+        <line x1="83.6" y1="44.8" x2="90.6" y2="54.5"/>
+        <line x1="119.8" y1="26.4" x2="123.5" y2="37.8"/>
+        <line x1="160" y1="20" x2="160" y2="36" stroke="#5e6b72"/>
+        <line x1="200.2" y1="26.4" x2="196.5" y2="37.8"/>
+        <line x1="236.4" y1="44.8" x2="229.4" y2="54.5"/>
+        <line x1="265.2" y1="73.6" x2="255.5" y2="80.6"/>
+        <line x1="283.6" y1="109.8" x2="272.2" y2="113.5"/>
+        <line x1="290" y1="150" x2="281" y2="150"/>
+      </g>
+      <!-- eaten / target = 51%, filling from E toward F -->
+      <path d="M22 150 A 138 138 0 0 1 165.7 12.1" stroke="#b86e00" stroke-width="4" fill="none"/>
+      <path d="M165.7 12.1 A 138 138 0 0 1 298 150" stroke="#c3ccd2" stroke-width="4" fill="none"/>
+      <!-- pointer at 51% -->
+      <path d="M165.9 6 L171.4 -4.7 L161.4 -5.1 Z" fill="#b86e00"/>
+      <text x="16" y="172" fill="#56626a" font-family="JetBrains Mono" font-size="12" font-weight="700">E</text>
+      <text x="296" y="172" fill="#56626a" font-family="JetBrains Mono" font-size="12" font-weight="700">F</text>
+    </svg>
+    <div class="readout">
+      <span class="fig"><b>1,091</b><span>kcal</span></span>
+      <span class="lab">still to go</span>
+    </div>
+    <div class="pair">
+      <div class="tap">TARGET<em>2,241</em></div>
+      <div>EATEN<em>1,150</em></div>
+    </div>
+  </section>
+
+  <section class="tapes">
+    <div class="tape">
+      <h4>PRO <span>g</span></h4>
+      <div class="v">65<span>/169</span></div>
+      <div class="scale"><i style="width:38%"></i><u style="left:38%"></u></div>
+    </div>
+    <div class="tape">
+      <h4>CARB <span>g</span></h4>
+      <div class="v">151<span>/214</span></div>
+      <div class="scale"><i style="width:71%"></i><u style="left:71%"></u></div>
+    </div>
+    <div class="tape">
+      <h4>FAT <span>g</span></h4>
+      <div class="v">28<span>/79</span></div>
+      <div class="scale"><i style="width:35%"></i><u style="left:35%"></u></div>
+    </div>
+  </section>
+
+  <div class="acts">
+    <div class="log">
+      <strong>LOG FOOD</strong>
+      <span class="ics">
+        <svg class="ic" viewBox="0 0 24 24" aria-label="photo"><path d="M3.9 8.2c1.1 0 2.2.1 3.3-.1l1.9-2.9c2-.1 3.9.1 5.8 0l2 2.9c1 .1 2.1 0 3.1.1.1 3.7-.1 7.3.1 11-5.4.1-10.8-.1-16.2.1-.1-3.7.1-7.4 0-11.1z"/><path d="M12.1 9.6c1.9 0 3.4 1.5 3.4 3.4s-1.6 3.5-3.5 3.4c-1.9.1-3.4-1.5-3.4-3.4s1.6-3.4 3.5-3.4z"/></svg>
+        <svg class="ic" viewBox="0 0 24 24" aria-label="voice"><path d="M12 3.2c1.7-.1 3 1.2 3 2.9.1 1.9-.1 3.9 0 5.8 0 1.7-1.3 3-3 3-1.7.1-3-1.3-3-3 0-1.9.1-3.9 0-5.8 0-1.6 1.3-2.9 3-2.9z"/><path d="M5.1 11.2c.1 3.9 3.1 6.9 6.9 6.9s6.9-3 7-6.9M12.1 18.2c-.1 1 .1 1.9-.1 2.9"/></svg>
+        <svg class="ic" viewBox="0 0 24 24" aria-label="text"><path d="M4.1 6.1c5.3.1 10.6-.1 15.9.1M4 11.9c5.3-.1 10.6.1 15.9 0M3.9 17.8c3.4.1 6.8-.1 10.2.1"/></svg>
+      </span>
+      <span class="pro">AI</span>
+    </div>
+    <div class="qa">QUICK ADD<span>saved meals</span></div>
+  </div>
+
+  <section class="meals">
+    <div class="mh"><span>EATEN TODAY</span><b>3 items &middot; 1,150</b></div>
+
+    <div class="meal">
+      <span class="t">07:45</span><span class="n">Porridge with banana</span><span class="k">420</span>
+      <span class="m"><b>P 14</b> &middot; C 72 &middot; F 8</span>
+    </div>
+
+    <div class="meal open">
+      <span class="t">12:30</span><span class="st">EDITING</span>
+      <div class="ed">
+        <div class="flr"><span class="fl">NAME</span></div>
+        <div class="nrow">
+          <div class="inp f">Chicken and rice</div>
+        </div>
+        <div class="fields">
+          <div><span class="fl">KCAL</span><div class="inp num">620</div></div>
+          <div><span class="fl">PROTEIN</span><div class="inp num">45</div></div>
+          <div><span class="fl">CARBS</span><div class="inp num">70</div></div>
+          <div><span class="fl">FAT</span><div class="inp num">14</div></div>
+        </div>
+        <div class="do">
+          <span class="b save">Save</span>
+          <span class="b sec">Save to Quick Add</span>
+          <span class="b del">Delete</span>
+        </div>
+        <div class="rerow"><span class="rx">Re-estimate from name</span><span class="pro">PRO</span></div>
+      </div>
+    </div>
+
+    <div class="meal">
+      <span class="t">15:10</span><span class="n">Flat white</span><span class="k">110</span>
+      <span class="m"><b>P 6</b> &middot; C 9 &middot; F 6</span>
+    </div>
+    <p class="hint">Tap a meal to edit.</p>
+  </section>
+
+  <section class="sys">
+    <div class="cell wide">
+      <div class="cap"><span>WATER</span><span>0 / 8 GLASSES</span></div>
+      <div class="water">
+        <div class="btn-sq">&minus;</div>
+        <div class="segs"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="btn-sq">+</div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap"><span>WEIGHT</span></div>
+      <div class="kg"><div>kg</div><span>LOG</span></div>
+      <div class="sub">Not logged today</div>
+    </div>
+    <div class="cell">
+      <div class="cap"><span>EST. TDEE</span><span class="tag">LEARNING</span></div>
+      <div class="num">~2,741<span> kcal</span></div>
+      <div class="sub">Settles as you weigh in</div>
+    </div>
+    <div class="cell wide">
+      <div class="cap"><span>MEASUREMENTS</span><span class="due">DUE</span></div>
+      <div class="ms">
+        <p>Neck 40 &middot; Waist 95 cm<span>Last logged 8 days ago &middot; weekly</span></p>
+        <span class="go">Log</span>
+      </div>
+    </div>
+    <div class="cell wide">
+      <div class="cap"><span>WORKOUT</span><span>PASTE LOG &middot; PRO</span></div>
+      <div class="wo">
+        <p>Legs<span>45 min &middot; moderate &middot; 486 kcal</span></p>
+        <span class="go">Log workout</span>
+      </div>
+    </div>
+    <div class="cell wide">
+      <div class="cap"><span>LAST 7 DAYS &middot; 13&ndash;19 NOV</span></div>
+      <div class="weekline">
+        <div class="days"><i>F</i><i>S</i><i>S</i><i>M</i><i>T</i><i>W</i><i>T</i></div>
+        <p>A real cut.<span>7 of 7 days logged.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <div class="home"></div>
+</div>
+
+<div class="state">
+  <div class="state-k">Tap the target · edit state</div>
+  <div class="state-card">
+    <div class="pair">
+      <div class="tap editing">TARGET<em>2,000<span class="caret"></span></em></div>
+      <div>EATEN<em>1,150</em></div>
+    </div>
+    <div class="state-row"><span>Auto would be <b>2,241</b></span><span class="state-reset">Use auto</span></div>
+    <p class="state-hint">Type a number and press Done. Still to go updates to 850 straight away. Tapping a mode lamp brings back that mode's auto target.</p>
+  </div>
+</div>
+
+<aside class="notes">
+  <h3>Light theme</h3>
+  <ul>
+    <li><b>Daylight instrument, not paper.</b> The stage is a cool blue-grey (#c5ced4), the phone ground slightly lighter (#e6ebee), and panels are near-white (#f8fafb). Groups are set apart by tone and a 1px soft elevation, not borders. No cream or beige.</li>
+    <li><b>Graphite ink.</b> Text is #1e2529 (about 15:1 on panels). Quiet labels are #56626a, which is at least 4.3:1 on every surface, so the small mono caps still pass.</li>
+    <li><b>The gauge well is recessed.</b> It uses a darker tone (#dce2e6) and a soft inset shadow. The scale ticks are a mid grey, and the unfilled track is a pale grey.</li>
+    <li><b>Amber is split in three.</b> #ffb23e only as a fill, always with dark text (LOG FOOD, Save, the badge count; 10:1). #9a5a00 for amber text (5.2:1 on white, 4.6:1 on the ground; the 68px readout clears the large-text 3:1 even on the well). #b86e00 for marks: arc, pointer, tape pointers and the DUE dot (3:1 or more, as a graphic).</li>
+    <li><b>Signals that must stay clear.</b> The DUE dot is drawn slightly larger (7px) in deep amber beside the amber-ink label. Delete is brick #b0412e, 5.5:1, still a text button with no fill. The lit lamp and the 7-day lamps are a pale amber tint with an amber-ink letter, and no glow.</li>
+    <li><b>Same layout, fonts and six icons as v2 dark.</b> Inputs become white wells with a grey hairline, and the focused field gets a deep-amber edge with a pale amber halo ring (a 2px tint, not a glow).</li>
+    <li><b>Signed-in chip.</b> The Google profile chip is the last item in the header, after History, Badges and Settings. It is a 36px circle so it reads as a person, not a tool. It shows the photo, or the fallback shown here: the initial "D" (the dev-preview user) in the accent colour with a thin deep-ochre (#b86e00) ring. It opens Account &amp; Privacy. To fit at 390px the header buttons went from 38 to 36px with 5px gaps, and the date line is 11px.</li>
+  </ul>
+</aside>
+</div>
+
+</body>
+</html>

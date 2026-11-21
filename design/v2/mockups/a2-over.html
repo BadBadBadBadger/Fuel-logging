@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauge Over Target</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+.mock-a2o {
+  --panel: #1c2327; --panel-2: #232c31; --well: #11171a; --ink: #dbe2df; --dim: #7f8c8e;
+  --faint: #3a464c; --hair: #2c363b; --amber: #ffb23e; --amber-bg: #2a2012; --amber-edge: #4d3714;
+  --rust: #c9836f;
+  --teal: #7cbfb4; --teal-bg: #15302d; --teal-edge: #275049;
+  --mono: "JetBrains Mono", ui-monospace, monospace; --cond: "Barlow Condensed", sans-serif; --sans: "Barlow", sans-serif;
+  background: #0d1114; padding: 40px 24px 56px; font-family: var(--sans); color: var(--ink);
+}
+.mock-a2o *, .mock-a2o *::before, .mock-a2o *::after { box-sizing: border-box; }
+.mock-a2o .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 40px 36px; }
+.mock-a2o .shot { width: 412px; display: flex; flex-direction: column; align-items: center; }
+.mock-a2o .capt { font: 600 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 20px; }
+.mock-a2o .capt b { color: var(--amber); font-weight: 700; margin-right: 8px; }
+.mock-a2o .phone { width: 390px; height: 572px; background: var(--panel); border-radius: 44px 44px 0 0; overflow: hidden; position: relative;
+  box-shadow: 0 0 0 10px #050708, 0 0 0 11px #2b3439;
+  -webkit-mask: linear-gradient(#000 93%, transparent); mask: linear-gradient(#000 93%, transparent); }
+.mock-a2o .sb { display: flex; justify-content: space-between; padding: 16px 30px 0; font: 600 14px var(--sans); }
+.mock-a2o .hd { display: flex; align-items: flex-end; justify-content: space-between; padding: 22px 20px 0; }
+.mock-a2o .wm { font: 700 26px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; }
+.mock-a2o .wm span { color: var(--amber); }
+.mock-a2o .date { font: 500 11px var(--mono); color: var(--dim); letter-spacing: .06em; margin-top: 6px; white-space: nowrap; }
+.mock-a2o .nav { display: flex; gap: 5px; flex-shrink: 0; }
+.mock-a2o .nav a { width: 36px; height: 36px; border-radius: 10px; background: var(--panel-2); display: grid; place-items: center; color: var(--dim); position: relative; }
+.mock-a2o .nav a.me { border-radius: 50%; border: 1.5px solid var(--amber); color: var(--amber); font: 700 15px/1 var(--cond); }
+.mock-a2o .ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.mock-a2o .nav .ct { position: absolute; top: -4px; right: -4px; font: 700 10px/1 var(--mono); background: var(--amber); color: #1a1206; border-radius: 6px; padding: 3px 4px; }
+.mock-a2o .ann { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 18px 20px 0; }
+.mock-a2o .lamp { font: 700 12px/1 var(--mono); letter-spacing: .14em; text-align: center; padding: 11px 0 10px; border-radius: 6px; background: var(--well); color: #4d5a61; border: 1px solid #0a0e10; }
+.mock-a2o .lamp.on { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-edge); }
+.mock-a2o .lamp.brk { color: var(--teal); background: var(--teal-bg); border-color: var(--teal-edge); }
+
+/* cut-load tape */
+.mock-a2o .load { padding: 12px 20px 0; }
+.mock-a2o .load-h { display: flex; justify-content: space-between; font: 600 10px var(--mono); letter-spacing: .16em; color: var(--dim); }
+.mock-a2o .load-h .st { color: var(--ink); font-weight: 500; letter-spacing: .1em; }
+.mock-a2o .load.hot .load-h .st { color: var(--amber); font-weight: 700; }
+.mock-a2o .load.rest .load-h .st { color: var(--teal); }
+.mock-a2o .ltape { position: relative; height: 18px; margin-top: 4px;
+  background: repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px calc(100% / 12)) bottom/100% 5px no-repeat; }
+.mock-a2o .ltape::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--faint); }
+.mock-a2o .ltape .mk { position: absolute; bottom: 0; width: 1px; height: 11px; background: #5b6a70; }
+.mock-a2o .ltape .mk.end { right: 0; }
+.mock-a2o .ltape i { position: absolute; left: 0; bottom: 0; height: 5px; background: #8d999b; }
+.mock-a2o .load.hot .ltape i { background: var(--amber); }
+.mock-a2o .load.rest .ltape i { background: var(--teal); }
+.mock-a2o .ltape s { position: absolute; bottom: 0; height: 5px; border: 1px dashed var(--teal-edge); border-left: 0; }
+.mock-a2o .ltape u { position: absolute; top: 0; width: 0; height: 0; border: 4px solid transparent; border-top: 6px solid #a9b4b3; transform: translateX(-4px); }
+.mock-a2o .load.hot .ltape u { border-top-color: var(--amber); }
+.mock-a2o .load.rest .ltape u { border-top-color: var(--teal); }
+.mock-a2o .load.hot .ltape u.full { transform: translateX(-8px); }
+.mock-a2o .scl { position: relative; height: 12px; font: 500 9px var(--mono); color: #55636a; margin-top: 3px; letter-spacing: .06em; }
+.mock-a2o .scl span { position: absolute; top: 0; }
+
+/* gauge */
+.mock-a2o .gauge { margin: 16px 20px 0; background: var(--well); border-radius: 22px; padding: 14px 16px 18px; }
+.mock-a2o .gauge svg { display: block; width: 100%; height: auto; }
+.mock-a2o .readout { text-align: center; margin-top: -90px; }
+.mock-a2o .readout .fig { display: inline-flex; align-items: baseline; gap: 6px; color: var(--amber); }
+.mock-a2o .readout b { font: 600 68px/1 var(--mono); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.mock-a2o .readout .fig span { font: 500 15px var(--mono); }
+.mock-a2o .readout .lab { display: block; font: 500 14px var(--sans); color: #8e9a9c; margin-top: 4px; }
+.mock-a2o .pair { display: flex; justify-content: center; gap: 44px; margin-top: 20px; font-variant-numeric: tabular-nums; }
+.mock-a2o .pair div { text-align: center; font: 600 10px var(--mono); letter-spacing: .16em; color: #6f7c80; }
+.mock-a2o .pair em { display: block; font: 500 17px var(--mono); font-style: normal; letter-spacing: 0; color: var(--ink); margin-top: 4px; }
+.mock-a2o .pair .tap em { text-decoration: underline dashed #6f7c80; text-decoration-thickness: 1px; text-underline-offset: 6px; }
+.mock-a2o .pair small { display: block; font: 500 9px var(--mono); letter-spacing: .12em; color: var(--teal); margin-top: 6px; }
+
+/* sheet */
+.mock-a2o .dim { position: absolute; inset: 0; background: rgba(5,8,10,.66); }
+.mock-a2o .ltape.sel { outline: 1px solid var(--amber-edge); outline-offset: 5px; border-radius: 2px; }
+.mock-a2o .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--panel-2); border-radius: 22px 22px 0 0; padding: 10px 20px 40px; border-top: 1px solid #34404a; }
+.mock-a2o .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--faint); margin: 0 auto 16px; }
+.mock-a2o .sheet .k { font: 600 10px var(--mono); letter-spacing: .16em; color: var(--amber); display: flex; justify-content: space-between; }
+.mock-a2o .sheet .k span { color: var(--dim); }
+.mock-a2o .sheet h2 { margin: 8px 0 0; font: 700 28px/1.05 var(--cond); letter-spacing: .02em; }
+.mock-a2o .sheet p { margin: 8px 0 0; font: 400 15px/1.45 var(--sans); color: #b9c3c2; }
+.mock-a2o .sheet .go { margin-top: 18px; height: 54px; border-radius: 14px; background: var(--amber); color: #1d1406; display: grid; place-items: center; font: 700 20px var(--cond); letter-spacing: .08em; text-transform: uppercase; }
+.mock-a2o .sheet .later { margin-top: 8px; height: 46px; border-radius: 12px; background: var(--well); color: var(--ink); display: grid; place-items: center; font: 600 14px var(--sans); }
+.mock-a2o .sheet .fine { text-align: center; font: 400 12px var(--sans); color: var(--dim); margin-top: 10px; }
+
+/* notes */
+.mock-a2o .notes { max-width: 780px; margin: 48px auto 0; font: 400 14px/1.55 var(--sans); color: #b9c3c2; }
+.mock-a2o .notes h3 { font: 700 18px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--amber); margin: 0 0 10px; }
+.mock-a2o .notes ul { margin: 0; padding-left: 18px; }
+.mock-a2o .notes li { margin-bottom: 9px; }
+.mock-a2o .notes b { color: #e6ecea; font-weight: 600; }
+.mock-a2o .notes code { font: 500 12.5px var(--mono); color: var(--ink); }
+
+.mock-a2o .row { gap: 40px 28px; }
+.mock-a2o .phone { height: 470px; }
+.mock-a2o .readout { margin-top: -84px; }
+.mock-a2o .readout .fig { color: var(--ink); }
+.mock-a2o .readout.amber .fig { color: var(--amber); }
+.mock-a2o .readout.red .fig { color: #e8604c; }
+.mock-a2o .readout.over .lab { color: var(--ink); }
+.mock-a2o .hist { width: 390px; margin-top: 26px; }
+.mock-a2o .hist .hc { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+.mock-a2o .hist .hr { background: var(--panel); border-radius: 14px; padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; row-gap: 4px; align-items: baseline; }
+.mock-a2o .hist .d { font: 600 15px var(--sans); }
+.mock-a2o .hist .tg { font: 700 10px var(--mono); letter-spacing: .14em; color: var(--ink); border: 1px solid var(--faint); border-radius: 4px; padding: 2px 5px; margin-left: 8px; vertical-align: 1px; }
+.mock-a2o .hist .k { font: 500 17px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.mock-a2o .hist .s { grid-column: 1 / -1; font: 400 12px var(--mono); color: var(--dim); }
+.mock-a2o .bands { max-width: 900px; margin: 56px auto 0; color: #b9c3c2; font: 400 14px/1.5 var(--sans); }
+.mock-a2o .bands h3 { font: 700 18px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--amber); margin: 0 0 12px; }
+.mock-a2o .bands table { width: 100%; border-collapse: collapse; }
+.mock-a2o .bands th { text-align: left; font: 600 10px var(--mono); letter-spacing: .16em; color: var(--dim); padding: 0 12px 8px 0; border-bottom: 1px solid var(--faint); }
+.mock-a2o .bands td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+.mock-a2o .bands td:first-child { font: 500 13px var(--mono); color: var(--ink); }
+.mock-a2o .sw { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: 3px; margin-right: 8px; }
+.mock-a2o .bands ul { margin: 22px 0 0; padding-left: 18px; }
+.mock-a2o .bands li { margin-bottom: 8px; }
+.mock-a2o .bands b { color: #e6ecea; font-weight: 600; }
+</style></head><body>
+<div class="mock-a2o"><div class="row"><div class="shot"><div class="capt"><b>1</b>On target</div><div class="phone">
+  <div class="sb"><span>9:41</span><span>5G</span></div>
+  <header class="hd"><div><div class="wm">Fuel<span>/</span>Log</div><div class="date">FRI 20 NOV &middot; DAY 1 STREAK</div></div>
+    <nav class="nav">
+      <a aria-label="History"><svg class="ic" viewBox="0 0 24 24"><path d="M3.2 20.1c5.9.3 11.8-.2 17.7.1"/><path d="M6.1 17.2c-.2-2.6.1-5.1-.1-7.6"/><path d="M11.9 17.1c.2-3.9-.1-7.8.1-11.6"/><path d="M17.8 17.3c-.1-1.9.2-3.8 0-5.6"/></svg></a>
+      <a aria-label="Badges"><svg class="ic" viewBox="0 0 24 24"><path d="M12.1 3.6c2.9-.1 5 2 5 4.9s-2.2 5.1-5.1 5c-2.8.1-5-2.2-5-5 0-2.7 2.3-5 5.1-4.9z"/><path d="M8.9 12.6c-.4 2.6-.9 5.2-1.2 7.8l4.3-2.1 4.4 2.2c-.4-2.6-.8-5.2-1.3-7.8"/></svg><b class="ct">1</b></a>
+      <a aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M3.8 7.1c3.3-.2 6.6.1 9.9-.1M18.4 6.9h1.9M3.7 17.1c1.4.1 2.9-.1 4.3 0M12.2 16.9c2.7.2 5.4-.1 8.1.1"/><path d="M16.1 4.9c1.2 0 2.1 1 2.1 2.1s-1 2.1-2.2 2.1-2-1-2-2.1 1-2.1 2.1-2.1zM10.1 14.9c1.1 0 2 1 2 2.1s-.9 2.1-2.1 2.1-2-1-2-2.1.9-2.1 2.1-2.1z"/></svg></a>
+      <a class="me" aria-label="Account and privacy">D</a>
+    </nav>
+  </header>
+  <div class="ann"><div class="lamp on">CUT</div><div class="lamp">MAINTAIN</div><div class="lamp">BULK</div></div>
+  
+  <section class="gauge">
+    <svg viewBox="0 -12 320 186" aria-hidden="true">
+      <g stroke="#3d4a50" stroke-width="2" stroke-linecap="round">
+        <line x1="30" y1="150" x2="46" y2="150"/><line x1="36.4" y1="109.8" x2="47.8" y2="113.5"/><line x1="54.8" y1="73.6" x2="64.5" y2="80.6"/>
+        <line x1="83.6" y1="44.8" x2="90.6" y2="54.5"/><line x1="119.8" y1="26.4" x2="123.5" y2="37.8"/><line x1="160" y1="20" x2="160" y2="36" stroke="#5b6a70"/>
+        <line x1="200.2" y1="26.4" x2="196.5" y2="37.8"/><line x1="236.4" y1="44.8" x2="229.4" y2="54.5"/><line x1="265.2" y1="73.6" x2="255.5" y2="80.6"/>
+        <line x1="283.6" y1="109.8" x2="272.2" y2="113.5"/><line x1="290" y1="150" x2="274" y2="150"/></g>
+      <path d="M165.7 12.1 A 138 138 0 0 1 298 150" stroke="#2c363b" stroke-width="4" fill="none"/><path d="M22.0 150.0 A 138 138 0 0 1 165.7 12.1" stroke="#8cc47a" stroke-width="4" fill="none"/>
+      <path d="M165.9 8.1 L171.3 -2.7 L161.3 -3.1 Z" fill="#8cc47a"/>
+      <text x="16" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">E</text>
+      <text x="296" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">F</text>
+    </svg>
+    <div class="readout "><span class="fig"><b>1,091</b><span>kcal</span></span><span class="lab">still to go</span></div>
+    <div class="pair"><div class="tap">TARGET<em>2,241</em></div><div>EATEN<em>1,150</em></div></div>
+  </section>
+  
+</div></div><div class="shot"><div class="capt"><b>2</b>150 over</div><div class="phone">
+  <div class="sb"><span>9:41</span><span>5G</span></div>
+  <header class="hd"><div><div class="wm">Fuel<span>/</span>Log</div><div class="date">FRI 20 NOV &middot; DAY 1 STREAK</div></div>
+    <nav class="nav">
+      <a aria-label="History"><svg class="ic" viewBox="0 0 24 24"><path d="M3.2 20.1c5.9.3 11.8-.2 17.7.1"/><path d="M6.1 17.2c-.2-2.6.1-5.1-.1-7.6"/><path d="M11.9 17.1c.2-3.9-.1-7.8.1-11.6"/><path d="M17.8 17.3c-.1-1.9.2-3.8 0-5.6"/></svg></a>
+      <a aria-label="Badges"><svg class="ic" viewBox="0 0 24 24"><path d="M12.1 3.6c2.9-.1 5 2 5 4.9s-2.2 5.1-5.1 5c-2.8.1-5-2.2-5-5 0-2.7 2.3-5 5.1-4.9z"/><path d="M8.9 12.6c-.4 2.6-.9 5.2-1.2 7.8l4.3-2.1 4.4 2.2c-.4-2.6-.8-5.2-1.3-7.8"/></svg><b class="ct">1</b></a>
+      <a aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M3.8 7.1c3.3-.2 6.6.1 9.9-.1M18.4 6.9h1.9M3.7 17.1c1.4.1 2.9-.1 4.3 0M12.2 16.9c2.7.2 5.4-.1 8.1.1"/><path d="M16.1 4.9c1.2 0 2.1 1 2.1 2.1s-1 2.1-2.2 2.1-2-1-2-2.1 1-2.1 2.1-2.1zM10.1 14.9c1.1 0 2 1 2 2.1s-.9 2.1-2.1 2.1-2-1-2-2.1.9-2.1 2.1-2.1z"/></svg></a>
+      <a class="me" aria-label="Account and privacy">D</a>
+    </nav>
+  </header>
+  <div class="ann"><div class="lamp on">CUT</div><div class="lamp">MAINTAIN</div><div class="lamp">BULK</div></div>
+  
+  <section class="gauge">
+    <svg viewBox="0 -12 320 186" aria-hidden="true">
+      <g stroke="#3d4a50" stroke-width="2" stroke-linecap="round">
+        <line x1="30" y1="150" x2="46" y2="150"/><line x1="36.4" y1="109.8" x2="47.8" y2="113.5"/><line x1="54.8" y1="73.6" x2="64.5" y2="80.6"/>
+        <line x1="83.6" y1="44.8" x2="90.6" y2="54.5"/><line x1="119.8" y1="26.4" x2="123.5" y2="37.8"/><line x1="160" y1="20" x2="160" y2="36" stroke="#5b6a70"/>
+        <line x1="200.2" y1="26.4" x2="196.5" y2="37.8"/><line x1="236.4" y1="44.8" x2="229.4" y2="54.5"/><line x1="265.2" y1="73.6" x2="255.5" y2="80.6"/>
+        <line x1="283.6" y1="109.8" x2="272.2" y2="113.5"/><line x1="290" y1="150" x2="274" y2="150"/></g>
+      <path d="M22.0 150.0 A 138 138 0 0 1 298.0 150.0" stroke="#ffb23e" stroke-width="4" fill="none"/>
+      <path d="M302.0 150.0 L313.0 155.0 L313.0 145.0 Z" fill="#ffb23e"/>
+      <text x="16" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">E</text>
+      <text x="296" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">F</text>
+    </svg>
+    <div class="readout over amber"><span class="fig"><b>150</b><span>kcal</span></span><span class="lab">over</span></div>
+    <div class="pair"><div class="tap">TARGET<em>2,241</em></div><div>EATEN<em>2,391</em></div></div>
+  </section>
+  
+</div></div><div class="shot"><div class="capt"><b>3</b>400 over</div><div class="phone">
+  <div class="sb"><span>9:41</span><span>5G</span></div>
+  <header class="hd"><div><div class="wm">Fuel<span>/</span>Log</div><div class="date">FRI 20 NOV &middot; DAY 1 STREAK</div></div>
+    <nav class="nav">
+      <a aria-label="History"><svg class="ic" viewBox="0 0 24 24"><path d="M3.2 20.1c5.9.3 11.8-.2 17.7.1"/><path d="M6.1 17.2c-.2-2.6.1-5.1-.1-7.6"/><path d="M11.9 17.1c.2-3.9-.1-7.8.1-11.6"/><path d="M17.8 17.3c-.1-1.9.2-3.8 0-5.6"/></svg></a>
+      <a aria-label="Badges"><svg class="ic" viewBox="0 0 24 24"><path d="M12.1 3.6c2.9-.1 5 2 5 4.9s-2.2 5.1-5.1 5c-2.8.1-5-2.2-5-5 0-2.7 2.3-5 5.1-4.9z"/><path d="M8.9 12.6c-.4 2.6-.9 5.2-1.2 7.8l4.3-2.1 4.4 2.2c-.4-2.6-.8-5.2-1.3-7.8"/></svg><b class="ct">1</b></a>
+      <a aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M3.8 7.1c3.3-.2 6.6.1 9.9-.1M18.4 6.9h1.9M3.7 17.1c1.4.1 2.9-.1 4.3 0M12.2 16.9c2.7.2 5.4-.1 8.1.1"/><path d="M16.1 4.9c1.2 0 2.1 1 2.1 2.1s-1 2.1-2.2 2.1-2-1-2-2.1 1-2.1 2.1-2.1zM10.1 14.9c1.1 0 2 1 2 2.1s-.9 2.1-2.1 2.1-2-1-2-2.1.9-2.1 2.1-2.1z"/></svg></a>
+      <a class="me" aria-label="Account and privacy">D</a>
+    </nav>
+  </header>
+  <div class="ann"><div class="lamp on">CUT</div><div class="lamp">MAINTAIN</div><div class="lamp">BULK</div></div>
+  
+  <section class="gauge">
+    <svg viewBox="0 -12 320 186" aria-hidden="true">
+      <g stroke="#3d4a50" stroke-width="2" stroke-linecap="round">
+        <line x1="30" y1="150" x2="46" y2="150"/><line x1="36.4" y1="109.8" x2="47.8" y2="113.5"/><line x1="54.8" y1="73.6" x2="64.5" y2="80.6"/>
+        <line x1="83.6" y1="44.8" x2="90.6" y2="54.5"/><line x1="119.8" y1="26.4" x2="123.5" y2="37.8"/><line x1="160" y1="20" x2="160" y2="36" stroke="#5b6a70"/>
+        <line x1="200.2" y1="26.4" x2="196.5" y2="37.8"/><line x1="236.4" y1="44.8" x2="229.4" y2="54.5"/><line x1="265.2" y1="73.6" x2="255.5" y2="80.6"/>
+        <line x1="283.6" y1="109.8" x2="272.2" y2="113.5"/><line x1="290" y1="150" x2="274" y2="150"/></g>
+      <path d="M22.0 150.0 A 138 138 0 0 1 298.0 150.0" stroke="#e8604c" stroke-width="4" fill="none"/>
+      <path d="M302.0 150.0 L313.0 155.0 L313.0 145.0 Z" fill="#e8604c"/>
+      <text x="16" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">E</text>
+      <text x="296" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">F</text>
+    </svg>
+    <div class="readout over red"><span class="fig"><b>400</b><span>kcal</span></span><span class="lab">over</span></div>
+    <div class="pair"><div class="tap">TARGET<em>2,241</em></div><div>EATEN<em>2,641</em></div></div>
+  </section>
+  
+</div></div><div class="shot"><div class="capt"><b>4</b>600 over</div><div class="phone">
+  <div class="sb"><span>9:41</span><span>5G</span></div>
+  <header class="hd"><div><div class="wm">Fuel<span>/</span>Log</div><div class="date">FRI 20 NOV &middot; DAY 1 STREAK</div></div>
+    <nav class="nav">
+      <a aria-label="History"><svg class="ic" viewBox="0 0 24 24"><path d="M3.2 20.1c5.9.3 11.8-.2 17.7.1"/><path d="M6.1 17.2c-.2-2.6.1-5.1-.1-7.6"/><path d="M11.9 17.1c.2-3.9-.1-7.8.1-11.6"/><path d="M17.8 17.3c-.1-1.9.2-3.8 0-5.6"/></svg></a>
+      <a aria-label="Badges"><svg class="ic" viewBox="0 0 24 24"><path d="M12.1 3.6c2.9-.1 5 2 5 4.9s-2.2 5.1-5.1 5c-2.8.1-5-2.2-5-5 0-2.7 2.3-5 5.1-4.9z"/><path d="M8.9 12.6c-.4 2.6-.9 5.2-1.2 7.8l4.3-2.1 4.4 2.2c-.4-2.6-.8-5.2-1.3-7.8"/></svg><b class="ct">1</b></a>
+      <a aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M3.8 7.1c3.3-.2 6.6.1 9.9-.1M18.4 6.9h1.9M3.7 17.1c1.4.1 2.9-.1 4.3 0M12.2 16.9c2.7.2 5.4-.1 8.1.1"/><path d="M16.1 4.9c1.2 0 2.1 1 2.1 2.1s-1 2.1-2.2 2.1-2-1-2-2.1 1-2.1 2.1-2.1zM10.1 14.9c1.1 0 2 1 2 2.1s-.9 2.1-2.1 2.1-2-1-2-2.1.9-2.1 2.1-2.1z"/></svg></a>
+      <a class="me" aria-label="Account and privacy">D</a>
+    </nav>
+  </header>
+  <div class="ann"><div class="lamp on">CUT</div><div class="lamp">MAINTAIN</div><div class="lamp">BULK</div></div>
+  
+  <section class="gauge">
+    <svg viewBox="0 -12 320 186" aria-hidden="true">
+      <g stroke="#3d4a50" stroke-width="2" stroke-linecap="round">
+        <line x1="30" y1="150" x2="46" y2="150"/><line x1="36.4" y1="109.8" x2="47.8" y2="113.5"/><line x1="54.8" y1="73.6" x2="64.5" y2="80.6"/>
+        <line x1="83.6" y1="44.8" x2="90.6" y2="54.5"/><line x1="119.8" y1="26.4" x2="123.5" y2="37.8"/><line x1="160" y1="20" x2="160" y2="36" stroke="#5b6a70"/>
+        <line x1="200.2" y1="26.4" x2="196.5" y2="37.8"/><line x1="236.4" y1="44.8" x2="229.4" y2="54.5"/><line x1="265.2" y1="73.6" x2="255.5" y2="80.6"/>
+        <line x1="283.6" y1="109.8" x2="272.2" y2="113.5"/><line x1="290" y1="150" x2="274" y2="150"/></g>
+      <path d="M22.0 150.0 A 138 138 0 0 1 298.0 150.0" stroke="#e8604c" stroke-width="4" fill="none"/>
+      <path d="M302.0 150.0 L313.0 155.0 L313.0 145.0 Z" fill="#e8604c"/>
+      <text x="16" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">E</text>
+      <text x="296" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">F</text>
+    </svg>
+    <div class="readout over red"><span class="fig"><b>600</b><span>kcal</span></span><span class="lab">over</span></div>
+    <div class="pair"><div class="tap">TARGET<em>2,241</em></div><div>EATEN<em>2,841</em></div></div>
+  </section>
+  
+</div><div class="hist"><div class="hc">Saved to History as Maintain</div>
+  <div class="hr"><span class="d">Fri, 20 Nov 2026<span class="tg">MAINTAIN</span></span><span class="k">2,841</span>
+  <span class="s">Mode chosen: Cut &middot; eaten at maintenance or above</span></div></div></div><div class="shot"><div class="capt"><b>5</b>Maintain mode</div><div class="phone">
+  <div class="sb"><span>9:41</span><span>5G</span></div>
+  <header class="hd"><div><div class="wm">Fuel<span>/</span>Log</div><div class="date">FRI 20 NOV &middot; DAY 1 STREAK</div></div>
+    <nav class="nav">
+      <a aria-label="History"><svg class="ic" viewBox="0 0 24 24"><path d="M3.2 20.1c5.9.3 11.8-.2 17.7.1"/><path d="M6.1 17.2c-.2-2.6.1-5.1-.1-7.6"/><path d="M11.9 17.1c.2-3.9-.1-7.8.1-11.6"/><path d="M17.8 17.3c-.1-1.9.2-3.8 0-5.6"/></svg></a>
+      <a aria-label="Badges"><svg class="ic" viewBox="0 0 24 24"><path d="M12.1 3.6c2.9-.1 5 2 5 4.9s-2.2 5.1-5.1 5c-2.8.1-5-2.2-5-5 0-2.7 2.3-5 5.1-4.9z"/><path d="M8.9 12.6c-.4 2.6-.9 5.2-1.2 7.8l4.3-2.1 4.4 2.2c-.4-2.6-.8-5.2-1.3-7.8"/></svg><b class="ct">1</b></a>
+      <a aria-label="Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M3.8 7.1c3.3-.2 6.6.1 9.9-.1M18.4 6.9h1.9M3.7 17.1c1.4.1 2.9-.1 4.3 0M12.2 16.9c2.7.2 5.4-.1 8.1.1"/><path d="M16.1 4.9c1.2 0 2.1 1 2.1 2.1s-1 2.1-2.2 2.1-2-1-2-2.1 1-2.1 2.1-2.1zM10.1 14.9c1.1 0 2 1 2 2.1s-.9 2.1-2.1 2.1-2-1-2-2.1.9-2.1 2.1-2.1z"/></svg></a>
+      <a class="me" aria-label="Account and privacy">D</a>
+    </nav>
+  </header>
+  <div class="ann"><div class="lamp">CUT</div><div class="lamp on">MAINTAIN</div><div class="lamp">BULK</div></div>
+  
+  <section class="gauge">
+    <svg viewBox="0 -12 320 186" aria-hidden="true">
+      <g stroke="#3d4a50" stroke-width="2" stroke-linecap="round">
+        <line x1="30" y1="150" x2="46" y2="150"/><line x1="36.4" y1="109.8" x2="47.8" y2="113.5"/><line x1="54.8" y1="73.6" x2="64.5" y2="80.6"/>
+        <line x1="83.6" y1="44.8" x2="90.6" y2="54.5"/><line x1="119.8" y1="26.4" x2="123.5" y2="37.8"/><line x1="160" y1="20" x2="160" y2="36" stroke="#5b6a70"/>
+        <line x1="200.2" y1="26.4" x2="196.5" y2="37.8"/><line x1="236.4" y1="44.8" x2="229.4" y2="54.5"/><line x1="265.2" y1="73.6" x2="255.5" y2="80.6"/>
+        <line x1="283.6" y1="109.8" x2="272.2" y2="113.5"/><line x1="290" y1="150" x2="274" y2="150"/></g>
+      <path d="M125.5 16.4 A 138 138 0 0 1 298 150" stroke="#2c363b" stroke-width="4" fill="none"/><path d="M22.0 150.0 A 138 138 0 0 1 125.5 16.4" stroke="#9aa6a8" stroke-width="4" fill="none"/>
+      <path d="M124.5 12.5 L126.5 0.6 L116.9 3.2 Z" fill="#9aa6a8"/>
+      <text x="16" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">E</text>
+      <text x="296" y="172" fill="#6f7c80" font-family="JetBrains Mono" font-size="12" font-weight="700">F</text>
+    </svg>
+    <div class="readout "><span class="fig"><b>1,591</b><span>kcal</span></span><span class="lab">still to go</span></div>
+    <div class="pair"><div class="tap">TARGET<em>2,741</em></div><div>EATEN<em>1,150</em></div></div>
+  </section>
+  
+</div></div></div><section class="bands"><h3>Over-target bands (cut target 2,241)</h3>
+<table><thead><tr><th>EATEN VS CUT TARGET</th><th>KCAL</th><th>LINE ON TODAY</th><th>SAVED TO HISTORY AS</th></tr></thead><tbody>
+<tr><td>at or under target</td><td>&le; 2,241</td><td><span class="sw" style="background:#8cc47a"></span>Green, arc fills E&rarr;F, number in ink, "still to go"</td><td>Cut</td></tr>
+<tr><td>+1 to +250</td><td>2,242&ndash;2,491</td><td><span class="sw" style="background:#ffb23e"></span>Amber, full arc, pointer at F, "N over"</td><td>Cut</td></tr>
+<tr><td>+251 to +499</td><td>2,492&ndash;2,740</td><td><span class="sw" style="background:#e8604c"></span>Red, full arc, pointer at F, "N over"</td><td>Cut</td></tr>
+<tr><td>+500 to +999 (maintenance)</td><td>2,741&ndash;3,240</td><td><span class="sw" style="background:#e8604c"></span>Red, full arc, "N over" (CUT stays lit)</td><td>Maintain</td></tr>
+<tr><td>+1,000 and above</td><td>&ge; 3,241</td><td><span class="sw" style="background:#e8604c"></span>Red, full arc, pointer at F</td><td>Bulk</td></tr>
+<tr><td>Maintain or Bulk mode</td><td>any</td><td><span class="sw" style="background:#9aa6a8"></span>Neutral grey, "still to go" / "N over"</td><td>as chosen</td></tr>
+</tbody></table>
+<ul>
+<li><b>Day type is stored apart from the chosen mode.</b> A 2,841 day is saved to History as Maintain, but the mode setting stays Cut. Tomorrow opens in Cut with the CUT lamp lit, and today keeps looking like a cut day. Writing the effective type back into the mode is the v99 bug class, where one big day silently switched the user to Maintain.</li>
+<li><b>A maintenance-level day counts as rest.</b> A day saved as Maintain or Bulk drains cut load like a banked break day (1/14). It does not accrue load, so a blow-out day is not punished twice.</li>
+<li><b>No over-zone.</b> The gauge is drawn exactly as in a2: same arc, same 11 ticks, E and F in the same place. At or over target the arc is simply full with the pointer at F. Only the colour and the "N over" readout show how far over the day went.</li>
+<li><b>Maintain and Bulk are neutral.</b> There is no green, amber or red in those modes, under or over. The readout still says "still to go" or "N over". Colour exists only to protect a cut. The green is a muted sage (#8cc47a) and the red is #e8604c, a clearer red than the pink-brick Delete (#c9836f).</li>
+</ul></section></div>
+</body></html>
