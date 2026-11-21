@@ -45,7 +45,7 @@ async function openAILog(page) {
 }
 
 const analyse = async (page, text) => {
-  await page.getByPlaceholder(/GDK large mixed meat meal/).fill(text);
+  await page.getByRole("textbox", { name: "Describe your meal" }).fill(text);
   await page.getByRole("button", { name: /ANALYSE MEAL/ }).click();
 };
 

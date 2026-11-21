@@ -162,8 +162,8 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v112" ↔ "v112") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v112";
+// CACHE ("fuel-log-v113" ↔ "v113") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v113";
 const APP_PATCH_DATE = "2026-11-21";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
@@ -5737,7 +5737,7 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [], inline = false }) {
         aria-label={hasPhoto ? "Notes for the photos" : "Describe your meal"}
         placeholder={hasPhoto
           ? "e.g. 'Tesco chicken tikka, ate half' — weights and brands help"
-          : "e.g. 'GDK large mixed meat meal with small chips and Coke Zero, bowl of Magic Spoon cereal, Pret chicken bacon sandwich'"}
+          : "Describe what you've eaten, you can also supply pictures and AI will break it down into kcal and macros."}
         style={{ width:"100%", boxSizing:"border-box", background:CARD,
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",

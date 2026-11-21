@@ -51,7 +51,7 @@ async function openAILog(page, extra = {}) {
   await page.getByRole("button", { name: /AI LOG/ }).click();
 }
 const analyse = async (page, text) => {
-  await page.getByPlaceholder(/GDK large mixed meat meal/).fill(text);
+  await page.getByRole("textbox", { name: "Describe your meal" }).fill(text);
   await page.getByRole("button", { name: /ANALYSE MEAL/ }).click();
 };
 const storedLogs = page => page.evaluate(keyExpr =>
