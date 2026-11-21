@@ -394,3 +394,139 @@ Feature: A break is time not cutting — measured, encouraged, and guarded
     When I sign in on a different device
     Then that device shows the same remaining load and keeps draining from it
     And the guard behaves the same as it would have on my phone
+
+# ═════════════════════════════════════════════════════════════
+# v2 UI ADDITIONS (2026-11) — design/v2/HANDOVER.md §7, D14–D16.
+# Applies only behind ?ui=v2. Every v1 scenario above still governs v1 and the logic.
+# Mockups: design/v2/mockups/a2-break.png, a2-break2.png.
+#
+# DISPLAY ONLY, LOGIC UNCHANGED: banking at 90 % of maintenance (D15) changes the DRAIN —
+# only banked days should pay down the load. That logic is NOT built yet: the drain still
+# counts every non-cut day as above. Until it is, v2 computes banked / under / unlogged per
+# day from history for display only, so the tape's "N OF 14 DAYS BANKED" can run behind
+# the fill (which still drains on every rest day). Spec 02 must record, when the logic
+# lands, that the food log is read ONLY to grant break credit.
+# ═════════════════════════════════════════════════════════════
+
+Feature: Diet break — v2 cut-load tape, banking and sheets
+
+  Background:
+    Given the v2 UI is on
+
+  # ── The tape (§7.1) ────────────────────────────────────────
+
+  Scenario: The tape sits under the lamps as an instrument
+    When the tape is shown
+    Then it is labelled "CUT LOAD" on the left with the status on the right
+    And it has ticks over 0–84, a taller mark at the lean-adjusted nudge point and at the end
+    And it is captioned "0 · NUDGE · BREAK"
+    And the load number itself is never shown
+
+  Scenario: Hidden when there is nothing to show
+    Given I am cutting with less than CUT_BAR_MIN_LOAD of load, or I have no open block
+    Then there is no tape
+
+  Scenario: Cutting, below the nudge
+    Given I am cutting with load between CUT_BAR_MIN_LOAD and the nudge
+    Then the fill is neutral grey
+    And the right label is "{n} WEEKS", real weeks since the block began (rest days included)
+    And tapping the tape does nothing
+
+  Scenario: Cutting, at or above the nudge
+    Given I am cutting with load at or above the nudge
+    Then the fill and label are amber
+    When I tap the tape
+    Then the soft decision sheet opens: "Start a 2-week break" / "Not yet"
+    And "Not yet" hides the nudge for 7 days (onCutNudgeDismiss)
+
+  Scenario: Break due
+    Given my load is full (the hard threshold)
+    Then the right label reads "BREAK DUE · {n} WEEKS" in amber
+    When I tap the tape
+    Then a bottom sheet opens over a dimmed screen with the eyebrow "CUT LOAD FULL · {n} WEEKS IN A DEFICIT"
+    And the headline "Time for a diet break"
+    And "{n} weeks is a long stretch in a deficit. Let's spend a couple of weeks at maintenance."
+    And the primary button "Start a 2-week break" sets Maintain in one tap (onStartDietBreak)
+    And the secondary button "Remind me in 3 days" snoozes it (onCutPromptSnooze)
+    And there is no close and no "never ask again"
+    And the footnote reads "Your target moves to maintenance, about {M} kcal."
+
+  # ── On a break (§7.1–7.3) ──────────────────────────────────
+
+  Scenario: The tape drains in teal while on a break
+    Given I am in Maintain (or Bulk) with load remaining
+    Then MAINTAIN is lit and the tape fill is teal
+    And the right label reads "ON A BREAK · {banked} OF 14 DAYS BANKED"
+    And what has already drained shows as a dashed outline
+
+  Scenario Outline: Each finished break day is judged against 90 % of maintenance
+    Given yesterday was a break day with <intake>
+    Then it is <state>
+    Examples:
+      | intake                        | state                                         |
+      | at least 0.9 × maintenance    | banked (solid)                                |
+      | logged but under 0.9 × M      | a hatched gap, labelled "Not banked, under maintenance" |
+      | nothing logged                | a dashed pending gap, labelled "Not banked yet, not logged" |
+
+  Scenario: Hatched gaps turn amber at two or more
+    Given one break day was under
+    Then its gap is neutral grey
+    Given two or more break days were under
+    Then the gaps are amber
+
+  Scenario: Today is always in progress
+    Then the line "Today {eaten} of {0.9 × M} to bank it" sits under the tape
+
+  Scenario Outline: One status line, by priority W5 > W4 > W6 > W10
+    Given <situation>
+    Then the status line reads "<line>"
+    And "Today … to bank it" sits beneath it
+    Examples:
+      | situation                              | line                                                                   |
+      | two or more break days were under      | You're not taking an effective break. Eat at maintenance.             |
+      | yesterday was under                    | Yesterday was under maintenance, so it didn't count towards your break. |
+      | yesterday wasn't logged                | Yesterday wasn't logged. Log it                                        |
+      | the last 3 break days were all banked  | 3 for 3. This is what a break looks like.                              |
+
+  Scenario: "Log it" opens History to fill in yesterday
+    Given the status line reads "Yesterday wasn't logged."
+    When I tap "Log it"
+    Then the History screen opens
+
+  Scenario: Tapping the break tape explains it
+    When I tap the tape on a break
+    Then it shows "About {d} days to fully recharged." and "Recharging now sets up your next block."
+
+  # ── Going back to Cut early (§7.5) — see app-shell/06 ───────
+
+  Scenario: The early-return confirm uses the agreed copy
+    Given I am mid-break and the break began at or above the soft threshold
+    When I tap the CUT lamp
+    Then the sheet reads "Back to cutting already?"
+    And "About {d} more rest days would finish this break, …" with the forecast
+    And "This block began on {date}."
+    And offers "Keep resting" (primary) and "Cut anyway"
+
+  # ── Caution strip (O1 proposal, not yet approved) ──────────
+
+  Scenario: Only the most important caution shows, with a count of the rest
+    Given more than one caution applies today
+    Then one strip under the gauge shows the highest-priority caution
+    And a "+{n} more" control expands the others in place
+    # Priority: aggressive-cut acknowledgement (needs an answer) > low on fuel >
+    # weight up while cutting > held at minimum maintenance > eased to a steady pace >
+    # other target warnings > recharged.
+
+  Scenario: The aggressive-cut acknowledgement stays actionable
+    Given my own target is more than 1,000 kcal under maintenance and I have not acknowledged it
+    Then the strip shows "Not recommended" with "Yes, I understand"
+    When I tap it
+    Then onAckAggressiveCut is called
+
+  Scenario: Recharged can be dismissed from the strip
+    Given the block has just fully drained
+    Then the strip can show "Recharged" with a dismiss control (onDismissRecharged)
+
+  Scenario: The safe-minimum notice is gone (D6)
+    Given the safe minimum is applied
+    Then no notice says so; the floor itself still applies
