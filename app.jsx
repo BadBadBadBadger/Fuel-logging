@@ -7192,11 +7192,238 @@ function V2Macros(props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ██ REGION B — LOG FOOD · QUICK ADD · MEAL ROWS + INLINE EDITOR (§3.7–3.8, §5, D7, D8)
 // ─────────────────────────────────────────────────────────────────────────────
-function V2LogButtons(props) {
-  return <div data-testid="v2-log-buttons"><Label>Log food · quick add (stub)</Label></div>;
+// Spec: features/logging/11-tap-row-to-edit.feature · e2e/v2-meals.spec.js
+// Presentation only: every write goes through App's handlers (updateLog, removeLog, addToQA),
+// and the re-estimate reuses AI_REESTIMATE_PROMPT + callAIJson exactly as v1's EntryEditor does.
+
+// "Text" glyph for LOG FOOD (three lines). Not one of the 15 icons — it is a mark inside the
+// button, not a meaning of its own — drawn on the same 24px grid and stroke.
+function V2TextGlyph({ size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
+      strokeWidth="1.75" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0, display: "block" }}>
+      <path d="M4 6.5h16M4 12h16M4 17.5h10"/>
+    </svg>
+  );
 }
-function V2MealList(props) {
-  return <div data-testid="v2-meals"><Label>Eaten today (stub)</Label></div>;
+
+const V2_CHIP = { fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9, letterSpacing: ".1em",
+  border: "1px solid currentColor", borderRadius: 4, padding: "2px 4px", lineHeight: 1 };
+
+function V2LogButtons({ setView, authState, onPremiumGate = () => {} }) {
+  const isPremium = authState === "premium";
+  // Free users: as v1 Dashboard — the AI log is premium, so the tap opens the premium gate.
+  const logFood = () => isPremium ? setView("ai") : onPremiumGate({ emoji: "🤖", name: "AI LOG" });
+  return (
+    <div data-testid="v2-log-buttons" style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <button type="button" data-testid="v2-log-food" onClick={logFood}
+        aria-label={isPremium ? "Log food" : "Log food (premium)"}
+        style={{ flex: 1, minWidth: 0, height: 60, borderRadius: 14, border: "none", cursor: "pointer",
+          background: "var(--amber)", color: "var(--amber-on)", display: "flex", alignItems: "center",
+          gap: 10, padding: "0 14px 0 16px" }}>
+        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 22, letterSpacing: ".08em",
+          textTransform: "uppercase", flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Log food</span>
+        <span style={{ display: "flex", gap: 8, color: "var(--amber-on)" }}>
+          <Icon name="camera" size={20}/><Icon name="mic" size={20}/><V2TextGlyph size={20}/>
+        </span>
+        {!isPremium && <span data-testid="v2-log-food-lock"><Icon name="lock" size={16}/></span>}
+        <span style={V2_CHIP}>AI</span>
+      </button>
+      <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
+        aria-label="Quick add, saved meals"
+        style={{ width: 104, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
+          background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
+          display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
+        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
+          textTransform: "uppercase" }}>Quick add</span>
+        <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
+          opacity: .75 }}>saved meals</span>
+      </button>
+    </div>
+  );
+}
+
+const v2g = n => Math.round(Number(n) || 0);   // grams on the collapsed row: whole numbers
+
+// One collapsed or expanded meal row. The editor's state lives here and is reset from the
+// stored entry every time the row opens, so collapsing (or opening another row) throws
+// unsaved edits away — open issue O5.
+function V2MealRow({ log, open, onToggle, updateLog, removeLog, addToQA, isPremium, onPremiumGate }) {
+  const blank = () => ({ name: log.name, kcal: String(log.kcal), protein: String(log.protein),
+    carbs: String(log.carbs), fat: String(log.fat) });
+  const [f, setF] = useState(blank);
+  const [reest, setReest] = useState(false);
+  const [reestMsg, setReestMsg] = useState("");   // "" | "done" | error text
+  const [qaSaved, setQaSaved] = useState(0);      // taps on Save to Quick Add (re-blinks each)
+  useEffect(() => { if (open) { setF(blank()); setReest(false); setReestMsg(""); setQaSaved(0); } },
+    [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setReestMsg(""); };
+
+  const patch = () => ({
+    name:    f.name.trim() || log.name,
+    kcal:    Math.round(Number(f.kcal) || 0),
+    protein: Math.round((Number(f.protein) || 0) * 10) / 10,
+    carbs:   Math.round((Number(f.carbs)   || 0) * 10) / 10,
+    fat:     Math.round((Number(f.fat)     || 0) * 10) / 10,
+  });
+  const save   = () => { updateLog(log.id, patch()); onToggle(null); };
+  const del    = () => { removeLog(log.id); onToggle(null); };
+  // Saves what is in the editor now (the name as typed), without saving the entry itself.
+  const saveQA = async () => { await addToQA({ ...log, ...patch() }); setQaSaved(n => n + 1); };
+
+  // Same call, same guards as v1 EntryEditor.reestimate (features/logging/01, /07).
+  const reestimate = async () => {
+    if (!isPremium) { onPremiumGate({ emoji: "✨", name: "AI re-estimate" }); return; }
+    if (!f.name.trim() || reest) return;
+    setReest(true); setReestMsg("");
+    let upd;
+    try { upd = await callAIJson(AI_REESTIMATE_PROMPT(f.name.trim()), 300); }
+    catch (e) { setReestMsg("Couldn't reach the estimate. Check your connection and try again."); setReest(false); return; }
+    // Never claim "Updated" with blank fields (v1 F4): a silent zero would reach calibration.
+    if (!upd || !isFinite(Number(upd.kcal))) {
+      setReestMsg("Couldn't estimate that. Try rephrasing the name."); setReest(false); return;
+    }
+    setF(p => ({ ...p,
+      kcal:    String(Math.round(upd.kcal)),
+      protein: String(Math.round(upd.protein * 10) / 10),
+      carbs:   String(Math.round(upd.carbs   * 10) / 10),
+      fat:     String(Math.round(upd.fat     * 10) / 10),
+    }));
+    setReestMsg("done"); setReest(false);
+  };
+
+  const time = { fontFamily: V2_FONT.mono, fontSize: 12, lineHeight: "22px", fontVariantNumeric: "tabular-nums" };
+  const fl = { display: "block", fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9.5, letterSpacing: ".16em",
+    textTransform: "uppercase", color: "var(--dim)", marginBottom: 5 };
+  const inp = { ...V2_INPUT, height: 40, boxSizing: "border-box", padding: "9px 9px", fontWeight: 500, minWidth: 0 };
+  const act = { height: 36, padding: "0 12px", borderRadius: 8, border: "none", cursor: "pointer",
+    fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
+    display: "inline-flex", alignItems: "center", gap: 6 };
+  const num = (k, label, mode) => (
+    <label style={{ minWidth: 0 }}>
+      <span style={fl}>{label}</span>
+      <input value={f[k]} onChange={e => set(k, e.target.value)} inputMode={mode}
+        data-testid={"v2-meal-" + k} style={inp}/>
+    </label>
+  );
+
+  if (!open) return (
+    <button type="button" data-testid="v2-meal-row" data-id={log.id} aria-expanded="false"
+      onClick={() => onToggle(log.id)}
+      style={{ display: "grid", gridTemplateColumns: "52px 1fr auto", columnGap: 8, width: "100%",
+        padding: "14px 0", background: "transparent", border: "none", borderBottom: "1px solid var(--hair)",
+        textAlign: "left", cursor: "pointer", color: "var(--ink)" }}>
+      <span style={{ ...time, color: "var(--dim)" }}>{log.time}</span>
+      <span data-testid="v2-meal-title" style={{ fontFamily: V2_FONT.body, fontWeight: 500, fontSize: 16,
+        lineHeight: "22px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.name}</span>
+      <Num size={16} style={{ lineHeight: "22px", textAlign: "right" }} data-testid="v2-meal-kcal">{v2fmt(log.kcal)}</Num>
+      <span className="v2-num" data-testid="v2-meal-macros"
+        style={{ gridColumn: 2, fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
+        <b style={{ fontWeight: 500, color: "var(--ink)" }}>P {v2g(log.protein)}</b> · C {v2g(log.carbs)} · F {v2g(log.fat)}
+      </span>
+    </button>
+  );
+
+  return (
+    <div data-testid="v2-meal-editor" data-id={log.id} role="group" aria-label={"Editing " + log.name}
+      style={{ background: "var(--panel-2)", boxShadow: "var(--panel-shadow)", margin: "0 -12px", color: "var(--ink)",
+        padding: "10px 12px 16px", borderRadius: 12 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {/* Tapping the header collapses and discards (O5) */}
+        <button type="button" data-testid="v2-meal-row" data-id={log.id} aria-expanded="true"
+          aria-label={log.name + ", editing. Close without saving"} onClick={() => onToggle(null)}
+          style={{ flex: 1, display: "grid", gridTemplateColumns: "52px 1fr", columnGap: 8, background: "transparent",
+            border: "none", padding: 0, textAlign: "left", cursor: "pointer", minHeight: 36, alignItems: "center" }}>
+          <span style={{ ...time, color: "var(--amber-ink)" }}>{log.time}</span>
+          <span style={{ fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, lineHeight: "22px",
+            letterSpacing: ".16em", textTransform: "uppercase", color: "var(--dim)" }}>Editing</span>
+        </button>
+        <button type="button" data-testid="v2-meal-cancel" onClick={() => onToggle(null)}
+          style={{ ...V2_BTN.text, minHeight: 36 }}>Cancel</button>
+      </div>
+
+      <div style={{ marginTop: 6 }}>
+        <label style={{ display: "block" }}>
+          <span style={fl}>Name</span>
+          <input value={f.name} onChange={e => set("name", e.target.value)} data-testid="v2-meal-name"
+            style={{ ...inp, fontFamily: V2_FONT.body, fontWeight: 400, padding: "9px 11px" }}/>
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr 1fr 1fr", gap: 6, marginTop: 12 }}>
+          {num("kcal", "Kcal", "numeric")}
+          {num("protein", "Protein", "decimal")}
+          {num("carbs", "Carbs", "decimal")}
+          {num("fat", "Fat", "decimal")}
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14, alignItems: "center" }}>
+          <button type="button" data-testid="v2-meal-save" onClick={save}
+            style={{ ...act, background: "var(--amber)", color: "var(--amber-on)", padding: "0 18px" }}>Save</button>
+          <button type="button" data-testid="v2-meal-saveqa" onClick={saveQA}
+            key={"qa-" + qaSaved} aria-pressed={qaSaved > 0}
+            style={{ ...act, background: "var(--well)", color: qaSaved ? "var(--amber-ink)" : "var(--ink)",
+              animation: qaSaved ? "blink_add 0.4s ease-out" : "none" }}>
+            {qaSaved > 0 && <Icon name="bookmark" size={15} filled/>}
+            {qaSaved > 0 ? "Saved to Quick Add" : "Save to Quick Add"}
+          </button>
+          <button type="button" data-testid="v2-meal-delete" onClick={del}
+            style={{ ...act, background: "transparent", color: "var(--rust)", padding: "0 4px", marginLeft: "auto" }}>Delete</button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10,
+          borderTop: "1px solid var(--faint)" }}>
+          <button type="button" data-testid="v2-meal-reestimate" onClick={reestimate} disabled={reest}
+            aria-busy={reest || undefined}
+            style={{ ...act, flex: 1, justifyContent: "center", background: "var(--well)",
+              border: "1px solid var(--amber-edge)", color: "var(--amber-ink)", opacity: reest ? .7 : 1 }}>
+            {reestMsg === "done" && !reest && <Icon name="check" size={15}/>}
+            {reest ? "Re-estimating…" : reestMsg === "done" ? "Updated" : "Re-estimate from name"}
+          </button>
+          <span data-testid="v2-meal-pro" style={{ fontFamily: V2_FONT.mono, fontWeight: 700, fontSize: 9,
+            letterSpacing: ".1em", textTransform: "uppercase", color: "var(--dim)" }}>Pro</span>
+        </div>
+        {reestMsg && reestMsg !== "done" && (
+          <div role="alert" data-testid="v2-meal-reestimate-error"
+            style={{ fontSize: 12, color: "var(--rust)", marginTop: 8, lineHeight: 1.4 }}>{reestMsg}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function V2MealList({ logs = [], totals, updateLog, removeLog, addToQA, authState, onPremiumGate = () => {} }) {
+  const [openId, setOpenId] = useState(null);
+  const isPremium = authState === "premium";
+  // A row deleted elsewhere (or a new day) cannot stay "open".
+  const openLive = logs.some(l => l.id === openId) ? openId : null;
+  const kcal = totals ? totals.kcal : logs.reduce((s, l) => s + (Number(l.kcal) || 0), 0);
+  const n = logs.length;
+  return (
+    <section data-testid="v2-meals" aria-label="Eaten today" style={{ marginTop: 10, color: "var(--ink)" }}>
+      <div data-testid="v2-meals-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        paddingBottom: 10, borderBottom: "1px solid var(--faint)" }}>
+        <Label style={{ fontSize: 11, letterSpacing: ".16em" }}>Eaten today</Label>
+        {n > 0 && <Num size={12} data-testid="v2-meals-summary" style={{ letterSpacing: ".04em" }}>
+          {n} item{n !== 1 ? "s" : ""} · {v2fmt(kcal)}</Num>}
+      </div>
+      {n === 0 ? (
+        <div data-testid="v2-meals-empty" style={{ fontSize: 13, color: "var(--dim)", padding: "14px 0 0" }}>
+          Nothing logged yet today.
+        </div>
+      ) : (
+        <>
+          {/* Chronological, as logged (mockup a2: 07:45 → 12:30 → 15:10) */}
+          {logs.map(log => (
+            <V2MealRow key={log.id} log={log} open={openLive === log.id} onToggle={setOpenId}
+              updateLog={updateLog} removeLog={removeLog} addToQA={addToQA}
+              isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+          ))}
+          <p data-testid="v2-meals-hint" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)", padding: "12px 0 0 60px" }}>
+            Tap a meal to edit.
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 // ── end REGION B ─────────────────────────────────────────────────────────────
 
