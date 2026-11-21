@@ -92,3 +92,15 @@ This supersedes founder decision **Q4** (week-on-week, `features/history/01:195`
 3. Move CSV to Settings › Account & data, next to the JSON download? **Default: yes.**
 4. Show CUT-day amber/red lamps on History rows, matching Last 7? **Default: yes, CUT only.**
 5. When D18 ships, reclassify past days retroactively? **Default: no, forward only.**
+
+---
+
+## Owner decisions (2026-11-21)
+
+| # | Question | Decision |
+|---|---|---|
+| Q1 | Sparse smoothed trend + rate replaces week-on-week on History | **Yes** |
+| Q2 | Drop Year, per-macro charts, line/bar toggle | **Yes** |
+| Q3 | CSV moves to Settings › Account & data | **Yes** |
+| Q4 | Amber/red lamps on over-target CUT-day rows only | **Yes, CUT only** |
+| Q5 | Reclassify past days when D18 ships | Not asked; chair's default stands: **forward only** |
