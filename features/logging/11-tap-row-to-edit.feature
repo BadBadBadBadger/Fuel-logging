@@ -12,7 +12,7 @@ Feature: Tap a meal row to edit it (Today v2)
   # ── Log buttons (D7) ──────────────────────────────────────────
 
   Scenario: LOG FOOD and QUICK ADD sit above the meal list
-    Then I see LOG FOOD, an amber button with camera, voice and text marks and an "AI" chip
+    Then I see LOG FOOD, an amber button with camera, voice and text marks and an "AI" chip (a lock in its place for free users)
     And beside it QUICK ADD, an amber outline with "saved meals" underneath
     And both sit above "EATEN TODAY"
 

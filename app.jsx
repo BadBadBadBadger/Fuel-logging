@@ -7401,18 +7401,19 @@ function V2LogButtons({ setView, authState, onPremiumGate = () => {} }) {
         aria-label={isPremium ? "Log food" : "Log food (premium)"}
         style={{ flex: 1, minWidth: 0, height: 60, borderRadius: 14, border: "none", cursor: "pointer",
           background: "var(--amber)", color: "var(--amber-on)", display: "flex", alignItems: "center",
-          gap: 10, padding: "0 14px 0 16px" }}>
-        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 22, letterSpacing: ".08em",
+          gap: 8, padding: "0 12px 0 14px", overflow: "hidden" }}>
+        <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 21, letterSpacing: ".04em",
           textTransform: "uppercase", flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Log food</span>
-        <span style={{ display: "flex", gap: 8, color: "var(--amber-on)" }}>
-          <Icon name="camera" size={20}/><Icon name="mic" size={20}/><V2TextGlyph size={20}/>
+        <span style={{ display: "flex", gap: 6, color: "var(--amber-on)" }}>
+          <Icon name="camera" size={18}/><Icon name="mic" size={18}/><V2TextGlyph size={18}/>
         </span>
-        {!isPremium && <span data-testid="v2-log-food-lock"><Icon name="lock" size={16}/></span>}
-        <span style={V2_CHIP}>AI</span>
+        {/* Free users: the lock takes the AI chip's place, so the button fits at 360–390px. */}
+        {isPremium ? <span style={V2_CHIP}>AI</span>
+          : <span data-testid="v2-log-food-lock" style={{ display: "flex" }}><Icon name="lock" size={16}/></span>}
       </button>
       <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
         aria-label="Quick add, saved meals"
-        style={{ width: 104, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
+        style={{ width: 94, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
           background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
           display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
         <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
@@ -8301,7 +8302,7 @@ function V2ModeLamps({ mode, isCustomMode = false, requestMode = () => {} }) {
 
 // ── Cut-load tape (§7.1–7.4) ──
 const V2_TAPE_TICKS = "repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px calc(100% / 12)) bottom/100% 5px no-repeat";
-function V2Tape({ fillPct, fillColor, nudgePct, pointerColor, children }) {
+function V2LoadTape({ fillPct, fillColor, nudgePct, pointerColor, children }) {
   return (
     <div style={{ position: "relative", height: 18, marginTop: 4, background: V2_TAPE_TICKS }}>
       <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, background: "var(--faint)" }}/>
@@ -8420,7 +8421,7 @@ function V2CutTape({ cutBar = null, cutBlock = null, cutPrompt = null, prof, his
             textAlign: "left", cursor: "pointer" }}>
           {head("Cut load", `On a break · ${bd.banked} of 14 days banked`, "var(--teal)")}
         </button>
-        <V2Tape fillPct={fillPct} fillColor="var(--teal)" nudgePct={nudgePct} pointerColor="var(--teal)">
+        <V2LoadTape fillPct={fillPct} fillColor="var(--teal)" nudgePct={nudgePct} pointerColor="var(--teal)">
           {topPct > gapsEnd && (
             <span aria-hidden="true" style={{ position: "absolute", bottom: 0, height: 5, left: `${gapsEnd}%`,
               width: `${topPct - gapsEnd}%`, border: "1px dashed var(--teal-edge)", borderLeft: 0 }}/>
@@ -8439,7 +8440,7 @@ function V2CutTape({ cutBar = null, cutBlock = null, cutPrompt = null, prof, his
                     : { background: hatch(gapColor), borderLeft: `1px solid ${gapColor}`, borderRight: `1px solid ${gapColor}` }) }}/>
             );
           })}
-        </V2Tape>
+        </V2LoadTape>
         <V2TapeScale nudgePct={nudgePct}/>
         {lineText && (
           <div data-testid="v2-break-line" data-line={bd.line}
@@ -8482,7 +8483,7 @@ function V2CutTape({ cutBar = null, cutBlock = null, cutPrompt = null, prof, his
         onClick={open} onKeyDown={e => { if (level && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }}
         style={{ cursor: level ? "pointer" : "default" }}>
         {head("Cut load", status, hot ? "var(--amber-ink)" : "var(--ink)")}
-        <V2Tape fillPct={fillPct} fillColor={hot ? "var(--amber)" : "var(--dim)"} nudgePct={nudgePct}
+        <V2LoadTape fillPct={fillPct} fillColor={hot ? "var(--amber)" : "var(--dim)"} nudgePct={nudgePct}
           pointerColor={hot ? "var(--amber-mark)" : "var(--dim)"}/>
         <V2TapeScale nudgePct={nudgePct}/>
       </div>
@@ -10248,7 +10249,7 @@ function App() {
 
       {/* UI v2: the early-return confirm, whichever screen asked (requestMode) */}
       {UI_V2 && modeGuardAsk && cutGuard && (
-        <V2EarlyReturnSheet guard={cutGuard} block={cutBlock} profile={p} targets={targets} baseTDEE={baseTDEE}
+        <V2EarlyReturnSheet guard={cutGuard} tdeeAdj={tdeeAdj} block={cutBlock} profile={p} targets={targets} baseTDEE={baseTDEE}
           source={modeGuardAsk.source}
           onKeep={() => setModeGuardAsk(null)} onCut={confirmModeGuard}/>
       )}

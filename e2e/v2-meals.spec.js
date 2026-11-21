@@ -50,6 +50,14 @@ async function stubAI(page, ai, { delay = 0, fail = false } = {}) {
 }
 
 test.describe("Today v2 — log buttons", () => {
+  test("LOG FOOD content fits at 360px for free and premium users", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    for (const premium of [false, true]) {
+      await openV2(page, { premium, logs: LOGS });
+      const overflow = await page.getByTestId("v2-log-food").evaluate(el => el.scrollWidth - el.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+    }
+  });
   test("LOG FOOD and QUICK ADD sit above the meal list", async ({ page }) => {
     await openV2(page, { premium: true, logs: LOGS });
     const lf = page.getByTestId("v2-log-food");
