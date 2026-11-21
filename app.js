@@ -1,5 +1,9 @@
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
-var _excluded = ["shared"];
+var _excluded = ["shared"],
+  _excluded2 = ["children", "well", "pad", "style"],
+  _excluded3 = ["children", "color", "style"],
+  _excluded4 = ["children", "size", "weight", "color", "style"];
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
 function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
@@ -14829,6 +14833,409 @@ function NoteToast(_ref122) {
 
 // ── Root ──────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ██  UI v2 — "Instrument"  (design/v2/HANDOVER.md is the source of truth)
+// ═════════════════════════════════════════════════════════════════════════════
+// Built ALONGSIDE v1, behind a flag. v1 (Dashboard / ProfileScreen) is untouched.
+//   ?ui=v2  → turns v2 on (remembered in localStorage.ui_v2)
+//   ?ui=v1  → turns it off again
+// Both screens receive exactly the same App state and handlers as v1, so no logic is
+// duplicated: v2 is presentation only. Each region below is owned by one slice of work.
+
+var UI_V2 = function () {
+  try {
+    if (typeof location === "undefined") return false;
+    var q = new URLSearchParams(location.search).get("ui");
+    if (q === "v2") localStorage.setItem("ui_v2", "1");
+    if (q === "v1") localStorage.removeItem("ui_v2");
+    return localStorage.getItem("ui_v2") === "1";
+  } catch (_unused) {
+    return false;
+  }
+}();
+
+// ── V2 FOUNDATION: tokens (§2.1), fonts (§2.2) ───────────────────────────────
+// Tokens are scoped to .ui-v2 so they cannot leak into v1. Light is the default (as v1);
+// dark follows the OS unless the user picked light, or is forced by data-theme="dark".
+// Light --teal / --good / --over are PROPOSED values (open decision O2) — derived to
+// ≥4.5:1 as text on --panel-2 (#f8fafb); check with the owner before the flip.
+var V2_DARK = "\n  --stage:#0d1114; --panel:#1c2327; --panel-2:#232c31; --well:#11171a; --well-shadow:none;\n  --panel-shadow:none;\n  --ink:#dbe2df; --dim:#7f8c8e; --faint:#3a464c; --hair:#2c363b;\n  --amber:#ffb23e; --amber-on:#1d1406; --amber-ink:#ffb23e; --amber-mark:#ffb23e;\n  --amber-bg:#2a2012; --amber-edge:#4d3714;\n  --rust:#c9836f; --teal:#7cbfb4; --teal-bg:#15302d; --teal-edge:#275049;\n  --good:#8cc47a; --over:#e8604c; --scrim:rgba(5,8,10,.62);\n  color-scheme: dark;";
+var V2_LIGHT = "\n  --stage:#c5ced4; --panel:#e6ebee; --panel-2:#f8fafb; --well:#dce2e6;\n  --well-shadow:inset 0 1px 2px rgba(25,40,52,.14); --panel-shadow:0 1px 2px rgba(25,40,52,.10);\n  --ink:#1e2529; --dim:#56626a; --faint:#b3bec4; --hair:#d2d9dd;\n  --amber:#ffb23e; --amber-on:#1d1406; --amber-ink:#9a5a00; --amber-mark:#b86e00;\n  --amber-bg:#fff1d9; --amber-edge:#e9c58c;\n  --rust:#b0412e; --teal:#1f7a6e; --teal-bg:#dcefeb; --teal-edge:#9fcfc6;\n  --good:#2e7d32; --over:#cf2b1a; --scrim:rgba(20,30,38,.45);\n  color-scheme: light;";
+var V2_FONT = {
+  cond: '"Barlow Condensed", "Arial Narrow", system-ui, sans-serif',
+  body: 'Barlow, system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace'
+};
+var V2_CSS = "\n  .ui-v2 { ".concat(V2_LIGHT, " }\n  @media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) .ui-v2 { ").concat(V2_DARK, " } }\n  :root[data-theme=\"dark\"] .ui-v2 { ").concat(V2_DARK, " }\n  .ui-v2 { background: var(--panel); color: var(--ink); font-family: ").concat(V2_FONT.body, "; }\n  .ui-v2 .v2-num { font-family: ").concat(V2_FONT.mono, "; font-variant-numeric: tabular-nums; }\n  .ui-v2 .v2-label { font-family: ").concat(V2_FONT.mono, "; font-weight: 600; font-size: 10px;\n    letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }\n  .ui-v2 button { font-family: inherit; color: inherit; }\n  .ui-v2 input { font-family: ").concat(V2_FONT.mono, "; font-variant-numeric: tabular-nums; }\n  .ui-v2 :focus-visible { outline: 2px solid var(--amber-mark); outline-offset: 2px; }\n");
+// Fonts load from Google; offline they fall back to the stacks above (sw.js passes
+// googleapis through and caches gstatic).
+var V2_FONTS_HREF = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap";
+function V2Styles() {
+  useEffect(function () {
+    if (document.getElementById("v2-fonts")) return;
+    var l = document.createElement("link");
+    l.id = "v2-fonts";
+    l.rel = "stylesheet";
+    l.href = V2_FONTS_HREF;
+    document.head.appendChild(l);
+  }, []);
+  return /*#__PURE__*/React.createElement("style", null, V2_CSS);
+}
+
+// ── V2 FOUNDATION: icons (§2.4, D12) — the 15-icon line set from mockups/icons.html ──
+// One meaning per icon. `filled` is only for the saved bookmark.
+var V2_ICONS = {
+  settings: "<path d=\"M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1\"/><circle cx=\"15\" cy=\"7\" r=\"2\"/><circle cx=\"9\" cy=\"12\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/>",
+  history: "<path d=\"M4 20h16\"/><path d=\"M7 16v-4M12 16V6M17 16V9\"/>",
+  trophy: "<path d=\"M8 4h8v5a4 4 0 0 1-8 0z\"/><path d=\"M8 6H5.5v1.5A3 3 0 0 0 8.5 10.5M16 6h2.5v1.5a3 3 0 0 1-3 3\"/><path d=\"M12 13v5M8.5 20h7\"/>",
+  sparkle: "<path d=\"M11 4l1.7 4.8L17.5 10.5l-4.8 1.7L11 17l-1.7-4.8L4.5 10.5l4.8-1.7z\"/><path d=\"M18.5 15v5M16 17.5h5\"/>",
+  bookmark: "<path d=\"M7 4h10v16l-5-3.5L7 20z\"/>",
+  warning: "<path d=\"M10.3 4.9 3.2 17.5A2 2 0 0 0 4.9 20.5h14.2a2 2 0 0 0 1.7-3L13.7 4.9a2 2 0 0 0-3.4 0z\"/><path d=\"M12 9.5v4M12 17h.01\"/>",
+  check: "<path d=\"M5 12.5l4.5 4.5L19 7.5\"/>",
+  pencil: "<path d=\"M15 5l4 4L9 19H5v-4z\"/><path d=\"M13 7l4 4\"/>",
+  x: "<path d=\"M6.5 6.5l11 11M17.5 6.5l-11 11\"/>",
+  camera: "<path d=\"M4 8.5a1.5 1.5 0 0 1 1.5-1.5H8l1.5-2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5V18a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",
+  photos: "<rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"2\"/><circle cx=\"9.5\" cy=\"10\" r=\"1.5\"/><path d=\"M20 15.5l-4.5-4.5L7 19\"/>",
+  mic: "<rect x=\"9\" y=\"3.5\" width=\"6\" height=\"10.5\" rx=\"3\"/><path d=\"M6 11a6 6 0 0 0 12 0M12 17v3.5\"/>",
+  lock: "<rect x=\"5\" y=\"11\" width=\"14\" height=\"9\" rx=\"2\"/><path d=\"M8 11V8a4 4 0 0 1 8 0v3\"/>",
+  flame: "<path d=\"M12 20.5a6 6 0 0 0 6-6c0-3.8-2.6-6-4-10-1.9 1.7-3 3.7-3 6-1-.8-1.5-1.8-1.6-3C7.6 9.3 6 11.7 6 14.5a6 6 0 0 0 6 6z\"/>",
+  water: "<path d=\"M12 3.8c3 3.6 6 6.9 6 10.2a6 6 0 0 1-12 0c0-3.3 3-6.6 6-10.2z\"/>"
+};
+function Icon(_ref123) {
+  var name = _ref123.name,
+    _ref123$size = _ref123.size,
+    size = _ref123$size === void 0 ? 20 : _ref123$size,
+    _ref123$filled = _ref123.filled,
+    filled = _ref123$filled === void 0 ? false : _ref123$filled,
+    title = _ref123.title,
+    style = _ref123.style;
+  return /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 24 24",
+    width: size,
+    height: size,
+    fill: filled ? "currentColor" : "none",
+    stroke: "currentColor",
+    strokeWidth: "1.75",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    role: title ? "img" : undefined,
+    "aria-label": title,
+    "aria-hidden": title ? undefined : "true",
+    style: _objectSpread({
+      flexShrink: 0,
+      display: "block"
+    }, style),
+    dangerouslySetInnerHTML: {
+      __html: (title ? "<title>".concat(title, "</title>") : "") + (V2_ICONS[name] || "")
+    }
+  });
+}
+
+// ── V2 FOUNDATION: shared primitives (§2.3) — use these instead of pasting card styles ──
+// Panel: one raised group. `well` gives the recessed variant (gauge well, inputs).
+function Panel(_ref124) {
+  var children = _ref124.children,
+    _ref124$well = _ref124.well,
+    well = _ref124$well === void 0 ? false : _ref124$well,
+    _ref124$pad = _ref124.pad,
+    pad = _ref124$pad === void 0 ? 16 : _ref124$pad,
+    style = _ref124.style,
+    rest = _objectWithoutProperties(_ref124, _excluded2);
+  return /*#__PURE__*/React.createElement("div", _extends({}, rest, {
+    style: _objectSpread({
+      background: well ? "var(--well)" : "var(--panel-2)",
+      boxShadow: well ? "var(--well-shadow)" : "var(--panel-shadow)",
+      borderRadius: 16,
+      padding: pad
+    }, style)
+  }), children);
+}
+// Label: micro-label. Uppercase comes from CSS — type the text in normal case.
+function Label(_ref125) {
+  var children = _ref125.children,
+    color = _ref125.color,
+    style = _ref125.style,
+    rest = _objectWithoutProperties(_ref125, _excluded3);
+  return /*#__PURE__*/React.createElement("span", _extends({}, rest, {
+    className: "v2-label",
+    style: _objectSpread(_objectSpread({}, color ? {
+      color: color
+    } : {}), style)
+  }), children);
+}
+// Num: every figure is mono, tabular.
+function Num(_ref126) {
+  var children = _ref126.children,
+    _ref126$size = _ref126.size,
+    size = _ref126$size === void 0 ? 15 : _ref126$size,
+    _ref126$weight = _ref126.weight,
+    weight = _ref126$weight === void 0 ? 500 : _ref126$weight,
+    color = _ref126.color,
+    style = _ref126.style,
+    rest = _objectWithoutProperties(_ref126, _excluded4);
+  return /*#__PURE__*/React.createElement("span", _extends({}, rest, {
+    className: "v2-num",
+    style: _objectSpread(_objectSpread({
+      fontSize: size,
+      fontWeight: weight
+    }, color ? {
+      color: color
+    } : {}), style)
+  }), children);
+}
+var v2fmt = function v2fmt(n) {
+  return Math.round(Number(n) || 0).toLocaleString("en-GB");
+};
+// Buttons
+var V2_BTN = {
+  primary: {
+    background: "var(--amber)",
+    color: "var(--amber-on)",
+    border: "none",
+    borderRadius: 10,
+    fontFamily: V2_FONT.cond,
+    fontWeight: 700,
+    letterSpacing: ".04em",
+    textTransform: "uppercase",
+    minHeight: 40,
+    padding: "0 16px",
+    cursor: "pointer"
+  },
+  outline: {
+    background: "var(--amber-bg)",
+    color: "var(--amber-ink)",
+    border: "1px solid var(--amber-edge)",
+    borderRadius: 10,
+    fontFamily: V2_FONT.cond,
+    fontWeight: 700,
+    letterSpacing: ".04em",
+    textTransform: "uppercase",
+    minHeight: 40,
+    padding: "0 16px",
+    cursor: "pointer"
+  },
+  quiet: {
+    background: "transparent",
+    color: "var(--ink)",
+    border: "1px solid var(--hair)",
+    borderRadius: 10,
+    fontFamily: V2_FONT.cond,
+    fontWeight: 600,
+    letterSpacing: ".04em",
+    textTransform: "uppercase",
+    minHeight: 40,
+    padding: "0 14px",
+    cursor: "pointer"
+  },
+  text: {
+    background: "transparent",
+    border: "none",
+    color: "var(--dim)",
+    padding: "6px 4px",
+    fontFamily: V2_FONT.body,
+    fontSize: 13,
+    cursor: "pointer"
+  }
+};
+var V2_INPUT = {
+  background: "var(--well)",
+  boxShadow: "var(--well-shadow)",
+  border: "1px solid var(--hair)",
+  borderRadius: 8,
+  color: "var(--ink)",
+  padding: "9px 10px",
+  fontSize: 15,
+  width: "100%",
+  outline: "none"
+};
+// Bottom sheet over a dimmed screen (break-due, early-return confirm, …).
+function V2Sheet(_ref127) {
+  var children = _ref127.children,
+    onScrim = _ref127.onScrim,
+    label = _ref127.label;
+  return /*#__PURE__*/React.createElement("div", {
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-label": label,
+    onClick: function onClick(e) {
+      if (e.target === e.currentTarget && onScrim) onScrim();
+    },
+    style: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 900,
+      background: "var(--scrim)",
+      display: "flex",
+      alignItems: "flex-end",
+      justifyContent: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "100%",
+      maxWidth: 480,
+      background: "var(--panel-2)",
+      color: "var(--ink)",
+      borderRadius: "18px 18px 0 0",
+      padding: "22px 20px calc(22px + env(safe-area-inset-bottom))"
+    }
+  }, children));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION A — GAUGE · TARGET/EATEN · MACROS (§3.4–3.6, §4, D2–D4, D17, D19)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2Gauge(props) {
+  return /*#__PURE__*/React.createElement(Panel, {
+    "data-testid": "v2-gauge"
+  }, /*#__PURE__*/React.createElement(Label, null, "Gauge (stub)"));
+}
+function V2TargetEaten(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-target-eaten"
+  }, /*#__PURE__*/React.createElement(Label, null, "Target \xB7 eaten (stub)"));
+}
+function V2Macros(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-macros"
+  }, /*#__PURE__*/React.createElement(Label, null, "Macros (stub)"));
+}
+// ── end REGION A ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION B — LOG FOOD · QUICK ADD · MEAL ROWS + INLINE EDITOR (§3.7–3.8, §5, D7, D8)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2LogButtons(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-log-buttons"
+  }, /*#__PURE__*/React.createElement(Label, null, "Log food \xB7 quick add (stub)"));
+}
+function V2MealList(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-meals"
+  }, /*#__PURE__*/React.createElement(Label, null, "Eaten today (stub)"));
+}
+// ── end REGION B ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION C — WATER · WEIGHT/TDEE · MEASUREMENTS · WORKOUT · LAST 7 DAYS (§3.9–3.13, D9)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2Water(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-water"
+  }, /*#__PURE__*/React.createElement(Label, null, "Water (stub)"));
+}
+function V2WeightTdee(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-weight"
+  }, /*#__PURE__*/React.createElement(Label, null, "Weight \xB7 TDEE (stub)"));
+}
+function V2Measurements(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-measurements"
+  }, /*#__PURE__*/React.createElement(Label, null, "Measurements (stub)"));
+}
+function V2Workout(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-workout"
+  }, /*#__PURE__*/React.createElement(Label, null, "Workout (stub)"));
+}
+function V2Last7(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-last7"
+  }, /*#__PURE__*/React.createElement(Label, null, "Last 7 days (stub)"));
+}
+// ── end REGION C ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION D — HEADER · MODE LAMPS · CUT-LOAD TAPE · BREAK SHEETS · CAUTION STRIP
+//               (§3.1–3.3, §7, D10, D13, D14–D16, O1 proposal)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2Header(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-header"
+  }, /*#__PURE__*/React.createElement(Label, null, "Fuel/Log (stub)"));
+}
+function V2ModeLamps(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "v2-lamps"
+  }, /*#__PURE__*/React.createElement(Label, null, "Mode lamps (stub)"));
+}
+function V2CutTape(props) {
+  return null;
+}
+function V2CautionStrip(props) {
+  return null;
+}
+// Early-return confirm (§7.5). Rendered by App whenever requestMode() is guarded, from
+// any source (Today lamps, Settings, custom target). Props: { guard, block, onKeep, onCut }.
+function V2EarlyReturnSheet(_ref128) {
+  var guard = _ref128.guard,
+    onKeep = _ref128.onKeep,
+    onCut = _ref128.onCut;
+  return /*#__PURE__*/React.createElement(V2Sheet, {
+    label: "Back to cutting already?",
+    onScrim: onKeep
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: V2_FONT.cond,
+      fontWeight: 700,
+      fontSize: 24
+    }
+  }, "Back to cutting already?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    style: _objectSpread(_objectSpread({}, V2_BTN.primary), {}, {
+      flex: 1
+    }),
+    onClick: onKeep
+  }, "Keep resting"), /*#__PURE__*/React.createElement("button", {
+    style: _objectSpread(_objectSpread({}, V2_BTN.quiet), {}, {
+      flex: 1
+    }),
+    onClick: onCut
+  }, "Cut anyway")));
+}
+// ── end REGION D ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ TODAY v2 — the shell (§3 order). Same props as Dashboard, plus requestMode/onOpenAccount.
+// ─────────────────────────────────────────────────────────────────────────────
+function TodayV2(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "today-v2",
+    style: {
+      maxWidth: 480,
+      margin: "0 auto",
+      padding: "0 20px 40px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement(V2Header, props), /*#__PURE__*/React.createElement(V2ModeLamps, props), /*#__PURE__*/React.createElement(V2CutTape, props), /*#__PURE__*/React.createElement(V2Gauge, props), /*#__PURE__*/React.createElement(V2CautionStrip, props), /*#__PURE__*/React.createElement(V2TargetEaten, props), /*#__PURE__*/React.createElement(V2Macros, props), /*#__PURE__*/React.createElement(V2LogButtons, props), /*#__PURE__*/React.createElement(V2MealList, props), /*#__PURE__*/React.createElement(V2Water, props), /*#__PURE__*/React.createElement(V2WeightTdee, props), /*#__PURE__*/React.createElement(V2Measurements, props), /*#__PURE__*/React.createElement(V2Workout, props), /*#__PURE__*/React.createElement(V2Last7, props));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION E — SETTINGS v2 (§6, D11, D13). Same props as ProfileScreen, plus account bits.
+// ─────────────────────────────────────────────────────────────────────────────
+function SettingsV2(props) {
+  return /*#__PURE__*/React.createElement("div", {
+    "data-testid": "settings-v2",
+    style: {
+      maxWidth: 480,
+      margin: "0 auto",
+      padding: "16px 20px 40px"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    style: V2_BTN.text,
+    onClick: props.onBack
+  }, "Back"), /*#__PURE__*/React.createElement(Label, null, "Settings (stub)"));
+}
+// ── end REGION E ─────────────────────────────────────────────────────────────
+
 function App() {
   var _useState175 = useState("dashboard"),
     _useState176 = _slicedToArray(_useState175, 2),
@@ -15062,7 +15469,7 @@ function App() {
 
   useEffect(function () {
     var load = /*#__PURE__*/function () {
-      var _ref123 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
+      var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee41() {
         var k, lv, wv, mv, _prior, hv0, before, pv, pp, loadedMeals, mv2, wkv, prior, d, pwv, bv, hv, wiv, bmv, mmv, mnv, mnav, tav, alv, wnv, cbv, ckv, n, acv, asv, auv, premiumUid, revive, pulling, u, hc, hcParsed, revived, _t49, _t50;
         return _regenerator().w(function (_context41) {
           while (1) switch (_context41.p = _context41.n) {
@@ -15367,7 +15774,7 @@ function App() {
         }, _callee41, null, [[38, 40], [6, 8]]);
       }));
       return function load() {
-        return _ref123.apply(this, arguments);
+        return _ref129.apply(this, arguments);
       };
     }();
     load();
@@ -15421,7 +15828,7 @@ function App() {
   }, [hist]); // eslint-disable-line
 
   var saveLogs = /*#__PURE__*/function () {
-    var _ref124 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
+    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee42(l) {
       return _regenerator().w(function (_context42) {
         while (1) switch (_context42.n) {
           case 0:
@@ -15436,11 +15843,11 @@ function App() {
       }, _callee42);
     }));
     return function saveLogs(_x58) {
-      return _ref124.apply(this, arguments);
+      return _ref130.apply(this, arguments);
     };
   }();
   var saveWater = /*#__PURE__*/function () {
-    var _ref125 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
+    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee43(w) {
       return _regenerator().w(function (_context43) {
         while (1) switch (_context43.n) {
           case 0:
@@ -15455,11 +15862,11 @@ function App() {
       }, _callee43);
     }));
     return function saveWater(_x59) {
-      return _ref125.apply(this, arguments);
+      return _ref131.apply(this, arguments);
     };
   }();
   var saveMode = /*#__PURE__*/function () {
-    var _ref126 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
+    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee44(m) {
       return _regenerator().w(function (_context44) {
         while (1) switch (_context44.n) {
           case 0:
@@ -15474,11 +15881,11 @@ function App() {
       }, _callee44);
     }));
     return function saveMode(_x60) {
-      return _ref126.apply(this, arguments);
+      return _ref132.apply(this, arguments);
     };
   }();
   var saveProf = /*#__PURE__*/function () {
-    var _ref127 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
+    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee45(p) {
       return _regenerator().w(function (_context45) {
         while (1) switch (_context45.n) {
           case 0:
@@ -15494,11 +15901,11 @@ function App() {
       }, _callee45);
     }));
     return function saveProf(_x61) {
-      return _ref127.apply(this, arguments);
+      return _ref133.apply(this, arguments);
     };
   }();
   var saveWorkouts = /*#__PURE__*/function () {
-    var _ref128 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
+    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee46(w) {
       return _regenerator().w(function (_context46) {
         while (1) switch (_context46.n) {
           case 0:
@@ -15513,7 +15920,7 @@ function App() {
       }, _callee46);
     }));
     return function saveWorkouts(_x62) {
-      return _ref128.apply(this, arguments);
+      return _ref134.apply(this, arguments);
     };
   }();
   // [yesterday, 2-days-ago] total workout kcal from a dateKey→workouts[] map (smoothed
@@ -15527,7 +15934,7 @@ function App() {
     });
   };
   var addLog = /*#__PURE__*/function () {
-    var _ref129 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
+    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee47(e) {
       var isFirstToday, popKey, today, simulatedHist, ns;
       return _regenerator().w(function (_context47) {
         while (1) switch (_context47.n) {
@@ -15567,7 +15974,7 @@ function App() {
       }, _callee47);
     }));
     return function addLog(_x63) {
-      return _ref129.apply(this, arguments);
+      return _ref135.apply(this, arguments);
     };
   }();
   var removeLog = function removeLog(id) {
@@ -15593,7 +16000,7 @@ function App() {
     }));
   };
   var saveCustomKcal = /*#__PURE__*/function () {
-    var _ref130 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
+    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee48(kcal) {
       return _regenerator().w(function (_context48) {
         while (1) switch (_context48.n) {
           case 0:
@@ -15618,11 +16025,11 @@ function App() {
       }, _callee48);
     }));
     return function saveCustomKcal(_x64) {
-      return _ref130.apply(this, arguments);
+      return _ref136.apply(this, arguments);
     };
   }();
   var handleSetMode = /*#__PURE__*/function () {
-    var _ref131 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
+    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee49(m) {
       return _regenerator().w(function (_context49) {
         while (1) switch (_context49.n) {
           case 0:
@@ -15640,11 +16047,11 @@ function App() {
       }, _callee49);
     }));
     return function handleSetMode(_x65) {
-      return _ref131.apply(this, arguments);
+      return _ref137.apply(this, arguments);
     };
   }();
   var handleAckAggressiveCut = /*#__PURE__*/function () {
-    var _ref132 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
+    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee50() {
       return _regenerator().w(function (_context50) {
         while (1) switch (_context50.n) {
           case 0:
@@ -15659,11 +16066,11 @@ function App() {
       }, _callee50);
     }));
     return function handleAckAggressiveCut() {
-      return _ref132.apply(this, arguments);
+      return _ref138.apply(this, arguments);
     };
   }();
   var saveMeals = /*#__PURE__*/function () {
-    var _ref133 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
+    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee51(updated) {
       return _regenerator().w(function (_context51) {
         while (1) switch (_context51.n) {
           case 0:
@@ -15678,7 +16085,7 @@ function App() {
       }, _callee51);
     }));
     return function saveMeals(_x66) {
-      return _ref133.apply(this, arguments);
+      return _ref139.apply(this, arguments);
     };
   }();
 
@@ -15688,7 +16095,7 @@ function App() {
     if (authState === "premium" && authUser !== null && authUser !== void 0 && authUser.id && name) syncMealDelete(authUser.id, name)["catch"](function () {});
   };
   var addToQA = /*#__PURE__*/function () {
-    var _ref134 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
+    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee52(entry) {
       var name, clean;
       return _regenerator().w(function (_context52) {
         while (1) switch (_context52.n) {
@@ -15718,14 +16125,14 @@ function App() {
       }, _callee52);
     }));
     return function addToQA(_x67) {
-      return _ref134.apply(this, arguments);
+      return _ref140.apply(this, arguments);
     };
   }();
 
   // ── Auth handlers ─────────────────────────────────────────────
 
   var handleSignInSuccess = /*#__PURE__*/function () {
-    var _ref135 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
+    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee53(googleUser, grantedBy, consentMeta) {
       var user, rec, pulled, tod, snap, _t51;
       return _regenerator().w(function (_context53) {
         while (1) switch (_context53.p = _context53.n) {
@@ -15825,13 +16232,13 @@ function App() {
       }, _callee53, null, [[5, 9]]);
     }));
     return function handleSignInSuccess(_x68, _x69, _x70) {
-      return _ref135.apply(this, arguments);
+      return _ref141.apply(this, arguments);
     };
   }();
 
   // Agree to the current policy version (retroactive / re-consent flow, R2).
   var handleConsent = /*#__PURE__*/function () {
-    var _ref136 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
+    var _ref142 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee54() {
       var meta, rec;
       return _regenerator().w(function (_context54) {
         while (1) switch (_context54.n) {
@@ -15862,11 +16269,11 @@ function App() {
       }, _callee54);
     }));
     return function handleConsent() {
-      return _ref136.apply(this, arguments);
+      return _ref142.apply(this, arguments);
     };
   }();
   var handleSignOut = /*#__PURE__*/function () {
-    var _ref137 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
+    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee55() {
       var clearKeys, _i4, _clearKeys, k, i, key, _t52;
       return _regenerator().w(function (_context55) {
         while (1) switch (_context55.p = _context55.n) {
@@ -15938,7 +16345,7 @@ function App() {
       }, _callee55, null, [[1, 3]]);
     }));
     return function handleSignOut() {
-      return _ref137.apply(this, arguments);
+      return _ref143.apply(this, arguments);
     };
   }();
 
@@ -15948,7 +16355,7 @@ function App() {
   // pull would helpfully restore the old value and undo it. Weigh-ins and history are left
   // alone: they are data, and the estimate rebuilds itself from them.
   var resetTdeeAdj = /*#__PURE__*/function () {
-    var _ref138 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
+    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee56() {
       return _regenerator().w(function (_context56) {
         while (1) switch (_context56.n) {
           case 0:
@@ -15968,7 +16375,7 @@ function App() {
       }, _callee56);
     }));
     return function resetTdeeAdj() {
-      return _ref138.apply(this, arguments);
+      return _ref144.apply(this, arguments);
     };
   }();
   var handleExport = function handleExport() {
@@ -16023,7 +16430,7 @@ function App() {
 
   // Permanently delete the account (R5). Worker cascades the delete; then wipe locally.
   var handleDeleteAccount = /*#__PURE__*/function () {
-    var _ref139 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
+    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee57() {
       return _regenerator().w(function (_context57) {
         while (1) switch (_context57.n) {
           case 0:
@@ -16038,11 +16445,11 @@ function App() {
       }, _callee57);
     }));
     return function handleDeleteAccount() {
-      return _ref139.apply(this, arguments);
+      return _ref145.apply(this, arguments);
     };
   }();
   var updateDay = /*#__PURE__*/function () {
-    var _ref140 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
+    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee58(upd) {
       var nh;
       return _regenerator().w(function (_context58) {
         while (1) switch (_context58.n) {
@@ -16073,11 +16480,11 @@ function App() {
       }, _callee58);
     }));
     return function updateDay(_x71) {
-      return _ref140.apply(this, arguments);
+      return _ref146.apply(this, arguments);
     };
   }();
   var onWeighIn = /*#__PURE__*/function () {
-    var _ref141 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
+    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee59(weight) {
       var entry, updated, updatedProf, base, wk, weekAgoKey, inFlight, _raiseContext, settledAdj, daysSinceLastRaise, adjustedToday, result, newAdj, applied, nextLog;
       return _regenerator().w(function (_context59) {
         while (1) switch (_context59.n) {
@@ -16162,7 +16569,7 @@ function App() {
       }, _callee59);
     }));
     return function onWeighIn(_x72) {
-      return _ref141.apply(this, arguments);
+      return _ref147.apply(this, arguments);
     };
   }();
 
@@ -16171,12 +16578,12 @@ function App() {
   // identically, which is what makes syncedBodyFat's "one writer, every save" safety
   // property hold without a separate code path for the gate-crossing reading.
   var onMeasurement = /*#__PURE__*/function () {
-    var _ref143 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref142) {
+    var _ref149 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee60(_ref148) {
       var neck, waist, hip, measureProf, sex, formula, computed_bf, entry, updated, next;
       return _regenerator().w(function (_context60) {
         while (1) switch (_context60.n) {
           case 0:
-            neck = _ref142.neck, waist = _ref142.waist, hip = _ref142.hip;
+            neck = _ref148.neck, waist = _ref148.waist, hip = _ref148.hip;
             haptic();
             measureProf = prof || DEF_PROFILE;
             sex = measureProf.sex;
@@ -16238,11 +16645,11 @@ function App() {
       }, _callee60);
     }));
     return function onMeasurement(_x73) {
-      return _ref143.apply(this, arguments);
+      return _ref149.apply(this, arguments);
     };
   }();
   var toggleMuteMeasurements = /*#__PURE__*/function () {
-    var _ref144 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
+    var _ref150 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee61(on) {
       return _regenerator().w(function (_context61) {
         while (1) switch (_context61.n) {
           case 0:
@@ -16255,11 +16662,11 @@ function App() {
       }, _callee61);
     }));
     return function toggleMuteMeasurements(_x74) {
-      return _ref144.apply(this, arguments);
+      return _ref150.apply(this, arguments);
     };
   }();
   var saveMeasurementNote = /*#__PURE__*/function () {
-    var _ref145 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
+    var _ref151 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee62(note) {
       return _regenerator().w(function (_context62) {
         while (1) switch (_context62.n) {
           case 0:
@@ -16272,7 +16679,7 @@ function App() {
       }, _callee62);
     }));
     return function saveMeasurementNote(_x75) {
-      return _ref145.apply(this, arguments);
+      return _ref151.apply(this, arguments);
     };
   }();
   var p = prof || DEF_PROFILE;
@@ -16315,7 +16722,7 @@ function App() {
     now: Date.now()
   });
   var dismissWeighNudge = /*#__PURE__*/function () {
-    var _ref146 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
+    var _ref152 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee63() {
       var ts;
       return _regenerator().w(function (_context63) {
         while (1) switch (_context63.n) {
@@ -16330,11 +16737,11 @@ function App() {
       }, _callee63);
     }));
     return function dismissWeighNudge() {
-      return _ref146.apply(this, arguments);
+      return _ref152.apply(this, arguments);
     };
   }();
   var muteWeighNudge = /*#__PURE__*/function () {
-    var _ref147 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
+    var _ref153 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee64() {
       return _regenerator().w(function (_context64) {
         while (1) switch (_context64.n) {
           case 0:
@@ -16351,7 +16758,7 @@ function App() {
       }, _callee64);
     }));
     return function muteWeighNudge() {
-      return _ref147.apply(this, arguments);
+      return _ref153.apply(this, arguments);
     };
   }();
 
@@ -16370,7 +16777,7 @@ function App() {
     now: Date.now()
   });
   var dismissMeasurementNudge = /*#__PURE__*/function () {
-    var _ref148 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
+    var _ref154 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee65() {
       var ts;
       return _regenerator().w(function (_context65) {
         while (1) switch (_context65.n) {
@@ -16385,7 +16792,7 @@ function App() {
       }, _callee65);
     }));
     return function dismissMeasurementNudge() {
-      return _ref148.apply(this, arguments);
+      return _ref154.apply(this, arguments);
     };
   }();
 
@@ -16547,7 +16954,7 @@ function App() {
     cutting: cuttingToday
   });
   var saveCutBlock = /*#__PURE__*/function () {
-    var _ref149 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
+    var _ref155 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee66(next) {
       return _regenerator().w(function (_context66) {
         while (1) switch (_context66.n) {
           case 0:
@@ -16562,7 +16969,7 @@ function App() {
       }, _callee66);
     }));
     return function saveCutBlock(_x76) {
-      return _ref149.apply(this, arguments);
+      return _ref155.apply(this, arguments);
     };
   }();
   var dismissCutNudge = function dismissCutNudge() {
@@ -16585,7 +16992,7 @@ function App() {
   // tomorrow the daily accrual drains the block instead of filling it, and the gauge is
   // the tracked feedback. The snoozes clear so the prompt goes quiet honestly.
   var startDietBreak = /*#__PURE__*/function () {
-    var _ref150 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
+    var _ref156 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee67() {
       return _regenerator().w(function (_context67) {
         while (1) switch (_context67.n) {
           case 0:
@@ -16605,9 +17012,72 @@ function App() {
       }, _callee67);
     }));
     return function startDietBreak() {
-      return _ref150.apply(this, arguments);
+      return _ref156.apply(this, arguments);
     };
   }();
+
+  // ── UI v2: one guarded mode path (HANDOVER §7.6, D10) ──
+  // Every v2 mode change (Today lamps, Settings › Body & goal, custom target, break sheet)
+  // goes through requestMode. A guarded Cut opens the early-return sheet, rendered below,
+  // whichever screen asked. v1 keeps its own Dashboard-local guard and is unchanged.
+  var _useState255 = useState(null),
+    _useState256 = _slicedToArray(_useState255, 2),
+    modeGuardAsk = _useState256[0],
+    setModeGuardAsk = _useState256[1]; // { mode, source } | null
+  var requestMode = /*#__PURE__*/function () {
+    var _ref157 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee68(m) {
+      var source,
+        _args68 = arguments;
+      return _regenerator().w(function (_context68) {
+        while (1) switch (_context68.n) {
+          case 0:
+            source = _args68.length > 1 && _args68[1] !== undefined ? _args68[1] : "today";
+            if (!(m === "cut" && cutGuard)) {
+              _context68.n = 1;
+              break;
+            }
+            setModeGuardAsk({
+              mode: m,
+              source: source
+            });
+            return _context68.a(2, false);
+          case 1:
+            _context68.n = 2;
+            return handleSetMode(m);
+          case 2:
+            return _context68.a(2, true);
+        }
+      }, _callee68);
+    }));
+    return function requestMode(_x77) {
+      return _ref157.apply(this, arguments);
+    };
+  }();
+  var confirmModeGuard = /*#__PURE__*/function () {
+    var _ref158 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee69() {
+      var ask;
+      return _regenerator().w(function (_context69) {
+        while (1) switch (_context69.n) {
+          case 0:
+            ask = modeGuardAsk;
+            setModeGuardAsk(null);
+            if (!ask) {
+              _context69.n = 1;
+              break;
+            }
+            _context69.n = 1;
+            return handleSetMode(ask.mode);
+          case 1:
+            return _context69.a(2);
+        }
+      }, _callee69);
+    }));
+    return function confirmModeGuard() {
+      return _ref158.apply(this, arguments);
+    };
+  }();
+  var DashComp = UI_V2 ? TodayV2 : Dashboard;
+  var ProfComp = UI_V2 ? SettingsV2 : ProfileScreen;
   var totals = sumLogs(logs);
   var remaining = targets.kcal - totals.kcal;
   var streak = calcStreak(hist);
@@ -16628,13 +17098,14 @@ function App() {
     }
   }, "LOADING..."));
   return /*#__PURE__*/React.createElement("div", {
+    className: UI_V2 ? "ui-v2" : undefined,
     style: {
       minHeight: "100vh",
-      background: BG,
+      background: UI_V2 ? "var(--panel)" : BG,
       color: "#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     }
-  }, /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: var(--text-faint-2); }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: var(--bg); color: var(--text-hi); }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }\n        @keyframes chip_pop  { 0%{transform:scale(1)} 35%{transform:scale(1.32)} 100%{transform:scale(1)} }\n        @keyframes chip_glow { 0%,100%{box-shadow:0 0 0 0 transparent;transform:scale(1)} 30%{box-shadow:0 0 14px 2px var(--accent);transform:scale(1.14)} 60%{box-shadow:0 0 8px 1px var(--accent);transform:scale(1)} }\n      "), DEV && /*#__PURE__*/React.createElement("div", {
+  }, UI_V2 && /*#__PURE__*/React.createElement(V2Styles, null), /*#__PURE__*/React.createElement("style", null, "\n        * { box-sizing: border-box; }\n        input::placeholder, textarea::placeholder { color: var(--text-faint-2); }\n        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }\n        select { background: var(--bg); color: var(--text-hi); }\n        button { cursor: pointer; }\n        button:disabled { cursor: not-allowed; }\n        @keyframes blink_add { 0%{opacity:0.4;transform:scale(0.985)} 55%{opacity:1;transform:scale(1.015)} 100%{opacity:1;transform:scale(1)} }\n        @keyframes chip_pop  { 0%{transform:scale(1)} 35%{transform:scale(1.32)} 100%{transform:scale(1)} }\n        @keyframes chip_glow { 0%,100%{box-shadow:0 0 0 0 transparent;transform:scale(1)} 30%{box-shadow:0 0 14px 2px var(--accent);transform:scale(1.14)} 60%{box-shadow:0 0 8px 1px var(--accent);transform:scale(1)} }\n      "), DEV && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       top: 6,
@@ -16667,10 +17138,10 @@ function App() {
       b: BDGS[1],
       i: 5
     });
-  }]].map(function (_ref151) {
-    var _ref152 = _slicedToArray(_ref151, 2),
-      lbl = _ref152[0],
-      fn = _ref152[1];
+  }]].map(function (_ref159) {
+    var _ref160 = _slicedToArray(_ref159, 2),
+      lbl = _ref160[0],
+      fn = _ref160[1];
     return /*#__PURE__*/React.createElement("button", {
       key: lbl,
       onClick: fn,
@@ -16699,6 +17170,17 @@ function App() {
     onDone: function onDone() {
       return setNoteToast(null);
     }
+  }), UI_V2 && modeGuardAsk && cutGuard && /*#__PURE__*/React.createElement(V2EarlyReturnSheet, {
+    guard: cutGuard,
+    block: cutBlock,
+    profile: p,
+    targets: targets,
+    baseTDEE: baseTDEE,
+    source: modeGuardAsk.source,
+    onKeep: function onKeep() {
+      return setModeGuardAsk(null);
+    },
+    onCut: confirmModeGuard
   }), premiumGate && !showSignIn && /*#__PURE__*/React.createElement(PremiumModal, {
     feature: premiumGate,
     onUpgrade: function onUpgrade() {
@@ -16735,7 +17217,12 @@ function App() {
     onDone: function onDone() {
       return setNewBadge(null);
     }
-  }), view === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
+  }), view === "dashboard" && /*#__PURE__*/React.createElement(DashComp, {
+    requestMode: requestMode,
+    cutBlock: cutBlock,
+    onOpenAccount: function onOpenAccount() {
+      return setView("account");
+    },
     logs: logs,
     totals: totals,
     targets: targets,
@@ -16797,7 +17284,27 @@ function App() {
     },
     isOnline: isOnline,
     syncMsg: syncMsg
-  }), view === "profile" && /*#__PURE__*/React.createElement(ProfileScreen, {
+  }), view === "profile" && /*#__PURE__*/React.createElement(ProfComp, {
+    requestMode: requestMode,
+    mode: effectiveMode,
+    customKcal: customKcal,
+    onSetCustomKcal: saveCustomKcal,
+    targets: targets,
+    baseTDEE: baseTDEE,
+    authState: authState,
+    authUser: authUser,
+    consentInfo: consentInfo,
+    onExport: handleExport,
+    onSignOut: function onSignOut() {
+      return setShowSignOut(true);
+    },
+    onDelete: handleDeleteAccount,
+    onSignIn: function onSignIn() {
+      return setShowSignIn(true);
+    },
+    onOpenAccount: function onOpenAccount() {
+      return setView("account");
+    },
     profile: prof || DEF_PROFILE,
     onSave: saveProf,
     onBack: function onBack() {

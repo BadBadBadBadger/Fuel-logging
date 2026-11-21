@@ -7023,6 +7023,272 @@ function NoteToast({ text, onDone }) {
 
 // ── Root ──────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ██  UI v2 — "Instrument"  (design/v2/HANDOVER.md is the source of truth)
+// ═════════════════════════════════════════════════════════════════════════════
+// Built ALONGSIDE v1, behind a flag. v1 (Dashboard / ProfileScreen) is untouched.
+//   ?ui=v2  → turns v2 on (remembered in localStorage.ui_v2)
+//   ?ui=v1  → turns it off again
+// Both screens receive exactly the same App state and handlers as v1, so no logic is
+// duplicated: v2 is presentation only. Each region below is owned by one slice of work.
+
+const UI_V2 = (() => {
+  try {
+    if (typeof location === "undefined") return false;
+    const q = new URLSearchParams(location.search).get("ui");
+    if (q === "v2") localStorage.setItem("ui_v2", "1");
+    if (q === "v1") localStorage.removeItem("ui_v2");
+    return localStorage.getItem("ui_v2") === "1";
+  } catch { return false; }
+})();
+
+// ── V2 FOUNDATION: tokens (§2.1), fonts (§2.2) ───────────────────────────────
+// Tokens are scoped to .ui-v2 so they cannot leak into v1. Light is the default (as v1);
+// dark follows the OS unless the user picked light, or is forced by data-theme="dark".
+// Light --teal / --good / --over are PROPOSED values (open decision O2) — derived to
+// ≥4.5:1 as text on --panel-2 (#f8fafb); check with the owner before the flip.
+const V2_DARK = `
+  --stage:#0d1114; --panel:#1c2327; --panel-2:#232c31; --well:#11171a; --well-shadow:none;
+  --panel-shadow:none;
+  --ink:#dbe2df; --dim:#7f8c8e; --faint:#3a464c; --hair:#2c363b;
+  --amber:#ffb23e; --amber-on:#1d1406; --amber-ink:#ffb23e; --amber-mark:#ffb23e;
+  --amber-bg:#2a2012; --amber-edge:#4d3714;
+  --rust:#c9836f; --teal:#7cbfb4; --teal-bg:#15302d; --teal-edge:#275049;
+  --good:#8cc47a; --over:#e8604c; --scrim:rgba(5,8,10,.62);
+  color-scheme: dark;`;
+const V2_LIGHT = `
+  --stage:#c5ced4; --panel:#e6ebee; --panel-2:#f8fafb; --well:#dce2e6;
+  --well-shadow:inset 0 1px 2px rgba(25,40,52,.14); --panel-shadow:0 1px 2px rgba(25,40,52,.10);
+  --ink:#1e2529; --dim:#56626a; --faint:#b3bec4; --hair:#d2d9dd;
+  --amber:#ffb23e; --amber-on:#1d1406; --amber-ink:#9a5a00; --amber-mark:#b86e00;
+  --amber-bg:#fff1d9; --amber-edge:#e9c58c;
+  --rust:#b0412e; --teal:#1f7a6e; --teal-bg:#dcefeb; --teal-edge:#9fcfc6;
+  --good:#2e7d32; --over:#cf2b1a; --scrim:rgba(20,30,38,.45);
+  color-scheme: light;`;
+const V2_FONT = {
+  cond: '"Barlow Condensed", "Arial Narrow", system-ui, sans-serif',
+  body: 'Barlow, system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+};
+const V2_CSS = `
+  .ui-v2 { ${V2_LIGHT} }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ui-v2 { ${V2_DARK} } }
+  :root[data-theme="dark"] .ui-v2 { ${V2_DARK} }
+  .ui-v2 { background: var(--panel); color: var(--ink); font-family: ${V2_FONT.body}; }
+  .ui-v2 .v2-num { font-family: ${V2_FONT.mono}; font-variant-numeric: tabular-nums; }
+  .ui-v2 .v2-label { font-family: ${V2_FONT.mono}; font-weight: 600; font-size: 10px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .ui-v2 button { font-family: inherit; color: inherit; }
+  .ui-v2 input { font-family: ${V2_FONT.mono}; font-variant-numeric: tabular-nums; }
+  .ui-v2 :focus-visible { outline: 2px solid var(--amber-mark); outline-offset: 2px; }
+`;
+// Fonts load from Google; offline they fall back to the stacks above (sw.js passes
+// googleapis through and caches gstatic).
+const V2_FONTS_HREF = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap";
+
+function V2Styles() {
+  useEffect(() => {
+    if (document.getElementById("v2-fonts")) return;
+    const l = document.createElement("link");
+    l.id = "v2-fonts"; l.rel = "stylesheet"; l.href = V2_FONTS_HREF;
+    document.head.appendChild(l);
+  }, []);
+  return <style>{V2_CSS}</style>;
+}
+
+// ── V2 FOUNDATION: icons (§2.4, D12) — the 15-icon line set from mockups/icons.html ──
+// One meaning per icon. `filled` is only for the saved bookmark.
+const V2_ICONS = {
+  settings: `<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>`,
+  history:  `<path d="M4 20h16"/><path d="M7 16v-4M12 16V6M17 16V9"/>`,
+  trophy:   `<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5v1.5A3 3 0 0 0 8.5 10.5M16 6h2.5v1.5a3 3 0 0 1-3 3"/><path d="M12 13v5M8.5 20h7"/>`,
+  sparkle:  `<path d="M11 4l1.7 4.8L17.5 10.5l-4.8 1.7L11 17l-1.7-4.8L4.5 10.5l4.8-1.7z"/><path d="M18.5 15v5M16 17.5h5"/>`,
+  bookmark: `<path d="M7 4h10v16l-5-3.5L7 20z"/>`,
+  warning:  `<path d="M10.3 4.9 3.2 17.5A2 2 0 0 0 4.9 20.5h14.2a2 2 0 0 0 1.7-3L13.7 4.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/>`,
+  check:    `<path d="M5 12.5l4.5 4.5L19 7.5"/>`,
+  pencil:   `<path d="M15 5l4 4L9 19H5v-4z"/><path d="M13 7l4 4"/>`,
+  x:        `<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>`,
+  camera:   `<path d="M4 8.5a1.5 1.5 0 0 1 1.5-1.5H8l1.5-2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5V18a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.5"/>`,
+  photos:   `<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9.5" cy="10" r="1.5"/><path d="M20 15.5l-4.5-4.5L7 19"/>`,
+  mic:      `<rect x="9" y="3.5" width="6" height="10.5" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3.5"/>`,
+  lock:     `<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>`,
+  flame:    `<path d="M12 20.5a6 6 0 0 0 6-6c0-3.8-2.6-6-4-10-1.9 1.7-3 3.7-3 6-1-.8-1.5-1.8-1.6-3C7.6 9.3 6 11.7 6 14.5a6 6 0 0 0 6 6z"/>`,
+  water:    `<path d="M12 3.8c3 3.6 6 6.9 6 10.2a6 6 0 0 1-12 0c0-3.3 3-6.6 6-10.2z"/>`,
+};
+function Icon({ name, size = 20, filled = false, title, style }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill={filled ? "currentColor" : "none"}
+      stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+      role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : "true"}
+      style={{ flexShrink: 0, display: "block", ...style }}
+      dangerouslySetInnerHTML={{ __html: (title ? `<title>${title}</title>` : "") + (V2_ICONS[name] || "") }}/>
+  );
+}
+
+// ── V2 FOUNDATION: shared primitives (§2.3) — use these instead of pasting card styles ──
+// Panel: one raised group. `well` gives the recessed variant (gauge well, inputs).
+function Panel({ children, well = false, pad = 16, style, ...rest }) {
+  return (
+    <div {...rest} style={{ background: well ? "var(--well)" : "var(--panel-2)",
+      boxShadow: well ? "var(--well-shadow)" : "var(--panel-shadow)",
+      borderRadius: 16, padding: pad, ...style }}>{children}</div>
+  );
+}
+// Label: micro-label. Uppercase comes from CSS — type the text in normal case.
+function Label({ children, color, style, ...rest }) {
+  return <span {...rest} className="v2-label" style={{ ...(color ? { color } : {}), ...style }}>{children}</span>;
+}
+// Num: every figure is mono, tabular.
+function Num({ children, size = 15, weight = 500, color, style, ...rest }) {
+  return <span {...rest} className="v2-num" style={{ fontSize: size, fontWeight: weight,
+    ...(color ? { color } : {}), ...style }}>{children}</span>;
+}
+const v2fmt = n => Math.round(Number(n) || 0).toLocaleString("en-GB");
+// Buttons
+const V2_BTN = {
+  primary: { background: "var(--amber)", color: "var(--amber-on)", border: "none", borderRadius: 10,
+    fontFamily: V2_FONT.cond, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
+    minHeight: 40, padding: "0 16px", cursor: "pointer" },
+  outline: { background: "var(--amber-bg)", color: "var(--amber-ink)", border: "1px solid var(--amber-edge)",
+    borderRadius: 10, fontFamily: V2_FONT.cond, fontWeight: 700, letterSpacing: ".04em",
+    textTransform: "uppercase", minHeight: 40, padding: "0 16px", cursor: "pointer" },
+  quiet: { background: "transparent", color: "var(--ink)", border: "1px solid var(--hair)", borderRadius: 10,
+    fontFamily: V2_FONT.cond, fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase",
+    minHeight: 40, padding: "0 14px", cursor: "pointer" },
+  text: { background: "transparent", border: "none", color: "var(--dim)", padding: "6px 4px",
+    fontFamily: V2_FONT.body, fontSize: 13, cursor: "pointer" },
+};
+const V2_INPUT = { background: "var(--well)", boxShadow: "var(--well-shadow)", border: "1px solid var(--hair)",
+  borderRadius: 8, color: "var(--ink)", padding: "9px 10px", fontSize: 15, width: "100%", outline: "none" };
+// Bottom sheet over a dimmed screen (break-due, early-return confirm, …).
+function V2Sheet({ children, onScrim, label }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-label={label}
+      onClick={e => { if (e.target === e.currentTarget && onScrim) onScrim(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 900, background: "var(--scrim)",
+        display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 480, background: "var(--panel-2)", color: "var(--ink)",
+        borderRadius: "18px 18px 0 0", padding: "22px 20px calc(22px + env(safe-area-inset-bottom))" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION A — GAUGE · TARGET/EATEN · MACROS (§3.4–3.6, §4, D2–D4, D17, D19)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2Gauge(props) {
+  return <Panel data-testid="v2-gauge"><Label>Gauge (stub)</Label></Panel>;
+}
+function V2TargetEaten(props) {
+  return <div data-testid="v2-target-eaten"><Label>Target · eaten (stub)</Label></div>;
+}
+function V2Macros(props) {
+  return <div data-testid="v2-macros"><Label>Macros (stub)</Label></div>;
+}
+// ── end REGION A ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION B — LOG FOOD · QUICK ADD · MEAL ROWS + INLINE EDITOR (§3.7–3.8, §5, D7, D8)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2LogButtons(props) {
+  return <div data-testid="v2-log-buttons"><Label>Log food · quick add (stub)</Label></div>;
+}
+function V2MealList(props) {
+  return <div data-testid="v2-meals"><Label>Eaten today (stub)</Label></div>;
+}
+// ── end REGION B ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION C — WATER · WEIGHT/TDEE · MEASUREMENTS · WORKOUT · LAST 7 DAYS (§3.9–3.13, D9)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2Water(props) {
+  return <div data-testid="v2-water"><Label>Water (stub)</Label></div>;
+}
+function V2WeightTdee(props) {
+  return <div data-testid="v2-weight"><Label>Weight · TDEE (stub)</Label></div>;
+}
+function V2Measurements(props) {
+  return <div data-testid="v2-measurements"><Label>Measurements (stub)</Label></div>;
+}
+function V2Workout(props) {
+  return <div data-testid="v2-workout"><Label>Workout (stub)</Label></div>;
+}
+function V2Last7(props) {
+  return <div data-testid="v2-last7"><Label>Last 7 days (stub)</Label></div>;
+}
+// ── end REGION C ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION D — HEADER · MODE LAMPS · CUT-LOAD TAPE · BREAK SHEETS · CAUTION STRIP
+//               (§3.1–3.3, §7, D10, D13, D14–D16, O1 proposal)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2Header(props) {
+  return <div data-testid="v2-header"><Label>Fuel/Log (stub)</Label></div>;
+}
+function V2ModeLamps(props) {
+  return <div data-testid="v2-lamps"><Label>Mode lamps (stub)</Label></div>;
+}
+function V2CutTape(props) {
+  return null;
+}
+function V2CautionStrip(props) {
+  return null;
+}
+// Early-return confirm (§7.5). Rendered by App whenever requestMode() is guarded, from
+// any source (Today lamps, Settings, custom target). Props: { guard, block, onKeep, onCut }.
+function V2EarlyReturnSheet({ guard, onKeep, onCut }) {
+  return (
+    <V2Sheet label="Back to cutting already?" onScrim={onKeep}>
+      <div style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 24 }}>Back to cutting already?</div>
+      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        <button style={{ ...V2_BTN.primary, flex: 1 }} onClick={onKeep}>Keep resting</button>
+        <button style={{ ...V2_BTN.quiet, flex: 1 }} onClick={onCut}>Cut anyway</button>
+      </div>
+    </V2Sheet>
+  );
+}
+// ── end REGION D ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ TODAY v2 — the shell (§3 order). Same props as Dashboard, plus requestMode/onOpenAccount.
+// ─────────────────────────────────────────────────────────────────────────────
+function TodayV2(props) {
+  return (
+    <div data-testid="today-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px",
+      display: "flex", flexDirection: "column", gap: 14 }}>
+      <V2Header {...props}/>
+      <V2ModeLamps {...props}/>
+      <V2CutTape {...props}/>
+      <V2Gauge {...props}/>
+      <V2CautionStrip {...props}/>
+      <V2TargetEaten {...props}/>
+      <V2Macros {...props}/>
+      <V2LogButtons {...props}/>
+      <V2MealList {...props}/>
+      <V2Water {...props}/>
+      <V2WeightTdee {...props}/>
+      <V2Measurements {...props}/>
+      <V2Workout {...props}/>
+      <V2Last7 {...props}/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION E — SETTINGS v2 (§6, D11, D13). Same props as ProfileScreen, plus account bits.
+// ─────────────────────────────────────────────────────────────────────────────
+function SettingsV2(props) {
+  return (
+    <div data-testid="settings-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "16px 20px 40px" }}>
+      <button style={V2_BTN.text} onClick={props.onBack}>Back</button>
+      <Label>Settings (stub)</Label>
+    </div>
+  );
+}
+// ── end REGION E ─────────────────────────────────────────────────────────────
+
 function App() {
   const [view,       setView]       = useState("dashboard");
   const [logs,       setLogs]       = useState([]);
@@ -7824,6 +8090,23 @@ function App() {
     setNoteToast("Break started — eat at maintenance and recharge");
   };
 
+  // ── UI v2: one guarded mode path (HANDOVER §7.6, D10) ──
+  // Every v2 mode change (Today lamps, Settings › Body & goal, custom target, break sheet)
+  // goes through requestMode. A guarded Cut opens the early-return sheet, rendered below,
+  // whichever screen asked. v1 keeps its own Dashboard-local guard and is unchanged.
+  const [modeGuardAsk, setModeGuardAsk] = useState(null);   // { mode, source } | null
+  const requestMode = async (m, source = "today") => {
+    if (m === "cut" && cutGuard) { setModeGuardAsk({ mode: m, source }); return false; }
+    await handleSetMode(m);
+    return true;
+  };
+  const confirmModeGuard = async () => {
+    const ask = modeGuardAsk; setModeGuardAsk(null);
+    if (ask) await handleSetMode(ask.mode);
+  };
+  const DashComp = UI_V2 ? TodayV2 : Dashboard;
+  const ProfComp = UI_V2 ? SettingsV2 : ProfileScreen;
+
   const totals    = sumLogs(logs);
   const remaining = targets.kcal - totals.kcal;
   const streak    = calcStreak(hist);
@@ -7835,8 +8118,9 @@ function App() {
   );
 
   return (
-    <div style={{ minHeight:"100vh", background:BG, color:"#fff",
+    <div className={UI_V2 ? "ui-v2" : undefined} style={{ minHeight:"100vh", background: UI_V2 ? "var(--panel)" : BG, color:"#fff",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+      {UI_V2 && <V2Styles/>}
       <style>{`
         * { box-sizing: border-box; }
         input::placeholder, textarea::placeholder { color: var(--text-faint-2); }
@@ -7872,6 +8156,13 @@ function App() {
       {badgeToast && <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />}
       {noteToast  && <NoteToast text={noteToast} onDone={() => setNoteToast(null)} />}
 
+      {/* UI v2: the early-return confirm, whichever screen asked (requestMode) */}
+      {UI_V2 && modeGuardAsk && cutGuard && (
+        <V2EarlyReturnSheet guard={cutGuard} block={cutBlock} profile={p} targets={targets} baseTDEE={baseTDEE}
+          source={modeGuardAsk.source}
+          onKeep={() => setModeGuardAsk(null)} onCut={confirmModeGuard}/>
+      )}
+
       {/* Auth modals */}
       {premiumGate && !showSignIn && (
         <PremiumModal
@@ -7902,7 +8193,8 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <Dashboard logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
+      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} onOpenAccount={() => setView("account")}
+          logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
           water={water} setWater={saveWater}
           mode={effectiveMode} setMode={handleSetMode} setView={setView} removeLog={removeLog} updateLog={updateLog} addToQA={addToQA}
           hasProfile={!!prof} streak={streak} streakPop={streakPop != null} badgeGlow={badgeGlow} prof={prof}
@@ -7925,7 +8217,11 @@ function App() {
           onPremiumGate={feature => setPremiumGate(feature)}
           onSignOut={() => setShowSignOut(true)}
           isOnline={isOnline} syncMsg={syncMsg}/>}
-      {view === "profile"      && <ProfileScreen   profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
+      {view === "profile"      && <ProfComp requestMode={requestMode} mode={effectiveMode} customKcal={customKcal} onSetCustomKcal={saveCustomKcal}
+          targets={targets} baseTDEE={baseTDEE} authState={authState} authUser={authUser} consentInfo={consentInfo}
+          onExport={handleExport} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
+          onSignIn={() => setShowSignIn(true)} onOpenAccount={() => setView("account")}
+          profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
           bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
           measurementNote={measurementNote} onSaveMeasurementNote={saveMeasurementNote}
           muteMeasurements={muteMeasurements} onToggleMuteMeasurements={toggleMuteMeasurements}/>}
