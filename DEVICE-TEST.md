@@ -68,6 +68,9 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v113 — plain-English hint in the food box (2026-11-21)
+- [ ] The empty food box reads "Describe what you've eaten, you can also supply pictures and AI will break it down into kcal and macros." (v1 and v2)
+
 ### New in v112 — LOG FOOD drops down in place (v2, 2026-11-21)
 - [ ] `?ui=v2`: tap LOG FOOD — the AI log opens under it on Today (no new screen); tap again (×) to fold it away
 - [ ] Mic, camera and photos are real buttons in the strip and each one works (camera opens the camera, photos the picker)

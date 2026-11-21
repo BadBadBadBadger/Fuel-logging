@@ -45,7 +45,7 @@ async function analyseWith(page, items) {
   });
 
   await page.getByRole("button", { name: /AI LOG/ }).click();
-  await page.getByPlaceholder(/GDK large mixed meat meal/).fill("test meal");
+  await page.getByRole("textbox", { name: "Describe your meal" }).fill("test meal");
   await page.getByRole("button", { name: /ANALYSE MEAL/ }).click();
 }
 

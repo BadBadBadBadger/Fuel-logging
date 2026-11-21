@@ -49,7 +49,7 @@ async function analyseWithDuplicateTotal(page) {
     };
   });
   await page.getByRole("button", { name: /AI LOG/ }).click();
-  await page.getByPlaceholder(/GDK large mixed meat meal/).fill(
+  await page.getByRole("textbox", { name: "Describe your meal" }).fill(
     "250g Tilda Sticky Rice, 200g cooked chicken breast, no oil, 30g sweet chilli sauce, " +
     "15g mayo, 100g cherry tomatoes, 100g spinach. Lunch estimate ~700 kcal, protein ~71g, carbs ~76g, fat ~16g");
   await page.getByRole("button", { name: /ANALYSE MEAL/ }).click();
