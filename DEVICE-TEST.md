@@ -68,6 +68,11 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v114 — editing today from History sticks (2026-11-21)
+- [ ] History → 7 Days → tap TODAY → add a glass and delete a food → back: Today shows the same
+- [ ] Now add a glass on Today, reopen TODAY in History: the deleted food is still gone
+- [ ] Switch REST → TRAINING on today in History, reload: still TRAINING
+
 ### New in v113 — plain-English hint in the food box (2026-11-21)
 - [ ] The empty food box reads "Describe what you've eaten, you can also supply pictures and AI will break it down into kcal and macros." (v1 and v2)
 

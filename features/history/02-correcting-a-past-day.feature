@@ -129,3 +129,25 @@ Feature: Correcting a past day's mode and calorie target
     Then that day's target, colour and verdict all change
     But the weekly sentence is unchanged, because no day's mode feeds it
     And the cut-block ledger is unchanged, because this fix cannot reach it
+
+  # ── Today is one day, not two copies (owner, 2026-11-21: "consistency is always king") ──
+  # History lists today as well. Its food, water and TRAINING/REST can be edited there, and the
+  # edit goes through the same live handlers Today uses. It used to land only in the stored
+  # history row, and the next change on Today rebuilt that row from live state and wiped it.
+  # Today's mode and target stay on Today (unchanged).
+
+  Scenario: An edit to today in History shows on Today
+    Given I open today from History
+    When I add a glass of water, delete a food and switch REST to TRAINING
+    Then the Today screen shows the same water and food straight away
+
+  Scenario: The next change on Today keeps the History edits
+    Given I edited today's food and training from History
+    When I add a glass of water on Today
+    Then today's row in History still has my food edit and still says TRAINING
+    And all of it is still there after a reload
+
+  Scenario: Training follows the latest action
+    Given today's TRAINING/REST was set by hand in History
+    When I log or remove a workout on Today
+    Then today's training follows the workouts again
