@@ -162,9 +162,9 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v110" ↔ "v110") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v110";
-const APP_PATCH_DATE = "2026-11-20";
+// CACHE ("fuel-log-v111" ↔ "v111") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v111";
+const APP_PATCH_DATE = "2026-11-21";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 

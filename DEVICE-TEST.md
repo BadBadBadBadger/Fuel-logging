@@ -68,6 +68,16 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v111 — UI v2 "Instrument" behind `?ui=v2` (2026-11-21)
+v1 is still the default; nothing changes unless you opt in. Rollback baseline: branch `live-v110`.
+- [ ] Open the app with `?ui=v2` — Today shows FUEL/LOG, lamps, the gauge; reopen without the query and it stays on v2
+- [ ] Dark and light theme both readable (Settings › Units & look › Theme)
+- [ ] Log a meal, tap its row, change kcal, Save; Cancel discards; Save to Quick Add fills the bookmark
+- [ ] TARGET tap → override → "Use auto" restores the automatic target
+- [ ] Settings button → Settings v2; edit weight, back out, reload — the change stuck
+- [ ] During a diet break, tapping CUT asks "Back to cutting already?" (Today and Settings)
+- [ ] `?ui=v1` puts you back on the old screens
+
 ### New in v109 — 📷 camera and 🖼 gallery, up to 3 photos per meal (2026-11-20)
 
 (v108's single 📷 opened Google Photos' picker on the founder's phone — gallery fine, no camera.)
