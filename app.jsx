@@ -9860,7 +9860,7 @@ function App() {
           onPremiumGate={feature => setPremiumGate(feature)}
           onSignOut={() => setShowSignOut(true)}
           isOnline={isOnline} syncMsg={syncMsg}/>}
-      {view === "profile"      && <ProfComp requestMode={requestMode} mode={effectiveMode} customKcal={customKcal} onSetCustomKcal={saveCustomKcal}
+      {view === "profile"      && <ProfComp requestMode={requestMode} storedMode={mode} mode={effectiveMode} customKcal={customKcal} onSetCustomKcal={saveCustomKcal}
           targets={targets} baseTDEE={baseTDEE} authState={authState} authUser={authUser} consentInfo={consentInfo}
           onExport={handleExport} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
           onSignIn={() => setShowSignIn(true)} onOpenAccount={() => setView("account")}
