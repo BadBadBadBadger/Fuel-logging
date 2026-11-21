@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuel Log Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+.mock-set {
+  --stage: #0d1114;
+  --panel: #1c2327;
+  --panel-2: #232c31;
+  --well: #11171a;
+  --ink: #dbe2df;
+  --dim: #7f8c8e;
+  --faint: #3a464c;
+  --rule: #2c363b;
+  --amber: #ffb23e;
+  --amber-bg: #2a2012;
+  --amber-bd: #4d3714;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --cond: "Barlow Condensed", sans-serif;
+  --sans: "Barlow", sans-serif;
+  background: var(--stage);
+  color: var(--ink);
+  font-family: var(--sans);
+  padding: 40px 16px 56px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 48px 40px;
+  -webkit-font-smoothing: antialiased;
+}
+.mock-set *, .mock-set *::before, .mock-set *::after { box-sizing: border-box; }
+.mock-set p, .mock-set h1, .mock-set h2, .mock-set h3, .mock-set ul, .mock-set ol { margin: 0; padding: 0; }
+
+/* phone */
+.mock-set .phone { width: 100%; max-width: 390px; flex: 0 1 390px; }
+.mock-set .cap-top { font: 600 11px var(--mono); letter-spacing: .18em; color: var(--dim); text-align: center; margin-bottom: 14px; }
+.mock-set .ph { background: var(--panel); border-radius: 44px; overflow: hidden; border: 10px solid #050708; outline: 1px solid #2b3439; padding-bottom: 26px; }
+.mock-set .sb { display: flex; justify-content: space-between; padding: 14px 24px 0; font: 600 14px var(--sans); }
+.mock-set .ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.mock-set .ic.sm { width: 16px; height: 16px; }
+
+/* header */
+.mock-set .hd { display: flex; align-items: center; gap: 12px; padding: 20px 20px 0; }
+.mock-set .back { width: 38px; height: 38px; border-radius: 10px; background: var(--panel-2); display: grid; place-items: center; color: var(--dim); flex: none; }
+.mock-set .ttl { font: 700 26px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; }
+.mock-set .ttl span { color: var(--amber); }
+.mock-set .hd .meta { font: 500 11px var(--mono); color: var(--dim); letter-spacing: .1em; margin-top: 5px; }
+.mock-set .saved { margin-left: auto; font: 600 11px var(--mono); letter-spacing: .14em; color: var(--amber); }
+
+/* readout */
+.mock-set .readout { margin: 18px 20px 0; background: var(--well); border-radius: 18px; padding: 16px 16px 14px; }
+.mock-set .ro-top { display: flex; justify-content: space-between; align-items: center; }
+.mock-set .lbl { font: 600 10.5px var(--mono); letter-spacing: .16em; color: var(--dim); text-transform: uppercase; }
+.mock-set .pill { font: 700 11px/1 var(--mono); letter-spacing: .14em; color: var(--amber); background: var(--amber-bg); border: 1px solid var(--amber-bd); border-radius: 5px; padding: 6px 9px 5px; }
+.mock-set .big { font: 600 44px/1 var(--mono); letter-spacing: -.03em; color: var(--amber); margin-top: 10px; font-variant-numeric: tabular-nums; }
+.mock-set .big small { font: 500 12px var(--mono); letter-spacing: .14em; color: var(--dim); margin-left: 6px; }
+.mock-set .ro-stats { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--rule); }
+.mock-set .ro-stats div { font: 500 14px var(--mono); font-variant-numeric: tabular-nums; }
+.mock-set .ro-stats span { display: block; font: 600 9.5px var(--mono); letter-spacing: .14em; color: var(--dim); margin-bottom: 4px; }
+.mock-set .ro-stats em { font-style: normal; font-size: 11px; color: var(--dim); }
+
+/* group list */
+.mock-set .sect { font: 600 12px var(--cond); letter-spacing: .16em; color: var(--dim); text-transform: uppercase; padding: 22px 24px 8px; }
+.mock-set .list { margin: 0 20px; background: var(--panel-2); border-radius: 14px; overflow: hidden; }
+.mock-set .row { display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; min-height: 60px; }
+.mock-set .row + .row { border-top: 1px solid var(--panel); }
+.mock-set .row .t { flex: 1; min-width: 0; }
+.mock-set .row b { display: block; font: 600 17px/1.1 var(--cond); letter-spacing: .05em; text-transform: uppercase; }
+.mock-set .row i { display: block; font: 400 13px/1.3 var(--sans); font-style: normal; color: var(--dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mock-set .row .v { font: 500 13px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mock-set .row .chev { color: #5d6b71; }
+.mock-set .row.top b { color: var(--ink); }
+.mock-set .row .tag { font: 700 10px/1 var(--mono); letter-spacing: .12em; color: var(--amber); border: 1px solid var(--amber-bd); border-radius: 4px; padding: 4px 5px 3px; margin-left: 6px; vertical-align: 2px; }
+
+.mock-set .foot { padding: 22px 24px 0; text-align: center; }
+.mock-set .links { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 14px; font: 500 13px var(--sans); color: var(--dim); }
+.mock-set .links a { color: var(--dim); text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+.mock-set .ver { font: 500 11px var(--mono); letter-spacing: .12em; color: #56636a; margin-top: 12px; }
+
+/* drill-in controls */
+.mock-set .card { margin: 0 20px; background: var(--panel-2); border-radius: 14px; padding: 14px 14px 16px; }
+.mock-set .card + .card { margin-top: 10px; }
+.mock-set .fl { font: 600 13px var(--cond); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); display: flex; justify-content: space-between; align-items: baseline; }
+.mock-set .fl span { font: 400 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--dim); }
+.mock-set .hint { font: 400 12.5px/1.45 var(--sans); color: var(--dim); margin-top: 8px; }
+.mock-set .hint b { color: var(--ink); font-weight: 500; }
+
+.mock-set .lamps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+.mock-set .lamp { font: 700 12px/1 var(--mono); letter-spacing: .14em; text-align: center; padding: 12px 0 11px; border-radius: 6px; background: var(--well); color: #56636a; border: 1px solid #0a0e10; }
+.mock-set .lamp.on { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-bd); }
+
+.mock-set .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; background: var(--well); border-radius: 9px; padding: 3px; margin-top: 10px; }
+.mock-set .seg span { text-align: center; font: 600 13px/1 var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); padding: 10px 0 9px; border-radius: 6px; }
+.mock-set .seg span.on { background: var(--panel); color: var(--ink); outline: 1px solid var(--amber-bd); }
+.mock-set .seg span em { font: 500 12px var(--mono); font-style: normal; letter-spacing: 0; color: var(--amber); margin-left: 6px; }
+
+.mock-set .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mock-set .field { margin-top: 8px; display: flex; align-items: baseline; justify-content: space-between; background: var(--well); border-radius: 9px; padding: 11px 12px 10px; border: 1px solid #0a0e10; }
+.mock-set .field .n { font: 500 20px var(--mono); font-variant-numeric: tabular-nums; }
+.mock-set .field .u { font: 600 11px var(--mono); letter-spacing: .1em; color: var(--dim); }
+.mock-set .field.focus { border-color: var(--amber-bd); }
+.mock-set .field.focus .n::after { content: ""; display: inline-block; width: 1px; height: 17px; background: var(--amber); vertical-align: -2px; margin-left: 2px; }
+
+.mock-set .radio { margin-top: 10px; display: grid; gap: 4px; }
+.mock-set .opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; background: var(--well); border: 1px solid #0a0e10; }
+.mock-set .opt .dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--faint); flex: none; }
+.mock-set .opt b { font: 500 14px var(--sans); }
+.mock-set .opt i { font: 400 12px var(--mono); font-style: normal; color: var(--dim); margin-left: auto; white-space: nowrap; }
+.mock-set .opt.on { border-color: var(--amber-bd); }
+.mock-set .opt.on .dot { border-color: var(--amber); background: radial-gradient(circle, var(--amber) 0 3.5px, transparent 4px); }
+
+.mock-set .sum { margin: 16px 20px 0; display: flex; justify-content: space-between; padding: 12px 4px 0; border-top: 1px dashed var(--rule); font: 500 11px var(--mono); letter-spacing: .1em; color: var(--dim); }
+.mock-set .sum em { display: block; font-style: normal; font-size: 15px; letter-spacing: 0; color: var(--ink); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.mock-set .sum .op { align-self: flex-end; color: #4d5a60; font-size: 15px; }
+.mock-set .sum .hot em { color: var(--amber); }
+
+/* aside */
+.mock-set .aside { flex: 1 1 100%; min-width: 0; max-width: 820px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 28px 40px; padding-top: 8px; border-top: 1px solid #222b30; }
+.mock-set .aside h2 { font: 700 18px var(--cond); letter-spacing: .14em; text-transform: uppercase; color: var(--amber); margin: 18px 0 10px; }
+.mock-set .aside ul { list-style: none; }
+.mock-set .aside li { font: 400 14px/1.45 var(--sans); color: var(--dim); padding: 8px 0; border-bottom: 1px solid #1c2428; }
+.mock-set .aside li b { color: var(--ink); font-weight: 600; }
+.mock-set .aside li .to { display: block; margin-top: 3px; font: 500 12px var(--mono); color: var(--ink); }
+.mock-set .who { display: flex; align-items: center; gap: 12px; padding: 18px 24px 0; }
+.mock-set .av { width: 40px; height: 40px; border-radius: 50%; background: var(--well); color: var(--ink); display: grid; place-items: center; font: 700 18px/1 var(--cond); flex: none; }
+.mock-set .who .t { flex: 1; min-width: 0; }
+.mock-set .who b { display: block; font: 600 15px/1.2 var(--sans); }
+.mock-set .who i { display: block; font: 400 12.5px/1.3 var(--sans); font-style: normal; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mock-set .who .tag { font: 700 10px/1 var(--mono); letter-spacing: .12em; color: var(--amber); border: 1px solid var(--amber-bd); border-radius: 4px; padding: 4px 5px 3px; }
+</style>
+</head>
+<body>
+<div class="mock-set">
+
+  <!-- 1. Top-level Settings -->
+  <section class="phone">
+    <div class="cap-top">01 · SETTINGS</div>
+    <div class="ph">
+      <div class="sb"><span>9:41</span><span>5G</span></div>
+      <div class="hd">
+        <a class="back" aria-label="Back to Today"><svg class="ic" viewBox="0 0 24 24"><path d="M19.6 12.1c-4.9-.1-9.8.1-14.7-.1"/><path d="M10.4 6.2c-1.9 2-3.8 3.9-5.6 5.9 1.8 2 3.7 3.9 5.6 5.8"/></svg></a>
+        <div>
+          <div class="ttl">Settings</div>
+          <div class="meta">CHANGES SAVE AUTOMATICALLY</div>
+        </div>
+      </div>
+
+      <div class="who">
+        <span class="av" aria-hidden="true">D</span>
+        <div class="t"><b>Dev Preview</b><i>Signed in with Google</i><i>dev@example.com</i></div>
+        <span class="tag">PREMIUM</span>
+      </div>
+
+      <div class="readout">
+        <div class="ro-top"><span class="lbl">Daily target</span><span class="pill">CUT</span></div>
+        <div class="big">2,241<small>KCAL</small></div>
+        <div class="ro-stats">
+          <div><span>WEIGHT</span>98.5<em> kg</em></div>
+          <div><span>HEIGHT</span>178<em> cm</em></div>
+          <div><span>BODY FAT</span>22<em> %</em></div>
+          <div><span>ACTIVITY</span>Light</div>
+        </div>
+      </div>
+
+      <div class="sect">You</div>
+      <div class="list">
+        <div class="row top">
+          <div class="t"><b>Body &amp; goal</b><i>Goal, daily target, body stats, activity, reminders</i></div>
+          <svg class="ic sm chev" viewBox="0 0 24 24"><path d="M9.2 5.9c2 2 4.1 4 6 6.1-1.9 2-4 4-6 6.1"/></svg>
+        </div>
+        <div class="row">
+          <div class="t"><b>Units &amp; look</b><i>Weight in kg · height in cm · dark</i></div>
+          <svg class="ic sm chev" viewBox="0 0 24 24"><path d="M9.2 5.9c2 2 4.1 4 6 6.1-1.9 2-4 4-6 6.1"/></svg>
+        </div>
+      </div>
+
+      <div class="sect">App</div>
+      <div class="list">
+        <div class="row">
+          <div class="t"><b>Account &amp; data</b><i>Download my data, sign out, delete account</i></div>
+          <svg class="ic sm chev" viewBox="0 0 24 24"><path d="M9.2 5.9c2 2 4.1 4 6 6.1-1.9 2-4 4-6 6.1"/></svg>
+        </div>
+        <div class="row">
+          <div class="t"><b>Advanced</b><i>How your target is worked out, reset learning</i></div>
+          <svg class="ic sm chev" viewBox="0 0 24 24"><path d="M9.2 5.9c2 2 4.1 4 6 6.1-1.9 2-4 4-6 6.1"/></svg>
+        </div>
+      </div>
+
+      <div class="foot">
+        <div class="links"><a>Privacy</a><a>Terms</a><a>Who handles my data</a></div>
+        <div class="ver">FUEL LOG V110 · UPDATED 20 NOV 2026</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Body & goal -->
+  <section class="phone">
+    <div class="cap-top">02 · BODY &amp; GOAL</div>
+    <div class="ph">
+      <div class="sb"><span>9:41</span><span>5G</span></div>
+      <div class="hd">
+        <a class="back" aria-label="Back to Settings"><svg class="ic" viewBox="0 0 24 24"><path d="M19.6 12.1c-4.9-.1-9.8.1-14.7-.1"/><path d="M10.4 6.2c-1.9 2-3.8 3.9-5.6 5.9 1.8 2 3.7 3.9 5.6 5.8"/></svg></a>
+        <div>
+          <div class="ttl">Body &amp; goal</div>
+          <div class="meta">SETTINGS</div>
+        </div>
+        <span class="saved">SAVED</span>
+      </div>
+
+      <div class="sect">Goal</div>
+      <div class="card">
+        <div class="fl">What are you doing?</div>
+        <div class="lamps"><span class="lamp on">CUT</span><span class="lamp">MAINTAIN</span><span class="lamp">BULK</span></div>
+        <div class="fl" style="margin-top:16px">Daily target</div>
+        <div class="seg"><span class="on">Auto<em>2,241</em></span><span>Set my own</span></div>
+        <p class="hint">Worked out from your body and goal. Workouts are added on top when you log them.</p>
+      </div>
+
+      <div class="sect">Body</div>
+      <div class="card">
+        <div class="grid2">
+          <div>
+            <div class="fl">Weight</div>
+            <div class="field"><span class="n">98.5</span><span class="u">KG</span></div>
+          </div>
+          <div>
+            <div class="fl">Height</div>
+            <div class="field"><span class="n">178</span><span class="u">CM</span></div>
+          </div>
+        </div>
+        <div class="fl" style="margin-top:14px">Body fat</div>
+        <div class="field focus"><span class="n">22</span><span class="u">%</span></div>
+        <p class="hint">Not sure? Start with <b>25%</b> for men or <b>30%</b> for women. A closer figure gives a better target.</p>
+        <div class="fl" style="margin-top:14px">Sex <span>sets your safe minimum</span></div>
+        <div class="seg"><span class="on">Male</span><span>Female</span></div>
+      </div>
+
+      <div class="card">
+        <div class="fl">Activity <span>your day, not counting workouts</span></div>
+        <div class="radio">
+          <div class="opt"><span class="dot"></span><b>Mostly sitting</b><i>&lt;5k steps</i></div>
+          <div class="opt on"><span class="dot"></span><b>Lightly active</b><i>5–8k steps</i></div>
+          <div class="opt"><span class="dot"></span><b>Active</b><i>8–12k steps</i></div>
+          <div class="opt"><span class="dot"></span><b>Very active</b><i>12k+ steps</i></div>
+        </div>
+      </div>
+
+      <div class="sect">Reminders</div>
+      <div class="card">
+        <div class="fl">Weigh-ins <span>uses your 7-day trend</span></div>
+        <div class="seg"><span>Daily</span><span class="on">Few / wk</span><span>Weekly</span><span>Off</span></div>
+        <div class="fl" style="margin-top:14px">Measurements <span>neck, waist</span></div>
+        <div class="seg"><span class="on">Weekly</span><span>Off</span></div>
+        <p class="hint">You can always log either from the weight panel on Today.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- notes -->
+  <aside class="aside">
+    <div>
+      <h2>Removed</h2>
+      <ul>
+        <li><b>AI coach card</b> on Today. Owner decision. Premium-only, and the main reader of the diet settings.</li>
+        <li><b>Diet type, Allergies, Dislikes.</b> Owner decision; they only steered AI prompts.</li>
+        <li><b>“Targets use Katch-McArdle”</b> intro line. Jargon on the first screen; the method is explained in Advanced.</li>
+        <li><b>Aggressive-cut warning banner.</b> A one-off notice, not a setting; Advanced shows the status and a way to undo it.</li>
+        <li><b>Emoji</b> on theme, export, sign-out and delete. Words already say it.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Moved / merged</h2>
+      <ul>
+        <li><b>Mode chips</b> <span class="to">Today → Body &amp; goal</span> (also kept on Today)</li>
+        <li><b>Custom kcal pencil</b> <span class="to">Today card → Daily target</span></li>
+        <li><b>Weight / height unit toggles</b> <span class="to">field labels → Units &amp; look</span></li>
+        <li><b>Appearance</b> <span class="to">foot of profile → Units &amp; look</span></li>
+        <li><b>Body measurements form</b> <span class="to">profile → Today weight panel</span></li>
+        <li><b>Weigh-in frequency, “Don’t ask me for these”</b> <span class="to">profile → Body &amp; goal · Reminders</span></li>
+        <li><b>Calculated stats, targets by mode, reset learning</b> <span class="to">profile → Advanced</span></li>
+        <li><b>Account &amp; Privacy</b> <span class="to">avatar (premium only) → Account &amp; data, for everyone</span></li>
+        <li><b>Legal links, consent record</b> <span class="to">Account screen → settings footer</span></li>
+      </ul>
+    </div>
+  </aside>
+</div>
+</body>
+</html>
