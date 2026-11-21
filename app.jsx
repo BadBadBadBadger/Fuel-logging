@@ -7178,14 +7178,195 @@ function V2Sheet({ children, onScrim, label }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ██ REGION A — GAUGE · TARGET/EATEN · MACROS (§3.4–3.6, §4, D2–D4, D17, D19)
 // ─────────────────────────────────────────────────────────────────────────────
+// Spec: features/dashboard/07-gauge.feature, features/targets/02 (v2 scenarios).
+// Pure presentation over App's props (totals, targets, mode, prof, …).
+//
+// Layout note: TARGET · EATEN sit INSIDE the gauge well, as in every mockup, so V2Gauge
+// renders <V2TargetPair>. V2TargetEaten is kept (the shell calls it) but renders nothing,
+// which leaves the caution strip directly under the whole gauge (O1 proposal).
+
+// Gauge geometry, from mockups/a2.html: viewBox 0 -12 320 186, centre (160,150), r 138.
+const V2G = { cx: 160, cy: 150, r: 138 };
+const v2gPt = (f, r) => {           // f: 0 = E (left), 1 = F (right)
+  const t = Math.PI * (1 - f);
+  return [V2G.cx + r * Math.cos(t), V2G.cy - r * Math.sin(t)];
+};
+const v2gXY = ([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`;
+
+// The gauge's state (§4).
+//   band: "good" | "amber" | "over" (CUT only) | "neutral" (MAINTAIN / BULK, D19)
+//   fill: eaten / target, capped at 1 — no over-zone past F (D17)
+function v2GaugeState(eaten, target, mode) {
+  const e = Math.round(Number(eaten) || 0);
+  const t = Math.round(Number(target) || 0);
+  const overBy = e - t;                                        // > 0 means over
+  const fill = t > 0 ? Math.max(0, Math.min(1, e / t)) : 0;
+  let band = "neutral";
+  if (mode === "cut") band = overBy <= 0 ? "good" : overBy <= 250 ? "amber" : "over";
+  const mark = { good: "var(--good)", amber: "var(--amber-mark)", over: "var(--over)", neutral: "var(--dim)" }[band];
+  const text = { good: "var(--ink)", amber: "var(--amber-ink)", over: "var(--over)", neutral: "var(--ink)" }[band];
+  return { over: overBy > 0, left: Math.abs(overBy), fill, band, mark, text };
+}
+
+// "Auto would be N" — the automatic target for this mode. App doesn't hand v2 its baseTargets,
+// so derive it the way App does (calcTargets with the applied workout bonus, which targets
+// carries as `bonus`). An `autoKcal` prop wins if App ever passes one.
+function v2AutoKcal({ autoKcal, isCustomMode, targets, prof, mode, tdeeAdj }) {
+  if (autoKcal != null) return autoKcal;
+  if (!isCustomMode) return targets.kcal;
+  try {
+    return calcTargets(prof || DEF_PROFILE, MODES[mode] ? mode : "cut", targets.bonus || 0, tdeeAdj || 0, 0).kcal;
+  } catch { return null; }
+}
+
 function V2Gauge(props) {
-  return <Panel data-testid="v2-gauge"><Label>Gauge (stub)</Label></Panel>;
+  const { totals, targets, mode } = props;
+  const g = v2GaugeState(totals.kcal, targets.kcal, mode);
+  const end = v2gPt(g.fill, V2G.r);
+  // Pointer: a small triangle just outside the arc, pointing in at it. At F it points left.
+  const tip = v2gPt(g.fill, V2G.r + 5), base = v2gPt(g.fill, V2G.r + 16);
+  const ang = Math.PI * (1 - g.fill), px = 5 * Math.sin(ang), py = 5 * Math.cos(ang);
+  const pointer = `M${v2gXY(tip)} L${v2gXY([base[0] + px, base[1] + py])} L${v2gXY([base[0] - px, base[1] - py])} Z`;
+  const ticks = Array.from({ length: 11 }, (_, i) => {
+    const f = i / 10, a = v2gPt(f, 130), b = v2gPt(f, i === 0 || i === 10 ? 114 : 118);
+    return <line key={i} x1={a[0].toFixed(1)} y1={a[1].toFixed(1)} x2={b[0].toFixed(1)} y2={b[1].toFixed(1)}
+      style={{ stroke: i === 5 ? "color-mix(in srgb, var(--faint) 55%, var(--dim))" : "var(--faint)" }}/>;
+  });
+  const caption = g.over ? "over" : "still to go";
+  return (
+    <Panel well pad="14px 16px 18px" data-testid="v2-gauge" data-band={g.band} data-fill={g.fill.toFixed(3)}
+      style={{ borderRadius: 22 }} role="group" aria-label={`${v2fmt(g.left)} kcal ${caption}`}>
+      <svg viewBox="0 -12 320 186" aria-hidden="true" style={{ display: "block", width: "100%", height: "auto" }}>
+        <g strokeWidth="2" strokeLinecap="round">{ticks}</g>
+        <path d="M22 150 A 138 138 0 0 1 298 150" fill="none" strokeWidth="4" style={{ stroke: "var(--hair)" }}/>
+        {g.fill > 0 && (
+          <path data-testid="v2-gauge-arc" d={`M22 150 A 138 138 0 0 1 ${v2gXY(end)}`} fill="none" strokeWidth="4"
+            style={{ stroke: g.mark }}/>
+        )}
+        <path data-testid="v2-gauge-pointer" d={pointer} style={{ fill: g.mark }}/>
+        <text x="16" y="172" style={{ fill: "var(--dim)", fontFamily: V2_FONT.mono, fontSize: 12, fontWeight: 700 }}>E</text>
+        <text x="296" y="172" style={{ fill: "var(--dim)", fontFamily: V2_FONT.mono, fontSize: 12, fontWeight: 700 }}>F</text>
+      </svg>
+      <div style={{ textAlign: "center", marginTop: -86, position: "relative" }}>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, color: g.text }}>
+          <Num data-testid="v2-gauge-readout" size={68} weight={600}
+            style={{ lineHeight: 1, letterSpacing: "-.04em" }}>{v2fmt(g.left)}</Num>
+          <Num size={15} weight={500}>kcal</Num>
+        </span>
+        <span data-testid="v2-gauge-caption" style={{ display: "block", fontFamily: V2_FONT.body, fontWeight: 500,
+          fontSize: 14, marginTop: 4, color: g.over ? "var(--ink)" : "var(--dim)" }}>{caption}</span>
+      </div>
+      <V2TargetPair {...props}/>
+    </Panel>
+  );
 }
-function V2TargetEaten(props) {
-  return <div data-testid="v2-target-eaten"><Label>Target · eaten (stub)</Label></div>;
+
+// TARGET · EATEN, centred, no sum (D3). TARGET opens the inline override (D4, targets/02) with
+// v1's behaviour (Enter/blur commits, Escape cancels) plus "Auto would be N · Use auto".
+// It calls onSetCustomKcal exactly as v1's pill does (so bug B4 behaves as in v1).
+function V2TargetPair(props) {
+  const { totals, targets, onSetCustomKcal = () => {}, isCustomMode } = props;
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  const cancelled = React.useRef(false);
+  const auto = v2AutoKcal(props);
+
+  const open = () => { cancelled.current = false; setVal(String(targets.kcal)); setEditing(true); };
+  const commit = () => {
+    if (cancelled.current) { cancelled.current = false; return; }
+    const v = parseInt(val, 10);
+    // Unchanged → the target stays as it was (targets/02 "taps away without changing").
+    if (v > 0 && v !== targets.kcal) { haptic(); onSetCustomKcal(v); }
+    setEditing(false);
+  };
+  const useAuto = () => { cancelled.current = true; haptic(); onSetCustomKcal(null); setEditing(false); };
+
+  const lab = { fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 10, letterSpacing: ".16em",
+    textTransform: "uppercase", color: "var(--dim)", textAlign: "center" };
+  const fig = { display: "block", fontFamily: V2_FONT.mono, fontWeight: 500, fontSize: 17,
+    fontVariantNumeric: "tabular-nums", letterSpacing: 0, textTransform: "none", color: "var(--ink)", marginTop: 4 };
+  return (
+    <div data-testid="v2-target-eaten">
+      <div style={{ display: "flex", justifyContent: "center", gap: 44, marginTop: 20 }}>
+        <div style={{ ...lab, ...(editing ? { color: "var(--amber-ink)" } : {}) }}>
+          <span id="v2-target-label">Target</span>
+          {editing ? (
+            <input data-testid="v2-target-input" aria-labelledby="v2-target-label"
+              type="number" inputMode="numeric" value={val} autoFocus
+              onChange={e => setVal(e.target.value)} onBlur={commit}
+              onFocus={e => e.target.select()}
+              onKeyDown={e => {
+                if (e.key === "Enter") e.target.blur();
+                if (e.key === "Escape") { cancelled.current = true; setEditing(false); }
+              }}
+              style={{ ...fig, width: "6ch", margin: "4px auto 0", padding: 0, textAlign: "center",
+                background: "none", border: "none", borderBottom: "2px solid var(--amber-ink)", borderRadius: 0,
+                color: "var(--amber-ink)", outline: "none", MozAppearance: "textfield" }}/>
+          ) : (
+            <button data-testid="v2-target" data-custom={isCustomMode ? "1" : "0"} onClick={open}
+              aria-label={`Target ${v2fmt(targets.kcal)} kcal, tap to set your own`}
+              style={{ ...fig, background: "none", border: "none", padding: 0, cursor: "pointer",
+                textDecoration: "underline dashed", textDecorationColor: "var(--dim)",
+                textDecorationThickness: 1, textUnderlineOffset: 6 }}>{v2fmt(targets.kcal)}</button>
+          )}
+        </div>
+        <div style={lab}>
+          <span>Eaten</span>
+          <span data-testid="v2-eaten" style={fig}>{v2fmt(totals.kcal)}</span>
+        </div>
+      </div>
+      {editing && (
+        <div data-testid="v2-target-edit" style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          marginTop: 18, paddingTop: 12, borderTop: "1px solid var(--faint)",
+          fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>
+          <span>Auto would be <Num data-testid="v2-target-auto" size={13} color="var(--ink)">{auto != null ? v2fmt(auto) : "–"}</Num></span>
+          {isCustomMode && (
+            <button data-testid="v2-target-use-auto" onMouseDown={e => e.preventDefault()} onClick={useAuto}
+              style={{ background: "none", border: "none", padding: "6px 0", cursor: "pointer",
+                fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, color: "var(--amber-ink)" }}>Use auto</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
-function V2Macros(props) {
-  return <div data-testid="v2-macros"><Label>Macros (stub)</Label></div>;
+function V2TargetEaten() {
+  return null;   // rendered inside the gauge well by V2Gauge (see the note at the top of REGION A)
+}
+
+// Macro tapes: PRO · CARB · FAT on one row. Neutral fill, amber pointer, no good/bad colour.
+function V2Tape({ id, label, value, target }) {
+  const v = Math.round(Number(value) || 0), t = Math.round(Number(target) || 0);
+  const pct = t > 0 ? Math.max(0, Math.min(100, (v / t) * 100)) : 0;
+  return (
+    <div data-testid={`v2-macro-${id}`} data-pct={pct.toFixed(1)} style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: V2_FONT.mono, fontWeight: 600,
+        fontSize: 11, letterSpacing: ".14em", color: "var(--dim)" }}>
+        <span style={{ textTransform: "uppercase" }}>{label}</span><span>g</span>
+      </div>
+      <div data-testid={`v2-macro-${id}-value`} className="v2-num" style={{ fontSize: 15, fontWeight: 500, marginTop: 6, color: "var(--ink)" }}>
+        {v}<span style={{ color: "var(--dim)", fontSize: 12 }}>/{t}</span>
+      </div>
+      <div aria-hidden="true" style={{ height: 16, marginTop: 6, position: "relative",
+        background: "repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px 10%) bottom / 100% 6px no-repeat" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, background: "var(--faint)" }}/>
+        <div style={{ position: "absolute", left: 0, bottom: 0, height: 6, width: `${pct}%`,
+          background: "var(--ink)", opacity: .85, transition: "width .4s" }}/>
+        <div data-testid={`v2-macro-${id}-pointer`} style={{ position: "absolute", top: 0, left: `${pct}%`, width: 0, height: 0,
+          borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+          borderTop: "6px solid var(--amber-mark)", transform: "translateX(-5px)", transition: "left .4s" }}/>
+      </div>
+    </div>
+  );
+}
+function V2Macros({ totals, targets }) {
+  return (
+    <div data-testid="v2-macros" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, paddingTop: 8 }}>
+      <V2Tape id="protein" label="Pro"  value={totals.protein} target={targets.protein}/>
+      <V2Tape id="carbs"   label="Carb" value={totals.carbs}   target={targets.carbs}/>
+      <V2Tape id="fat"     label="Fat"  value={totals.fat}     target={targets.fat}/>
+    </div>
+  );
 }
 // ── end REGION A ─────────────────────────────────────────────────────────────
 

@@ -35,3 +35,32 @@ Feature: Tap to override daily calorie target
     Then the target updates to that preset's value
     And the custom override is cleared
     And the relevant preset button becomes active again
+
+  # ── Today v2 (design/v2/HANDOVER.md D4; dashboard/07-gauge) ────────────────
+  # On the v2 Today screen (?ui=v2) the target lives under the gauge as TARGET.
+  # The pencil hint above is v1 only: v2 has the dashed underline and no pencil.
+
+  Scenario: v2 — TARGET has a dashed underline and no pencil
+    Given the v2 Today screen is on
+    Then TARGET under the gauge has a dashed underline
+    And no pencil hint is shown
+
+  Scenario: v2 — the edit state shows the automatic target
+    Given the v2 Today screen is on
+    When I tap TARGET
+    Then it becomes an inline numeric input with a solid amber underline
+    And "Auto would be N" shows the automatic target for my mode
+
+  Scenario: v2 — Use auto
+    Given the v2 Today screen is on
+    And I have set my own target
+    When I tap TARGET
+    Then "Use auto" is shown
+    When I tap "Use auto"
+    Then my own target is cleared and the automatic target returns
+
+  Scenario: v2 — tapping away without changing keeps the target as it was
+    Given the v2 Today screen is on
+    And TARGET is in edit mode
+    When I tap away without changing the number
+    Then the target is unchanged and no custom target is set
