@@ -9431,17 +9431,226 @@ function V2HistMeasurements(props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ██ REGION HB — LIST: range control · daily-average readout · kcal bars · day list (§3, §5)
 // ─────────────────────────────────────────────────────────────────────────────
+// The four v2 ranges map onto v1's range keys, so every window, average and label below comes
+// from v1's own pure helpers (features/history/01: rangeWindow · avgRowsOf · hasIntake · fmtRange).
+// Day and Year are gone (ruling §3, owner Q2).
+const V2H_RANGES = [["7D", "7D"], ["30D", "30D"], ["3M", "3M"], ["ALL", "All"]];
+const V2H_V1_RANGE = { "7D": "W", "30D": "30D", "3M": "3M", ALL: "ALL" };
+const V2H_MODE = { cut: "Cut", maintain: "Maintain", bulk: "Bulk" };
+// Neutral on-state for the segment (ruling §3), and Recharts colour through CSS: SVG attributes
+// can't resolve the .ui-v2 tokens, so the chart paints with currentColor and these rules set it.
+const V2H_CSS = `
+  .ui-v2 .v2h-seg { --v2s-seg-on: var(--panel-2); --v2s-seg-edge: var(--hair); }
+  .ui-v2 .v2h-intake .v2h-bar-past { color: var(--dim); }
+  .ui-v2 .v2h-intake .v2h-bar-today { color: var(--faint); }
+  .ui-v2 .v2h-intake .v2h-target { color: var(--ink); }
+  .ui-v2 .v2h-intake .recharts-cartesian-axis-tick-value { fill: var(--dim);
+    font-family: ${V2_FONT.mono}; font-size: 9px; font-variant-numeric: tabular-nums; }
+  .ui-v2 .v2h-row:active { background: var(--well); }
+`;
+
+// One model for the whole list screen, worked out exactly as v1 History does it ("The three
+// windows, named once"): the ROW window, then the AVERAGE window = complete days with intake,
+// dated to yesterday. Nothing here re-derives the maths.
+function v2hModel(history = [], range = "30D") {
+  const v1range = V2H_V1_RANGE[range] || "30D";
+  const todayK = todayKey();
+  const win = rangeWindow(v1range);
+  const inWin = d => (!win.from || d.date >= win.from) && d.date <= win.to;
+  const filtered = history.filter(inWin).sort((a, b) => a.date.localeCompare(b.date));
+  const avgRows = avgRowsOf(filtered, todayK);
+  const yesterdayK = (() => {
+    const d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - 1);
+    return dateKey(d);
+  })();
+  const avg = k => avgRows.length ? Math.round(avgRows.reduce((a, d) => a + (d[k] || 0), 0) / avgRows.length) : null;
+  // v1 labels no dates for ALL (no lower bound); v2 names the span the figure actually came from.
+  const avgLabel = win.from ? fmtRange(win.from, yesterdayK)
+    : (avgRows.length ? fmtRange(avgRows[0].date, yesterdayK) : "");
+  const listLabel = win.from ? fmtRange(win.from, win.to)
+    : (filtered.length ? fmtRange(filtered[0].date, win.to) : "");
+  return { todayK, win, filtered, avgRows, avgLabel, listLabel,
+    avg: { kcal: avg("kcal"), protein: avg("protein"), carbs: avg("carbs"), fat: avg("fat") } };
+}
+
 function V2HistRange(props) {
-  return <div data-testid="v2h-range"><Label>Range (stub)</Label></div>;
+  return (
+    <div className="v2h-seg" style={{ marginTop: -4 }}>
+      <style>{V2H_CSS}</style>
+      <V2SSeg testid="v2h-range" label="Range" options={V2H_RANGES}
+        value={props.range} onChange={v => props.setRange && props.setRange(v)}/>
+    </div>
+  );
 }
+
 function V2HistReadout(props) {
-  return <div data-testid="v2h-readout"><Label>Daily average (stub)</Label></div>;
+  const m = v2hModel(props.history, props.range);
+  const col = (key, label, size, testid) => (
+    <div style={{ minWidth: 0 }}>
+      <Label style={{ display: "block", fontSize: 9.5 }}>{label}</Label>
+      <span style={{ display: "block", marginTop: 4, lineHeight: "26px", whiteSpace: "nowrap" }}>
+        <Num size={size} data-testid={testid} style={{ color: "var(--ink)" }}>{v2fmt(m.avg[key])}</Num>
+        {key !== "kcal" && <span className="v2-num" style={{ fontSize: 11, color: "var(--dim)", marginLeft: 1 }}>g</span>}
+      </span>
+    </div>
+  );
+  return (
+    <Panel data-testid="v2h-readout" style={{ ...V2C_CELL }}>
+      <V2Cap>Daily average{m.avgLabel ? ` · ${m.avgLabel}` : ""}</V2Cap>
+      {m.avgRows.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, marginTop: 10,
+          alignItems: "end" }}>
+          {col("kcal", "Kcal", 22, "v2h-readout-kcal")}
+          {col("protein", "Pro", 15, "v2h-readout-pro")}
+          {col("carbs", "Carb", 15, "v2h-readout-carb")}
+          {col("fat", "Fat", 15, "v2h-readout-fat")}
+        </div>
+      ) : (
+        // FL-008: never a confident 0 when there is no complete day to average.
+        <p data-testid="v2h-readout-empty" style={{ ...V2C_SUB, margin: "10px 0 0", fontSize: 13 }}>
+          No complete days yet. Your average starts once today has finished.
+        </p>
+      )}
+    </Panel>
+  );
 }
+
+// Kcal per calendar day (FL-009 day spine) against the target stored on each day, drawn as a
+// dashed step. Today's bar is fainter: the day isn't finished.
 function V2HistIntake(props) {
-  return null;
+  const m = v2hModel(props.history, props.range);
+  const RC = typeof Recharts !== "undefined" ? Recharts : null;
+  if (!m.filtered.some(hasIntake)) return null;
+  const spine = daySpine(m.win.from || m.filtered[0].date, m.win.to);
+  const data = onDaySpine(spine, m.filtered.map(d => ({
+    rawDate: d.date,
+    past:  d.date !== m.todayK && hasIntake(d) ? Math.round(d.kcal || 0) : null,
+    today: d.date === m.todayK && hasIntake(d) ? Math.round(d.kcal || 0) : null,
+    target: d.targetKcal != null ? Math.round(d.targetKcal) : null,
+  })), r => r.rawDate);
+  const hasTarget = data.some(r => r.target != null);
+  const ticks = data.length ? [data[0].date, data[data.length - 1].date] : [];
+  return (
+    <Panel data-testid="v2h-intake" className="v2h-intake" style={{ ...V2C_CELL }}>
+      <V2Cap right={hasTarget && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <svg width="16" height="2" aria-hidden="true" style={{ color: "var(--ink)", display: "block" }}>
+            <line x1="0" y1="1" x2="16" y2="1" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2"/>
+          </svg>
+          <Label>Target</Label>
+        </span>
+      )}>Intake · kcal a day</V2Cap>
+      {RC && RC.ComposedChart ? (
+        <div style={{ height: 120, marginTop: 8 }}>
+          <RC.ResponsiveContainer width="100%" height="100%">
+            <RC.ComposedChart data={data} margin={{ top: 4, right: 14, left: 0, bottom: 0 }} barCategoryGap="22%">
+              <RC.XAxis dataKey="date" ticks={ticks} interval={0} axisLine={false} tickLine={false} height={16}/>
+              <RC.YAxis width={34} axisLine={false} tickLine={false} tickCount={3}
+                tickFormatter={v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : v}/>
+              <RC.Bar dataKey="past" stackId="k" className="v2h-bar-past" fill="currentColor"
+                radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false}/>
+              <RC.Bar dataKey="today" stackId="k" className="v2h-bar-today" fill="currentColor"
+                radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false}/>
+              {hasTarget && <RC.Line dataKey="target" type="stepAfter" className="v2h-target" stroke="currentColor"
+                strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false}/>}
+            </RC.ComposedChart>
+          </RC.ResponsiveContainer>
+        </div>
+      ) : (
+        <p style={{ ...V2C_SUB, margin: "10px 0 0" }}>The chart couldn't load.</p>
+      )}
+    </Panel>
+  );
 }
+
+// The same lamp V2Last7 draws for a CUT day graded amber or red (owner Q4), the same grader
+// (calorieDayScore on the day's stored target, else calcTargets) and the same "filling in" rule.
+// Maintain and Bulk are never marked (D19); green days carry no lamp here.
+function v2hGrade(d, { history, profile, tdeeAdj, todayK }) {
+  if (!d || d.mode !== "cut" || !hasIntake(d)) return null;
+  if ((history || []).length < WEEK_MIN_HISTORY_DAYS) return null;
+  const tgt = d.targetKcal != null ? d.targetKcal : calcTargets(profile || {}, "cut", 0, tdeeAdj || 0, 0).kcal;
+  const c = calorieDayScore({ mode: "cut", dayClosed: d.date < todayK, kcalDelta: (d.kcal || 0) - tgt }).colour;
+  return c === "amber" || c === "red" ? c : null;
+}
+function V2HistLamp({ colour, date }) {
+  const dt = new Date(date + "T12:00:00");
+  const base = { width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center",
+    fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9, fontStyle: "normal", boxSizing: "border-box",
+    background: "var(--amber-bg)" };
+  const look = colour === "red" ? { border: "1.5px solid var(--over)", color: "var(--over)" }
+    : { border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)" };
+  return <i data-testid="v2h-day-lamp" data-state={colour} aria-label={V2_DAY_SAYS[colour]}
+    style={{ ...base, ...look }}>{V2_DAY_INITIAL[dt.getDay()]}</i>;
+}
+
 function V2HistDayList(props) {
-  return <div data-testid="v2h-days"><Label>Day by day (stub)</Label></div>;
+  const { history = [], weighIns = [], profile, tdeeAdj, openDay } = props;
+  const m = v2hModel(history, props.range);
+  const rows = [...m.filtered].reverse();                       // newest first
+  // Weight on weigh-in days, in the units v1's list uses (kg, else lb).
+  const wPref = getWUnit();
+  const weightOn = Object.fromEntries(weighIns.map(w => [w.date, w.weight]));
+  const ctx = { history, profile, tdeeAdj, todayK: m.todayK };
+  return (
+    <Panel data-testid="v2h-days" style={{ ...V2C_CELL, paddingBottom: 6 }}>
+      <V2Cap>Day by day{m.listLabel ? ` · ${m.listLabel}` : ""}</V2Cap>
+      {rows.length === 0 ? (
+        <p data-testid="v2h-days-empty" style={{ ...V2C_SUB, margin: "10px 0 8px", fontSize: 13 }}>
+          {m.win.from ? `Nothing logged between ${fmtRange(m.win.from, m.win.to)}.` : "Nothing logged yet."}
+        </p>
+      ) : (
+        <div style={{ marginTop: 4 }}>
+          {rows.map((d, i) => {
+            const dt = new Date(d.date + "T12:00:00");
+            const isToday = d.date === m.todayK;
+            const showMode = !!d.mode && (i === 0 || rows[i - 1].mode !== d.mode);
+            const lamp = v2hGrade(d, ctx);
+            const logged = hasIntake(d);
+            const w = weightOn[d.date];
+            return (
+              <button key={d.date} type="button" className="v2h-row" data-testid="v2h-day-row" data-date={d.date}
+                data-mode={d.mode || ""} onClick={() => openDay && openDay(d.date)}
+                aria-label={`${isToday ? "Today" : `${V2_DAY_NAME[dt.getDay()]} ${fmtDay(d.date)}`}, open the day`}
+                style={{ display: "grid", gridTemplateColumns: "54px 24px 1fr auto", columnGap: 6, alignItems: "center",
+                  width: "100%", padding: "11px 0", background: "transparent", border: "none", textAlign: "left",
+                  borderBottom: i < rows.length - 1 ? "1px solid var(--hair)" : "none",
+                  cursor: "pointer", color: "var(--ink)" }}>
+                <span className="v2-num" data-testid="v2h-day-date" style={{ fontSize: 12, letterSpacing: ".04em",
+                  textTransform: "uppercase", color: isToday ? "var(--ink)" : "var(--dim)", fontWeight: isToday ? 600 : 400 }}>
+                  {isToday ? "Today" : `${V2_DAY_NAME[dt.getDay()]} ${dt.getDate()}`}
+                </span>
+                <span style={{ display: "grid", placeItems: "center" }}>
+                  {lamp && <V2HistLamp colour={lamp} date={d.date}/>}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  {showMode && <Label data-testid="v2h-day-mode" style={{ display: "block", fontSize: 9, marginBottom: 3 }}>
+                    {V2H_MODE[d.mode] || d.mode}</Label>}
+                  {logged ? (
+                    <span className="v2-num" data-testid="v2h-day-macros" style={{ fontSize: 12, color: "var(--dim)" }}>
+                      <b style={{ fontWeight: 500, color: "var(--ink)" }}>P {v2g(d.protein)}</b> · C {v2g(d.carbs)} · F {v2g(d.fat)}
+                    </span>
+                  ) : (
+                    <span data-testid="v2h-day-macros" style={{ fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>
+                      Nothing logged</span>
+                  )}
+                </span>
+                <span style={{ textAlign: "right" }}>
+                  {logged && <Num size={17} data-testid="v2h-day-kcal" style={{ display: "block", color: "var(--ink)" }}>
+                    {v2fmt(d.kcal)}</Num>}
+                  {w != null && <Num size={11.5} data-testid="v2h-day-weight"
+                    style={{ display: "block", color: "var(--dim)", marginTop: logged ? 2 : 0 }}>
+                    {wChartNum(w, wPref)} {wChartUnit(wPref)}</Num>}
+                </span>
+              </button>
+            );
+          })}
+          <p style={{ ...V2C_SUB, textAlign: "center", margin: "6px 0 8px" }}>Tap a day to open.</p>
+        </div>
+      )}
+    </Panel>
+  );
 }
 // ── end REGION HB ────────────────────────────────────────────────────────────
 
