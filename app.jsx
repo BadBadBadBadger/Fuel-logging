@@ -9449,11 +9449,334 @@ function V2HistDayList(props) {
 // ██ REGION HC — DAY SCREEN: a single day, editable (§5 "Day screen")
 // ─────────────────────────────────────────────────────────────────────────────
 // Props: { day, history, onUpdateDay, onBack, onStep(+1|-1), hasPrev, hasNext, ...History props }
-function V2HistDay(props) {
+// Spec: features/history/05-history-v2-day.feature · e2e/v2-history-day.spec.js
+//
+// The glue is v1 History's day view (patch / setDayMode / setDayTarget / addEntry), rebuilt
+// here as pure helpers over the same engine (sumLogs, calcTargets, computeMacros, SAFE_MIN,
+// FAT_FLOOR_PER_KG, calorieDayScore). Every write ends in props.onUpdateDay(updatedDay); App
+// routes today's logs/water/training to live state (owner, 2026-11-21), so today is editable
+// here too. Today's MODE and TARGET stay on Today: updateDay does not route those, so they are
+// shown read-only for today rather than offering an edit that would silently revert.
+
+// A day with its totals recomputed from its logs, exactly as v1's patch does.
+function v2hPatchDay(day, p) {
+  const u = { ...day, ...p };
+  if (p.logs) {
+    const t = sumLogs(p.logs);
+    u.kcal = Math.round(t.kcal); u.protein = Math.round(t.protein * 10) / 10;
+    u.carbs = Math.round(t.carbs * 10) / 10; u.fat = Math.round(t.fat * 10) / 10;
+  }
+  return u;
+}
+// That day's body (FL-010): its own weigh-in and tape body fat where recorded, else the profile.
+function v2hBodyOn(date, { profile = {}, weighIns = [], bodyMeasurements = [] }) {
+  const w = weighIns.find(x => x.date === date);
+  const m = bodyMeasurements.find(x => x.date === date);
+  return { ...profile, weight: w ? w.weight : profile.weight,
+    bodyFat: m && m.computed_bf != null ? m.computed_bf : profile.bodyFat };
+}
+const v2hFatFloor = b => Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG);
+// Changing a past day's mode re-targets it for that mode, computed once and stored (FL-010).
+function v2hModePatch(day, mode, body, tdeeAdj = 0) {
+  const t = calcTargets(body, mode, day.workoutBonus || 0, tdeeAdj, 0);
+  return { mode, targetKcal: t.kcal, targetProtein: t.protein, targetFat: t.fat,
+    targetFatFloor: v2hFatFloor(body),
+    floored: !!(t.safeMinApplied || t.deficitFloorApplied || t.bmrFloorApplied) };
+}
+// A typed target: the safety minimum holds, protein and fat keep theirs, carbs absorb the rest.
+function v2hTargetPatch(day, kcal, body) {
+  const safeKcal = Math.max(SAFE_MIN[body.sex === "female" ? "female" : "male"] || 1400, kcal);
+  const m = computeMacros(body, day.mode || "maintain", safeKcal);
+  return { targetKcal: safeKcal, targetProtein: m.protein, targetFat: m.fat,
+    targetFatFloor: v2hFatFloor(body), floored: safeKcal > kcal };
+}
+// Position-safe edits: ids can be missing or repeated in old data (History review H3).
+const v2hReplaceAt = (logs, i, p) => logs.map((l, j) => j === i ? { ...l, ...p } : l);
+const v2hRemoveAt  = (logs, i) => logs.filter((_, j) => j !== i);
+// The day's eaten totals: from its logs, or the stored snapshot figures when it has none.
+function v2hTotals(day) {
+  const logs = (day && day.logs) || [];
+  if (logs.length) return sumLogs(logs);
+  return { kcal: (day && day.kcal) || 0, protein: (day && day.protein) || 0,
+    carbs: (day && day.carbs) || 0, fat: (day && day.fat) || 0 };
+}
+// "THU 19 NOV" (uppercase from CSS); today reads "Today".
+function v2hDayTitle(date) {
+  if (!date) return "";
+  if (date === todayKey()) return "Today";
+  const d = new Date(date + "T12:00:00");
+  return `${V2_DAYS[d.getDay()]} ${d.getDate()} ${V2_MONTHS[d.getMonth()]}`;
+}
+function v2hDayMeta(date) {
+  if (!date) return "";
+  const n = v2DaysAgo(date);
+  if (n === 0) return "Edits here reach Today";
+  const y = new Date(date + "T12:00:00").getFullYear();
+  return `${n === 1 ? "Yesterday" : n + " days ago"} · ${y}`;
+}
+const V2H_MODES = [["cut", "Cut"], ["maintain", "Maintain"], ["bulk", "Bulk"]];
+// The band lamp, styled as V2Last7's lamp for the same grade (owner Q4: CUT only).
+const V2H_LAMP = { green: { border: "1px solid var(--amber-edge)" },
+  amber: { border: "1.5px solid var(--amber-mark)" }, red: { border: "1.5px solid var(--over)" } };
+const V2H_STEP = { width: 38, height: 38, borderRadius: 10, background: "var(--panel-2)", boxShadow: "var(--panel-shadow)",
+  border: "none", color: "var(--ink)", display: "grid", placeItems: "center", cursor: "pointer", padding: 0,
+  fontFamily: V2_FONT.mono, fontSize: 20, lineHeight: 1 };
+
+// 2. The one score line. CUT: the Last 7 grader's band lamp. Maintain/Bulk: plain ink (D19).
+function V2HistScore({ day, totals, editable, onSetTarget }) {
+  const [draft, setDraft] = useState(null);
+  const cancelled = React.useRef(false);
+  const tgt = day.targetKcal;
+  const kcal = Math.round(totals.kcal || 0);
+  const mode = day.mode || "maintain";
+  const open = () => { cancelled.current = false; setDraft(String(tgt != null ? tgt : (kcal || 2000))); };
+  const commit = () => {
+    if (cancelled.current) { cancelled.current = false; return; }
+    const n = parseInt(draft, 10);
+    if (n > 0 && n !== tgt) { haptic(); onSetTarget(n); }
+    setDraft(null);
+  };
+  const fig = { fontFamily: V2_FONT.mono, fontWeight: 500, fontSize: 14, fontVariantNumeric: "tabular-nums", color: "var(--ink)" };
+  const targetEl = draft != null ? (
+    <input data-testid="v2h-day-target-input" aria-label="Target for this day, kcal" type="number" inputMode="numeric"
+      value={draft} autoFocus onChange={e => setDraft(e.target.value)} onBlur={commit} onFocus={e => e.target.select()}
+      onKeyDown={e => { if (e.key === "Enter") e.target.blur();
+        if (e.key === "Escape") { cancelled.current = true; setDraft(null); } }}
+      style={{ ...fig, width: "6ch", padding: 0, background: "none", border: "none", borderRadius: 0,
+        borderBottom: "2px solid var(--amber-ink)", color: "var(--amber-ink)", outline: "none", MozAppearance: "textfield" }}/>
+  ) : editable ? (
+    <button data-testid="v2h-day-target" onClick={open}
+      aria-label={tgt != null ? `Target ${v2fmt(tgt)} kcal, tap to change` : "Set a target for this day"}
+      style={{ ...fig, ...(tgt == null ? { fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, color: "var(--amber-ink)" } : {}),
+        background: "none", border: "none", padding: 0, cursor: "pointer",
+        textDecoration: "underline dashed", textDecorationColor: tgt == null ? "var(--amber-edge)" : "var(--dim)",
+        textDecorationThickness: 1, textUnderlineOffset: 5 }}>
+      {tgt != null ? v2fmt(tgt) : "Set target"}
+    </button>
+  ) : (
+    <span data-testid="v2h-day-target" style={fig}>{tgt != null ? v2fmt(tgt) : "–"}</span>
+  );
+
+  if (tgt == null) return (
+    <div data-testid="v2h-day-score" data-band="none"
+      style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginTop: 14,
+        fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>
+      <span>No target saved for this day.</span>{targetEl}
+    </div>
+  );
+  const delta = kcal - tgt;
+  const sc = calorieDayScore({ mode, dayClosed: true, kcalDelta: delta });
+  const band = mode === "cut" ? sc.colour : "neutral";
+  const lamp = mode === "cut" && V2H_LAMP[sc.colour];
+  const gap = delta === 0 ? "on target" : `${v2fmt(Math.abs(delta))} ${delta > 0 ? "over" : "under"}`;
   return (
+    <div data-testid="v2h-day-score" data-band={band}
+      style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 14,
+        fontFamily: V2_FONT.body, fontSize: 13, color: "var(--ink)" }}>
+      {lamp && <span data-testid="v2h-day-lamp" data-state={sc.colour} aria-hidden="true"
+        style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--amber-bg)", boxSizing: "border-box",
+          flexShrink: 0, ...lamp }}/>}
+      <span style={{ color: "var(--dim)" }}>Target</span>{targetEl}
+      <span style={{ color: "var(--dim)" }}>·</span>
+      <span data-testid="v2h-day-gap" style={{ color: band === "red" ? "var(--over)" : band === "amber" ? "var(--amber-ink)" : "var(--ink)" }}>{gap}</span>
+    </div>
+  );
+}
+
+// 5. The food list: V2MealRow, keyed by POSITION. Rows get synthetic ids ("r0", "r1", …) so
+// open/edit/delete address exactly one entry even when stored ids are missing or repeated;
+// the stored entries are never given these ids. (V2MealList itself is headed "Eaten today",
+// which is wrong for a past day, so the list shell is local.)
+function V2HistFoods({ logs, totals, updateAt, removeAt, addToQA, isPremium, onPremiumGate }) {
+  const [openId, setOpenId] = useState(null);
+  const rows = logs.map((l, i) => ({ ...l, id: "r" + i }));
+  const at = id => parseInt(String(id).slice(1), 10);
+  const n = rows.length;
+  return (
+    <section data-testid="v2h-day-foods" aria-label="Foods" style={{ color: "var(--ink)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        paddingBottom: 10, borderBottom: "1px solid var(--faint)" }}>
+        <Label style={{ fontSize: 11, letterSpacing: ".16em" }}>Eaten</Label>
+        {n > 0 && <Num size={12} data-testid="v2h-day-foods-summary" style={{ letterSpacing: ".04em" }}>
+          {n} item{n !== 1 ? "s" : ""} · {v2fmt(totals.kcal)}</Num>}
+      </div>
+      {n === 0 ? (
+        <div data-testid="v2h-day-foods-empty" style={{ fontSize: 13, color: "var(--dim)", padding: "14px 0 0" }}>
+          Nothing logged on this day.
+        </div>
+      ) : (
+        <>
+          {rows.map(log => (
+            <V2MealRow key={log.id} log={log} open={openId === log.id} onToggle={setOpenId}
+              updateLog={(id, p) => updateAt(at(id), p)} removeLog={id => removeAt(at(id))}
+              addToQA={addToQA} isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+          ))}
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)", padding: "12px 0 0 60px" }}>Tap a meal to edit.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
+// 7. BODY: only when this date has a weigh-in or tape reading. Nothing carried from nearby days.
+function V2HistBody({ date, weighIns = [], bodyMeasurements = [] }) {
+  const w = weighIns.find(x => x.date === date);
+  const m = bodyMeasurements.find(x => x.date === date) || {};
+  const rows = [
+    w && ["Weight", fmtW(w.weight, getWUnit())],
+    m.neck != null && ["Neck", `${m.neck} cm`],
+    m.waist != null && ["Waist", `${m.waist} cm`],
+    m.hip != null && ["Hip", `${m.hip} cm`],
+    m.computed_bf != null && ["Body fat", `${m.computed_bf}%`],
+  ].filter(Boolean);
+  if (!rows.length) return null;
+  return (
+    <Panel data-testid="v2h-day-body" style={V2C_CELL}>
+      <V2Cap>Body</V2Cap>
+      {rows.map(([k, v], i) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+          padding: "9px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--hair)" : "none" }}>
+          <span style={{ fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>{k}</span>
+          <Num size={15}>{v}</Num>
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
+function V2HistDay(props) {
+  const { day } = props;
+  if (!day) return (
     <div data-testid="v2h-day">
-      <V2SHeader title={props.day ? props.day.date : ""} onBack={props.onBack}/>
-      <Label>Day (stub)</Label>
+      <V2SHeader title="Day" onBack={props.onBack} backLabel="Back to History"/>
+      <p style={{ fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)", marginTop: 20 }}>This day is not in your history.</p>
+    </div>
+  );
+  // Keyed by date: stepping to another day drops any open editor or half-typed target.
+  return <V2HistDayBody key={day.date} {...props}/>;
+}
+
+function V2HistDayBody(props) {
+  const { day, onUpdateDay = () => {}, onBack, onStep = () => {}, hasPrev, hasNext, history = [],
+    weighIns = [], bodyMeasurements = [], profile = {}, tdeeAdj = 0, meals = [], setMeals = () => {},
+    onForget = () => {}, isPremium = false, onPremiumGate = () => {}, setView = () => {}, goToday } = props;
+  // v1 Quick Add, only while V2LogButtons still calls setView("quick"). The inline v2 Quick Add
+  // (REGION B) supersedes it: it calls onAddLog directly and never reaches this.
+  const [quick, setQuick] = useState(false);
+  const isPast = day.date < todayKey();
+  // The latest day, so two writes before a re-render (two AI items in a row) don't drop one.
+  const cur = React.useRef(day);
+  cur.current = day;
+  const lastId = React.useRef(0);
+
+  const patch = p => { const u = v2hPatchDay(cur.current, p); cur.current = u; onUpdateDay(u); };
+  const logsNow = () => cur.current.logs || [];
+  const body = () => v2hBodyOn(day.date, { profile, weighIns, bodyMeasurements });
+  const setDayMode = m => { if (m !== day.mode) { haptic(); patch(v2hModePatch(cur.current, m, body(), tdeeAdj)); } };
+  const setDayTarget = k => patch(v2hTargetPatch(cur.current, k, body()));
+  const addEntry = e => {
+    const id = Math.max(Date.now(), lastId.current + 1); lastId.current = id;
+    patch({ logs: [...logsNow(), { ...e, id,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }] });
+    setQuick(false);
+  };
+  // Same rules as App's addToQA: skip a name already saved, round the figures.
+  const addToQA = async entry => {
+    if (meals.find(m => m.name.toLowerCase() === String(entry.name).toLowerCase())) return;
+    haptic();
+    await setMeals([...meals, { name: entry.name, kcal: Math.round(entry.kcal),
+      protein: Math.round(entry.protein * 10) / 10, carbs: Math.round(entry.carbs * 10) / 10,
+      fat: Math.round(entry.fat * 10) / 10 }]);
+  };
+
+  if (quick) return (
+    <div data-testid="v2h-day-quick">
+      <QuickAdd meals={meals} setMeals={setMeals} onForget={onForget} onAdd={addEntry}
+        onBack={() => setQuick(false)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+    </div>
+  );
+
+  const totals = v2hTotals(day);
+  const logs = day.logs || [];
+  const hasT = day.targetKcal != null;
+  const tP = day.targetProtein || 0, tF = day.targetFat || 0;
+  // Carbs absorb the rest in computeMacros, so their target is what kcal leaves after P and F.
+  const macroTargets = { protein: tP, fat: tF,
+    carbs: Math.max(0, Math.round(((day.targetKcal || 0) - 4 * tP - 9 * tF) / 4)) };
+  const modeName = (V2H_MODES.find(([v]) => v === day.mode) || [null, "Maintain"])[1];
+
+  return (
+    <div data-testid="v2h-day" data-date={day.date} className="v2s"
+      style={{ display: "flex", flexDirection: "column", gap: 14, color: "var(--ink)" }}>
+      <style>{V2S_CSS}</style>
+      <V2SHeader title={v2hDayTitle(day.date)} meta={v2hDayMeta(day.date)} onBack={onBack} backLabel="Back to History"
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <button data-testid="v2h-day-prev" aria-label="Previous day" disabled={!hasPrev}
+              onClick={() => onStep(-1)} style={{ ...V2H_STEP, opacity: hasPrev ? 1 : .35, cursor: hasPrev ? "pointer" : "default" }}>‹</button>
+            <button data-testid="v2h-day-next" aria-label="Next day" disabled={!hasNext}
+              onClick={() => onStep(1)} style={{ ...V2H_STEP, opacity: hasNext ? 1 : .35, cursor: hasNext ? "pointer" : "default" }}>›</button>
+          </div>
+        }/>
+
+      {/* 1–3: mode, the score line, training */}
+      <Panel style={V2C_CELL}>
+        {isPast ? (
+          <>
+            <V2Cap>Mode</V2Cap>
+            <V2SSeg label="Mode for this day" testid="v2h-day-mode" options={V2H_MODES}
+              value={day.mode || null} onChange={setDayMode}/>
+          </>
+        ) : (
+          <div data-testid="v2h-day-mode" data-readonly="1"
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <Label>Mode</Label>
+              <span style={{ fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 15, letterSpacing: ".12em",
+                textTransform: "uppercase" }}>{modeName}</span>
+            </span>
+            {goToday && <button data-testid="v2h-day-mode-today" onClick={goToday}
+              style={{ ...V2_BTN.text, color: "var(--amber-ink)", fontWeight: 600 }}>Change on Today</button>}
+          </div>
+        )}
+        <V2HistScore day={day} totals={totals} editable={isPast} onSetTarget={setDayTarget}/>
+        <V2SSeg label="Training or rest" testid="v2h-day-training"
+          options={[["training", "Training"], ["rest", "Rest"]]} value={day.training ? "training" : "rest"}
+          onChange={v => { const t = v === "training"; if (t !== !!day.training) { haptic(); patch({ training: t }); } }}/>
+      </Panel>
+
+      {/* 4: kcal and macros against the stored targets. No pie. */}
+      <Panel well pad="16px 16px 18px" data-testid="v2h-day-intake" style={{ borderRadius: 18 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+            <Num data-testid="v2h-day-kcal" size={40} weight={600} style={{ lineHeight: 1, letterSpacing: "-.03em" }}>
+              {v2fmt(totals.kcal)}</Num>
+            <Num size={14} color="var(--dim)">kcal</Num>
+          </span>
+          <Label>Eaten</Label>
+        </div>
+        {hasT ? (
+          <div style={{ marginTop: 10 }}><V2Macros totals={totals} targets={macroTargets}/></div>
+        ) : (
+          <div data-testid="v2h-day-macros" className="v2-num" style={{ marginTop: 12, fontSize: 13, color: "var(--dim)" }}>
+            <span style={{ color: "var(--ink)" }}>P {v2g(totals.protein)}</span> · C {v2g(totals.carbs)} · F {v2g(totals.fat)}
+          </div>
+        )}
+      </Panel>
+
+      {/* 5: add food to THIS day, then its foods */}
+      <V2LogButtons authState={isPremium ? "premium" : "free"} isPremium={isPremium} onPremiumGate={onPremiumGate}
+        onAddLog={addEntry} pastDays={history} meals={meals} setMeals={setMeals} onForget={onForget}
+        setView={v => v === "quick" ? setQuick(true) : setView(v)}/>
+      <V2HistFoods logs={logs} totals={totals} isPremium={isPremium} onPremiumGate={onPremiumGate} addToQA={addToQA}
+        updateAt={(i, p) => patch({ logs: v2hReplaceAt(logsNow(), i, p) })}
+        removeAt={i => patch({ logs: v2hRemoveAt(logsNow(), i) })}/>
+
+      {/* 6–7: water, body */}
+      <div data-testid="v2h-day-water">
+        <V2Water water={day.water || 0} setWater={n => patch({ water: n })}/>
+      </div>
+      <V2HistBody date={day.date} weighIns={weighIns} bodyMeasurements={bodyMeasurements}/>
     </div>
   );
 }
