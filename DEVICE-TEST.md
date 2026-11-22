@@ -68,6 +68,10 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v117 — no "weight up while cutting" on day one of a cut (2026-11-22)
+- [ ] After a spell at Maintain, switch to CUT: no "weight up while cutting" card on the first days
+- [ ] It can only appear once 10 of the last 14 days were CUT and the two-week trend is up
+
 ### New in v116 — History and Quick Add in the v2 look (2026-11-22)
 With `?ui=v2`:
 - [ ] History (bar-chart icon): 7D · 30D · 3M · ALL, daily average, weight trend with "kg a week", calorie bars, day list — no emoji

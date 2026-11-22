@@ -14,6 +14,8 @@ const { open, TODAY, daysAgo } = require("./harness");
 
 // Three weeks of steadily rising weight — a gain the 14-day trend can actually see.
 const RISING = { days: 21, startWeight: 98, perDay: 0.05 };
+// …and the two weeks that trend covers were a cut: the card is about a gain made BELOW maintenance.
+const CUT_FORTNIGHT = { days: 14, kcal: 2000, mode: "cut", endDaysAgo: 1 };
 
 // The stall check reads a 21-day span, and weighRollingAvg needs at least THREE entries before
 // `today − 21` or it returns null. 24 days yields two, so the whole check silently evaluates to
@@ -30,7 +32,7 @@ const STALLED_BLOCK = {
 
 test.describe("Weight up while eating less than maintenance", () => {
   test("the card explains the gain, and says the target was left alone", async ({ page }) => {
-    await open(page, { weighInsSpec: RISING, mode: "cut" });
+    await open(page, { weighInsSpec: RISING, historySpec: CUT_FORTNIGHT, mode: "cut" });
 
     await expect(page.getByText("WEIGHT UP WHILE EATING LESS THAN MAINTENANCE"))
       .toBeVisible({ timeout: 15_000 });
@@ -48,13 +50,21 @@ test.describe("Weight up while eating less than maintenance", () => {
     // features/body/01: once auto-sync exists, "update it yourself" stops being the right
     // instruction — the button now opens the surface that keeps bodyFat current automatically,
     // not the raw manual field.
-    await open(page, { weighInsSpec: RISING, mode: "cut" });
+    await open(page, { weighInsSpec: RISING, historySpec: CUT_FORTNIGHT, mode: "cut" });
     await expect(page.getByText("WEIGHT UP WHILE EATING LESS THAN MAINTENANCE"))
       .toBeVisible({ timeout: 15_000 });
 
     await expect(page.getByRole("button", { name: "Open Body Measurements" })).toBeVisible();
     // The mode picker is the only surface that changes mode — no card duplicates it.
     await expect(page.getByRole("button", { name: "Start a 2-week break" })).toHaveCount(0);
+  });
+
+  // Owner, 2026-11-22: back to Cut after weeks at Maintain, the first morning showed this card
+  // about a gain made at maintenance. The two weeks the trend covers must have been a cut.
+  test("the first cut day after weeks at Maintain stays silent", async ({ page }) => {
+    await open(page, { weighInsSpec: RISING, historySpec: { ...CUT_FORTNIGHT, mode: "maintain" }, mode: "cut" });
+    await expect(page.getByText("CONSUMED")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("WEIGHT UP WHILE EATING LESS THAN MAINTENANCE")).toHaveCount(0);
   });
 
   test("at Maintain it stays silent — there the evidence is clean", async ({ page }) => {

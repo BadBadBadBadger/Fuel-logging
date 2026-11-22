@@ -237,3 +237,16 @@ Feature: The app's own guess can never talk you into under-eating
     And the break prompts stay responsible for how long I have been cutting
     # A cut IS a choice to eat below what you burn, so for any cutter the arithmetic
     # lands below BMR routinely, with nothing wrong. Allowing it silently is the point.
+
+  # ── Amended 2026-11-22 (owner) ──
+  # Back to Cut after weeks at Maintain, the first morning showed "weight up while cutting" about a
+  # gain made at maintenance, where a small gain is normal. The card reads a 14-day trend, so it now
+  # speaks only when at least 10 of the previous 14 days were CUT days.
+  Scenario: The first cut day after a spell at maintenance says nothing about the gain
+    Given the last two weeks were MAINTAIN and my weight rose a little
+    When I switch to CUT today
+    Then I do not see "weight up while eating less than maintenance"
+
+  Scenario: A gain across a real fortnight of cutting is still explained
+    Given at least 10 of the last 14 days were CUT and the two-week trend is up
+    Then I see the explanation, and that my target hasn't been lowered
