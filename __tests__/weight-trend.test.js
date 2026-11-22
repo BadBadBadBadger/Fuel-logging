@@ -29,16 +29,29 @@ const OWNER = [
 const TODAY = "2026-11-22";
 
 describe("the line: a time-weighted EWMA, alpha = 1 - 0.9^days", () => {
-  test("starts at the first reading and is evaluated at every reading", () => {
+  test("seeds from the median of the first three readings, and is evaluated at every reading", () => {
+    // Owner, 2026-11-22: seeded on the lone 100.1 the line fell for weeks under a "+0.1 a week"
+    // headline. The median of 100.1 / 97.5 / 98.5 is 98.5.
     const { line } = weightTrend(OWNER, TODAY);
     expect(line.map(p => p.date)).toEqual(OWNER.map(w => w.date));
     expect(line.map(p => p.weight)).toEqual(OWNER.map(w => w.weight));
-    expect(line[0].trend).toBe(100.1);
+    expect(line[0].trend).toBe(98.5);
+  });
+
+  test("with fewer than three readings it starts at the first", () => {
+    const { line } = weightTrend([{ date: "2026-11-01", weight: 100 }, { date: "2026-11-08", weight: 90 }], "2026-11-08");
+    expect(line[0].trend).toBe(100);
+  });
+
+  test("over the rate's 28 days the owner's line rises slightly, agreeing with +0.1 kg a week", () => {
+    const { line } = weightTrend(OWNER, TODAY);
+    const win = line.slice(1);   // 28 Oct onwards
+    expect(win[win.length - 1].trend).toBeGreaterThanOrEqual(win[0].trend);
   });
 
   test("each step moves by 1 - 0.9^gap of the distance to the reading", () => {
     const { line } = weightTrend(OWNER, TODAY);
-    let t = 100.1;
+    let t = 98.5;
     const gaps = [5, 7, 4, 10, 2];
     OWNER.slice(1).forEach((w, i) => {
       t = t + (1 - Math.pow(0.9, gaps[i])) * (w.weight - t);
@@ -48,12 +61,12 @@ describe("the line: a time-weighted EWMA, alpha = 1 - 0.9^days", () => {
 
   test("the owner's 97.5 low pulls the trend down but does not jump to it", () => {
     const { line } = weightTrend(OWNER, TODAY);
-    // 5 days: alpha = 1 - 0.9^5 = 0.41, so 100.1 → about 99.03
-    expect(line[1].trend).toBeCloseTo(99.03, 1);
+    // 5 days: alpha = 1 - 0.9^5 = 0.41, so 98.5 → about 98.09
+    expect(line[1].trend).toBeCloseTo(98.09, 1);
     expect(line[1].trend).toBeGreaterThan(97.5);
-    // and it ends a little above the last readings, still settling from 100.1
-    expect(line[5].trend).toBeGreaterThan(98.1);
-    expect(line[5].trend).toBeLessThan(98.6);
+    // and it ends among the last readings
+    expect(line[5].trend).toBeGreaterThan(98.0);
+    expect(line[5].trend).toBeLessThan(98.4);
   });
 
   test("a 7-day gap moves it about 52%", () => {

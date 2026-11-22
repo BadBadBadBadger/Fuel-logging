@@ -9521,10 +9521,14 @@ function weightTrend(weighIns = [], toKey) {
   }
   const dates = Object.keys(byDate).sort();
   const line = [];
+  // Seed from the median of the first three readings, not the first alone: one odd first
+  // reading (the owner's 100.1 among ~98s) otherwise drags the whole line for weeks.
+  const first3 = dates.slice(0, 3).map(k => byDate[k]).sort((a, b) => a - b);
+  const seed = first3.length >= 3 ? first3[1] : first3.length ? byDate[dates[0]] : null;
   let t = null, prev = null;
   for (const date of dates) {
     const w = byDate[date], d = dayNo(date);
-    t = t == null ? w : t + (1 - Math.pow(0.9, d - prev)) * (w - t);
+    t = t == null ? seed : t + (1 - Math.pow(0.9, d - prev)) * (w - t);
     prev = d;
     line.push({ date, day: d, weight: w, trend: Math.round(t * 100) / 100 });
   }
