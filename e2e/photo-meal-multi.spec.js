@@ -52,9 +52,11 @@ test.describe("Photos from the gallery, and more than one (logging/10)", () => {
     await expect(page.getByRole("button", { name: "Choose photos" })).toBeEnabled();
   });
 
-  test("the screen says one sentence, not paragraphs", async ({ page }) => {
+  test("no guidance text under the box — the placeholder says it", async ({ page }) => {
     await openAILog(page);
-    await expect(page.getByText("Describe it, snap it, or both — photos go to our AI once and are never stored.")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Describe your meal" }))
+      .toHaveAttribute("placeholder", /Describe what you've eaten/);
+    await expect(page.getByText(/Describe it, snap it, or both/)).toHaveCount(0);
     await picker(page).setInputFiles(IMG[0]);
     await expect(page.getByText(/Packet missing its name|Anything you type here|Only include food/)).toHaveCount(0);
   });

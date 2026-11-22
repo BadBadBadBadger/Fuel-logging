@@ -5742,11 +5742,8 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [], inline = false }) {
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
-      {/* The screen's one sentence (logging/10, founder 2026-11-20: "one small sentence giving
-          the gist"). It doubles as the on-screen privacy layer; the detail is in the policy. */}
-      <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
-        Describe it, snap it, or both — photos go to our AI once and are never stored.
-      </div>
+      {/* No sentence under the box (owner, 2026-11-22): the placeholder carries the guidance.
+          Photo handling is unchanged (held in memory, never stored) and is in the privacy policy. */}
 
       {/* Photos — held in memory only, discarded on save/leave (features/logging/10). */}
       {hasPhoto && (
@@ -8165,7 +8162,11 @@ function V2Last7(props) {
     : (d.dayMode !== "cut" || fillingIn) ? "logged" : (V2_DAY_SAYS[d.colour] || "logged");
 
   return (
-    <Panel data-testid="v2-last7" style={V2C_CELL}>
+    <Panel data-testid="v2-last7" style={{ ...V2C_CELL, cursor: props.openHistory ? "pointer" : undefined }}
+      role={props.openHistory ? "button" : undefined} tabIndex={props.openHistory ? 0 : undefined}
+      aria-label={props.openHistory ? "Last 7 days — open History" : undefined}
+      onClick={props.openHistory ? () => props.openHistory("7D") : undefined}
+      onKeyDown={props.openHistory ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.openHistory("7D"); } } : undefined}>
       <V2Cap>Last 7 days · {fmtRange(from, to)}</V2Cap>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
         <div role="list" aria-label="Last 7 days" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -9405,8 +9406,102 @@ function SettingsV2(props) {
 }
 // ── end REGION E ─────────────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ██  HISTORY v2  (design/v2/reviews/history-05-ruling.md + owner decisions Q1–Q5)
+// ═════════════════════════════════════════════════════════════════════════════
+// Swapped in for v1 History when UI_V2 is on (App: HistComp). Same props as History, plus
+// initialRange ("7D" from the Last 7 card), setView and goToday. v1 History is untouched.
+// Owner (2026-11-21): today stays editable in History — updateDay routes it to live state.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION HA — WEIGHT: weightTrend() (pure) · weight panel · Measurements sub-view (§3, §4)
+// ─────────────────────────────────────────────────────────────────────────────
+// weightTrend(weighIns, toKey) → { line:[{date,weight,trend}], rate, n, spanDays } — see §4.
+function weightTrend(weighIns = [], toKey) {
+  return { line: [], rate: null, n: 0, spanDays: 0 };
+}
+function V2HistWeight(props) {
+  return <Panel data-testid="v2h-weight"><Label>Weight (stub)</Label></Panel>;
+}
+function V2HistMeasurements(props) {
+  return <div data-testid="v2h-measurements"><Label>Body fat and tape (stub)</Label></div>;
+}
+// ── end REGION HA ────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION HB — LIST: range control · daily-average readout · kcal bars · day list (§3, §5)
+// ─────────────────────────────────────────────────────────────────────────────
+function V2HistRange(props) {
+  return <div data-testid="v2h-range"><Label>Range (stub)</Label></div>;
+}
+function V2HistReadout(props) {
+  return <div data-testid="v2h-readout"><Label>Daily average (stub)</Label></div>;
+}
+function V2HistIntake(props) {
+  return null;
+}
+function V2HistDayList(props) {
+  return <div data-testid="v2h-days"><Label>Day by day (stub)</Label></div>;
+}
+// ── end REGION HB ────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION HC — DAY SCREEN: a single day, editable (§5 "Day screen")
+// ─────────────────────────────────────────────────────────────────────────────
+// Props: { day, history, onUpdateDay, onBack, onStep(+1|-1), hasPrev, hasNext, ...History props }
+function V2HistDay(props) {
+  return (
+    <div data-testid="v2h-day">
+      <V2SHeader title={props.day ? props.day.date : ""} onBack={props.onBack}/>
+      <Label>Day (stub)</Label>
+    </div>
+  );
+}
+// ── end REGION HC ────────────────────────────────────────────────────────────
+
+// ── HISTORY v2 shell: navigation state only. Regions own everything they render. ──
+function HistoryV2(props) {
+  const { history = [], initialRange = "30D", onBack } = props;
+  const [range, setRange] = useState(initialRange);           // "7D" | "30D" | "3M" | "ALL"
+  const [screen, setScreen] = useState({ name: "list" });     // list | day {date} | measure
+  if (screen.name === "day") {
+    const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+    const i = sorted.findIndex(d => d.date === screen.date);
+    const day = sorted[i] || null;
+    return (
+      <div data-testid="history-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px" }}>
+        <V2HistDay {...props} day={day}
+          onBack={() => setScreen({ name: "list" })}
+          hasPrev={i > 0} hasNext={i >= 0 && i < sorted.length - 1}
+          onStep={d => { const n = sorted[i + d]; if (n) setScreen({ name: "day", date: n.date }); }}/>
+      </div>
+    );
+  }
+  if (screen.name === "measure") return (
+    <div data-testid="history-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px" }}>
+      <V2HistMeasurements {...props} onBack={() => setScreen({ name: "list" })}/>
+    </div>
+  );
+  const nav = { range, setRange, openDay: date => setScreen({ name: "day", date }),
+    openMeasurements: () => setScreen({ name: "measure" }) };
+  return (
+    <div data-testid="history-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px",
+      display: "flex", flexDirection: "column", gap: 14 }}>
+      <V2SHeader title="History" onBack={onBack}/>
+      <V2HistRange {...props} {...nav}/>
+      <V2HistReadout {...props} {...nav}/>
+      <V2HistWeight {...props} {...nav}/>
+      <V2HistIntake {...props} {...nav}/>
+      <V2HistDayList {...props} {...nav}/>
+    </div>
+  );
+}
+
 function App() {
   const [view,       setView]       = useState("dashboard");
+  // UI v2: the range History opens at. The Last 7 card opens it at 7D; anything else at 30D.
+  const [historyRange, setHistoryRange] = useState("30D");
+  useEffect(() => { if (view === "dashboard") setHistoryRange("30D"); }, [view]);
   const [logs,       setLogs]       = useState([]);
   const [water,      setWater]      = useState(0);
   const [mode,       setMode]       = useState("cut");
@@ -10243,6 +10338,7 @@ function App() {
     if (ask) await handleSetMode(ask.mode);
   };
   const DashComp = UI_V2 ? TodayV2 : Dashboard;
+  const HistComp = UI_V2 ? HistoryV2 : History;
   const ProfComp = UI_V2 ? SettingsV2 : ProfileScreen;
 
   const totals    = sumLogs(logs);
@@ -10331,7 +10427,7 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals}
+      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals} openHistory={r => { setHistoryRange(r || "30D"); setView("history"); }}
           onAddLog={addLog} pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
           autoKcal={calcTargets(p, MODES[mode] ? mode : "cut", smoothedBonus, tdeeAdj, todayWorkoutKcal).kcal} onOpenAccount={() => setView("account")}
           logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
@@ -10369,7 +10465,8 @@ function App() {
                                       pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
                                       meals={meals}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><HistComp initialRange={historyRange} setView={setView} goToday={() => setView("dashboard")}
+          history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}
