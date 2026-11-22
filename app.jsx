@@ -162,8 +162,8 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v117" ↔ "v117") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v117";
+// CACHE ("fuel-log-v118" ↔ "v118") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v118";
 const APP_PATCH_DATE = "2026-11-22";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
@@ -6875,6 +6875,13 @@ function History({ history, onBack, onUpdateDay, weighIns = [], bodyMeasurements
 
 // ── Achievements ──────────────────────────────────────────────
 
+// What each badge counts. Shared by the badge check (App) and Achievements v2's progress line.
+const badgeMetrics = hist => ({
+  streak:   calcStreak(hist),
+  logger:   hist.filter(d => d.logs?.length > 0).length,
+  hydrated: hist.filter(d => (d.water || 0) >= 8).length,
+});
+
 function Achievements({ earnedBdgs, onBack }) {
   return (
     <div style={{ padding:"20px 16px 50px", maxWidth:500, margin:"0 auto" }}>
@@ -9496,6 +9503,68 @@ function SettingsV2(props) {
 // ── end REGION E ─────────────────────────────────────────────────────────────
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ██  ACHIEVEMENTS v2 — the v2 grammar around the badges. Emoji stay ONLY on the badge itself
+//     (HANDOVER D12); tiers become a mono ladder, no medal emoji, one amber mark for "next".
+// ═════════════════════════════════════════════════════════════════════════════
+function AchievementsV2({ earnedBdgs = [], hist = [], onBack }) {
+  const metrics = badgeMetrics(hist);
+  return (
+    <div data-testid="achievements-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px",
+      display: "flex", flexDirection: "column", gap: 14 }}>
+      <V2SHeader title="Badges" onBack={onBack}/>
+      <div style={{ fontSize: 13, color: "var(--dim)", lineHeight: 1.5, marginTop: -4 }}>
+        Each tier doubles: {TIERS.map((t, i) => `${TIER_NAMES[i]} ${t}`).join(" · ")}.
+      </div>
+      {BDGS.map(b => {
+        const earned = TIERS.map((_, i) => earnedBdgs.includes(b.id + "_" + i));
+        const top    = earned.lastIndexOf(true);
+        const next   = top + 1 < TIERS.length ? top + 1 : null;
+        const val    = metrics[b.id] || 0;
+        return (
+          <Panel key={b.id} data-testid="v2-badge" data-badge={b.id}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div aria-hidden="true" style={{ fontSize: 34, lineHeight: 1, width: 44, textAlign: "center",
+                filter: top < 0 ? "grayscale(1)" : "none", opacity: top < 0 ? 0.45 : 1 }}>{b.emoji}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 20, letterSpacing: ".02em" }}>{b.name}</div>
+                <div style={{ fontSize: 13, color: "var(--dim)", marginTop: 2 }}>
+                  {top >= 0 ? <><span style={{ color: "var(--ink)", fontWeight: 600 }}>{TIER_NAMES[top]}</span> · {TIERS[top]} {b.desc}</>
+                    : <>Not yet · first at {TIERS[0]} {b.desc}</>}
+                </div>
+              </div>
+            </div>
+            {/* Ladder: earned tiers solid ink, the next one outlined amber, the rest faint. */}
+            <div role="list" aria-label={`${b.name} tiers`} style={{ display: "flex", gap: 6, marginTop: 14 }}>
+              {TIERS.map((t, i) => {
+                const isNext = i === next;
+                return (
+                  <div role="listitem" key={i} data-testid="v2-badge-tier" data-earned={earned[i] ? "1" : "0"}
+                    aria-label={`${TIER_NAMES[i]}, ${t}${earned[i] ? ", earned" : isNext ? ", next" : ""}`}
+                    style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ height: 6, borderRadius: 3,
+                      background: earned[i] ? "var(--ink)" : "var(--faint)",
+                      opacity: earned[i] || isNext ? 1 : 0.5,
+                      boxShadow: isNext ? "inset 0 0 0 1.5px var(--amber-mark)" : "none",
+                      ...(isNext ? { background: "transparent" } : {}) }}/>
+                    <Num size={11} weight={earned[i] ? 600 : 400}
+                      color={earned[i] ? "var(--ink)" : isNext ? "var(--amber-ink)" : "var(--dim)"}
+                      style={{ display: "block", marginTop: 5 }}>{t}</Num>
+                  </div>
+                );
+              })}
+            </div>
+            <div data-testid="v2-badge-progress" style={{ fontSize: 12, color: "var(--dim)", marginTop: 10 }}>
+              {next == null ? "Top tier reached."
+                : <><Num size={12} color="var(--ink)">{Math.min(val, TIERS[next])}</Num> of {TIERS[next]} for {TIER_NAMES[next]}</>}
+            </div>
+          </Panel>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ██  HISTORY v2  (design/v2/reviews/history-05-ruling.md + owner decisions Q1–Q5)
 // ═════════════════════════════════════════════════════════════════════════════
 // Swapped in for v1 History when UI_V2 is on (App: HistComp). Same props as History, plus
@@ -10609,12 +10678,7 @@ function App() {
   // Badge check
   useEffect(() => {
     if (!ready || !hist.length) return;
-    const streak  = calcStreak(hist);
-    const metrics = {
-      streak,
-      logger:   hist.filter(d => d.logs?.length > 0).length,
-      hydrated: hist.filter(d => (d.water || 0) >= 8).length,
-    };
+    const metrics = badgeMetrics(hist);
     const newlyEarned = [];
     BDGS.forEach(b => {
       const val = metrics[b.id] || 0;
@@ -11375,7 +11439,9 @@ function App() {
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
       {view === "history"      && <ErrorBoundary><HistComp initialRange={historyRange} setView={setView} goToday={() => setView("dashboard")}
           history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
-      {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
+      {view === "achievements" && (UI_V2
+          ? <AchievementsV2 earnedBdgs={earnedBdgs} hist={hist} onBack={() => setView("dashboard")}/>
+          : <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>)}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}
           onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}/>}
