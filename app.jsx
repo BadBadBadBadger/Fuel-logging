@@ -8921,7 +8921,7 @@ function SettingsV2(props) {
   const { profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false,
     onResetAdjustment = () => {}, muteMeasurements = false, onToggleMuteMeasurements = () => {},
     requestMode, mode = "cut", customKcal = null, onSetCustomKcal = () => {}, targets,
-    authState, authUser, consentInfo, onExport = () => {}, onSignOut = () => {}, onDelete = async () => {},
+    authState, authUser, consentInfo, onExport = () => {}, onExportCSV = null, onSignOut = () => {}, onDelete = async () => {},
     onSignIn = () => {} } = props;
 
   const [view, setView]   = useState("top");         // top | body | units | account | advanced
@@ -9270,6 +9270,16 @@ function SettingsV2(props) {
           <span>Download my data</span><span className="v2-num" style={{ fontSize: 11, color: "var(--dim)" }}>JSON</span>
         </button>
         <V2SHint>A copy of everything stored, in a portable file.</V2SHint>
+        {/* Owner Q3 (History review): the CSV moved here from the History header. */}
+        {onExportCSV && (
+          <>
+            <button data-testid="v2-account-export-csv" onClick={onExportCSV} style={{ ...V2_BTN.quiet, width: "100%",
+              marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Daily history</span><span className="v2-num" style={{ fontSize: 11, color: "var(--dim)" }}>CSV</span>
+            </button>
+            <V2SHint>One row a day: food, water, weight and tape, for a spreadsheet.</V2SHint>
+          </>
+        )}
       </V2SCard>
 
       {signedIn && (
@@ -10337,6 +10347,14 @@ function App() {
     const ask = modeGuardAsk; setModeGuardAsk(null);
     if (ask) await handleSetMode(ask.mode);
   };
+  // The same CSV v1 History's header button makes (csvRows owns the shape; features/body/02).
+  const exportHistoryCSV = () => {
+    const rows = csvRows(hist, weighIns, bodyMeasurements);
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows.map(r => r.join(",")).join("\n"));
+    a.download = "fuel-log-" + todayKey() + ".csv";
+    a.click();
+  };
   const DashComp = UI_V2 ? TodayV2 : Dashboard;
   const HistComp = UI_V2 ? HistoryV2 : History;
   const ProfComp = UI_V2 ? SettingsV2 : ProfileScreen;
@@ -10455,7 +10473,7 @@ function App() {
           isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfComp requestMode={requestMode} storedMode={mode} mode={effectiveMode} customKcal={customKcal} onSetCustomKcal={saveCustomKcal}
           targets={targets} baseTDEE={baseTDEE} authState={authState} authUser={authUser} consentInfo={consentInfo}
-          onExport={handleExport} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
+          onExport={handleExport} onExportCSV={exportHistoryCSV} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
           onSignIn={() => setShowSignIn(true)} onOpenAccount={() => setView("account")}
           profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
           bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}

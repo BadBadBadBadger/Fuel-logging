@@ -132,6 +132,18 @@ test.describe("Settings v2", () => {
     await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
   });
 
+  test("the daily-history CSV lives in Account & data (moved from History)", async ({ page }) => {
+    const k = n => { const d = new Date(Date.now() - n * 86400000);
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+    await openSettings(page, { history: [{ date: k(1), mode: "cut", kcal: 2100, protein: 160, carbs: 200, fat: 70, water: 5, logs: [] }] });
+    await page.getByTestId("v2-settings-row-account").click();
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByTestId("v2-account-export-csv").click()]);
+    expect(dl.suggestedFilename()).toMatch(/^fuel-log-\d{4}-\d{2}-\d{2}\.csv$/);
+    const body = require("fs").readFileSync(await dl.path(), "utf8");
+    expect(body).toContain(k(1));
+    expect(body).toContain("2100");
+  });
+
   test("Account & data for everyone; delete needs DELETE typed", async ({ page }) => {
     await openSettings(page);
     await page.getByTestId("v2-settings-row-account").click();
