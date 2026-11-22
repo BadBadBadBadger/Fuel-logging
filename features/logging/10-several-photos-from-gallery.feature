@@ -65,8 +65,9 @@ Feature: Photos from the gallery, up to three per meal
     And 📷 opens the camera straight away
     And 🖼 opens the phone's photo picker, choosing one or several
 
-  Scenario: One sentence, not paragraphs
-    Then the only guidance on screen is "Describe it, snap it, or both — photos go to our AI once and are never stored."
+  # v116 (owner, 2026-11-22): the sentence under the box is gone; the placeholder carries it.
+  Scenario: No guidance text under the box
+    Then the only guidance is the box's placeholder, "Describe what you've eaten, you can also supply pictures and AI will break it down into kcal and macros."
 
   Scenario: Several photos picked at once
     When I choose 2 photos from the gallery in one go

@@ -162,9 +162,9 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v115" ↔ "v115") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v115";
-const APP_PATCH_DATE = "2026-11-21";
+// CACHE ("fuel-log-v116" ↔ "v116") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v116";
+const APP_PATCH_DATE = "2026-11-22";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
 
@@ -3420,7 +3420,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = () => {} }) {
+function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = () => {}, v2 = false }) {
   const blank = { name:"", kcal:"", protein:"", carbs:"", fat:"" };
   const [f, setF] = useState(meal ? {
     name: meal.name, kcal: String(meal.kcal), protein: String(meal.protein),
@@ -3465,8 +3465,9 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", display:"flex",
-      alignItems:"flex-end", justifyContent:"center", zIndex:999 }}
+    <div data-testid={v2 ? "v2-meal-form" : undefined}
+      style={{ position:"fixed", inset:0, background: v2 ? "var(--scrim)" : "rgba(0,0,0,0.88)", display:"flex",
+      alignItems:"flex-end", justifyContent:"center", zIndex:999, ...(v2 ? { ...V2_AILOG_VARS, color:"var(--ink)" } : {}) }}
       onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background:CARD, borderRadius:"22px 22px 0 0", padding:"28px 20px 50px",
         width:"100%", maxWidth:500, border:`1px solid ${BD}`, borderBottom:"none" }}>
@@ -3479,10 +3480,10 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
           placeholder="e.g. Chicken breast (150g)" style={{ ...INP, marginBottom:16 }}/>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
           {[
-            { k:"kcal",    l:"CALORIES",   c:A        },
-            { k:"protein", l:"PROTEIN (g)", c:"var(--cut)"},
-            { k:"carbs",   l:"CARBS (g)",   c:"var(--warn)"},
-            { k:"fat",     l:"FAT (g)",     c:"var(--bulk)"},
+            { k:"kcal",    l:"CALORIES",   c: v2 ? "var(--dim)" : A        },
+            { k:"protein", l:"PROTEIN (g)", c: v2 ? "var(--dim)" : "var(--cut)"},
+            { k:"carbs",   l:"CARBS (g)",   c: v2 ? "var(--dim)" : "var(--warn)"},
+            { k:"fat",     l:"FAT (g)",     c: v2 ? "var(--dim)" : "var(--bulk)"},
           ].map(fl => (
             <div key={fl.k}>
               <div style={{ fontSize:10, color:fl.c, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>{fl.l}</div>
@@ -3495,7 +3496,7 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
           style={{ width:"100%", padding:"12px", marginBottom: reestMsg && reestMsg !== "done" ? 6 : 12,
             background:"var(--surface-2)", border:`1px solid ${aA("44")}`, borderRadius:11, color:A,
             fontSize:13, fontWeight:800, cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
-          {reest ? "Estimating…" : reestMsg === "done" ? "✓ Filled — estimate again" : "✨ AI estimate from name"}
+          {reest ? "Estimating…" : reestMsg === "done" ? (v2 ? "Filled — estimate again" : "✓ Filled — estimate again") : (v2 ? "Estimate from name" : "✨ AI estimate from name")}
         </button>
         {reestMsg && reestMsg !== "done" && (
           <div style={{ fontSize:11, color:"var(--over-2)", marginBottom:12, lineHeight:1.4 }}>{reestMsg}</div>
@@ -3505,7 +3506,7 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
           protein: Number(f.protein) || 0, carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
         }))} disabled={!ok}
           style={{ width:"100%", padding:"15px",
-            background: ok ? A : "var(--surface-2)", color: ok ? "var(--bg)" : "var(--text-disabled)",
+            background: ok ? (v2 ? "var(--amber)" : A) : "var(--surface-2)", color: ok ? (v2 ? "var(--amber-on)" : "var(--bg)") : "var(--text-disabled)",
             border:"none", borderRadius:13, fontSize:14, fontWeight:900, letterSpacing:"0.08em" }}>
           {meal ? "SAVE CHANGES" : "ADD MEAL"}
         </button>
@@ -5742,11 +5743,8 @@ function AILog({ onAdd, onBack, pastDays = [], meals = [], inline = false }) {
           border:`1px solid ${BD}`, borderRadius:14, padding:"14px 16px",
           color:"var(--text-hi)", fontSize:14, resize:"none", fontFamily:"inherit",
           outline:"none", lineHeight:1.6 }}/>
-      {/* The screen's one sentence (logging/10, founder 2026-11-20: "one small sentence giving
-          the gist"). It doubles as the on-screen privacy layer; the detail is in the policy. */}
-      <div style={{ fontSize:12, color:"var(--text-mid)", lineHeight:1.5, marginTop:6 }}>
-        Describe it, snap it, or both — photos go to our AI once and are never stored.
-      </div>
+      {/* No sentence under the box (owner, 2026-11-22): the placeholder carries the guidance.
+          Photo handling is unchanged (held in memory, never stored) and is in the privacy policy. */}
 
       {/* Photos — held in memory only, discarded on save/leave (features/logging/10). */}
       {hasPhoto && (
@@ -7404,11 +7402,75 @@ const V2_AILOG_VARS = {
   "--cut": "var(--ink)", "--warn": "var(--ink)", "--bulk": "var(--ink)",
 };
 
+// QUICK ADD's drop-down: saved meals in the meal-row grammar. Tap a meal to log it; pencil to
+// edit, x to forget; "New meal" opens the meal form (v2-styled). Same storage as v1 QuickAdd.
+function V2QuickAddPanel({ meals = [], setMeals, onForget = () => {}, onAdd, isPremium, onPremiumGate }) {
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState(null);             // null | { meal, index }
+  const indexed  = meals.map((m, i) => ({ ...m, _i: i }));
+  const filtered = indexed.filter(m => m.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const saveForm = saved => {
+    if (form.index != null) {
+      const u = [...meals]; u[form.index] = saved; setMeals(u);
+      if (form.meal && form.meal.name !== saved.name) onForget(form.meal.name);   // rename = new row
+    } else setMeals([...meals, saved]);
+    setForm(null);
+  };
+  const iconBtn = { background: "none", border: "none", color: "var(--dim)", width: 36, height: 36,
+    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 };
+  return (
+    <div data-testid="v2-quick">
+      {form && <MealForm v2 meal={form.meal} onSave={saveForm} onCancel={() => setForm(null)}
+        isPremium={isPremium} onPremiumGate={onPremiumGate}/>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} aria-label="Search saved meals"
+          placeholder="Search saved meals" style={{ ...V2_INPUT, flex: 1, fontFamily: V2_FONT.body }}/>
+        <button type="button" data-testid="v2-quick-new" onClick={() => setForm({ meal: null, index: null })}
+          style={{ ...V2_BTN.outline, flexShrink: 0, fontSize: 14 }}>New meal</button>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        {filtered.map((m, k) => (
+          <div key={m._i} data-testid="v2-quick-row" style={{ display: "flex", alignItems: "center", gap: 4,
+            borderTop: k ? "1px solid var(--hair)" : "none" }}>
+            <button type="button" onClick={() => { haptic(); onAdd(m); }} aria-label={`Log ${m.name}`}
+              style={{ flex: 1, minWidth: 0, background: "none", border: "none", textAlign: "left", padding: "11px 0",
+                display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 15, fontWeight: 500, color: "var(--ink)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                <span className="v2-num" style={{ display: "block", fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+                  <b style={{ color: "var(--ink)", fontWeight: 600 }}>P {Math.round(m.protein)}</b> · C {Math.round(m.carbs)} · F {Math.round(m.fat)}
+                </span>
+              </span>
+              <Num size={16} color="var(--ink)">{v2fmt(m.kcal)}</Num>
+            </button>
+            <button type="button" aria-label={`Edit ${m.name}`} style={iconBtn}
+              onClick={() => setForm({ meal: m, index: m._i })}><Icon name="pencil" size={17}/></button>
+            <button type="button" aria-label={`Forget ${m.name}`} style={iconBtn}
+              onClick={() => { haptic(); setMeals(meals.filter((_, i) => i !== m._i)); onForget(m.name); }}>
+              <Icon name="x" size={17}/></button>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div data-testid="v2-quick-empty" style={{ color: "var(--dim)", fontSize: 13, padding: "14px 0 4px" }}>
+            {meals.length ? "No saved meal matches that." : "No saved meals yet. Save one from a meal row, or add one here."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // LOG FOOD opens the AI log as a drop-down right here on Today — no separate screen. The panel
 // holds the text box and a strip of real buttons (mic · camera · photos) plus Analyse.
-function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, pastDays = [], meals = [] }) {
+function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, pastDays = [], meals = [],
+    setMeals, onForget = () => {} }) {
   const isPremium = authState === "premium";
-  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState(null);           // null | "ai" | "quick" — one open at a time
+  const open = panel === "ai";
+  const setOpen = f => setPanel(p => (typeof f === "function" ? f(p === "ai") : f) ? "ai" : null);
+  const quickInline = !!(onAddLog && setMeals);
+  const quickAdd = () => quickInline ? setPanel(p => p === "quick" ? null : "quick") : setView("quick");
   // Free users: as v1 Dashboard — the AI log is premium, so the tap opens the premium gate.
   const logFood = () => {
     if (!isPremium) return onPremiumGate({ emoji: "🤖", name: "AI LOG" });
@@ -7430,17 +7492,24 @@ function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, 
           {!isPremium ? <span data-testid="v2-log-food-lock" style={{ display: "flex" }}><Icon name="lock" size={16}/></span>
             : open ? <Icon name="x" size={18}/> : <span style={V2_CHIP}>AI</span>}
         </button>
-        <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
-          aria-label="Quick add, saved meals"
+        <button type="button" data-testid="v2-quick-add" onClick={quickAdd}
+          aria-label="Quick add, saved meals" aria-expanded={quickInline ? panel === "quick" : undefined}
           style={{ width: 104, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
             background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
             display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
           <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
             textTransform: "uppercase" }}>Quick add</span>
           <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
-            opacity: .75 }}>saved meals</span>
+            opacity: .75 }}>{panel === "quick" ? "close" : "saved meals"}</span>
         </button>
       </div>
+      {panel === "quick" && (
+        <Panel id="v2-quick-panel" style={{ marginTop: 8 }}>
+          <V2QuickAddPanel meals={meals} setMeals={setMeals} onForget={onForget}
+            isPremium={isPremium} onPremiumGate={onPremiumGate}
+            onAdd={m => { onAddLog({ name: m.name, kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat }); setPanel(null); }}/>
+        </Panel>
+      )}
       {open && (
         <Panel id="v2-ailog-panel" style={{ marginTop: 8 }}>
           <AILog inline onAdd={onAddLog} onBack={() => setOpen(false)} pastDays={pastDays} meals={meals}/>
@@ -8165,7 +8234,11 @@ function V2Last7(props) {
     : (d.dayMode !== "cut" || fillingIn) ? "logged" : (V2_DAY_SAYS[d.colour] || "logged");
 
   return (
-    <Panel data-testid="v2-last7" style={V2C_CELL}>
+    <Panel data-testid="v2-last7" style={{ ...V2C_CELL, cursor: props.openHistory ? "pointer" : undefined }}
+      role={props.openHistory ? "button" : undefined} tabIndex={props.openHistory ? 0 : undefined}
+      aria-label={props.openHistory ? "Last 7 days — open History" : undefined}
+      onClick={props.openHistory ? () => props.openHistory("7D") : undefined}
+      onKeyDown={props.openHistory ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.openHistory("7D"); } } : undefined}>
       <V2Cap>Last 7 days · {fmtRange(from, to)}</V2Cap>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
         <div role="list" aria-label="Last 7 days" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -8920,7 +8993,7 @@ function SettingsV2(props) {
   const { profile, onSave, onBack, tdeeAdj = 0, weighIns = [], aggressiveCutAcked = false,
     onResetAdjustment = () => {}, muteMeasurements = false, onToggleMuteMeasurements = () => {},
     requestMode, mode = "cut", customKcal = null, onSetCustomKcal = () => {}, targets,
-    authState, authUser, consentInfo, onExport = () => {}, onSignOut = () => {}, onDelete = async () => {},
+    authState, authUser, consentInfo, onExport = () => {}, onExportCSV = null, onSignOut = () => {}, onDelete = async () => {},
     onSignIn = () => {} } = props;
 
   const [view, setView]   = useState("top");         // top | body | units | account | advanced
@@ -9269,6 +9342,16 @@ function SettingsV2(props) {
           <span>Download my data</span><span className="v2-num" style={{ fontSize: 11, color: "var(--dim)" }}>JSON</span>
         </button>
         <V2SHint>A copy of everything stored, in a portable file.</V2SHint>
+        {/* Owner Q3 (History review): the CSV moved here from the History header. */}
+        {onExportCSV && (
+          <>
+            <button data-testid="v2-account-export-csv" onClick={onExportCSV} style={{ ...V2_BTN.quiet, width: "100%",
+              marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Daily history</span><span className="v2-num" style={{ fontSize: 11, color: "var(--dim)" }}>CSV</span>
+            </button>
+            <V2SHint>One row a day: food, water, weight and tape, for a spreadsheet.</V2SHint>
+          </>
+        )}
       </V2SCard>
 
       {signedIn && (
@@ -9405,8 +9488,913 @@ function SettingsV2(props) {
 }
 // ── end REGION E ─────────────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ██  HISTORY v2  (design/v2/reviews/history-05-ruling.md + owner decisions Q1–Q5)
+// ═════════════════════════════════════════════════════════════════════════════
+// Swapped in for v1 History when UI_V2 is on (App: HistComp). Same props as History, plus
+// initialRange ("7D" from the Last 7 card), setView and goToday. v1 History is untouched.
+// Owner (2026-11-21): today stays editable in History — updateDay routes it to live state.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION HA — WEIGHT: weightTrend() (pure) · weight panel · Measurements sub-view (§3, §4)
+// ─────────────────────────────────────────────────────────────────────────────
+// weightTrend(weighIns, toKey) → { line:[{date,day,weight,trend}], rate, rawRate, level, n, spanDays } — §4.
+// PURE and self-contained (no app helpers): __tests__/weight-trend.test.js lifts this exact source
+// out of app.jsx and runs it, so the test can never drift from the code (ruling B6).
+//   • line: a time-weighted EWMA over calendar days, t_i = t_{i-1} + α(w_i − t_{i-1}),
+//     α = 1 − 0.9^Δdays (Hacker's Diet 10 %/day), evaluated at each reading, over ALL readings
+//     up to toKey, so a range chip never changes where the line sits.
+//   • rate: least-squares slope (kg/day ×7, rounded 0.1) through the readings of the last 28
+//     calendar days ending toKey (toKey−27 … toKey). Null unless ≥3 readings span ≥10 days.
+//     Fixed to 28 days, never the range (FL-013).
+//   • level: |rate| < 0.1 kg a week, judged on the unrounded slope, in kg whatever the display unit.
+//   • n / spanDays: readings in that 28-day window and the days between its first and last.
+function weightTrend(weighIns = [], toKey) {
+  const WINDOW = 28;
+  const dayNo = k => { const p = String(k).split("-").map(Number); return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000); };
+  const byDate = {};
+  for (const w of weighIns || []) {
+    const kg = Number(w && w.weight);
+    if (!w || !/^\d{4}-\d{2}-\d{2}$/.test(String(w.date)) || !(kg > 0)) continue;
+    if (toKey && w.date > toKey) continue;
+    byDate[w.date] = kg;                                   // one reading a day: the last one wins
+  }
+  const dates = Object.keys(byDate).sort();
+  const line = [];
+  // Seed from the median of the first three readings, not the first alone: one odd first
+  // reading (the owner's 100.1 among ~98s) otherwise drags the whole line for weeks.
+  const first3 = dates.slice(0, 3).map(k => byDate[k]).sort((a, b) => a - b);
+  const seed = first3.length >= 3 ? first3[1] : first3.length ? byDate[dates[0]] : null;
+  let t = null, prev = null;
+  for (const date of dates) {
+    const w = byDate[date], d = dayNo(date);
+    t = t == null ? seed : t + (1 - Math.pow(0.9, d - prev)) * (w - t);
+    prev = d;
+    line.push({ date, day: d, weight: w, trend: Math.round(t * 100) / 100 });
+  }
+  const endDay = toKey ? dayNo(toKey) : (prev == null ? 0 : prev);
+  const win = line.filter(p => p.day > endDay - WINDOW && p.day <= endDay);
+  const n = win.length;
+  const spanDays = n ? win[n - 1].day - win[0].day : 0;
+  let rate = null, rawRate = null, level = false;
+  if (n >= 3 && spanDays >= 10) {
+    const mx = win.reduce((a, p) => a + p.day, 0) / n, my = win.reduce((a, p) => a + p.weight, 0) / n;
+    let sxy = 0, sxx = 0;
+    for (const p of win) { sxy += (p.day - mx) * (p.weight - my); sxx += (p.day - mx) * (p.day - mx); }
+    rawRate = (sxy / sxx) * 7;
+    level = Math.abs(rawRate) < 0.1;
+    rate = level ? 0 : Math.round(rawRate * 10) / 10;
+  }
+  return { line, rate, rawRate, level, n, spanDays };
+}
+
+// ── Chart plumbing shared by the weight panel and the Measurements sub-view ──
+// Recharts writes colours as SVG attributes, which cannot see the tokens scoped to .ui-v2 (ruling
+// §2: rc() reads :root). So every mark here is coloured by CSS under .ui-v2, from classNames —
+// which also means a theme flip repaints the chart with no re-render.
+const V2H_CHART_CSS = `
+  .ui-v2 .v2h-chart { color: var(--ink); }
+  .ui-v2 .v2h-chart .recharts-cartesian-grid line { stroke: var(--hair); }
+  .ui-v2 .v2h-chart .recharts-cartesian-axis-tick-value { fill: var(--dim); font-family: ${V2_FONT.mono};
+    font-size: 10px; font-variant-numeric: tabular-nums; }
+  .ui-v2 .v2h-chart .v2h-ink .recharts-curve { stroke: var(--ink); }
+  .ui-v2 .v2h-chart .v2h-ink .recharts-dot { fill: var(--ink); stroke: none; }
+  .ui-v2 .v2h-chart .v2h-dim .recharts-curve { stroke: var(--dim); }
+  .ui-v2 .v2h-chart .v2h-dots .recharts-curve { stroke: none; }
+  .ui-v2 .v2h-chart .v2h-dots .recharts-dot,
+  .ui-v2 .v2h-chart .v2h-dim .recharts-dot { fill: var(--dim); stroke: none; }
+  .ui-v2 .v2h-chart .v2h-faint .recharts-curve { stroke: var(--faint); }
+  .ui-v2 .v2h-chart .v2h-faint .recharts-dot { fill: var(--faint); stroke: none; }
+  .ui-v2 .v2h-key-ink { stroke: var(--ink); } .ui-v2 .v2h-key-dim { stroke: var(--dim); }
+  .ui-v2 .v2h-key-faint { stroke: var(--faint); }
+`;
+const V2H_MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const v2hDayNo = k => { const p = String(k).split("-").map(Number); return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000); };
+const v2hDayLabel = d => { const x = new Date(d * 86400000); return `${x.getUTCDate()} ${V2H_MON[x.getUTCMonth()]}`; };
+// History v2's range keys onto v1's rangeWindow keys (7D is v1's W).
+const V2H_RANGE_KEY = { "7D": "W", "30D": "30D", "3M": "3M", ALL: "ALL" };
+// Round Y ticks: every tick a multiple of `base` (0.5 kg on weight), at least `minSpan` tall,
+// padded so no dot sits on the frame. A wide range (ALL) steps up to 2×, 5×, 10×… base rather
+// than crowding the axis past `maxTicks` labels.
+const v2hYAxis = (vals, base, minSpan, maxTicks = 7) => {
+  if (!vals.length) return { domain: [0, 1], ticks: [0, 1] };
+  const r = v => Math.round(v * 1000) / 1000;
+  let best = null;
+  for (const m of [1, 2, 5, 10, 20, 50, 100, 200]) {
+    const step = base * m;
+    let lo = Math.floor(r((Math.min(...vals) - base * 0.4) / step)) * step;
+    let hi = Math.ceil(r((Math.max(...vals) + base * 0.4) / step)) * step;
+    for (let i = 0; hi - lo < minSpan - 1e-9 && i < 100; i++) { if (i % 2) lo -= step; else hi += step; }
+    best = { lo, hi, step };
+    if (Math.round((hi - lo) / step) + 1 <= maxTicks) break;
+  }
+  const ticks = [];
+  for (let i = 0; i <= Math.round((best.hi - best.lo) / best.step); i++) ticks.push(r(best.lo + i * best.step));
+  return { domain: [r(best.lo), r(best.hi)], ticks };
+};
+// 2–4 X ticks across a day-number domain.
+const v2hXTicks = (from, to) => {
+  const span = to - from;
+  if (span <= 0) return [from];
+  const k = Math.min(span, 3);
+  return Array.from({ length: k + 1 }, (_, i) => Math.round(from + (span * i) / k));
+};
+// One frame for every v2 History line chart: numeric day axis (true time spacing, FL-009),
+// horizontal hairline grid, mono ticks, no tooltip, no animation.
+function V2HChart({ data, xDomain, y, yFmt = v => v, height = 180, testid, children }) {
+  const R = typeof Recharts !== "undefined" ? Recharts : {};
+  if (typeof ResponsiveContainer === "undefined" || !R.LineChart) return (
+    <div style={{ fontSize: 12, color: "var(--dim)", padding: "12px 0" }}>Charts could not load.</div>
+  );
+  const Grid = R.CartesianGrid;
+  return (
+    <div className="v2h-chart" data-testid={testid} style={{ margin: "10px -4px 0 -6px" }}>
+      <ResponsiveContainer width="100%" height={height}>
+        <R.LineChart data={data} margin={{ top: 6, right: 18, left: 0, bottom: 0 }}>
+          {Grid && <Grid horizontal vertical={false} strokeWidth={1}/>}
+          <R.XAxis dataKey="day" type="number" domain={xDomain} ticks={v2hXTicks(xDomain[0], xDomain[1])}
+            tickFormatter={v2hDayLabel} allowDataOverflow axisLine={false} tickLine={false} tickMargin={6}
+            interval={0} padding={{ left: 8, right: 8 }}/>
+          <R.YAxis type="number" domain={y.domain} ticks={y.ticks} tickFormatter={yFmt} allowDataOverflow
+            axisLine={false} tickLine={false} width={40} tickMargin={4} interval={0}/>
+          {children}
+        </R.LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── WEIGHT panel (§4) ─────────────────────────────────────────────────────────
+// Headline: the 28-day rate in neutral ink, never coloured (no good/bad on a scale). Chart: the
+// EWMA as straight 2px ink segments, raw readings as small dim dots, for the selected range.
+// Units: storage is kg; kg users see kg, st and lb users see lb (v1 History's wChartNum rule —
+// a numeric axis cannot carry compound st + lb).
+const v2hWeightCopy = (tr, unit, total) => {
+  const n = tr.n, w = `${n} weigh-${n === 1 ? "in" : "ins"}`;
+  if (tr.rate == null) {
+    if (!total) return "No weigh-ins yet. Log one on Today.";
+    if (!n) return "No weigh-ins in the last 4 weeks";
+    return `${w} · your trend starts after 3 over 10 days`;
+  }
+  const r = unit === "kg" ? tr.rate : Math.round(tr.rawRate * LB_PER_KG * 10) / 10;
+  if (tr.level || r === 0) return `About level · last 4 weeks · ${w}`;
+  return `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)} ${unit} a week · last 4 weeks · ${w}`;
+};
+function V2HistWeight(props) {
+  const { weighIns = [], bodyMeasurements = [], range = "30D", openMeasurements = () => {} } = props;
+  const tr = weightTrend(weighIns, todayKey());
+  const wPref = getWUnit();
+  const unit = wChartUnit(wPref);
+  const conv = kg => Math.round(wChartNum(kg, wPref) * 100) / 100;
+
+  const win = rangeWindow(V2H_RANGE_KEY[range] || "30D");
+  const toDay = v2hDayNo(win.to);
+  const fromDay = win.from ? v2hDayNo(win.from) : (tr.line.length ? Math.min(tr.line[0].day, toDay - 7) : toDay - 7);
+  const inRange = tr.line.filter(p => p.day >= fromDay && p.day <= toDay);
+  // The reading just before the window carries the trend line in from the left edge (clipped by
+  // the axis, never drawn as a dot), so a 7D view of a weekly weigher still shows its line.
+  const before = tr.line.filter(p => p.day < fromDay).slice(-1);
+  const data = [...before.map(p => ({ day: p.day, trend: conv(p.trend) })),
+    ...inRange.map(p => ({ day: p.day, raw: conv(p.weight), trend: conv(p.trend) }))];
+  const yVals = inRange.flatMap(p => [conv(p.weight), conv(p.trend)]);
+  const y = unit === "kg" ? v2hYAxis(yVals, 0.5, 2, 8) : v2hYAxis(yVals, 1, 4, 8);
+  const yFmt = v => (unit === "kg" ? Number(v).toFixed(1) : String(Math.round(v)));
+  const nMeasure = bodyMeasurements.length;
+
+  return (
+    <Panel data-testid="v2h-weight" pad="14px 14px 12px">
+      <style>{V2H_CHART_CSS}</style>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Label>Weight</Label>
+        {inRange.length > 0 && <Label style={{ letterSpacing: ".1em" }}>{unit}</Label>}
+      </div>
+      <div data-testid="v2h-weight-rate" className="v2-num"
+        style={{ marginTop: 8, fontSize: 13, lineHeight: 1.4, color: "var(--ink)", fontWeight: 500 }}>
+        {/* Each " · " part keeps together, so "weigh-ins" never breaks at its hyphen. */}
+        {v2hWeightCopy(tr, unit, tr.line.length).split(" · ").map((part, i) => (
+          <React.Fragment key={i}>{i > 0 && " · "}<span style={{ whiteSpace: "nowrap" }}>{part}</span></React.Fragment>
+        ))}
+      </div>
+      {inRange.length > 0 ? (
+        <V2HChart testid="v2h-weight-chart" data={data} xDomain={[fromDay, toDay]} y={y} yFmt={yFmt}>
+          <Line className="v2h-dots" dataKey="raw" stroke="currentColor" strokeWidth={0} isAnimationActive={false}
+            dot={{ r: 2.25, strokeWidth: 0, fill: "currentColor" }} activeDot={false} legendType="none"/>
+          <Line className="v2h-ink" type="linear" dataKey="trend" stroke="currentColor" strokeWidth={2}
+            dot={false} activeDot={false} isAnimationActive={false} connectNulls/>
+        </V2HChart>
+      ) : tr.line.length > 0 ? (
+        <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--dim)" }}>No weigh-ins in this range.</div>
+      ) : null}
+      {nMeasure > 0 && (
+        <button data-testid="v2h-measure-link" onClick={openMeasurements}
+          style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between",
+            marginTop: 10, padding: "10px 0 2px", minHeight: 36, background: "none", border: "none",
+            borderTop: "1px solid var(--hair)", cursor: "pointer", color: "var(--dim)", textAlign: "left" }}>
+          <span style={{ fontFamily: V2_FONT.body, fontSize: 13 }}>
+            Body fat &amp; tape · <span className="v2-num">{nMeasure}</span> {nMeasure === 1 ? "reading" : "readings"}
+          </span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      )}
+    </Panel>
+  );
+}
+
+// ── MEASUREMENTS sub-view (§3): v1's Body fat % and Tape charts, restyled ──────
+// Same rows as v1 (measurementChartRows: one builder for both charts, features/body/02), the
+// same 30-day change (bodyFatWindowRows/bodyFatWindowChange), the same TREND_MIN_POINTS average.
+// Never colour-coded: series are told apart by tone and dash, named in a key underneath.
+function V2HistMeasurements(props) {
+  const { bodyMeasurements = [], sex = null, onBack } = props;
+  const rows = measurementChartRows(bodyMeasurements).map(r => ({ ...r, day: v2hDayNo(r.rawDate) }));
+  const last = bodyMeasurements[bodyMeasurements.length - 1];
+  const change = bodyFatWindowChange(bodyMeasurements, sex);
+  const fromKey = bodyFatWindowRows(bodyMeasurements, sex)?.before.date;
+  const xDomain = rows.length ? [Math.min(rows[0].day, rows[rows.length - 1].day - 7), rows[rows.length - 1].day] : [0, 1];
+  const bfVals = rows.flatMap(r => [r.BODYFAT, r.ROLLING]).filter(v => v != null).map(Number);
+  const hasHip = bodyMeasurements.some(m => m.hip != null);
+  const tape = [
+    { key: "WAIST", avg: "WAIST_AVG", label: "Waist", tone: "ink" },
+    { key: "NECK",  avg: "NECK_AVG",  label: "Neck",  tone: "dim" },
+    ...(hasHip ? [{ key: "HIP", avg: "HIP_AVG", label: "Hip", tone: "faint" }] : []),
+  ];
+  const tapeVals = rows.flatMap(r => tape.flatMap(s => [r[s.key], r[s.avg]])).filter(v => v != null).map(Number);
+  const nR = bodyMeasurements.length;
+  const legend = items => (
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
+      {items.map(([lbl, tone, mark]) => (
+        <span key={lbl} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--dim)" }}>
+          <svg width="18" height="6" aria-hidden="true">{mark === "dot"
+            ? <circle cx="9" cy="3" r="2.5" style={{ fill: `var(--${tone})` }}/>
+            : <line className={`v2h-key-${tone}`} x1="1" y1="3" x2="17" y2="3"
+                strokeWidth="2" strokeDasharray={mark === "dash" ? "4 3" : undefined}/>}</svg>{lbl}
+        </span>
+      ))}
+    </div>
+  );
+  return (
+    <div data-testid="v2h-measurements" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <style>{V2H_CHART_CSS}</style>
+      <V2SHeader title="Body fat & tape" backLabel="Back to History" onBack={onBack}
+        meta={`${nR} ${nR === 1 ? "reading" : "readings"}`}/>
+      {!rows.length ? (
+        <Panel><div style={{ fontSize: 13, color: "var(--dim)" }}>No measurements yet. Log one on Today.</div></Panel>
+      ) : (
+        <>
+          <Panel data-testid="v2h-bodyfat" pad="14px 14px 12px">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <Label>Body fat</Label>
+            </div>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <Num data-testid="v2h-bodyfat-last" size={22}>{last.computed_bf}<span style={{ fontSize: 12, color: "var(--dim)" }}> %</span></Num>
+              <span className="v2-num" style={{ fontSize: 12, color: "var(--dim)" }}>{fmtDay(last.date)}</span>
+            </div>
+            {change != null && (
+              <div data-testid="v2h-bodyfat-change" className="v2-num" style={{ marginTop: 4, fontSize: 13, color: "var(--ink)" }}>
+                {change > 0 ? "+" : change < 0 ? "−" : ""}{Math.abs(change).toFixed(1)} points since {fmtDay(fromKey)}
+              </div>
+            )}
+            <V2HChart testid="v2h-bodyfat-chart" data={rows} xDomain={xDomain}
+              y={v2hYAxis(bfVals, 0.5, 2)} yFmt={v => Number(v).toFixed(1)}>
+              <Line className="v2h-dots" dataKey="BODYFAT" stroke="currentColor" strokeWidth={0} isAnimationActive={false}
+                dot={{ r: 2.5, strokeWidth: 0, fill: "currentColor" }} activeDot={false}/>
+              <Line className="v2h-ink" type="linear" dataKey="ROLLING" stroke="currentColor" strokeWidth={2}
+                dot={false} activeDot={false} isAnimationActive={false} connectNulls/>
+            </V2HChart>
+            {legend([["Reading", "dim", "dot"], [`Average of last ${TREND_MIN_POINTS}`, "ink"]])}
+          </Panel>
+          <Panel data-testid="v2h-tape" pad="14px 14px 12px">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <Label>Tape</Label><Label style={{ letterSpacing: ".1em" }}>cm</Label>
+            </div>
+            <div className="v2-num" style={{ marginTop: 8, fontSize: 13, color: "var(--ink)" }}>{formatTapeSites(last)}</div>
+            <V2HChart testid="v2h-tape-chart" data={rows} xDomain={xDomain} height={200}
+              y={v2hYAxis(tapeVals, 1, 4)} yFmt={v => String(Math.round(v))}>
+              {tape.map(s => (
+                <Line key={s.key} className={`v2h-${s.tone}`} type="linear" dataKey={s.key} stroke="currentColor" strokeWidth={1.25}
+                  dot={{ r: 2, strokeWidth: 0, fill: "currentColor" }} activeDot={false} isAnimationActive={false} connectNulls/>
+              ))}
+              {tape.map(s => (
+                <Line key={s.avg} className={`v2h-${s.tone}`} type="linear" dataKey={s.avg} stroke="currentColor" strokeWidth={2}
+                  strokeDasharray="4 3" dot={false} activeDot={false} isAnimationActive={false} connectNulls/>
+              ))}
+            </V2HChart>
+            {legend([...tape.map(s => [s.label, s.tone]), ["Average", "dim", "dash"]])}
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}
+// ── end REGION HA ────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION HB — LIST: range control · daily-average readout · kcal bars · day list (§3, §5)
+// ─────────────────────────────────────────────────────────────────────────────
+// The four v2 ranges map onto v1's range keys, so every window, average and label below comes
+// from v1's own pure helpers (features/history/01: rangeWindow · avgRowsOf · hasIntake · fmtRange).
+// Day and Year are gone (ruling §3, owner Q2).
+const V2H_RANGES = [["7D", "7D"], ["30D", "30D"], ["3M", "3M"], ["ALL", "All"]];
+const V2H_V1_RANGE = { "7D": "W", "30D": "30D", "3M": "3M", ALL: "ALL" };
+const V2H_MODE = { cut: "Cut", maintain: "Maintain", bulk: "Bulk" };
+// Neutral on-state for the segment (ruling §3), and Recharts colour through CSS: SVG attributes
+// can't resolve the .ui-v2 tokens, so the chart paints with currentColor and these rules set it.
+const V2H_CSS = `
+  .ui-v2 .v2h-seg { --v2s-seg-on: var(--panel-2); --v2s-seg-edge: var(--hair); }
+  .ui-v2 .v2h-intake .v2h-bar-past { color: var(--dim); }
+  .ui-v2 .v2h-intake .v2h-bar-today { color: var(--faint); }
+  .ui-v2 .v2h-intake .v2h-target { color: var(--ink); }
+  .ui-v2 .v2h-intake .recharts-cartesian-axis-tick-value { fill: var(--dim);
+    font-family: ${V2_FONT.mono}; font-size: 9px; font-variant-numeric: tabular-nums; }
+  .ui-v2 .v2h-row:active { background: var(--well); }
+`;
+
+// One model for the whole list screen, worked out exactly as v1 History does it ("The three
+// windows, named once"): the ROW window, then the AVERAGE window = complete days with intake,
+// dated to yesterday. Nothing here re-derives the maths.
+function v2hModel(history = [], range = "30D") {
+  const v1range = V2H_V1_RANGE[range] || "30D";
+  const todayK = todayKey();
+  const win = rangeWindow(v1range);
+  const inWin = d => (!win.from || d.date >= win.from) && d.date <= win.to;
+  const filtered = history.filter(inWin).sort((a, b) => a.date.localeCompare(b.date));
+  const avgRows = avgRowsOf(filtered, todayK);
+  const yesterdayK = (() => {
+    const d = new Date(Date.now() + getDevDateOffset() * 86400000);
+    d.setDate(d.getDate() - 1);
+    return dateKey(d);
+  })();
+  const avg = k => avgRows.length ? Math.round(avgRows.reduce((a, d) => a + (d[k] || 0), 0) / avgRows.length) : null;
+  // v1 labels no dates for ALL (no lower bound); v2 names the span the figure actually came from.
+  const avgLabel = win.from ? fmtRange(win.from, yesterdayK)
+    : (avgRows.length ? fmtRange(avgRows[0].date, yesterdayK) : "");
+  const listLabel = win.from ? fmtRange(win.from, win.to)
+    : (filtered.length ? fmtRange(filtered[0].date, win.to) : "");
+  return { todayK, win, filtered, avgRows, avgLabel, listLabel,
+    avg: { kcal: avg("kcal"), protein: avg("protein"), carbs: avg("carbs"), fat: avg("fat") } };
+}
+
+function V2HistRange(props) {
+  return (
+    <div className="v2h-seg" style={{ marginTop: -4 }}>
+      <style>{V2H_CSS}</style>
+      <V2SSeg testid="v2h-range" label="Range" options={V2H_RANGES}
+        value={props.range} onChange={v => props.setRange && props.setRange(v)}/>
+    </div>
+  );
+}
+
+function V2HistReadout(props) {
+  const m = v2hModel(props.history, props.range);
+  const col = (key, label, size, testid) => (
+    <div style={{ minWidth: 0 }}>
+      <Label style={{ display: "block", fontSize: 9.5 }}>{label}</Label>
+      <span style={{ display: "block", marginTop: 4, lineHeight: "26px", whiteSpace: "nowrap" }}>
+        <Num size={size} data-testid={testid} style={{ color: "var(--ink)" }}>{v2fmt(m.avg[key])}</Num>
+        {key !== "kcal" && <span className="v2-num" style={{ fontSize: 11, color: "var(--dim)", marginLeft: 1 }}>g</span>}
+      </span>
+    </div>
+  );
+  return (
+    <Panel data-testid="v2h-readout" style={{ ...V2C_CELL }}>
+      <V2Cap>Daily average{m.avgLabel ? ` · ${m.avgLabel}` : ""}</V2Cap>
+      {m.avgRows.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, marginTop: 10,
+          alignItems: "end" }}>
+          {col("kcal", "Kcal", 22, "v2h-readout-kcal")}
+          {col("protein", "Pro", 15, "v2h-readout-pro")}
+          {col("carbs", "Carb", 15, "v2h-readout-carb")}
+          {col("fat", "Fat", 15, "v2h-readout-fat")}
+        </div>
+      ) : (
+        // FL-008: never a confident 0 when there is no complete day to average.
+        <p data-testid="v2h-readout-empty" style={{ ...V2C_SUB, margin: "10px 0 0", fontSize: 13 }}>
+          No complete days yet. Your average starts once today has finished.
+        </p>
+      )}
+    </Panel>
+  );
+}
+
+// Kcal per calendar day (FL-009 day spine) against the target stored on each day, drawn as a
+// dashed step. Today's bar is fainter: the day isn't finished.
+function V2HistIntake(props) {
+  const m = v2hModel(props.history, props.range);
+  const RC = typeof Recharts !== "undefined" ? Recharts : null;
+  if (!m.filtered.some(hasIntake)) return null;
+  const spine = daySpine(m.win.from || m.filtered[0].date, m.win.to);
+  const data = onDaySpine(spine, m.filtered.map(d => ({
+    rawDate: d.date,
+    past:  d.date !== m.todayK && hasIntake(d) ? Math.round(d.kcal || 0) : null,
+    today: d.date === m.todayK && hasIntake(d) ? Math.round(d.kcal || 0) : null,
+    target: d.targetKcal != null ? Math.round(d.targetKcal) : null,
+  })), r => r.rawDate);
+  const hasTarget = data.some(r => r.target != null);
+  const ticks = data.length ? [data[0].date, data[data.length - 1].date] : [];
+  return (
+    <Panel data-testid="v2h-intake" className="v2h-intake" style={{ ...V2C_CELL }}>
+      <V2Cap right={hasTarget && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <svg width="16" height="2" aria-hidden="true" style={{ color: "var(--ink)", display: "block" }}>
+            <line x1="0" y1="1" x2="16" y2="1" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2"/>
+          </svg>
+          <Label>Target</Label>
+        </span>
+      )}>Intake · kcal a day</V2Cap>
+      {RC && RC.ComposedChart ? (
+        <div style={{ height: 120, marginTop: 8 }}>
+          <RC.ResponsiveContainer width="100%" height="100%">
+            <RC.ComposedChart data={data} margin={{ top: 4, right: 14, left: 0, bottom: 0 }} barCategoryGap="22%">
+              <RC.XAxis dataKey="date" ticks={ticks} interval={0} axisLine={false} tickLine={false} height={16}/>
+              <RC.YAxis width={34} axisLine={false} tickLine={false} tickCount={3}
+                tickFormatter={v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : v}/>
+              <RC.Bar dataKey="past" stackId="k" className="v2h-bar-past" fill="currentColor"
+                radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false}/>
+              <RC.Bar dataKey="today" stackId="k" className="v2h-bar-today" fill="currentColor"
+                radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false}/>
+              {hasTarget && <RC.Line dataKey="target" type="stepAfter" className="v2h-target" stroke="currentColor"
+                strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false}/>}
+            </RC.ComposedChart>
+          </RC.ResponsiveContainer>
+        </div>
+      ) : (
+        <p style={{ ...V2C_SUB, margin: "10px 0 0" }}>The chart couldn't load.</p>
+      )}
+    </Panel>
+  );
+}
+
+// The same lamp V2Last7 draws for a CUT day graded amber or red (owner Q4), the same grader
+// (calorieDayScore on the day's stored target, else calcTargets) and the same "filling in" rule.
+// Maintain and Bulk are never marked (D19); green days carry no lamp here.
+function v2hGrade(d, { history, profile, tdeeAdj, todayK }) {
+  if (!d || d.mode !== "cut" || !hasIntake(d)) return null;
+  if ((history || []).length < WEEK_MIN_HISTORY_DAYS) return null;
+  const tgt = d.targetKcal != null ? d.targetKcal : calcTargets(profile || {}, "cut", 0, tdeeAdj || 0, 0).kcal;
+  const c = calorieDayScore({ mode: "cut", dayClosed: d.date < todayK, kcalDelta: (d.kcal || 0) - tgt }).colour;
+  return c === "amber" || c === "red" ? c : null;
+}
+function V2HistLamp({ colour, date }) {
+  const dt = new Date(date + "T12:00:00");
+  const base = { width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center",
+    fontFamily: V2_FONT.mono, fontWeight: 600, fontSize: 9, fontStyle: "normal", boxSizing: "border-box",
+    background: "var(--amber-bg)" };
+  const look = colour === "red" ? { border: "1.5px solid var(--over)", color: "var(--over)" }
+    : { border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)" };
+  return <i data-testid="v2h-day-lamp" data-state={colour} aria-label={V2_DAY_SAYS[colour]}
+    style={{ ...base, ...look }}>{V2_DAY_INITIAL[dt.getDay()]}</i>;
+}
+
+function V2HistDayList(props) {
+  const { history = [], weighIns = [], profile, tdeeAdj, openDay } = props;
+  const m = v2hModel(history, props.range);
+  const rows = [...m.filtered].reverse();                       // newest first
+  // Weight on weigh-in days, in the units v1's list uses (kg, else lb).
+  const wPref = getWUnit();
+  const weightOn = Object.fromEntries(weighIns.map(w => [w.date, w.weight]));
+  const ctx = { history, profile, tdeeAdj, todayK: m.todayK };
+  return (
+    <Panel data-testid="v2h-days" style={{ ...V2C_CELL, paddingBottom: 6 }}>
+      <V2Cap>Day by day{m.listLabel ? ` · ${m.listLabel}` : ""}</V2Cap>
+      {rows.length === 0 ? (
+        <p data-testid="v2h-days-empty" style={{ ...V2C_SUB, margin: "10px 0 8px", fontSize: 13 }}>
+          {m.win.from ? `Nothing logged between ${fmtRange(m.win.from, m.win.to)}.` : "Nothing logged yet."}
+        </p>
+      ) : (
+        <div style={{ marginTop: 4 }}>
+          {rows.map((d, i) => {
+            const dt = new Date(d.date + "T12:00:00");
+            const isToday = d.date === m.todayK;
+            const showMode = !!d.mode && (i === 0 || rows[i - 1].mode !== d.mode);
+            const lamp = v2hGrade(d, ctx);
+            const logged = hasIntake(d);
+            const w = weightOn[d.date];
+            return (
+              <button key={d.date} type="button" className="v2h-row" data-testid="v2h-day-row" data-date={d.date}
+                data-mode={d.mode || ""} onClick={() => openDay && openDay(d.date)}
+                aria-label={`${isToday ? "Today" : `${V2_DAY_NAME[dt.getDay()]} ${fmtDay(d.date)}`}, open the day`}
+                style={{ display: "grid", gridTemplateColumns: "54px 24px 1fr auto", columnGap: 6, alignItems: "center",
+                  width: "100%", padding: "11px 0", background: "transparent", border: "none", textAlign: "left",
+                  borderBottom: i < rows.length - 1 ? "1px solid var(--hair)" : "none",
+                  cursor: "pointer", color: "var(--ink)" }}>
+                <span className="v2-num" data-testid="v2h-day-date" style={{ fontSize: 12, letterSpacing: ".04em",
+                  textTransform: "uppercase", color: isToday ? "var(--ink)" : "var(--dim)", fontWeight: isToday ? 600 : 400 }}>
+                  {isToday ? "Today" : `${V2_DAY_NAME[dt.getDay()]} ${dt.getDate()}`}
+                </span>
+                <span style={{ display: "grid", placeItems: "center" }}>
+                  {lamp && <V2HistLamp colour={lamp} date={d.date}/>}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  {showMode && <Label data-testid="v2h-day-mode" style={{ display: "block", fontSize: 9, marginBottom: 3 }}>
+                    {V2H_MODE[d.mode] || d.mode}</Label>}
+                  {logged ? (
+                    <span className="v2-num" data-testid="v2h-day-macros" style={{ fontSize: 12, color: "var(--dim)" }}>
+                      <b style={{ fontWeight: 500, color: "var(--ink)" }}>P {v2g(d.protein)}</b> · C {v2g(d.carbs)} · F {v2g(d.fat)}
+                    </span>
+                  ) : (
+                    <span data-testid="v2h-day-macros" style={{ fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>
+                      Nothing logged</span>
+                  )}
+                </span>
+                <span style={{ textAlign: "right" }}>
+                  {logged && <Num size={17} data-testid="v2h-day-kcal" style={{ display: "block", color: "var(--ink)" }}>
+                    {v2fmt(d.kcal)}</Num>}
+                  {w != null && <Num size={11.5} data-testid="v2h-day-weight"
+                    style={{ display: "block", color: "var(--dim)", marginTop: logged ? 2 : 0 }}>
+                    {wChartNum(w, wPref)} {wChartUnit(wPref)}</Num>}
+                </span>
+              </button>
+            );
+          })}
+          <p style={{ ...V2C_SUB, textAlign: "center", margin: "6px 0 8px" }}>Tap a day to open.</p>
+        </div>
+      )}
+    </Panel>
+  );
+}
+// ── end REGION HB ────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ██ REGION HC — DAY SCREEN: a single day, editable (§5 "Day screen")
+// ─────────────────────────────────────────────────────────────────────────────
+// Props: { day, history, onUpdateDay, onBack, onStep(+1|-1), hasPrev, hasNext, ...History props }
+// Spec: features/history/05-history-v2-day.feature · e2e/v2-history-day.spec.js
+//
+// The glue is v1 History's day view (patch / setDayMode / setDayTarget / addEntry), rebuilt
+// here as pure helpers over the same engine (sumLogs, calcTargets, computeMacros, SAFE_MIN,
+// FAT_FLOOR_PER_KG, calorieDayScore). Every write ends in props.onUpdateDay(updatedDay); App
+// routes today's logs/water/training to live state (owner, 2026-11-21), so today is editable
+// here too. Today's MODE and TARGET stay on Today: updateDay does not route those, so they are
+// shown read-only for today rather than offering an edit that would silently revert.
+
+// A day with its totals recomputed from its logs, exactly as v1's patch does.
+function v2hPatchDay(day, p) {
+  const u = { ...day, ...p };
+  if (p.logs) {
+    const t = sumLogs(p.logs);
+    u.kcal = Math.round(t.kcal); u.protein = Math.round(t.protein * 10) / 10;
+    u.carbs = Math.round(t.carbs * 10) / 10; u.fat = Math.round(t.fat * 10) / 10;
+  }
+  return u;
+}
+// That day's body (FL-010): its own weigh-in and tape body fat where recorded, else the profile.
+function v2hBodyOn(date, { profile = {}, weighIns = [], bodyMeasurements = [] }) {
+  const w = weighIns.find(x => x.date === date);
+  const m = bodyMeasurements.find(x => x.date === date);
+  return { ...profile, weight: w ? w.weight : profile.weight,
+    bodyFat: m && m.computed_bf != null ? m.computed_bf : profile.bodyFat };
+}
+const v2hFatFloor = b => Math.round((Number(b.weight) || 80) * FAT_FLOOR_PER_KG);
+// Changing a past day's mode re-targets it for that mode, computed once and stored (FL-010).
+function v2hModePatch(day, mode, body, tdeeAdj = 0) {
+  const t = calcTargets(body, mode, day.workoutBonus || 0, tdeeAdj, 0);
+  return { mode, targetKcal: t.kcal, targetProtein: t.protein, targetFat: t.fat,
+    targetFatFloor: v2hFatFloor(body),
+    floored: !!(t.safeMinApplied || t.deficitFloorApplied || t.bmrFloorApplied) };
+}
+// A typed target: the safety minimum holds, protein and fat keep theirs, carbs absorb the rest.
+function v2hTargetPatch(day, kcal, body) {
+  const safeKcal = Math.max(SAFE_MIN[body.sex === "female" ? "female" : "male"] || 1400, kcal);
+  const m = computeMacros(body, day.mode || "maintain", safeKcal);
+  return { targetKcal: safeKcal, targetProtein: m.protein, targetFat: m.fat,
+    targetFatFloor: v2hFatFloor(body), floored: safeKcal > kcal };
+}
+// Position-safe edits: ids can be missing or repeated in old data (History review H3).
+const v2hReplaceAt = (logs, i, p) => logs.map((l, j) => j === i ? { ...l, ...p } : l);
+const v2hRemoveAt  = (logs, i) => logs.filter((_, j) => j !== i);
+// The day's eaten totals: from its logs, or the stored snapshot figures when it has none.
+function v2hTotals(day) {
+  const logs = (day && day.logs) || [];
+  if (logs.length) return sumLogs(logs);
+  return { kcal: (day && day.kcal) || 0, protein: (day && day.protein) || 0,
+    carbs: (day && day.carbs) || 0, fat: (day && day.fat) || 0 };
+}
+// "THU 19 NOV" (uppercase from CSS); today reads "Today".
+function v2hDayTitle(date) {
+  if (!date) return "";
+  if (date === todayKey()) return "Today";
+  const d = new Date(date + "T12:00:00");
+  return `${V2_DAYS[d.getDay()]} ${d.getDate()} ${V2_MONTHS[d.getMonth()]}`;
+}
+function v2hDayMeta(date) {
+  if (!date) return "";
+  const n = v2DaysAgo(date);
+  if (n === 0) return "Edits here reach Today";
+  const y = new Date(date + "T12:00:00").getFullYear();
+  return `${n === 1 ? "Yesterday" : n + " days ago"} · ${y}`;
+}
+const V2H_MODES = [["cut", "Cut"], ["maintain", "Maintain"], ["bulk", "Bulk"]];
+// The band lamp, styled as V2Last7's lamp for the same grade (owner Q4: CUT only).
+const V2H_LAMP = { green: { border: "1px solid var(--amber-edge)" },
+  amber: { border: "1.5px solid var(--amber-mark)" }, red: { border: "1.5px solid var(--over)" } };
+const V2H_STEP = { width: 38, height: 38, borderRadius: 10, background: "var(--panel-2)", boxShadow: "var(--panel-shadow)",
+  border: "none", color: "var(--ink)", display: "grid", placeItems: "center", cursor: "pointer", padding: 0,
+  fontFamily: V2_FONT.mono, fontSize: 20, lineHeight: 1 };
+
+// 2. The one score line. CUT: the Last 7 grader's band lamp. Maintain/Bulk: plain ink (D19).
+function V2HistScore({ day, totals, editable, onSetTarget }) {
+  const [draft, setDraft] = useState(null);
+  const cancelled = React.useRef(false);
+  const tgt = day.targetKcal;
+  const kcal = Math.round(totals.kcal || 0);
+  const mode = day.mode || "maintain";
+  const open = () => { cancelled.current = false; setDraft(String(tgt != null ? tgt : (kcal || 2000))); };
+  const commit = () => {
+    if (cancelled.current) { cancelled.current = false; return; }
+    const n = parseInt(draft, 10);
+    if (n > 0 && n !== tgt) { haptic(); onSetTarget(n); }
+    setDraft(null);
+  };
+  const fig = { fontFamily: V2_FONT.mono, fontWeight: 500, fontSize: 14, fontVariantNumeric: "tabular-nums", color: "var(--ink)" };
+  const targetEl = draft != null ? (
+    <input data-testid="v2h-day-target-input" aria-label="Target for this day, kcal" type="number" inputMode="numeric"
+      value={draft} autoFocus onChange={e => setDraft(e.target.value)} onBlur={commit} onFocus={e => e.target.select()}
+      onKeyDown={e => { if (e.key === "Enter") e.target.blur();
+        if (e.key === "Escape") { cancelled.current = true; setDraft(null); } }}
+      style={{ ...fig, width: "6ch", padding: 0, background: "none", border: "none", borderRadius: 0,
+        borderBottom: "2px solid var(--amber-ink)", color: "var(--amber-ink)", outline: "none", MozAppearance: "textfield" }}/>
+  ) : editable ? (
+    <button data-testid="v2h-day-target" onClick={open}
+      aria-label={tgt != null ? `Target ${v2fmt(tgt)} kcal, tap to change` : "Set a target for this day"}
+      style={{ ...fig, ...(tgt == null ? { fontFamily: V2_FONT.body, fontWeight: 600, fontSize: 13, color: "var(--amber-ink)" } : {}),
+        background: "none", border: "none", padding: 0, cursor: "pointer",
+        textDecoration: "underline dashed", textDecorationColor: tgt == null ? "var(--amber-edge)" : "var(--dim)",
+        textDecorationThickness: 1, textUnderlineOffset: 5 }}>
+      {tgt != null ? v2fmt(tgt) : "Set target"}
+    </button>
+  ) : (
+    <span data-testid="v2h-day-target" style={fig}>{tgt != null ? v2fmt(tgt) : "–"}</span>
+  );
+
+  if (tgt == null) return (
+    <div data-testid="v2h-day-score" data-band="none"
+      style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginTop: 14,
+        fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>
+      <span>No target saved for this day.</span>{targetEl}
+    </div>
+  );
+  const delta = kcal - tgt;
+  const sc = calorieDayScore({ mode, dayClosed: true, kcalDelta: delta });
+  const band = mode === "cut" ? sc.colour : "neutral";
+  const lamp = mode === "cut" && V2H_LAMP[sc.colour];
+  const gap = delta === 0 ? "on target" : `${v2fmt(Math.abs(delta))} ${delta > 0 ? "over" : "under"}`;
+  return (
+    <div data-testid="v2h-day-score" data-band={band}
+      style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 14,
+        fontFamily: V2_FONT.body, fontSize: 13, color: "var(--ink)" }}>
+      {lamp && <span data-testid="v2h-day-lamp" data-state={sc.colour} aria-hidden="true"
+        style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--amber-bg)", boxSizing: "border-box",
+          flexShrink: 0, ...lamp }}/>}
+      <span style={{ color: "var(--dim)" }}>Target</span>{targetEl}
+      <span style={{ color: "var(--dim)" }}>·</span>
+      <span data-testid="v2h-day-gap" style={{ color: band === "red" ? "var(--over)" : band === "amber" ? "var(--amber-ink)" : "var(--ink)" }}>{gap}</span>
+    </div>
+  );
+}
+
+// 5. The food list: V2MealRow, keyed by POSITION. Rows get synthetic ids ("r0", "r1", …) so
+// open/edit/delete address exactly one entry even when stored ids are missing or repeated;
+// the stored entries are never given these ids. (V2MealList itself is headed "Eaten today",
+// which is wrong for a past day, so the list shell is local.)
+function V2HistFoods({ logs, totals, updateAt, removeAt, addToQA, isPremium, onPremiumGate }) {
+  const [openId, setOpenId] = useState(null);
+  const rows = logs.map((l, i) => ({ ...l, id: "r" + i }));
+  const at = id => parseInt(String(id).slice(1), 10);
+  const n = rows.length;
+  return (
+    <section data-testid="v2h-day-foods" aria-label="Foods" style={{ color: "var(--ink)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        paddingBottom: 10, borderBottom: "1px solid var(--faint)" }}>
+        <Label style={{ fontSize: 11, letterSpacing: ".16em" }}>Eaten</Label>
+        {n > 0 && <Num size={12} data-testid="v2h-day-foods-summary" style={{ letterSpacing: ".04em" }}>
+          {n} item{n !== 1 ? "s" : ""} · {v2fmt(totals.kcal)}</Num>}
+      </div>
+      {n === 0 ? (
+        <div data-testid="v2h-day-foods-empty" style={{ fontSize: 13, color: "var(--dim)", padding: "14px 0 0" }}>
+          Nothing logged on this day.
+        </div>
+      ) : (
+        <>
+          {rows.map(log => (
+            <V2MealRow key={log.id} log={log} open={openId === log.id} onToggle={setOpenId}
+              updateLog={(id, p) => updateAt(at(id), p)} removeLog={id => removeAt(at(id))}
+              addToQA={addToQA} isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+          ))}
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)", padding: "12px 0 0 60px" }}>Tap a meal to edit.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
+// 7. BODY: only when this date has a weigh-in or tape reading. Nothing carried from nearby days.
+function V2HistBody({ date, weighIns = [], bodyMeasurements = [] }) {
+  const w = weighIns.find(x => x.date === date);
+  const m = bodyMeasurements.find(x => x.date === date) || {};
+  const rows = [
+    w && ["Weight", fmtW(w.weight, getWUnit())],
+    m.neck != null && ["Neck", `${m.neck} cm`],
+    m.waist != null && ["Waist", `${m.waist} cm`],
+    m.hip != null && ["Hip", `${m.hip} cm`],
+    m.computed_bf != null && ["Body fat", `${m.computed_bf}%`],
+  ].filter(Boolean);
+  if (!rows.length) return null;
+  return (
+    <Panel data-testid="v2h-day-body" style={V2C_CELL}>
+      <V2Cap>Body</V2Cap>
+      {rows.map(([k, v], i) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+          padding: "9px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--hair)" : "none" }}>
+          <span style={{ fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)" }}>{k}</span>
+          <Num size={15}>{v}</Num>
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
+function V2HistDay(props) {
+  const { day } = props;
+  if (!day) return (
+    <div data-testid="v2h-day">
+      <V2SHeader title="Day" onBack={props.onBack} backLabel="Back to History"/>
+      <p style={{ fontFamily: V2_FONT.body, fontSize: 13, color: "var(--dim)", marginTop: 20 }}>This day is not in your history.</p>
+    </div>
+  );
+  // Keyed by date: stepping to another day drops any open editor or half-typed target.
+  return <V2HistDayBody key={day.date} {...props}/>;
+}
+
+function V2HistDayBody(props) {
+  const { day, onUpdateDay = () => {}, onBack, onStep = () => {}, hasPrev, hasNext, history = [],
+    weighIns = [], bodyMeasurements = [], profile = {}, tdeeAdj = 0, meals = [], setMeals = () => {},
+    onForget = () => {}, isPremium = false, onPremiumGate = () => {}, setView = () => {}, goToday } = props;
+  // v1 Quick Add, only while V2LogButtons still calls setView("quick"). The inline v2 Quick Add
+  // (REGION B) supersedes it: it calls onAddLog directly and never reaches this.
+  const [quick, setQuick] = useState(false);
+  const isPast = day.date < todayKey();
+  // The latest day, so two writes before a re-render (two AI items in a row) don't drop one.
+  const cur = React.useRef(day);
+  cur.current = day;
+  const lastId = React.useRef(0);
+
+  const patch = p => { const u = v2hPatchDay(cur.current, p); cur.current = u; onUpdateDay(u); };
+  const logsNow = () => cur.current.logs || [];
+  const body = () => v2hBodyOn(day.date, { profile, weighIns, bodyMeasurements });
+  const setDayMode = m => { if (m !== day.mode) { haptic(); patch(v2hModePatch(cur.current, m, body(), tdeeAdj)); } };
+  const setDayTarget = k => patch(v2hTargetPatch(cur.current, k, body()));
+  const addEntry = e => {
+    const id = Math.max(Date.now(), lastId.current + 1); lastId.current = id;
+    patch({ logs: [...logsNow(), { ...e, id,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }] });
+    setQuick(false);
+  };
+  // Same rules as App's addToQA: skip a name already saved, round the figures.
+  const addToQA = async entry => {
+    if (meals.find(m => m.name.toLowerCase() === String(entry.name).toLowerCase())) return;
+    haptic();
+    await setMeals([...meals, { name: entry.name, kcal: Math.round(entry.kcal),
+      protein: Math.round(entry.protein * 10) / 10, carbs: Math.round(entry.carbs * 10) / 10,
+      fat: Math.round(entry.fat * 10) / 10 }]);
+  };
+
+  if (quick) return (
+    <div data-testid="v2h-day-quick">
+      <QuickAdd meals={meals} setMeals={setMeals} onForget={onForget} onAdd={addEntry}
+        onBack={() => setQuick(false)} isPremium={isPremium} onPremiumGate={onPremiumGate}/>
+    </div>
+  );
+
+  const totals = v2hTotals(day);
+  const logs = day.logs || [];
+  const hasT = day.targetKcal != null;
+  const tP = day.targetProtein || 0, tF = day.targetFat || 0;
+  // Carbs absorb the rest in computeMacros, so their target is what kcal leaves after P and F.
+  const macroTargets = { protein: tP, fat: tF,
+    carbs: Math.max(0, Math.round(((day.targetKcal || 0) - 4 * tP - 9 * tF) / 4)) };
+  const modeName = (V2H_MODES.find(([v]) => v === day.mode) || [null, "Maintain"])[1];
+
+  return (
+    <div data-testid="v2h-day" data-date={day.date} className="v2s"
+      style={{ display: "flex", flexDirection: "column", gap: 14, color: "var(--ink)" }}>
+      <style>{V2S_CSS}</style>
+      <V2SHeader title={v2hDayTitle(day.date)} meta={v2hDayMeta(day.date)} onBack={onBack} backLabel="Back to History"
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <button data-testid="v2h-day-prev" aria-label="Previous day" disabled={!hasPrev}
+              onClick={() => onStep(-1)} style={{ ...V2H_STEP, opacity: hasPrev ? 1 : .35, cursor: hasPrev ? "pointer" : "default" }}>‹</button>
+            <button data-testid="v2h-day-next" aria-label="Next day" disabled={!hasNext}
+              onClick={() => onStep(1)} style={{ ...V2H_STEP, opacity: hasNext ? 1 : .35, cursor: hasNext ? "pointer" : "default" }}>›</button>
+          </div>
+        }/>
+
+      {/* 1–3: mode, the score line, training */}
+      <Panel style={V2C_CELL}>
+        {isPast ? (
+          <>
+            <V2Cap>Mode</V2Cap>
+            <V2SSeg label="Mode for this day" testid="v2h-day-mode" options={V2H_MODES}
+              value={day.mode || null} onChange={setDayMode}/>
+          </>
+        ) : (
+          <div data-testid="v2h-day-mode" data-readonly="1"
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <Label>Mode</Label>
+              <span style={{ fontFamily: V2_FONT.cond, fontWeight: 600, fontSize: 15, letterSpacing: ".12em",
+                textTransform: "uppercase" }}>{modeName}</span>
+            </span>
+            {goToday && <button data-testid="v2h-day-mode-today" onClick={goToday}
+              style={{ ...V2_BTN.text, color: "var(--amber-ink)", fontWeight: 600 }}>Change on Today</button>}
+          </div>
+        )}
+        <V2HistScore day={day} totals={totals} editable={isPast} onSetTarget={setDayTarget}/>
+        <V2SSeg label="Training or rest" testid="v2h-day-training"
+          options={[["training", "Training"], ["rest", "Rest"]]} value={day.training ? "training" : "rest"}
+          onChange={v => { const t = v === "training"; if (t !== !!day.training) { haptic(); patch({ training: t }); } }}/>
+      </Panel>
+
+      {/* 4: kcal and macros against the stored targets. No pie. */}
+      <Panel well pad="16px 16px 18px" data-testid="v2h-day-intake" style={{ borderRadius: 18 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+            <Num data-testid="v2h-day-kcal" size={40} weight={600} style={{ lineHeight: 1, letterSpacing: "-.03em" }}>
+              {v2fmt(totals.kcal)}</Num>
+            <Num size={14} color="var(--dim)">kcal</Num>
+          </span>
+          <Label>Eaten</Label>
+        </div>
+        {hasT ? (
+          <div style={{ marginTop: 10 }}><V2Macros totals={totals} targets={macroTargets}/></div>
+        ) : (
+          <div data-testid="v2h-day-macros" className="v2-num" style={{ marginTop: 12, fontSize: 13, color: "var(--dim)" }}>
+            <span style={{ color: "var(--ink)" }}>P {v2g(totals.protein)}</span> · C {v2g(totals.carbs)} · F {v2g(totals.fat)}
+          </div>
+        )}
+      </Panel>
+
+      {/* 5: add food to THIS day, then its foods */}
+      <V2LogButtons authState={isPremium ? "premium" : "free"} isPremium={isPremium} onPremiumGate={onPremiumGate}
+        onAddLog={addEntry} pastDays={history} meals={meals} setMeals={setMeals} onForget={onForget}
+        setView={v => v === "quick" ? setQuick(true) : setView(v)}/>
+      <V2HistFoods logs={logs} totals={totals} isPremium={isPremium} onPremiumGate={onPremiumGate} addToQA={addToQA}
+        updateAt={(i, p) => patch({ logs: v2hReplaceAt(logsNow(), i, p) })}
+        removeAt={i => patch({ logs: v2hRemoveAt(logsNow(), i) })}/>
+
+      {/* 6–7: water, body */}
+      <div data-testid="v2h-day-water">
+        <V2Water water={day.water || 0} setWater={n => patch({ water: n })}/>
+      </div>
+      <V2HistBody date={day.date} weighIns={weighIns} bodyMeasurements={bodyMeasurements}/>
+    </div>
+  );
+}
+// ── end REGION HC ────────────────────────────────────────────────────────────
+
+// ── HISTORY v2 shell: navigation state only. Regions own everything they render. ──
+function HistoryV2(props) {
+  const { history = [], initialRange = "30D", onBack } = props;
+  const [range, setRange] = useState(initialRange);           // "7D" | "30D" | "3M" | "ALL"
+  const [screen, setScreen] = useState({ name: "list" });     // list | day {date} | measure
+  if (screen.name === "day") {
+    const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+    const i = sorted.findIndex(d => d.date === screen.date);
+    const day = sorted[i] || null;
+    return (
+      <div data-testid="history-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px" }}>
+        <V2HistDay {...props} day={day}
+          onBack={() => setScreen({ name: "list" })}
+          hasPrev={i > 0} hasNext={i >= 0 && i < sorted.length - 1}
+          onStep={d => { const n = sorted[i + d]; if (n) setScreen({ name: "day", date: n.date }); }}/>
+      </div>
+    );
+  }
+  if (screen.name === "measure") return (
+    <div data-testid="history-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px" }}>
+      <V2HistMeasurements {...props} onBack={() => setScreen({ name: "list" })}/>
+    </div>
+  );
+  const nav = { range, setRange, openDay: date => setScreen({ name: "day", date }),
+    openMeasurements: () => setScreen({ name: "measure" }) };
+  return (
+    <div data-testid="history-v2" style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px",
+      display: "flex", flexDirection: "column", gap: 14 }}>
+      <V2SHeader title="History" onBack={onBack}/>
+      <V2HistRange {...props} {...nav}/>
+      <V2HistReadout {...props} {...nav}/>
+      <V2HistWeight {...props} {...nav}/>
+      <V2HistIntake {...props} {...nav}/>
+      <V2HistDayList {...props} {...nav}/>
+    </div>
+  );
+}
+
 function App() {
   const [view,       setView]       = useState("dashboard");
+  // UI v2: the range History opens at. The Last 7 card opens it at 7D; anything else at 30D.
+  const [historyRange, setHistoryRange] = useState("30D");
+  useEffect(() => { if (view === "dashboard") setHistoryRange("30D"); }, [view]);
   const [logs,       setLogs]       = useState([]);
   const [water,      setWater]      = useState(0);
   const [mode,       setMode]       = useState("cut");
@@ -10242,7 +11230,16 @@ function App() {
     const ask = modeGuardAsk; setModeGuardAsk(null);
     if (ask) await handleSetMode(ask.mode);
   };
+  // The same CSV v1 History's header button makes (csvRows owns the shape; features/body/02).
+  const exportHistoryCSV = () => {
+    const rows = csvRows(hist, weighIns, bodyMeasurements);
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(rows.map(r => r.join(",")).join("\n"));
+    a.download = "fuel-log-" + todayKey() + ".csv";
+    a.click();
+  };
   const DashComp = UI_V2 ? TodayV2 : Dashboard;
+  const HistComp = UI_V2 ? HistoryV2 : History;
   const ProfComp = UI_V2 ? SettingsV2 : ProfileScreen;
 
   const totals    = sumLogs(logs);
@@ -10331,7 +11328,7 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals}
+      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals} setMeals={saveMeals} onForget={forgetMeal} openHistory={r => { setHistoryRange(r || "30D"); setView("history"); }}
           onAddLog={addLog} pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
           autoKcal={calcTargets(p, MODES[mode] ? mode : "cut", smoothedBonus, tdeeAdj, todayWorkoutKcal).kcal} onOpenAccount={() => setView("account")}
           logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
@@ -10359,7 +11356,7 @@ function App() {
           isOnline={isOnline} syncMsg={syncMsg}/>}
       {view === "profile"      && <ProfComp requestMode={requestMode} storedMode={mode} mode={effectiveMode} customKcal={customKcal} onSetCustomKcal={saveCustomKcal}
           targets={targets} baseTDEE={baseTDEE} authState={authState} authUser={authUser} consentInfo={consentInfo}
-          onExport={handleExport} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
+          onExport={handleExport} onExportCSV={exportHistoryCSV} onSignOut={() => setShowSignOut(true)} onDelete={handleDeleteAccount}
           onSignIn={() => setShowSignIn(true)} onOpenAccount={() => setView("account")}
           profile={prof || DEF_PROFILE} onSave={saveProf} onBack={() => setView("dashboard")} tdeeAdj={tdeeAdj} weighIns={weighIns} aggressiveCutAcked={aggressiveCutAcked} onResetAdjustment={resetTdeeAdj}
           bodyMeasurements={bodyMeasurements} onMeasurement={onMeasurement}
@@ -10369,7 +11366,8 @@ function App() {
                                       pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
                                       meals={meals}/>}
       {view === "quick"        && <QuickAdd        onAdd={addLog} onBack={() => setView("dashboard")} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/>}
-      {view === "history"      && <ErrorBoundary><History history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
+      {view === "history"      && <ErrorBoundary><HistComp initialRange={historyRange} setView={setView} goToday={() => setView("dashboard")}
+          history={hist} onBack={() => setView("dashboard")} onUpdateDay={updateDay} weighIns={weighIns} bodyMeasurements={bodyMeasurements} sex={p.sex} profile={p} tdeeAdj={tdeeAdj} meals={meals} setMeals={saveMeals} onForget={forgetMeal} isPremium={authState === "premium"} onPremiumGate={feature => setPremiumGate(feature)}/></ErrorBoundary>}
       {view === "achievements" && <Achievements    earnedBdgs={earnedBdgs} onBack={() => setView("dashboard")}/>}
       {view === "account"      && <AccountScreen    user={authUser} consentInfo={consentInfo}
           onBack={() => setView("dashboard")} onExport={handleExport}

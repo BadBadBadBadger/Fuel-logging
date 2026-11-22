@@ -49,6 +49,11 @@ async function stubAI(page, ai, { delay = 0, fail = false } = {}) {
   });
 }
 
+const SAVED = [
+  { name: "Overnight oats", kcal: 420, protein: 22, carbs: 58, fat: 11 },
+  { name: "Chicken salad", kcal: 510, protein: 44, carbs: 18, fat: 28 },
+];
+
 test.describe("Today v2 — log buttons", () => {
   test("LOG FOOD content fits at 360px for free and premium users", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
@@ -124,10 +129,46 @@ test.describe("Today v2 — log buttons", () => {
     await expect(page.getByTestId("today-v2")).toBeVisible();
   });
 
-  test("QUICK ADD opens saved meals", async ({ page }) => {
-    await openV2(page);
+  test("QUICK ADD drops saved meals open in place — no separate screen, no emoji", async ({ page }) => {
+    await openV2(page, { premium: true, meals: SAVED });
+    const qa = page.getByTestId("v2-quick-add");
+    await qa.click();
+    await expect(qa).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("v2-quick")).toBeVisible();
+    await expect(page.getByText("QUICK ADD", { exact: true })).toHaveCount(0);   // the old screen's title
+    await expect(page.getByTestId("today-v2")).toBeVisible();
+    await expect(page.getByTestId("v2-quick-row")).toHaveCount(2);
+    expect(await page.getByTestId("v2-quick").innerText()).not.toMatch(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u);
+    // Only one drop-down at a time
+    await page.getByTestId("v2-log-food").click();
+    await expect(page.getByTestId("v2-quick")).toHaveCount(0);
+  });
+
+  test("tapping a saved meal logs it and folds the panel away", async ({ page }) => {
+    await openV2(page, { meals: SAVED });
     await page.getByTestId("v2-quick-add").click();
-    await expect(page.getByText("QUICK ADD", { exact: true })).toBeVisible();
+    await page.getByLabel("Search saved meals").fill("oat");
+    await expect(page.getByTestId("v2-quick-row")).toHaveCount(1);
+    await page.getByRole("button", { name: "Log Overnight oats" }).click();
+    await expect(page.getByTestId("v2-quick")).toHaveCount(0);
+    await expect(page.getByTestId("v2-meal-row")).toHaveCount(1);
+    expect((await stored(page))[0]).toMatchObject({ name: "Overnight oats", kcal: 420 });
+  });
+
+  test("new meal, edit and forget work from the panel", async ({ page }) => {
+    await openV2(page, { meals: SAVED });
+    await page.getByTestId("v2-quick-add").click();
+    await page.getByTestId("v2-quick-new").click();
+    const form = page.getByTestId("v2-meal-form");
+    await expect(form).toBeVisible();
+    await form.getByPlaceholder("e.g. Chicken breast (150g)").fill("Protein shake");
+    await form.locator('input[type="number"]').first().fill("180");
+    await form.getByRole("button", { name: "ADD MEAL" }).click();
+    await expect(page.getByTestId("v2-quick-row")).toHaveCount(3);
+    await page.getByRole("button", { name: "Forget Protein shake" }).click();
+    await expect(page.getByTestId("v2-quick-row")).toHaveCount(2);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("meals")).map(m => m.name));
+    expect(saved).toEqual(["Overnight oats", "Chicken salad"]);
   });
 });
 
