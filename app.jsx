@@ -3420,7 +3420,7 @@ function ProfileScreen({ profile, onSave, onBack, tdeeAdj = 0, weighIns = [], ag
 
 // ── Meal Form ─────────────────────────────────────────────────
 
-function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = () => {} }) {
+function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = () => {}, v2 = false }) {
   const blank = { name:"", kcal:"", protein:"", carbs:"", fat:"" };
   const [f, setF] = useState(meal ? {
     name: meal.name, kcal: String(meal.kcal), protein: String(meal.protein),
@@ -3465,8 +3465,9 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", display:"flex",
-      alignItems:"flex-end", justifyContent:"center", zIndex:999 }}
+    <div data-testid={v2 ? "v2-meal-form" : undefined}
+      style={{ position:"fixed", inset:0, background: v2 ? "var(--scrim)" : "rgba(0,0,0,0.88)", display:"flex",
+      alignItems:"flex-end", justifyContent:"center", zIndex:999, ...(v2 ? { ...V2_AILOG_VARS, color:"var(--ink)" } : {}) }}
       onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background:CARD, borderRadius:"22px 22px 0 0", padding:"28px 20px 50px",
         width:"100%", maxWidth:500, border:`1px solid ${BD}`, borderBottom:"none" }}>
@@ -3479,10 +3480,10 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
           placeholder="e.g. Chicken breast (150g)" style={{ ...INP, marginBottom:16 }}/>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
           {[
-            { k:"kcal",    l:"CALORIES",   c:A        },
-            { k:"protein", l:"PROTEIN (g)", c:"var(--cut)"},
-            { k:"carbs",   l:"CARBS (g)",   c:"var(--warn)"},
-            { k:"fat",     l:"FAT (g)",     c:"var(--bulk)"},
+            { k:"kcal",    l:"CALORIES",   c: v2 ? "var(--dim)" : A        },
+            { k:"protein", l:"PROTEIN (g)", c: v2 ? "var(--dim)" : "var(--cut)"},
+            { k:"carbs",   l:"CARBS (g)",   c: v2 ? "var(--dim)" : "var(--warn)"},
+            { k:"fat",     l:"FAT (g)",     c: v2 ? "var(--dim)" : "var(--bulk)"},
           ].map(fl => (
             <div key={fl.k}>
               <div style={{ fontSize:10, color:fl.c, letterSpacing:"0.1em", fontWeight:800, marginBottom:5 }}>{fl.l}</div>
@@ -3495,7 +3496,7 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
           style={{ width:"100%", padding:"12px", marginBottom: reestMsg && reestMsg !== "done" ? 6 : 12,
             background:"var(--surface-2)", border:`1px solid ${aA("44")}`, borderRadius:11, color:A,
             fontSize:13, fontWeight:800, cursor:"pointer", opacity: reest ? 0.6 : 1 }}>
-          {reest ? "Estimating…" : reestMsg === "done" ? "✓ Filled — estimate again" : "✨ AI estimate from name"}
+          {reest ? "Estimating…" : reestMsg === "done" ? (v2 ? "Filled — estimate again" : "✓ Filled — estimate again") : (v2 ? "Estimate from name" : "✨ AI estimate from name")}
         </button>
         {reestMsg && reestMsg !== "done" && (
           <div style={{ fontSize:11, color:"var(--over-2)", marginBottom:12, lineHeight:1.4 }}>{reestMsg}</div>
@@ -3505,7 +3506,7 @@ function MealForm({ meal, onSave, onCancel, isPremium = false, onPremiumGate = (
           protein: Number(f.protein) || 0, carbs: Number(f.carbs) || 0, fat: Number(f.fat) || 0,
         }))} disabled={!ok}
           style={{ width:"100%", padding:"15px",
-            background: ok ? A : "var(--surface-2)", color: ok ? "var(--bg)" : "var(--text-disabled)",
+            background: ok ? (v2 ? "var(--amber)" : A) : "var(--surface-2)", color: ok ? (v2 ? "var(--amber-on)" : "var(--bg)") : "var(--text-disabled)",
             border:"none", borderRadius:13, fontSize:14, fontWeight:900, letterSpacing:"0.08em" }}>
           {meal ? "SAVE CHANGES" : "ADD MEAL"}
         </button>
@@ -7401,11 +7402,75 @@ const V2_AILOG_VARS = {
   "--cut": "var(--ink)", "--warn": "var(--ink)", "--bulk": "var(--ink)",
 };
 
+// QUICK ADD's drop-down: saved meals in the meal-row grammar. Tap a meal to log it; pencil to
+// edit, x to forget; "New meal" opens the meal form (v2-styled). Same storage as v1 QuickAdd.
+function V2QuickAddPanel({ meals = [], setMeals, onForget = () => {}, onAdd, isPremium, onPremiumGate }) {
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState(null);             // null | { meal, index }
+  const indexed  = meals.map((m, i) => ({ ...m, _i: i }));
+  const filtered = indexed.filter(m => m.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const saveForm = saved => {
+    if (form.index != null) {
+      const u = [...meals]; u[form.index] = saved; setMeals(u);
+      if (form.meal && form.meal.name !== saved.name) onForget(form.meal.name);   // rename = new row
+    } else setMeals([...meals, saved]);
+    setForm(null);
+  };
+  const iconBtn = { background: "none", border: "none", color: "var(--dim)", width: 36, height: 36,
+    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 };
+  return (
+    <div data-testid="v2-quick">
+      {form && <MealForm v2 meal={form.meal} onSave={saveForm} onCancel={() => setForm(null)}
+        isPremium={isPremium} onPremiumGate={onPremiumGate}/>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} aria-label="Search saved meals"
+          placeholder="Search saved meals" style={{ ...V2_INPUT, flex: 1, fontFamily: V2_FONT.body }}/>
+        <button type="button" data-testid="v2-quick-new" onClick={() => setForm({ meal: null, index: null })}
+          style={{ ...V2_BTN.outline, flexShrink: 0, fontSize: 14 }}>New meal</button>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        {filtered.map((m, k) => (
+          <div key={m._i} data-testid="v2-quick-row" style={{ display: "flex", alignItems: "center", gap: 4,
+            borderTop: k ? "1px solid var(--hair)" : "none" }}>
+            <button type="button" onClick={() => { haptic(); onAdd(m); }} aria-label={`Log ${m.name}`}
+              style={{ flex: 1, minWidth: 0, background: "none", border: "none", textAlign: "left", padding: "11px 0",
+                display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 15, fontWeight: 500, color: "var(--ink)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                <span className="v2-num" style={{ display: "block", fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+                  <b style={{ color: "var(--ink)", fontWeight: 600 }}>P {Math.round(m.protein)}</b> · C {Math.round(m.carbs)} · F {Math.round(m.fat)}
+                </span>
+              </span>
+              <Num size={16} color="var(--ink)">{v2fmt(m.kcal)}</Num>
+            </button>
+            <button type="button" aria-label={`Edit ${m.name}`} style={iconBtn}
+              onClick={() => setForm({ meal: m, index: m._i })}><Icon name="pencil" size={17}/></button>
+            <button type="button" aria-label={`Forget ${m.name}`} style={iconBtn}
+              onClick={() => { haptic(); setMeals(meals.filter((_, i) => i !== m._i)); onForget(m.name); }}>
+              <Icon name="x" size={17}/></button>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div data-testid="v2-quick-empty" style={{ color: "var(--dim)", fontSize: 13, padding: "14px 0 4px" }}>
+            {meals.length ? "No saved meal matches that." : "No saved meals yet. Save one from a meal row, or add one here."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // LOG FOOD opens the AI log as a drop-down right here on Today — no separate screen. The panel
 // holds the text box and a strip of real buttons (mic · camera · photos) plus Analyse.
-function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, pastDays = [], meals = [] }) {
+function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, pastDays = [], meals = [],
+    setMeals, onForget = () => {} }) {
   const isPremium = authState === "premium";
-  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState(null);           // null | "ai" | "quick" — one open at a time
+  const open = panel === "ai";
+  const setOpen = f => setPanel(p => (typeof f === "function" ? f(p === "ai") : f) ? "ai" : null);
+  const quickInline = !!(onAddLog && setMeals);
+  const quickAdd = () => quickInline ? setPanel(p => p === "quick" ? null : "quick") : setView("quick");
   // Free users: as v1 Dashboard — the AI log is premium, so the tap opens the premium gate.
   const logFood = () => {
     if (!isPremium) return onPremiumGate({ emoji: "🤖", name: "AI LOG" });
@@ -7427,17 +7492,24 @@ function V2LogButtons({ setView, authState, onPremiumGate = () => {}, onAddLog, 
           {!isPremium ? <span data-testid="v2-log-food-lock" style={{ display: "flex" }}><Icon name="lock" size={16}/></span>
             : open ? <Icon name="x" size={18}/> : <span style={V2_CHIP}>AI</span>}
         </button>
-        <button type="button" data-testid="v2-quick-add" onClick={() => setView("quick")}
-          aria-label="Quick add, saved meals"
+        <button type="button" data-testid="v2-quick-add" onClick={quickAdd}
+          aria-label="Quick add, saved meals" aria-expanded={quickInline ? panel === "quick" : undefined}
           style={{ width: 104, height: 60, flexShrink: 0, borderRadius: 14, cursor: "pointer",
             background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)",
             display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 0 }}>
           <span style={{ fontFamily: V2_FONT.cond, fontWeight: 700, fontSize: 15, letterSpacing: ".1em",
             textTransform: "uppercase" }}>Quick add</span>
           <span style={{ fontFamily: V2_FONT.mono, fontSize: 10, letterSpacing: ".04em", marginTop: 1,
-            opacity: .75 }}>saved meals</span>
+            opacity: .75 }}>{panel === "quick" ? "close" : "saved meals"}</span>
         </button>
       </div>
+      {panel === "quick" && (
+        <Panel id="v2-quick-panel" style={{ marginTop: 8 }}>
+          <V2QuickAddPanel meals={meals} setMeals={setMeals} onForget={onForget}
+            isPremium={isPremium} onPremiumGate={onPremiumGate}
+            onAdd={m => { onAddLog({ name: m.name, kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat }); setPanel(null); }}/>
+        </Panel>
+      )}
       {open && (
         <Panel id="v2-ailog-panel" style={{ marginTop: 8 }}>
           <AILog inline onAdd={onAddLog} onBack={() => setOpen(false)} pastDays={pastDays} meals={meals}/>
@@ -10445,7 +10517,7 @@ function App() {
       {/* Gold tier and above → full fanfare overlay (auto-dismisses ~2.5s, number counts up) */}
       {newBadge && <BadgeFanfare badge={newBadge} onDone={() => setNewBadge(null)} />}
 
-      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals} openHistory={r => { setHistoryRange(r || "30D"); setView("history"); }}
+      {view === "dashboard"    && <DashComp requestMode={requestMode} cutBlock={cutBlock} meals={meals} setMeals={saveMeals} onForget={forgetMeal} openHistory={r => { setHistoryRange(r || "30D"); setView("history"); }}
           onAddLog={addLog} pastDays={[...hist.filter(d => d.date !== todayKey()), { date: todayKey(), logs }]}
           autoKcal={calcTargets(p, MODES[mode] ? mode : "cut", smoothedBonus, tdeeAdj, todayWorkoutKcal).kcal} onOpenAccount={() => setView("account")}
           logs={logs} totals={totals} targets={targets} remaining={remaining} hist={hist}
