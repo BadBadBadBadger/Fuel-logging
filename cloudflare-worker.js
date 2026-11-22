@@ -41,11 +41,18 @@ const MAX_TOKENS_CAP  = 2000;
 const DAILY_LIMIT = 100;
 
 // Voucher codes (Phase A): server-side validation + entitlement writing.
-// Only the /redeem endpoint uses this; the code never reaches the client.
-const VALID_VOUCHERS = {
-  "FREEFOODTIPS2026": { tier: "premium", status: "active", expiresAt: null, source: "voucher" },
-};
-const VOUCHER_SECRET = "voucher_redemption"; // Use a real secret in production (env var).
+// Only the /redeem endpoint uses this. The valid codes are NOT in source — they
+// come from the Worker secret VOUCHER_CODES (comma-separated, case-insensitive):
+//   wrangler secret put VOUCHER_CODES
+// Rotating a code is just updating that secret; no redeploy of this file needed.
+// With the secret unset, every code is rejected.
+const VOUCHER_GRANT = { tier: "premium", status: "active", expiresAt: null, source: "voucher" };
+
+function voucherFor(env, code) {
+  const valid = String(env.VOUCHER_CODES || "")
+    .split(",").map(c => c.trim().toUpperCase()).filter(Boolean);
+  return valid.includes(String(code).trim().toUpperCase()) ? VOUCHER_GRANT : null;
+}
 
 function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -124,7 +131,7 @@ async function getEntitlement(env, userId) {
 // Redeem a voucher (Phase A). Service role writes to entitlements.
 // If the user already has an entitlement, update it; otherwise create new.
 async function redeemVoucher(env, userId, code) {
-  const v = VALID_VOUCHERS[code.toUpperCase()];
+  const v = voucherFor(env, code);
   if (!v) return { error: "Invalid voucher code" };
 
   try {

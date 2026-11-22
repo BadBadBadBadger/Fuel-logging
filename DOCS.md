@@ -770,7 +770,7 @@ Phase 1 adds the full auth skeleton to `app.jsx` with no external service depend
 
 ```javascript
 const GOOGLE_CLIENT_ID = "";       // Set after Google Cloud setup — see §29
-const VOUCHER_CODE     = "FreeFoodTips2026";
+// Voucher codes are not in source: they live in the Worker secret VOUCHER_CODES.
 ```
 
 When `GOOGLE_CLIENT_ID` is an empty string, the sign-in modal skips the Google step entirely and goes straight to the voucher entry screen. This is the expected state until OAuth is configured.
@@ -902,7 +902,7 @@ There is no intermediate "free with limits" state. Either the user is anonymous,
 | Free trial | 30 days, rolls into monthly if not cancelled |
 
 ### Voucher code (Phase 1 — pre-payment)
-During Phase 1, subscriptions are not yet wired to payment. Users can access premium by entering the voucher code `FreeFoodTips2026` after Google Sign In. This grants premium with no expiry date until real payments are configured.
+During Phase 1, subscriptions are not yet wired to payment. Users can access premium by entering a voucher code (set via the `VOUCHER_CODES` Worker secret — never commit it) after Google Sign In. This grants premium with no expiry date until real payments are configured.
 
 ### Platform strategy
 - **Android (Play Store)**: TWA (Trusted Web Activity) via PWABuilder. Payments via **Google Play Billing** (required by Google policy for digital subscriptions sold inside Android apps). Uses the Digital Goods API.
@@ -956,7 +956,7 @@ Anonymous user taps locked feature
                      ├─ "Subscribe" button (disabled until Phase 3)
                      └─ "Enter access code" → voucher input
                             ├─ Wrong code → inline error
-                            └─ "FreeFoodTips2026" → premium granted, modal closes
+                            └─ valid voucher code → premium granted, modal closes
                                    └─ App enters premium state, all AI features unlock
 ```
 
@@ -1512,7 +1512,7 @@ the param, so it's safe in production. Handy because Gold+ otherwise needs a rea
 ### Common console noise on localhost (harmless)
 - `[GSI_LOGGER]: The given origin is not allowed for the given client ID` / `403` —
   `http://localhost:3000` isn't an authorized JavaScript origin for the Google OAuth
-  client. Expected locally; use the voucher code (`FreeFoodTips2026`) to reach premium.
+  client. Expected locally; use a voucher code from the `VOUCHER_CODES` secret to reach premium.
 - `Cross-Origin-Opener-Policy policy would block the window.postMessage call` —
   a benign warning from Google's GIS library.
 - `chrome-error://chromewebdata/ ... Unsafe attempt to load URL` — Chrome's
