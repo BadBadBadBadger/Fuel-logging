@@ -509,10 +509,17 @@ const runCalibration = (history, weighIns, baseTDEE, inFlightAdj = 0, raiseState
 };
 
 // Weight up while eating below maintenance (file 04) — derived, not stored.
-const gainWhileCutting = ({ weighIns, todayK, cutting }) => {
+const GAIN_CUT_MIN_DAYS = 10;   // of the 14 days the trend covers, at least this many were CUT days
+const gainWhileCutting = ({ weighIns, todayK, cutting, hist = [] }) => {
   if (!cutting) return false;
+  // The trend covers the last two weeks, so the card may only speak when those two weeks were
+  // actually a cut. Owner, 2026-11-22: back to Cut after weeks at Maintain, the first morning
+  // said "weight up while cutting" about a gain made at maintenance, where it is expected.
+  const from = dateKey(new Date(new Date(todayK + "T12:00:00").getTime() - 14 * 86400000));
+  const cutDays = (hist || []).filter(d => d && d.date >= from && d.date < todayK && d.mode === "cut").length;
+  if (cutDays < GAIN_CUT_MIN_DAYS) return false;
   const rate = trendLossFrac(weighIns, todayK, 14);
-  return rate != null && rate < 0;
+  return rate != null && rate < 0;   // a negative loss rate is a gain
 };
 
 // ── Cut cycling (energy Step 5; features/energy-safety/02) ────
@@ -3158,9 +3165,23 @@ describe("weight up while eating below maintenance — the explanation card", ()
     weight: fn(i),
   }));
   const todayK = "2026-01-21";
+  // The 14 days before today, all in the given mode (or a mix).
+  const days = modeOf => Array.from({ length: 14 }, (_, i) => ({
+    date: dateKey(new Date(new Date(todayK + "T12:00:00").getTime() - (i + 1) * 86400000)), mode: modeOf(i) }));
+  const cutFortnight = days(() => "cut");
 
-  test("shows when the two-week trend is up and I am cutting", () => {
-    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05), todayK, cutting: true })).toBe(true);
+  test("shows when the two-week trend is up and I have been cutting for those two weeks", () => {
+    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05), todayK, cutting: true, hist: cutFortnight })).toBe(true);
+  });
+
+  test("stays silent on the first cut day after weeks at maintenance (owner, 2026-11-22)", () => {
+    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05), todayK, cutting: true, hist: days(() => "maintain") })).toBe(false);
+  });
+
+  test("needs most of the fortnight cut: 9 of 14 is not enough, 10 is", () => {
+    const w = from(i => 80 + i * 0.05);
+    expect(gainWhileCutting({ weighIns: w, todayK, cutting: true, hist: days(i => i < 9 ? "cut" : "maintain") })).toBe(false);
+    expect(gainWhileCutting({ weighIns: w, todayK, cutting: true, hist: days(i => i < 10 ? "cut" : "maintain") })).toBe(true);
   });
 
   test("stays silent when I am not cutting — file 03's break copy owns that case", () => {
@@ -3168,12 +3189,12 @@ describe("weight up while eating below maintenance — the explanation card", ()
   });
 
   test("stays silent when the trend is going the right way", () => {
-    expect(gainWhileCutting({ weighIns: from(i => 80 - i * 0.05), todayK, cutting: true })).toBe(false);
+    expect(gainWhileCutting({ weighIns: from(i => 80 - i * 0.05), todayK, cutting: true, hist: cutFortnight })).toBe(false);
   });
 
   test("stays silent without enough weigh-ins to know", () => {
-    expect(gainWhileCutting({ weighIns: [], todayK, cutting: true })).toBe(false);
-    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05).slice(0, 2), todayK, cutting: true })).toBe(false);
+    expect(gainWhileCutting({ weighIns: [], todayK, cutting: true, hist: cutFortnight })).toBe(false);
+    expect(gainWhileCutting({ weighIns: from(i => 80 + i * 0.05).slice(0, 2), todayK, cutting: true, hist: cutFortnight })).toBe(false);
   });
 });
 

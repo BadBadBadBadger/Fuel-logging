@@ -162,8 +162,8 @@ const scanAllergens = (text, allergens) => {
 };
 
 // Shown at the foot of the ⚙️ profile screen. Bump BOTH with every release, alongside sw.js's
-// CACHE ("fuel-log-v116" ↔ "v116") — __tests__/version.test.js fails if they drift apart.
-const APP_VERSION    = "v116";
+// CACHE ("fuel-log-v117" ↔ "v117") — __tests__/version.test.js fails if they drift apart.
+const APP_VERSION    = "v117";
 const APP_PATCH_DATE = "2026-11-22";
 
 const AI_ENDPOINT = "https://fuellog.adriandavidrichards.workers.dev";
@@ -1275,8 +1275,15 @@ const stalledWeeks = (weighIns, todayK) => {
 // render rather than stored as an event: the explanation should be on screen whenever the
 // situation is real, not only in the moments after a weigh-in. Two weeks rather than one,
 // because a single week of water is exactly the noise this is here to explain away.
-const gainWhileCutting = ({ weighIns, todayK, cutting }) => {
+const GAIN_CUT_MIN_DAYS = 10;   // of the 14 days the trend covers, at least this many were CUT days
+const gainWhileCutting = ({ weighIns, todayK, cutting, hist = [] }) => {
   if (!cutting) return false;
+  // The trend covers the last two weeks, so the card may only speak when those two weeks were
+  // actually a cut. Owner, 2026-11-22: back to Cut after weeks at Maintain, the first morning
+  // said "weight up while cutting" about a gain made at maintenance, where it is expected.
+  const from = dateKey(new Date(new Date(todayK + "T12:00:00").getTime() - 14 * 86400000));
+  const cutDays = (hist || []).filter(d => d && d.date >= from && d.date < todayK && d.mode === "cut").length;
+  if (cutDays < GAIN_CUT_MIN_DAYS) return false;
   const rate = trendLossFrac(weighIns, todayK, 14);
   return rate != null && rate < 0;   // a negative loss rate is a gain
 };
@@ -11196,7 +11203,7 @@ function App() {
   const showRecharged = rechargedCardDue(cutBlock, todayK);
   // File 04: the scale went up over two weeks while eating below maintenance. The
   // calibration has already refused to act on it; this card is the explanation.
-  const showGainWhileCutting = gainWhileCutting({ weighIns, todayK, cutting: cuttingToday });
+  const showGainWhileCutting = gainWhileCutting({ weighIns, todayK, cutting: cuttingToday, hist });
 
   const saveCutBlock = async next => {
     setCutBlock(next);
