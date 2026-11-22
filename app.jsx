@@ -9498,15 +9498,290 @@ function SettingsV2(props) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ██ REGION HA — WEIGHT: weightTrend() (pure) · weight panel · Measurements sub-view (§3, §4)
 // ─────────────────────────────────────────────────────────────────────────────
-// weightTrend(weighIns, toKey) → { line:[{date,weight,trend}], rate, n, spanDays } — see §4.
+// weightTrend(weighIns, toKey) → { line:[{date,day,weight,trend}], rate, rawRate, level, n, spanDays } — §4.
+// PURE and self-contained (no app helpers): __tests__/weight-trend.test.js lifts this exact source
+// out of app.jsx and runs it, so the test can never drift from the code (ruling B6).
+//   • line: a time-weighted EWMA over calendar days, t_i = t_{i-1} + α(w_i − t_{i-1}),
+//     α = 1 − 0.9^Δdays (Hacker's Diet 10 %/day), evaluated at each reading, over ALL readings
+//     up to toKey, so a range chip never changes where the line sits.
+//   • rate: least-squares slope (kg/day ×7, rounded 0.1) through the readings of the last 28
+//     calendar days ending toKey (toKey−27 … toKey). Null unless ≥3 readings span ≥10 days.
+//     Fixed to 28 days, never the range (FL-013).
+//   • level: |rate| < 0.1 kg a week, judged on the unrounded slope, in kg whatever the display unit.
+//   • n / spanDays: readings in that 28-day window and the days between its first and last.
 function weightTrend(weighIns = [], toKey) {
-  return { line: [], rate: null, n: 0, spanDays: 0 };
+  const WINDOW = 28;
+  const dayNo = k => { const p = String(k).split("-").map(Number); return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000); };
+  const byDate = {};
+  for (const w of weighIns || []) {
+    const kg = Number(w && w.weight);
+    if (!w || !/^\d{4}-\d{2}-\d{2}$/.test(String(w.date)) || !(kg > 0)) continue;
+    if (toKey && w.date > toKey) continue;
+    byDate[w.date] = kg;                                   // one reading a day: the last one wins
+  }
+  const dates = Object.keys(byDate).sort();
+  const line = [];
+  let t = null, prev = null;
+  for (const date of dates) {
+    const w = byDate[date], d = dayNo(date);
+    t = t == null ? w : t + (1 - Math.pow(0.9, d - prev)) * (w - t);
+    prev = d;
+    line.push({ date, day: d, weight: w, trend: Math.round(t * 100) / 100 });
+  }
+  const endDay = toKey ? dayNo(toKey) : (prev == null ? 0 : prev);
+  const win = line.filter(p => p.day > endDay - WINDOW && p.day <= endDay);
+  const n = win.length;
+  const spanDays = n ? win[n - 1].day - win[0].day : 0;
+  let rate = null, rawRate = null, level = false;
+  if (n >= 3 && spanDays >= 10) {
+    const mx = win.reduce((a, p) => a + p.day, 0) / n, my = win.reduce((a, p) => a + p.weight, 0) / n;
+    let sxy = 0, sxx = 0;
+    for (const p of win) { sxy += (p.day - mx) * (p.weight - my); sxx += (p.day - mx) * (p.day - mx); }
+    rawRate = (sxy / sxx) * 7;
+    level = Math.abs(rawRate) < 0.1;
+    rate = level ? 0 : Math.round(rawRate * 10) / 10;
+  }
+  return { line, rate, rawRate, level, n, spanDays };
 }
+
+// ── Chart plumbing shared by the weight panel and the Measurements sub-view ──
+// Recharts writes colours as SVG attributes, which cannot see the tokens scoped to .ui-v2 (ruling
+// §2: rc() reads :root). So every mark here is coloured by CSS under .ui-v2, from classNames —
+// which also means a theme flip repaints the chart with no re-render.
+const V2H_CHART_CSS = `
+  .ui-v2 .v2h-chart { color: var(--ink); }
+  .ui-v2 .v2h-chart .recharts-cartesian-grid line { stroke: var(--hair); }
+  .ui-v2 .v2h-chart .recharts-cartesian-axis-tick-value { fill: var(--dim); font-family: ${V2_FONT.mono};
+    font-size: 10px; font-variant-numeric: tabular-nums; }
+  .ui-v2 .v2h-chart .v2h-ink .recharts-curve { stroke: var(--ink); }
+  .ui-v2 .v2h-chart .v2h-ink .recharts-dot { fill: var(--ink); stroke: none; }
+  .ui-v2 .v2h-chart .v2h-dim .recharts-curve { stroke: var(--dim); }
+  .ui-v2 .v2h-chart .v2h-dots .recharts-curve { stroke: none; }
+  .ui-v2 .v2h-chart .v2h-dots .recharts-dot,
+  .ui-v2 .v2h-chart .v2h-dim .recharts-dot { fill: var(--dim); stroke: none; }
+  .ui-v2 .v2h-chart .v2h-faint .recharts-curve { stroke: var(--faint); }
+  .ui-v2 .v2h-chart .v2h-faint .recharts-dot { fill: var(--faint); stroke: none; }
+  .ui-v2 .v2h-key-ink { stroke: var(--ink); } .ui-v2 .v2h-key-dim { stroke: var(--dim); }
+  .ui-v2 .v2h-key-faint { stroke: var(--faint); }
+`;
+const V2H_MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const v2hDayNo = k => { const p = String(k).split("-").map(Number); return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000); };
+const v2hDayLabel = d => { const x = new Date(d * 86400000); return `${x.getUTCDate()} ${V2H_MON[x.getUTCMonth()]}`; };
+// History v2's range keys onto v1's rangeWindow keys (7D is v1's W).
+const V2H_RANGE_KEY = { "7D": "W", "30D": "30D", "3M": "3M", ALL: "ALL" };
+// Round Y ticks: every tick a multiple of `base` (0.5 kg on weight), at least `minSpan` tall,
+// padded so no dot sits on the frame. A wide range (ALL) steps up to 2×, 5×, 10×… base rather
+// than crowding the axis past `maxTicks` labels.
+const v2hYAxis = (vals, base, minSpan, maxTicks = 7) => {
+  if (!vals.length) return { domain: [0, 1], ticks: [0, 1] };
+  const r = v => Math.round(v * 1000) / 1000;
+  let best = null;
+  for (const m of [1, 2, 5, 10, 20, 50, 100, 200]) {
+    const step = base * m;
+    let lo = Math.floor(r((Math.min(...vals) - base * 0.4) / step)) * step;
+    let hi = Math.ceil(r((Math.max(...vals) + base * 0.4) / step)) * step;
+    for (let i = 0; hi - lo < minSpan - 1e-9 && i < 100; i++) { if (i % 2) lo -= step; else hi += step; }
+    best = { lo, hi, step };
+    if (Math.round((hi - lo) / step) + 1 <= maxTicks) break;
+  }
+  const ticks = [];
+  for (let i = 0; i <= Math.round((best.hi - best.lo) / best.step); i++) ticks.push(r(best.lo + i * best.step));
+  return { domain: [r(best.lo), r(best.hi)], ticks };
+};
+// 2–4 X ticks across a day-number domain.
+const v2hXTicks = (from, to) => {
+  const span = to - from;
+  if (span <= 0) return [from];
+  const k = Math.min(span, 3);
+  return Array.from({ length: k + 1 }, (_, i) => Math.round(from + (span * i) / k));
+};
+// One frame for every v2 History line chart: numeric day axis (true time spacing, FL-009),
+// horizontal hairline grid, mono ticks, no tooltip, no animation.
+function V2HChart({ data, xDomain, y, yFmt = v => v, height = 180, testid, children }) {
+  const R = typeof Recharts !== "undefined" ? Recharts : {};
+  if (typeof ResponsiveContainer === "undefined" || !R.LineChart) return (
+    <div style={{ fontSize: 12, color: "var(--dim)", padding: "12px 0" }}>Charts could not load.</div>
+  );
+  const Grid = R.CartesianGrid;
+  return (
+    <div className="v2h-chart" data-testid={testid} style={{ margin: "10px -4px 0 -6px" }}>
+      <ResponsiveContainer width="100%" height={height}>
+        <R.LineChart data={data} margin={{ top: 6, right: 18, left: 0, bottom: 0 }}>
+          {Grid && <Grid horizontal vertical={false} strokeWidth={1}/>}
+          <R.XAxis dataKey="day" type="number" domain={xDomain} ticks={v2hXTicks(xDomain[0], xDomain[1])}
+            tickFormatter={v2hDayLabel} allowDataOverflow axisLine={false} tickLine={false} tickMargin={6}
+            interval={0} padding={{ left: 8, right: 8 }}/>
+          <R.YAxis type="number" domain={y.domain} ticks={y.ticks} tickFormatter={yFmt} allowDataOverflow
+            axisLine={false} tickLine={false} width={40} tickMargin={4} interval={0}/>
+          {children}
+        </R.LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── WEIGHT panel (§4) ─────────────────────────────────────────────────────────
+// Headline: the 28-day rate in neutral ink, never coloured (no good/bad on a scale). Chart: the
+// EWMA as straight 2px ink segments, raw readings as small dim dots, for the selected range.
+// Units: storage is kg; kg users see kg, st and lb users see lb (v1 History's wChartNum rule —
+// a numeric axis cannot carry compound st + lb).
+const v2hWeightCopy = (tr, unit, total) => {
+  const n = tr.n, w = `${n} weigh-${n === 1 ? "in" : "ins"}`;
+  if (tr.rate == null) {
+    if (!total) return "No weigh-ins yet. Log one on Today.";
+    if (!n) return "No weigh-ins in the last 4 weeks";
+    return `${w} · your trend starts after 3 over 10 days`;
+  }
+  const r = unit === "kg" ? tr.rate : Math.round(tr.rawRate * LB_PER_KG * 10) / 10;
+  if (tr.level || r === 0) return `About level · last 4 weeks · ${w}`;
+  return `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)} ${unit} a week · last 4 weeks · ${w}`;
+};
 function V2HistWeight(props) {
-  return <Panel data-testid="v2h-weight"><Label>Weight (stub)</Label></Panel>;
+  const { weighIns = [], bodyMeasurements = [], range = "30D", openMeasurements = () => {} } = props;
+  const tr = weightTrend(weighIns, todayKey());
+  const wPref = getWUnit();
+  const unit = wChartUnit(wPref);
+  const conv = kg => Math.round(wChartNum(kg, wPref) * 100) / 100;
+
+  const win = rangeWindow(V2H_RANGE_KEY[range] || "30D");
+  const toDay = v2hDayNo(win.to);
+  const fromDay = win.from ? v2hDayNo(win.from) : (tr.line.length ? Math.min(tr.line[0].day, toDay - 7) : toDay - 7);
+  const inRange = tr.line.filter(p => p.day >= fromDay && p.day <= toDay);
+  // The reading just before the window carries the trend line in from the left edge (clipped by
+  // the axis, never drawn as a dot), so a 7D view of a weekly weigher still shows its line.
+  const before = tr.line.filter(p => p.day < fromDay).slice(-1);
+  const data = [...before.map(p => ({ day: p.day, trend: conv(p.trend) })),
+    ...inRange.map(p => ({ day: p.day, raw: conv(p.weight), trend: conv(p.trend) }))];
+  const yVals = inRange.flatMap(p => [conv(p.weight), conv(p.trend)]);
+  const y = unit === "kg" ? v2hYAxis(yVals, 0.5, 2, 8) : v2hYAxis(yVals, 1, 4, 8);
+  const yFmt = v => (unit === "kg" ? Number(v).toFixed(1) : String(Math.round(v)));
+  const nMeasure = bodyMeasurements.length;
+
+  return (
+    <Panel data-testid="v2h-weight" pad="14px 14px 12px">
+      <style>{V2H_CHART_CSS}</style>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Label>Weight</Label>
+        {inRange.length > 0 && <Label style={{ letterSpacing: ".1em" }}>{unit}</Label>}
+      </div>
+      <div data-testid="v2h-weight-rate" className="v2-num"
+        style={{ marginTop: 8, fontSize: 13, lineHeight: 1.4, color: "var(--ink)", fontWeight: 500 }}>
+        {/* Each " · " part keeps together, so "weigh-ins" never breaks at its hyphen. */}
+        {v2hWeightCopy(tr, unit, tr.line.length).split(" · ").map((part, i) => (
+          <React.Fragment key={i}>{i > 0 && " · "}<span style={{ whiteSpace: "nowrap" }}>{part}</span></React.Fragment>
+        ))}
+      </div>
+      {inRange.length > 0 ? (
+        <V2HChart testid="v2h-weight-chart" data={data} xDomain={[fromDay, toDay]} y={y} yFmt={yFmt}>
+          <Line className="v2h-dots" dataKey="raw" stroke="currentColor" strokeWidth={0} isAnimationActive={false}
+            dot={{ r: 2.25, strokeWidth: 0, fill: "currentColor" }} activeDot={false} legendType="none"/>
+          <Line className="v2h-ink" type="linear" dataKey="trend" stroke="currentColor" strokeWidth={2}
+            dot={false} activeDot={false} isAnimationActive={false} connectNulls/>
+        </V2HChart>
+      ) : tr.line.length > 0 ? (
+        <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--dim)" }}>No weigh-ins in this range.</div>
+      ) : null}
+      {nMeasure > 0 && (
+        <button data-testid="v2h-measure-link" onClick={openMeasurements}
+          style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between",
+            marginTop: 10, padding: "10px 0 2px", minHeight: 36, background: "none", border: "none",
+            borderTop: "1px solid var(--hair)", cursor: "pointer", color: "var(--dim)", textAlign: "left" }}>
+          <span style={{ fontFamily: V2_FONT.body, fontSize: 13 }}>
+            Body fat &amp; tape · <span className="v2-num">{nMeasure}</span> {nMeasure === 1 ? "reading" : "readings"}
+          </span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      )}
+    </Panel>
+  );
 }
+
+// ── MEASUREMENTS sub-view (§3): v1's Body fat % and Tape charts, restyled ──────
+// Same rows as v1 (measurementChartRows: one builder for both charts, features/body/02), the
+// same 30-day change (bodyFatWindowRows/bodyFatWindowChange), the same TREND_MIN_POINTS average.
+// Never colour-coded: series are told apart by tone and dash, named in a key underneath.
 function V2HistMeasurements(props) {
-  return <div data-testid="v2h-measurements"><Label>Body fat and tape (stub)</Label></div>;
+  const { bodyMeasurements = [], sex = null, onBack } = props;
+  const rows = measurementChartRows(bodyMeasurements).map(r => ({ ...r, day: v2hDayNo(r.rawDate) }));
+  const last = bodyMeasurements[bodyMeasurements.length - 1];
+  const change = bodyFatWindowChange(bodyMeasurements, sex);
+  const fromKey = bodyFatWindowRows(bodyMeasurements, sex)?.before.date;
+  const xDomain = rows.length ? [Math.min(rows[0].day, rows[rows.length - 1].day - 7), rows[rows.length - 1].day] : [0, 1];
+  const bfVals = rows.flatMap(r => [r.BODYFAT, r.ROLLING]).filter(v => v != null).map(Number);
+  const hasHip = bodyMeasurements.some(m => m.hip != null);
+  const tape = [
+    { key: "WAIST", avg: "WAIST_AVG", label: "Waist", tone: "ink" },
+    { key: "NECK",  avg: "NECK_AVG",  label: "Neck",  tone: "dim" },
+    ...(hasHip ? [{ key: "HIP", avg: "HIP_AVG", label: "Hip", tone: "faint" }] : []),
+  ];
+  const tapeVals = rows.flatMap(r => tape.flatMap(s => [r[s.key], r[s.avg]])).filter(v => v != null).map(Number);
+  const nR = bodyMeasurements.length;
+  const legend = items => (
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
+      {items.map(([lbl, tone, mark]) => (
+        <span key={lbl} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--dim)" }}>
+          <svg width="18" height="6" aria-hidden="true">{mark === "dot"
+            ? <circle cx="9" cy="3" r="2.5" style={{ fill: `var(--${tone})` }}/>
+            : <line className={`v2h-key-${tone}`} x1="1" y1="3" x2="17" y2="3"
+                strokeWidth="2" strokeDasharray={mark === "dash" ? "4 3" : undefined}/>}</svg>{lbl}
+        </span>
+      ))}
+    </div>
+  );
+  return (
+    <div data-testid="v2h-measurements" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <style>{V2H_CHART_CSS}</style>
+      <V2SHeader title="Body fat & tape" backLabel="Back to History" onBack={onBack}
+        meta={`${nR} ${nR === 1 ? "reading" : "readings"}`}/>
+      {!rows.length ? (
+        <Panel><div style={{ fontSize: 13, color: "var(--dim)" }}>No measurements yet. Log one on Today.</div></Panel>
+      ) : (
+        <>
+          <Panel data-testid="v2h-bodyfat" pad="14px 14px 12px">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <Label>Body fat</Label>
+            </div>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <Num data-testid="v2h-bodyfat-last" size={22}>{last.computed_bf}<span style={{ fontSize: 12, color: "var(--dim)" }}> %</span></Num>
+              <span className="v2-num" style={{ fontSize: 12, color: "var(--dim)" }}>{fmtDay(last.date)}</span>
+            </div>
+            {change != null && (
+              <div data-testid="v2h-bodyfat-change" className="v2-num" style={{ marginTop: 4, fontSize: 13, color: "var(--ink)" }}>
+                {change > 0 ? "+" : change < 0 ? "−" : ""}{Math.abs(change).toFixed(1)} points since {fmtDay(fromKey)}
+              </div>
+            )}
+            <V2HChart testid="v2h-bodyfat-chart" data={rows} xDomain={xDomain}
+              y={v2hYAxis(bfVals, 0.5, 2)} yFmt={v => Number(v).toFixed(1)}>
+              <Line className="v2h-dots" dataKey="BODYFAT" stroke="currentColor" strokeWidth={0} isAnimationActive={false}
+                dot={{ r: 2.5, strokeWidth: 0, fill: "currentColor" }} activeDot={false}/>
+              <Line className="v2h-ink" type="linear" dataKey="ROLLING" stroke="currentColor" strokeWidth={2}
+                dot={false} activeDot={false} isAnimationActive={false} connectNulls/>
+            </V2HChart>
+            {legend([["Reading", "dim", "dot"], [`Average of last ${TREND_MIN_POINTS}`, "ink"]])}
+          </Panel>
+          <Panel data-testid="v2h-tape" pad="14px 14px 12px">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <Label>Tape</Label><Label style={{ letterSpacing: ".1em" }}>cm</Label>
+            </div>
+            <div className="v2-num" style={{ marginTop: 8, fontSize: 13, color: "var(--ink)" }}>{formatTapeSites(last)}</div>
+            <V2HChart testid="v2h-tape-chart" data={rows} xDomain={xDomain} height={200}
+              y={v2hYAxis(tapeVals, 1, 4)} yFmt={v => String(Math.round(v))}>
+              {tape.map(s => (
+                <Line key={s.key} className={`v2h-${s.tone}`} type="linear" dataKey={s.key} stroke="currentColor" strokeWidth={1.25}
+                  dot={{ r: 2, strokeWidth: 0, fill: "currentColor" }} activeDot={false} isAnimationActive={false} connectNulls/>
+              ))}
+              {tape.map(s => (
+                <Line key={s.avg} className={`v2h-${s.tone}`} type="linear" dataKey={s.avg} stroke="currentColor" strokeWidth={2}
+                  strokeDasharray="4 3" dot={false} activeDot={false} isAnimationActive={false} connectNulls/>
+              ))}
+            </V2HChart>
+            {legend([...tape.map(s => [s.label, s.tone]), ["Average", "dim", "dash"]])}
+          </Panel>
+        </>
+      )}
+    </div>
+  );
 }
 // ── end REGION HA ────────────────────────────────────────────────────────────
 
