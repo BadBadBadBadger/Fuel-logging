@@ -68,6 +68,17 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v116 — History and Quick Add in the v2 look (2026-11-22)
+With `?ui=v2`:
+- [ ] History (bar-chart icon): 7D · 30D · 3M · ALL, daily average, weight trend with "kg a week", calorie bars, day list — no emoji
+- [ ] The weight headline and the line agree (your data: about "+0.1 kg a week", line roughly flat)
+- [ ] Tap a day: mode, target, training, macros, meals (tap to edit), water, ‹ › to step days
+- [ ] Tap the Last 7 days card on Today: History opens at 7D
+- [ ] QUICK ADD drops down saved meals; tap one to log it; New meal / edit / forget work
+- [ ] Settings › Account & data › Daily history CSV downloads
+Both looks:
+- [ ] No sentence under the food box any more
+
 ### New in v115 — past-day target and delete fixes (2026-11-21)
 - [ ] History → a day from before targets were saved → "Set target": a number box appears; Save grades the day against it
 - [ ] Delete one food on a past day: only that food goes
