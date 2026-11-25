@@ -68,6 +68,10 @@ These need no setup. Work down the list; anything that looks wrong, note the scr
       this file. Nothing should comment on a cut target being under BMR.
 - [ ] **Profile → "Start clean"** — if your adaptive adjustment is non-zero, the reset button is there, asks "are you sure", and works
 
+### New in v119 — Last 7 days dots graded the right way round (2026-11-25)
+- [ ] Today → LAST 7 DAYS: an on-target cut day is a solid amber dot; a day a little over is the faint tint, never the brighter one
+- [ ] A day well over has a red ring; Maintain/Bulk days stay grey
+
 ### New in v118 — Badges in the v2 look (2026-11-22)
 - [ ] `?ui=v2` → trophy icon: BADGES screen, each badge with a tier ladder and "N of M for <next tier>"
 - [ ] No medal emoji or trophy; only the badge's own emoji (fire, recorder, water)
