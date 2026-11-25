@@ -8228,12 +8228,12 @@ function V2Last7(props) {
     ? (weekScore.daysUsed > 0 ? `${weekScore.daysUsed} of 7 days so far.` : "Log a day and this comes back.")
     : `${weekScore.daysUsed} of ${weekScore.totalDays} days logged.`;
 
-  // Lamp styles. Salience must follow the grade: the on-target day is the brightest lamp, never
-  // the over day. (Founder bug 2026-11-25: a day 198 kcal over drew a bright 1.5px --amber-mark
-  // ring while on-target days drew the dim --amber-edge ring, so the miss read as the highlight.)
-  //   on target    → fully lit: --amber fill, dark letter (HANDOVER: --amber is the lit-lamp fill)
-  //   a little over → half lit: amber tint, dim edge, no glow
-  //   over          → amber tint, --over ring and letter
+  // Lamp styles: traffic-light grading on cut days (founder 2026-11-25 — "bang on green, slightly
+  // off amber, over red"). Every graded lamp has the same weight — a 1.5px ring and letter in the
+  // band colour on the well — so only the colour carries the grade. (Before this, a day 198 kcal
+  // over drew a bright --amber-mark ring while on-target days drew the dim --amber-edge ring, so
+  // the miss read as the highlight.)
+  //   on target     → --good    a little over → --amber-mark    over → --over
   // Maintain/Bulk days stay neutral (D19). While filling in, no grading is shown (v1, 2026-09-09).
   const lamp = d => {
     const base = { width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center",
@@ -8243,10 +8243,10 @@ function V2Last7(props) {
     if (d.dayMode !== "cut" || fillingIn)
       return { ...base, background: "var(--well)", border: "1px solid var(--dim)", color: "var(--ink)" };
     if (d.colour === "red")
-      return { ...base, background: "var(--amber-bg)", border: "1.5px solid var(--over)", color: "var(--over)" };
+      return { ...base, background: "var(--well)", border: "1.5px solid var(--over)", color: "var(--over)" };
     if (d.colour === "amber")
-      return { ...base, background: "var(--amber-bg)", border: "1px solid var(--amber-edge)", color: "var(--amber-ink)" };
-    return { ...base, background: "var(--amber)", border: "1px solid var(--amber)", color: "var(--amber-on)" };
+      return { ...base, background: "var(--well)", border: "1.5px solid var(--amber-mark)", color: "var(--amber-ink)" };
+    return { ...base, background: "var(--well)", border: "1.5px solid var(--good)", color: "var(--good)" };
   };
   const says = d => !d.loggedAnything ? "not logged"
     : (d.dayMode !== "cut" || fillingIn) ? "logged" : (V2_DAY_SAYS[d.colour] || "logged");
